@@ -1,0 +1,8 @@
+{
+  "key": "core",
+  "name": "Core",
+  "type": "core",
+  "providers": [
+    "Modules\\Core\\Providers\\CoreServiceProvider"
+  ]
+}

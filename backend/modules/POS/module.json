@@ -1,0 +1,8 @@
+{
+  "key": "pos",
+  "name": "POS",
+  "type": "addon",
+  "providers": [
+    "Modules\\POS\\Providers\\POSServiceProvider"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "key": "iot",
+  "name": "IoT",
+  "type": "addon",
+  "providers": [
+    "Modules\\IoT\\Providers\\IoTServiceProvider"
+  ]
+}

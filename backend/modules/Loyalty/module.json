@@ -1,0 +1,8 @@
+{
+  "key": "loyalty",
+  "name": "Loyalty",
+  "type": "addon",
+  "providers": [
+    "Modules\\Loyalty\\Providers\\LoyaltyServiceProvider"
+  ]
+}

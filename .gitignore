@@ -1,0 +1,39 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+.fleet/
+
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
+
+# Dependencies / build outputs
+**/node_modules/
+**/vendor/
+**/dist/
+**/.phpunit.result.cache
+
+# Laravel runtime artifacts
+backend/storage/
+backend/bootstrap/cache/
+backend/database/*.sqlite
+backend/database/database.sqlite
+
+# Published/admin assets (generated)
+backend/public/css/filament/
+backend/public/js/filament/
+
+# Logs
+**/npm-debug.log
+**/yarn-error.log
+**/storage/logs/
+
+# Local DB dumps / backups
+backup_before_supabase.dump
+backup_before_supabase.sql
+
+# Do not push this folder
+test-sample/

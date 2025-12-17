@@ -1,0 +1,72 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from '@/components/ui/toaster'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { MainLayout } from '@/components/layout/MainLayout'
+import { POSLayout } from '@/components/layout/POSLayout'
+import { LoginPage } from '@/pages/LoginPage'
+import { DashboardPage } from '@/pages/DashboardPage'
+import { ProductsPage } from '@/pages/ProductsPage'
+import { CustomersPage } from '@/pages/CustomersPage'
+import { InvoicesPage } from '@/pages/InvoicesPage'
+import { PaymentsPage } from '@/pages/PaymentsPage'
+import { AccountingPage } from '@/pages/AccountingPage'
+import { ModulesPage } from '@/pages/Modules/ModulesPage'
+import { POSPage } from '@/pages/POSPage'
+import { POSTerminal, POSOrdersPage, POSBarcodePage, POSReportsPage } from '@/pages/POS'
+import { SettingsPage } from '@/pages/SettingsPage'
+import { useSettingsStore } from '@/store/settingsStore'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
+
+function App() {
+  // Subscribe at the top-level so currency changes re-render the app
+  const currencyCode = useSettingsStore((s) => s.currencyCode)
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <div data-currency={currencyCode}>
+        <BrowserRouter>
+          <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          
+          <Route element={<ProtectedRoute />}>
+            {/* Main Layout Routes - with sidebar */}
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route path="/payments" element={<PaymentsPage />} />
+              <Route path="/accounting" element={<AccountingPage />} />
+              <Route path="/modules" element={<ModulesPage />} />
+              <Route path="/pos" element={<POSPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
+
+            {/* POS Layout Routes - fullscreen without sidebar */}
+            <Route element={<POSLayout />}>
+              <Route path="/pos/terminal" element={<POSTerminal />} />
+              <Route path="/pos/orders" element={<POSOrdersPage />} />
+              <Route path="/pos/barcodes" element={<POSBarcodePage />} />
+              <Route path="/pos/reports" element={<POSReportsPage />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </div>
+      <Toaster />
+    </QueryClientProvider>
+  )
+}
+
+export default App

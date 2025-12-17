@@ -1,0 +1,8 @@
+{
+  "key": "whatsapp",
+  "name": "WhatsApp",
+  "type": "addon",
+  "providers": [
+    "Modules\\WhatsApp\\Providers\\WhatsAppServiceProvider"
+  ]
+}

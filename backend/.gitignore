@@ -1,0 +1,15 @@
+/vendor/
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Laravel stuff
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode

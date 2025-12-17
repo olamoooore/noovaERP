@@ -1,0 +1,8 @@
+{
+  "key": "sales",
+  "name": "Sales",
+  "type": "core",
+  "providers": [
+    "Modules\\Sales\\Providers\\SalesServiceProvider"
+  ]
+}

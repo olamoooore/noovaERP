@@ -1,0 +1,8 @@
+{
+  "key": "ai",
+  "name": "AI",
+  "type": "addon",
+  "providers": [
+    "Modules\\AI\\Providers\\AIServiceProvider"
+  ]
+}

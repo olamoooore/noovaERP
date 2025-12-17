@@ -1,0 +1,8 @@
+{
+  "key": "inventory",
+  "name": "Inventory",
+  "type": "core",
+  "providers": [
+    "Modules\\Inventory\\Providers\\InventoryServiceProvider"
+  ]
+}
