@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
+import { useNavigate } from 'react-router-dom'
 import api from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
+import { usePosSessionStore } from '@/store/posSessionStore'
 
 interface Product {
   id: number
@@ -33,8 +35,9 @@ interface Product {
   price: number
   sku: string
   barcode?: string
-  stock: number
-  image_url?: string
+  stock?: number
+  stock_quantity?: number
+  image?: string
   tax_rate?: number
   category_id?: number
   category?: { id: number; name: string }
@@ -68,6 +71,12 @@ interface CartItem extends Product {
 export function POSTerminal() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+
+  const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
+  const sessionWarehouseId = usePosSessionStore((s) => s.warehouseId)
+  const openedAt = usePosSessionStore((s) => s.openedAt)
+  const setWarehouse = usePosSessionStore((s) => s.setWarehouse)
 
   const taxConfig = useSettingsStore((s) => s.tax)
   
@@ -76,11 +85,27 @@ export function POSTerminal() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [cart, setCart] = useState<CartItem[]>([])
   const [customerId, setCustomerId] = useState<string>('walk-in')
-  const [warehouseId, setWarehouseId] = useState<string>('all')
+  const [warehouseId, setWarehouseId] = useState<string>(sessionWarehouseId ?? 'all')
   const [discount, setDiscount] = useState<number>(0)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
+
+  useEffect(() => {
+    if (!activeTerminalId || !openedAt) {
+      navigate('/pos', { replace: true })
+    }
+  }, [activeTerminalId, openedAt, navigate])
+
+  useEffect(() => {
+    setWarehouseId(sessionWarehouseId ?? 'all')
+  }, [sessionWarehouseId])
+
+  const getStock = (p: Product) => {
+    const s = typeof p.stock === 'number' ? p.stock : null
+    const sq = typeof p.stock_quantity === 'number' ? p.stock_quantity : null
+    return (s ?? sq ?? 0) as number
+  }
 
   // Fetch Products
   const { data: productsData, isLoading: productsLoading } = useQuery({
@@ -184,10 +209,10 @@ export function POSTerminal() {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
       if (existing) {
-        if (existing.quantity >= product.stock) {
+        if (existing.quantity >= getStock(product)) {
           toast({
             title: "Out of Stock",
-            description: `Only ${product.stock} items available`,
+            description: `Only ${getStock(product)} items available`,
             variant: "destructive",
           })
           return prev
@@ -218,10 +243,10 @@ export function POSTerminal() {
     setCart(prev => prev.map(item => {
       if (item.id === productId) {
         const newQty = Math.max(1, item.quantity + delta)
-        if (newQty > item.stock) {
+        if (newQty > getStock(item)) {
           toast({
             title: "Out of Stock",
-            description: `Only ${item.stock} items available`,
+            description: `Only ${getStock(item)} items available`,
             variant: "destructive",
           })
           return item
@@ -345,11 +370,12 @@ export function POSTerminal() {
   const products = productsData || []
 
   return (
-    <div className="flex h-full gap-4 p-4">
-      {/* Left: Product Selection */}
-      <div className="flex flex-1 flex-col gap-4">
-        {/* Search and Barcode */}
-        <div className="flex gap-2">
+    <div className="flex flex-col h-full p-4 gap-4">
+      <div className="flex flex-1 gap-4 overflow-hidden">
+        {/* Left: Product Selection */}
+        <div className="flex flex-1 flex-col gap-4 h-full">
+          {/* Search and Barcode */}
+          <div className="flex gap-2">
           <div className="relative flex-1">
             <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -414,14 +440,14 @@ export function POSTerminal() {
                   key={product.id}
                   className={cn(
                     "cursor-pointer transition-all hover:shadow-md",
-                    product.stock <= 0 && "opacity-50 cursor-not-allowed"
+                    getStock(product) <= 0 && "opacity-50 cursor-not-allowed"
                   )}
-                  onClick={() => product.stock > 0 && addToCart(product)}
+                  onClick={() => getStock(product) > 0 && addToCart(product)}
                 >
                   <CardContent className="p-3">
                     <div className="aspect-square mb-2 rounded-md bg-muted flex items-center justify-center overflow-hidden">
-                      {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
+                      {product.image ? (
+                        <img src={product.image} alt={product.name} className="object-cover w-full h-full" />
                       ) : (
                         <Icon icon="solar:box-bold" className="h-10 w-10 text-muted-foreground" />
                       )}
@@ -430,8 +456,11 @@ export function POSTerminal() {
                     <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
                     <div className="flex items-center justify-between mt-2">
                       <span className="font-bold text-sm">{formatCurrency(product.price)}</span>
-                      <Badge variant={product.stock > 10 ? "secondary" : product.stock > 0 ? "outline" : "destructive"} className="text-xs">
-                        {product.stock > 0 ? `${product.stock}` : 'Out'}
+                      <Badge
+                        variant={getStock(product) > 10 ? "secondary" : getStock(product) > 0 ? "outline" : "destructive"}
+                        className="text-xs"
+                      >
+                        {getStock(product) > 0 ? `${getStock(product)}` : 'Out'}
                       </Badge>
                     </div>
                   </CardContent>
@@ -467,7 +496,13 @@ export function POSTerminal() {
               </SelectContent>
             </Select>
             
-            <Select value={warehouseId} onValueChange={setWarehouseId}>
+            <Select
+              value={warehouseId}
+              onValueChange={(v) => {
+                setWarehouseId(v)
+                setWarehouse(v === 'all' ? null : v)
+              }}
+            >
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Warehouse" />
               </SelectTrigger>
@@ -486,8 +521,8 @@ export function POSTerminal() {
             {cart.map((item) => (
               <div key={item.id} className="flex gap-3 rounded-lg border p-2">
                 <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded" />
+                  {item.image ? (
+                    <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded" />
                   ) : (
                     <Icon icon="solar:box-bold" className="h-6 w-6 text-muted-foreground" />
                   )}
@@ -690,5 +725,6 @@ export function POSTerminal() {
         </DialogContent>
       </Dialog>
     </div>
+  </div>
   )
 }

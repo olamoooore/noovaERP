@@ -15,8 +15,7 @@ class PosBarcodeController extends Controller
     {
         $query = Product::query()
             ->select(['id', 'name', 'sku', 'barcode', 'price', 'stock_quantity'])
-            ->whereNotNull('barcode')
-            ->where('barcode', '!=', '');
+            ;
 
         if ($request->has('search') && $request->search) {
             $search = $request->search;
@@ -41,16 +40,36 @@ class PosBarcodeController extends Controller
     public function print(Request $request)
     {
         $validated = $request->validate([
-            'product_ids' => 'required|array',
+            'all' => 'nullable|boolean',
+            'search' => 'nullable|string',
+            'product_ids' => 'nullable|array',
             'product_ids.*' => 'integer|exists:products,id',
             'quantity' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $products = Product::whereIn('id', $validated['product_ids'])
-            ->select(['id', 'name', 'sku', 'barcode', 'price'])
-            ->get();
-
         $quantity = $validated['quantity'] ?? 1;
+
+        $productsQuery = Product::query()->select(['id', 'name', 'sku', 'barcode', 'price']);
+
+        if (!empty($validated['search'])) {
+            $search = $validated['search'];
+            $productsQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('barcode', 'like', "%{$search}%");
+            });
+        }
+
+        $all = (bool) ($validated['all'] ?? false);
+        if (!$all) {
+            $ids = $validated['product_ids'] ?? [];
+            if (empty($ids)) {
+                return response()->json(['message' => 'No products selected'], 422);
+            }
+            $productsQuery->whereIn('id', $ids);
+        }
+
+        $products = $productsQuery->get();
 
         // Generate barcode data for each product
         $barcodes = [];

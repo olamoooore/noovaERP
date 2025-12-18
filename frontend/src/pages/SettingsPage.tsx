@@ -1,3 +1,7 @@
+import { WarehouseSettings } from './Settings/WarehouseSettings'
+import { GeneralSettings } from './Settings/GeneralSettings'
+
+// ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -205,42 +209,49 @@ export function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="tax">Tax</TabsTrigger>
+          <TabsTrigger value="warehouses">Warehouses</TabsTrigger>
+          <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
-          <Card>
-            <CardHeader>
-              <CardTitle>Currency</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Default currency used across POS and reports.</div>
-                <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                  <SelectTrigger className="w-full max-w-md">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currencyOptions.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          <GeneralSettings />
+        </TabsContent>
 
-              <div>
-                <Button onClick={() => saveGeneral.mutate()} disabled={saveGeneral.isPending}>
-                  Save Currency
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="warehouses">
+          <WarehouseSettings />
         </TabsContent>
 
         <TabsContent value="tax">
           <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Currency</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Default currency used across POS and reports.</div>
+                  <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                    <SelectTrigger className="w-full max-w-md">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currencyOptions.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Button onClick={() => saveGeneral.mutate()} disabled={saveGeneral.isPending}>
+                    Save Currency
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Tax Settings</CardTitle>
@@ -293,7 +304,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="lg:col-span-2">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Taxes</CardTitle>

@@ -56,15 +56,15 @@ function App() {
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/modules" element={<ModulesPage />} />
               <Route path="/pos" element={<POSPage />} />
+              <Route path="/pos/orders" element={<POSOrdersPage />} />
+              <Route path="/pos/barcodes" element={<POSBarcodePage />} />
+              <Route path="/pos/reports" element={<POSReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
             {/* POS Layout Routes - fullscreen without sidebar */}
             <Route element={<POSLayout />}>
               <Route path="/pos/terminal" element={<POSTerminal />} />
-              <Route path="/pos/orders" element={<POSOrdersPage />} />
-              <Route path="/pos/barcodes" element={<POSBarcodePage />} />
-              <Route path="/pos/reports" element={<POSReportsPage />} />
             </Route>
           </Route>
 

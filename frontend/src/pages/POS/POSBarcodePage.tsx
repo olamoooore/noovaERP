@@ -38,7 +38,7 @@ interface Product {
   id: number
   name: string
   sku: string
-  barcode: string
+  barcode?: string
   price: number
   stock: number
 }
@@ -84,7 +84,7 @@ export function POSBarcodePage() {
 
   // Generate print data
   const printMutation = useMutation({
-    mutationFn: async (data: { product_ids: number[]; quantity: number }) => {
+    mutationFn: async (data: { product_ids?: number[]; quantity: number; all?: boolean; search?: string }) => {
       const response = await api.post('/pos/barcodes/print', data)
       return response.data
     },
@@ -133,6 +133,14 @@ export function POSBarcodePage() {
     })
   }
 
+  const handlePrintAll = () => {
+    printMutation.mutate({
+      all: true,
+      search: search || undefined,
+      quantity: printQuantity,
+    })
+  }
+
   const doPrint = () => {
     if (printRef.current) {
       const printContent = printRef.current.innerHTML
@@ -174,9 +182,13 @@ export function POSBarcodePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Product Barcodes</h1>
-          <p className="text-muted-foreground">Manage and print product barcodes</p>
+          <p className="text-muted-foreground">Search products and print barcodes</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handlePrintAll} disabled={printMutation.isPending}>
+            <Icon icon="solar:printer-bold" className="h-4 w-4 mr-2" />
+            Generate All
+          </Button>
           <Button variant="outline" onClick={() => setShowSettingsDialog(true)}>
             <Icon icon="solar:settings-bold" className="h-4 w-4 mr-2" />
             Settings
@@ -222,7 +234,7 @@ export function POSBarcodePage() {
       <Card className="flex-1">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle>Products with Barcodes</CardTitle>
+                  <CardTitle>Products</CardTitle>
             {products.length > 0 && (
               <Button variant="ghost" size="sm" onClick={toggleAll}>
                 {selectedProducts.length === products.length ? 'Deselect All' : 'Select All'}
@@ -238,7 +250,7 @@ export function POSBarcodePage() {
           ) : products.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
               <Icon icon="solar:barcode-bold" className="h-16 w-16 mb-4 opacity-50" />
-              <p>No products with barcodes found</p>
+              <p>No products found</p>
               <Link to="/products" className="mt-2">
                 <Button variant="link">Go to Products</Button>
               </Link>
@@ -275,7 +287,7 @@ export function POSBarcodePage() {
                       <code className="text-xs bg-muted px-2 py-1 rounded">{product.sku}</code>
                     </TableCell>
                     <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">{product.barcode}</code>
+                      <code className="text-xs bg-muted px-2 py-1 rounded">{product.barcode || product.sku}</code>
                     </TableCell>
                     <TableCell>{formatCurrency(Number(product.price))}</TableCell>
                     <TableCell>

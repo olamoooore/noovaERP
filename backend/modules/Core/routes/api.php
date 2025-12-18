@@ -44,6 +44,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
+    // Warehouses
+    Route::apiResource('warehouses', \App\Http\Controllers\Api\WarehouseController::class);
+
+    // Users
+    Route::get('/users', [\App\Http\Controllers\Api\UserController::class, 'index']);
+
     // Products
     Route::post('/uploads', [UploadController::class, 'store']);
 

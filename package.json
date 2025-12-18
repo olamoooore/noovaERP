@@ -1,5 +1,14 @@
 {
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && php artisan serve",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently -n backend,frontend -c green,blue \"npm run dev:backend\" \"npm run dev:frontend\""
+  },
   "dependencies": {
     "class-variance-authority": "^0.7.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
   }
 }

@@ -27,8 +27,8 @@ const baseNavItems: NavItem[] = [
     featureKey: 'pos',
     children: [
       {
-        title: 'Add POS',
-        href: '/pos/terminal',
+        title: 'Open POS',
+        href: '/pos',
         icon: 'solar:shop-bold-duotone',
       },
       {

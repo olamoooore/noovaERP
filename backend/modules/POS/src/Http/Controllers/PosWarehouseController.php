@@ -12,17 +12,8 @@ class PosWarehouseController extends Controller
      */
     public function index()
     {
-        // Currently returning a default warehouse as multi-warehouse support is not yet fully implemented
         return response()->json([
-            'data' => [
-                [
-                    'id' => 1,
-                    'name' => 'Main Warehouse',
-                    'code' => 'MAIN',
-                    'address' => 'Main Branch',
-                    'is_active' => true
-                ]
-            ]
+            'data' => \App\Models\Warehouse::where('is_active', true)->get()
         ]);
     }
 }
