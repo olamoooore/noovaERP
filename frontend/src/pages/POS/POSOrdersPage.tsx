@@ -115,13 +115,13 @@ export function POSOrdersPage() {
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
       case 'cash':
-        return 'solar:money-bag-bold-duotone'
+        return 'solar:money-bag-bold'
       case 'card':
-        return 'solar:card-bold-duotone'
+        return 'solar:card-bold'
       case 'bank_transfer':
-        return 'solar:bank-bold-duotone'
+        return 'solar:bank-bold'
       default:
-        return 'solar:wallet-bold-duotone'
+        return 'solar:wallet-bold'
     }
   }
 
@@ -146,7 +146,7 @@ export function POSOrdersPage() {
         <CardContent className="pt-4">
           <div className="flex flex-wrap gap-4">
             <div className="relative flex-1 min-w-[200px]">
-              <Icon icon="solar:magnifer-linear" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search order number..."
                 className="pl-9"
@@ -180,7 +180,7 @@ export function POSOrdersPage() {
                   setDateFilter('')
                 }}
               >
-                <Icon icon="solar:refresh-linear" className="h-4 w-4 mr-2" />
+                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2" />
                 Reset
               </Button>
             )}
@@ -193,11 +193,11 @@ export function POSOrdersPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <Icon icon="solar:refresh-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Icon icon="solar:document-text-bold-duotone" className="h-16 w-16 mb-4 opacity-50" />
+              <Icon icon="solar:document-text-bold" className="h-16 w-16 mb-4 opacity-50" />
               <p>No orders found</p>
             </div>
           ) : (

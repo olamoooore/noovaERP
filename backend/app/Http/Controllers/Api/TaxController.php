@@ -20,10 +20,19 @@ class TaxController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:50',
-            'type' => 'required|in:gst,vat,sales,service,withholding,other',
+            'type' => 'nullable|in:gst,vat,sales,service,withholding,other',
             'rate' => 'required|numeric|min:0|max:100',
             'is_active' => 'boolean',
+            'is_default' => 'boolean',
         ]);
+
+        if (!isset($validated['type'])) {
+            $validated['type'] = 'vat';
+        }
+
+        if (!empty($validated['is_default'])) {
+            Tax::where('is_default', true)->update(['is_default' => false]);
+        }
 
         $tax = Tax::create($validated);
         return response()->json($tax, 201);
@@ -37,7 +46,12 @@ class TaxController extends Controller
             'type' => 'sometimes|in:gst,vat,sales,service,withholding,other',
             'rate' => 'sometimes|numeric|min:0|max:100',
             'is_active' => 'sometimes|boolean',
+            'is_default' => 'sometimes|boolean',
         ]);
+
+        if (!empty($validated['is_default'])) {
+            Tax::where('id', '!=', $tax->id)->where('is_default', true)->update(['is_default' => false]);
+        }
 
         $tax->update($validated);
         return response()->json($tax->fresh());

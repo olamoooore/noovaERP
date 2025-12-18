@@ -39,7 +39,7 @@ const baseNavItems: NavItem[] = [
       {
         title: 'Barcodes',
         href: '/pos/barcodes',
-        icon: 'solar:barcode-bold-duotone',
+        icon: 'solar:qr-code-bold-duotone',
       },
       {
         title: 'Reports',
@@ -52,6 +52,23 @@ const baseNavItems: NavItem[] = [
     title: 'Products',
     href: '/products',
     icon: 'solar:box-bold-duotone',
+    children: [
+      {
+        title: 'All Products',
+        href: '/products',
+        icon: 'solar:box-bold-duotone',
+      },
+      {
+        title: 'Add Product',
+        href: '/products/new',
+        icon: 'solar:add-circle-bold-duotone',
+      },
+      {
+        title: 'Product Settings',
+        href: '/products/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ],
   },
   {
     title: 'Customers',

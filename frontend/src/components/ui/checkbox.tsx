@@ -19,10 +19,9 @@ const Checkbox = React.forwardRef<
     <CheckboxPrimitive.Indicator
       className={cn("flex items-center justify-center text-current")}
     >
-      <Icon icon="solar:check-read-linear" className="h-4 w-4" />
+      <Icon icon="solar:check-read-bold" className="h-4 w-4" />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ))
 Checkbox.displayName = CheckboxPrimitive.Root.displayName
-
 export { Checkbox }

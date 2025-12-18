@@ -29,7 +29,7 @@ export function TopBar() {
       <div className="flex items-center gap-4">
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">
-          <Icon icon="solar:bell-bold-duotone" className="h-5 w-5" />
+          <Icon icon="solar:bell-bold" className="h-5 w-5" />
           <span className="absolute right-1 top-1 flex h-2 w-2 rounded-full bg-destructive"></span>
         </Button>
 
@@ -51,16 +51,16 @@ export function TopBar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate('/profile')}>
-              <Icon icon="solar:user-circle-bold-duotone" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:user-circle-bold" className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/settings')}>
-              <Icon icon="solar:settings-bold-duotone" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:settings-bold" className="mr-2 h-4 w-4" />
               <span>Settings</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
-              <Icon icon="solar:logout-2-bold-duotone" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:logout-2-bold" className="mr-2 h-4 w-4" />
               <span>Logout</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -80,7 +80,7 @@ export function POSPage() {
       <div className="flex flex-1 flex-col gap-4">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Icon icon="solar:magnifer-linear" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input 
               placeholder="Search products..." 
               className="pl-9" 
@@ -89,7 +89,7 @@ export function POSPage() {
             />
           </div>
           <Button variant="outline">
-            <Icon icon="solar:filter-bold-duotone" className="mr-2 h-4 w-4" />
+            <Icon icon="solar:filter-bold" className="mr-2 h-4 w-4" />
             Filter
           </Button>
         </div>
@@ -110,7 +110,7 @@ export function POSPage() {
                       {product.image_url ? (
                         <img src={product.image_url} alt={product.name} className="object-cover" />
                       ) : (
-                        <Icon icon="solar:box-bold-duotone" className="h-12 w-12 text-muted-foreground" />
+                        <Icon icon="solar:box-bold" className="h-12 w-12 text-muted-foreground" />
                       )}
                     </div>
                     <h3 className="font-medium truncate">{product.name}</h3>
@@ -130,7 +130,7 @@ export function POSPage() {
       <div className="flex w-96 flex-col rounded-md border bg-card">
         <div className="p-4 border-b">
           <h2 className="font-semibold flex items-center gap-2">
-            <Icon icon="solar:cart-large-minimalistic-bold-duotone" />
+            <Icon icon="solar:cart-large-minimalistic-bold" />
             Current Order
           </h2>
         </div>
@@ -140,7 +140,7 @@ export function POSPage() {
             {cart.map((item) => (
               <div key={item.id} className="flex gap-3">
                 <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
-                   <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                   <Icon icon="solar:box-bold" className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div className="flex-1 overflow-hidden">
                   <h4 className="font-medium truncate">{item.name}</h4>

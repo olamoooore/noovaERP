@@ -29,11 +29,15 @@ class Product extends Model
         'income_account_id',
         'expense_account_id',
         'track_inventory',
+        'is_preorder',
+        'is_new_arrival',
+        'preorder_available_at',
         'stock_quantity',
         'reorder_level',
         'unit',
         'image',
         'gallery',
+        'attributes',
         'is_active',
     ];
 
@@ -44,7 +48,11 @@ class Product extends Model
         'tax_rate_override' => 'decimal:2',
         'tax_included' => 'boolean',
         'gallery' => 'array',
+        'attributes' => 'array',
         'track_inventory' => 'boolean',
+        'is_preorder' => 'boolean',
+        'is_new_arrival' => 'boolean',
+        'preorder_available_at' => 'date:Y-m-d',
         'is_active' => 'boolean',
     ];
 
@@ -83,6 +91,16 @@ class Product extends Model
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    public function featureValues(): HasMany
+    {
+        return $this->hasMany(ProductFeatureValue::class);
+    }
+
+    public function customFieldValues(): HasMany
+    {
+        return $this->hasMany(ProductCustomFieldValue::class);
     }
 
     public function adjustStock(int $quantity, string $type, ?string $reference = null): void

@@ -351,7 +351,7 @@ export function POSTerminal() {
         {/* Search and Barcode */}
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Icon icon="solar:magnifer-linear" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search products..."
               className="pl-9"
@@ -360,7 +360,7 @@ export function POSTerminal() {
             />
           </div>
           <div className="relative w-48">
-            <Icon icon="solar:barcode-linear" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:barcode-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Scan barcode..."
               className="pl-9"
@@ -400,11 +400,11 @@ export function POSTerminal() {
         <ScrollArea className="flex-1 rounded-md border bg-card p-4">
           {productsLoading ? (
             <div className="flex h-full items-center justify-center">
-              <Icon icon="solar:refresh-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : products.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-              <Icon icon="solar:box-bold-duotone" className="h-16 w-16 mb-4" />
+              <Icon icon="solar:box-bold" className="h-16 w-16 mb-4" />
               <p>No products found</p>
             </div>
           ) : (
@@ -423,7 +423,7 @@ export function POSTerminal() {
                       {product.image_url ? (
                         <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
                       ) : (
-                        <Icon icon="solar:box-bold-duotone" className="h-10 w-10 text-muted-foreground" />
+                        <Icon icon="solar:box-bold" className="h-10 w-10 text-muted-foreground" />
                       )}
                     </div>
                     <h3 className="font-medium text-sm truncate">{product.name}</h3>
@@ -447,7 +447,7 @@ export function POSTerminal() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Icon icon="solar:cart-large-minimalistic-bold-duotone" className="h-5 w-5" />
+              <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5" />
               Current Order
             </CardTitle>
             <Badge variant="secondary">{cart.length} items</Badge>
@@ -489,7 +489,7 @@ export function POSTerminal() {
                   {item.image_url ? (
                     <img src={item.image_url} alt={item.name} className="w-full h-full object-cover rounded" />
                   ) : (
-                    <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                    <Icon icon="solar:box-bold" className="h-6 w-6 text-muted-foreground" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -505,7 +505,7 @@ export function POSTerminal() {
                       className="h-6 w-6"
                       onClick={() => updateQuantity(item.id, -1)}
                     >
-                      <Icon icon="solar:minus-circle-linear" className="h-4 w-4" />
+                      <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
                     </Button>
                     <span className="text-sm w-6 text-center">{item.quantity}</span>
                     <Button
@@ -514,7 +514,7 @@ export function POSTerminal() {
                       className="h-6 w-6"
                       onClick={() => updateQuantity(item.id, 1)}
                     >
-                      <Icon icon="solar:add-circle-linear" className="h-4 w-4" />
+                      <Icon icon="solar:add-circle-bold" className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -522,7 +522,7 @@ export function POSTerminal() {
                       className="h-6 w-6 text-destructive"
                       onClick={() => removeFromCart(item.id)}
                     >
-                      <Icon icon="solar:trash-bin-minimalistic-linear" className="h-4 w-4" />
+                      <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -530,7 +530,7 @@ export function POSTerminal() {
             ))}
             {cart.length === 0 && (
               <div className="text-center text-muted-foreground py-12">
-                <Icon icon="solar:cart-large-minimalistic-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                <Icon icon="solar:cart-large-minimalistic-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
                 <p>Cart is empty</p>
                 <p className="text-sm">Click on products to add them</p>
               </div>
@@ -619,25 +619,25 @@ export function POSTerminal() {
                 <SelectContent>
                   <SelectItem value="cash">
                     <div className="flex items-center gap-2">
-                      <Icon icon="solar:money-bag-bold-duotone" className="h-4 w-4" />
+                      <Icon icon="solar:money-bag-bold" className="h-4 w-4" />
                       Cash
                     </div>
                   </SelectItem>
                   <SelectItem value="card">
                     <div className="flex items-center gap-2">
-                      <Icon icon="solar:card-bold-duotone" className="h-4 w-4" />
+                      <Icon icon="solar:card-bold" className="h-4 w-4" />
                       Card
                     </div>
                   </SelectItem>
                   <SelectItem value="bank_transfer">
                     <div className="flex items-center gap-2">
-                      <Icon icon="solar:bank-bold-duotone" className="h-4 w-4" />
+                      <Icon icon="solar:bank-bold" className="h-4 w-4" />
                       Bank Transfer
                     </div>
                   </SelectItem>
                   <SelectItem value="other">
                     <div className="flex items-center gap-2">
-                      <Icon icon="solar:wallet-bold-duotone" className="h-4 w-4" />
+                      <Icon icon="solar:wallet-bold" className="h-4 w-4" />
                       Other
                     </div>
                   </SelectItem>

@@ -28,7 +28,7 @@ export function POSLayout() {
       <header className="flex h-14 items-center justify-between border-b bg-primary px-4 text-primary-foreground">
         <div className="flex items-center gap-4">
           <Link to="/" className="flex items-center gap-2">
-            <Icon icon="solar:buildings-2-bold-duotone" className="h-7 w-7" />
+            <Icon icon="solar:buildings-2-bold" className="h-7 w-7" />
             <span className="text-lg font-bold">NoovaERP</span>
           </Link>
           <span className="text-sm opacity-80">Point of Sale</span>

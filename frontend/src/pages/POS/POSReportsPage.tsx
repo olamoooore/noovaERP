@@ -131,7 +131,7 @@ export function POSReportsPage() {
             <CardDescription>Today's Sales</CardDescription>
             <CardTitle className="text-2xl">
               {dashboardLoading ? (
-                <Icon icon="solar:refresh-linear" className="h-6 w-6 animate-spin" />
+                <Icon icon="solar:refresh-bold" className="h-6 w-6 animate-spin" />
               ) : (
                 formatCurrency(Number(dashboard?.today?.total || 0))
               )}
@@ -149,7 +149,7 @@ export function POSReportsPage() {
             <CardDescription>This Month</CardDescription>
             <CardTitle className="text-2xl">
               {dashboardLoading ? (
-                <Icon icon="solar:refresh-linear" className="h-6 w-6 animate-spin" />
+                <Icon icon="solar:refresh-bold" className="h-6 w-6 animate-spin" />
               ) : (
                 formatCurrency(Number(dashboard?.month?.total || 0))
               )}
@@ -167,7 +167,7 @@ export function POSReportsPage() {
             <CardDescription>Period Total</CardDescription>
             <CardTitle className="text-2xl">
               {reportsLoading ? (
-                <Icon icon="solar:refresh-linear" className="h-6 w-6 animate-spin" />
+                <Icon icon="solar:refresh-bold" className="h-6 w-6 animate-spin" />
               ) : (
                 formatCurrency(Number(reports?.summary?.total_sales || 0))
               )}
@@ -185,7 +185,7 @@ export function POSReportsPage() {
             <CardDescription>Average Order</CardDescription>
             <CardTitle className="text-2xl">
               {reportsLoading ? (
-                <Icon icon="solar:refresh-linear" className="h-6 w-6 animate-spin" />
+                <Icon icon="solar:refresh-bold" className="h-6 w-6 animate-spin" />
               ) : (
                 formatCurrency(Number(reports?.summary?.average_order || 0))
               )}
@@ -270,11 +270,11 @@ export function POSReportsPage() {
           <CardContent>
             {reportsLoading ? (
               <div className="flex items-center justify-center h-64">
-                <Icon icon="solar:refresh-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+                <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : reports?.data?.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                <Icon icon="solar:chart-bold-duotone" className="h-16 w-16 mb-4 opacity-50" />
+                <Icon icon="solar:chart-bold" className="h-16 w-16 mb-4 opacity-50" />
                 <p>No data for selected period</p>
               </div>
             ) : (
@@ -296,7 +296,7 @@ export function POSReportsPage() {
           <CardContent className="p-0">
             {reportsLoading ? (
               <div className="flex items-center justify-center h-32">
-                <Icon icon="solar:refresh-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+                <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
               <Table>

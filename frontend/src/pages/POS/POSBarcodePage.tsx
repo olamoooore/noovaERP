@@ -195,7 +195,7 @@ export function POSBarcodePage() {
             <div className="flex-1 min-w-[250px]">
               <label className="text-sm font-medium mb-2 block">Search Products</label>
               <div className="relative">
-                <Icon icon="solar:magnifer-linear" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name, SKU, or barcode..."
                   className="pl-9"
@@ -233,11 +233,11 @@ export function POSBarcodePage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <Icon icon="solar:refresh-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : products.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Icon icon="solar:barcode-bold-duotone" className="h-16 w-16 mb-4 opacity-50" />
+              <Icon icon="solar:barcode-bold" className="h-16 w-16 mb-4 opacity-50" />
               <p>No products with barcodes found</p>
               <Link to="/products" className="mt-2">
                 <Button variant="link">Go to Products</Button>

@@ -9,6 +9,11 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductVariantController;
+use App\Http\Controllers\Api\ProductUnitController;
+use App\Http\Controllers\Api\ProductAttributeController;
+use App\Http\Controllers\Api\ProductFeatureController;
+use App\Http\Controllers\Api\ProductCustomFieldController;
+use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\FeatureController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TaxController;
@@ -40,10 +45,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
     // Products
+    Route::post('/uploads', [UploadController::class, 'store']);
+
     Route::apiResource('products', ProductController::class);
+    Route::post('/products/import', [ProductController::class, 'import']);
 
     // Product categories
     Route::get('/product-categories', [ProductCategoryController::class, 'index']);
+
+    // Product Settings (Units, Attributes, Features)
+    Route::apiResource('product-units', ProductUnitController::class);
+    Route::apiResource('product-attributes', ProductAttributeController::class);
+    Route::apiResource('product-features', ProductFeatureController::class);
+    Route::apiResource('product-custom-fields', ProductCustomFieldController::class);
     Route::post('/product-categories', [ProductCategoryController::class, 'store']);
     Route::put('/product-categories/{productCategory}', [ProductCategoryController::class, 'update']);
     Route::delete('/product-categories/{productCategory}', [ProductCategoryController::class, 'destroy']);

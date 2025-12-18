@@ -13,17 +13,17 @@ function localeForCurrency(currencyCode: string): string {
     case 'SGD':
       return 'en-SG'
     case 'AED':
-      return 'en-AE'
+      return 'ar-AE'
     case 'SAR':
-      return 'en-SA'
+      return 'ar-SA'
     case 'QAR':
-      return 'en-QA'
+      return 'ar-QA'
     case 'KWD':
-      return 'en-KW'
+      return 'ar-KW'
     case 'BHD':
-      return 'en-BH'
+      return 'ar-BH'
     case 'OMR':
-      return 'en-OM'
+      return 'ar-OM'
     default:
       return 'en-US'
   }
@@ -33,31 +33,56 @@ export function formatCurrency(amount: number, currencyCode?: string): string {
   const activeCurrencyCode =
     currencyCode ?? useSettingsStore.getState().currencyCode ?? 'USD'
 
-  const currencyDisplay = activeCurrencyCode?.toUpperCase() === 'SGD' ? 'symbol' : 'narrowSymbol'
+  const normalizedCode = (activeCurrencyCode || 'USD').toUpperCase()
+  const locale = localeForCurrency(normalizedCode)
 
-  return new Intl.NumberFormat(localeForCurrency(activeCurrencyCode), {
-    style: 'currency',
-    currency: activeCurrencyCode || 'USD',
-    currencyDisplay,
-  }).format(amount)
+  // Intl commonly renders SGD as "S$"; product requirement is "$S".
+  if (normalizedCode === 'SGD') {
+    const number = new Intl.NumberFormat(locale, {
+      style: 'decimal',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.abs(amount))
+
+    const sign = amount < 0 ? '-' : ''
+    return `${sign}$S${number}`
+  }
+
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: normalizedCode,
+      currencyDisplay: 'symbol',
+    }).format(amount)
+  } catch {
+    const fallbackNumber = new Intl.NumberFormat('en-US', {
+      style: 'decimal',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+    return `${normalizedCode} ${fallbackNumber}`
+  }
 }
 
 export function getCurrencySymbol(currencyCode?: string): string {
   const activeCurrencyCode =
     currencyCode ?? useSettingsStore.getState().currencyCode ?? 'USD'
-  const currencyDisplay = activeCurrencyCode?.toUpperCase() === 'SGD' ? 'symbol' : 'narrowSymbol'
+
+  const normalizedCode = (activeCurrencyCode || 'USD').toUpperCase()
+
+  if (normalizedCode === 'SGD') return '$S'
 
   try {
-    const parts = new Intl.NumberFormat(localeForCurrency(activeCurrencyCode), {
+    const parts = new Intl.NumberFormat(localeForCurrency(normalizedCode), {
       style: 'currency',
-      currency: activeCurrencyCode || 'USD',
-      currencyDisplay,
+      currency: normalizedCode,
+      currencyDisplay: 'symbol',
       maximumFractionDigits: 0,
     }).formatToParts(0)
 
-    return parts.find((p) => p.type === 'currency')?.value ?? activeCurrencyCode
+    return parts.find((p) => p.type === 'currency')?.value ?? normalizedCode
   } catch {
-    return activeCurrencyCode
+    return normalizedCode
   }
 }
 

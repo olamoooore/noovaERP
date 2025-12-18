@@ -80,7 +80,7 @@ const ToastClose = React.forwardRef<
     toast-close=""
     {...props}
   >
-    <Icon icon="solar:close-circle-linear" className="h-4 w-4" />
+    <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName

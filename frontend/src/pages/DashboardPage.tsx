@@ -25,7 +25,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <Icon icon="solar:dollar-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:dollar-minimalistic-bold" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats?.total_revenue || 0)}</div>
@@ -36,7 +36,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
-            <Icon icon="solar:clock-circle-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:clock-circle-bold" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats?.outstanding_invoices?.amount || 0)}</div>
@@ -49,7 +49,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Customers</CardTitle>
-            <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:users-group-rounded-bold" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.total_customers || 0}</div>
@@ -60,7 +60,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
-            <Icon icon="solar:box-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+            <Icon icon="solar:box-bold" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.low_stock_products || 0}</div>

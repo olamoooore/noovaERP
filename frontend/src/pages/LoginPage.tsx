@@ -45,7 +45,7 @@ export function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Icon icon="solar:buildings-2-bold-duotone" className="h-7 w-7 text-primary-foreground" />
+            <Icon icon="solar:buildings-2-bold" className="h-7 w-7 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl font-bold">NoovaERP</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>

@@ -7,6 +7,10 @@ import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ProductsPage } from '@/pages/ProductsPage'
+import { ProductCreatePage } from '@/pages/Products/ProductCreatePage'
+import { ProductViewPage } from '@/pages/Products/ProductViewPage'
+import { ProductEditPage } from '@/pages/Products/ProductEditPage'
+import { ProductSettingsPage } from '@/pages/Products/ProductSettingsPage'
 import { CustomersPage } from '@/pages/CustomersPage'
 import { InvoicesPage } from '@/pages/InvoicesPage'
 import { PaymentsPage } from '@/pages/PaymentsPage'
@@ -42,6 +46,10 @@ function App() {
             <Route element={<MainLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/products" element={<ProductsPage />} />
+              <Route path="/products/new" element={<ProductCreatePage />} />
+              <Route path="/products/:id" element={<ProductViewPage />} />
+              <Route path="/products/:id/edit" element={<ProductEditPage />} />
+              <Route path="/products/settings" element={<ProductSettingsPage />} />
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/invoices" element={<InvoicesPage />} />
               <Route path="/payments" element={<PaymentsPage />} />
