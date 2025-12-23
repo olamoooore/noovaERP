@@ -27,7 +27,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
-import { usePosSessionStore } from '@/store/posSessionStore'
+import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 
 interface Product {
   id: number
@@ -61,32 +61,31 @@ interface Warehouse {
   name: string
 }
 
-interface CartItem extends Product {
-  quantity: number
-  line_subtotal: number
-  line_total: number
-  tax_amount: number
-}
-
 export function POSTerminal() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
+  // Store State
   const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
   const sessionWarehouseId = usePosSessionStore((s) => s.warehouseId)
   const openedAt = usePosSessionStore((s) => s.openedAt)
   const setWarehouse = usePosSessionStore((s) => s.setWarehouse)
+  
+  const cart = usePosSessionStore((s) => s.cart)
+  const setCart = usePosSessionStore((s) => s.setCart)
+  const discount = usePosSessionStore((s) => s.discount)
+  const setDiscount = usePosSessionStore((s) => s.setDiscount)
+  const customerId = usePosSessionStore((s) => s.customerId)
+  const setCustomerId = usePosSessionStore((s) => s.setCustomerId)
+  const clearSessionCart = usePosSessionStore((s) => s.clearCart)
 
   const taxConfig = useSettingsStore((s) => s.tax)
   
-  // State
+  // Local State
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [customerId, setCustomerId] = useState<string>('walk-in')
   const [warehouseId, setWarehouseId] = useState<string>(sessionWarehouseId ?? 'all')
-  const [discount, setDiscount] = useState<number>(0)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -167,7 +166,7 @@ export function POSTerminal() {
   const pricingMode = taxConfig.pricing_mode
   const defaultTaxRate = taxConfig.default_tax_rate ?? 0
 
-  const getEffectiveTaxRate = (item: Product) => {
+  const getEffectiveTaxRate = (item: Product | CartItem) => {
     if (!taxEnabled) return 0
     const rate = typeof item.tax_rate === 'number' ? item.tax_rate : 0
     return rate > 0 ? rate : defaultTaxRate
@@ -175,7 +174,7 @@ export function POSTerminal() {
 
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
-  const computeLine = (item: Product, quantity: number) => {
+  const computeLine = (item: Product | CartItem, quantity: number) => {
     const gross = item.price * quantity
     const rate = getEffectiveTaxRate(item)
 
@@ -202,75 +201,90 @@ export function POSTerminal() {
   // Calculate totals
   const subtotal = round2(cart.reduce((sum, item) => sum + item.line_subtotal, 0))
   const taxAmount = round2(cart.reduce((sum, item) => sum + item.tax_amount, 0))
-  const total = round2(cart.reduce((sum, item) => sum + item.line_total, 0) - discount)
+  const itemsTotal = round2(cart.reduce((sum, item) => sum + item.line_total, 0)) // gross total of items
+  
+  // Calculate Discount Amount
+  let discountAmount = 0
+  if (discount.type === 'fixed') {
+      discountAmount = discount.value
+  } else {
+      discountAmount = itemsTotal * (discount.value / 100)
+  }
+  discountAmount = round2(discountAmount)
+  
+  const total = round2(Math.max(0, itemsTotal - discountAmount))
 
   // Add to cart
   const addToCart = useCallback((product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id)
-      if (existing) {
-        if (existing.quantity >= getStock(product)) {
-          toast({
-            title: "Out of Stock",
-            description: `Only ${getStock(product)} items available`,
-            variant: "destructive",
-          })
-          return prev
+    // Check stock
+    const currentQtyInCart = cart.find(i => i.id === product.id)?.quantity || 0
+    if (currentQtyInCart + 1 > getStock(product)) {
+      toast({
+        title: "Out of Stock",
+        description: `Only ${getStock(product)} items available`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    const existing = cart.find(item => item.id === product.id)
+    if (existing) {
+        const newQty = existing.quantity + 1
+        const updatedItem = {
+            ...existing,
+            quantity: newQty,
+            ...computeLine(product, newQty),
         }
-        return prev.map(item => {
-          if (item.id === product.id) {
-            const newQty = item.quantity + 1
-            return {
-              ...item,
-              quantity: newQty,
-              ...computeLine(product, newQty),
-            }
-          }
-          return item
-        })
-      }
-      
-      return [...prev, {
-        ...product,
-        quantity: 1,
-        ...computeLine(product, 1),
-      }]
-    })
-  }, [toast, taxEnabled, pricingMode, defaultTaxRate])
+        setCart(cart.map(i => i.id === product.id ? updatedItem : i))
+    } else {
+        const newItem: CartItem = {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            sku: product.sku,
+            image: product.image,
+            quantity: 1,
+            tax_rate: product.tax_rate,
+            ...computeLine(product, 1),
+        }
+        setCart([...cart, newItem])
+    }
+  }, [cart, setCart, toast, taxEnabled, pricingMode, defaultTaxRate])
 
   // Update quantity
   const updateQuantity = (productId: number, delta: number) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === productId) {
-        const newQty = Math.max(1, item.quantity + delta)
-        if (newQty > getStock(item)) {
-          toast({
-            title: "Out of Stock",
-            description: `Only ${getStock(item)} items available`,
-            variant: "destructive",
-          })
-          return item
+    const existing = cart.find(item => item.id === productId)
+    if (!existing) return
+
+    const newQty = Math.max(1, existing.quantity + delta)
+    
+    // Check stock if increasing
+    if (delta > 0) {
+        // Try to find product in current data to check stock
+        // If not found (e.g. searching/filtering), allow valid if we have stock data in item?
+        // Current implementation relies on `productsData`.
+        const product = productsData?.find((p: Product) => p.id === productId)
+        if (product && newQty > getStock(product)) {
+             toast({
+                title: "Out of Stock",
+                description: `Only ${getStock(product)} items available`,
+                variant: "destructive",
+            })
+            return
         }
-        return {
-          ...item,
-          quantity: newQty,
-          ...computeLine(item, newQty),
-        }
-      }
-      return item
-    }))
+    }
+
+    const updatedItem = {
+        ...existing,
+        quantity: newQty,
+        ...computeLine(existing, newQty),
+    }
+    setCart(cart.map(i => i.id === productId ? updatedItem : i))
   }
 
   // Remove from cart
   const removeFromCart = (productId: number) => {
-    setCart(prev => prev.filter(item => item.id !== productId))
-  }
-
-  // Clear cart
-  const clearCart = () => {
-    setCart([])
-    setDiscount(0)
-    setCustomerId('walk-in')
+    setCart(cart.filter(item => item.id !== productId))
   }
 
   // Handle barcode scan
@@ -279,12 +293,13 @@ export function POSTerminal() {
       const response = await api.get('/pos/products/lookup', { params: { code: barcode } })
       if (response.data) {
         const item = response.data.type === 'variant' ? response.data.variant : response.data.product
-        // Ensure stock is present (it comes from backend accessor)
+        // Stock check
+        // ... (Similar logic, assuming item has stock info)
         if (response.data.type === 'variant') {
-             // If it's a variant, we might need to handle it differently in the cart
-             // For now, we'll map it to a product-like structure
              item.name = `${response.data.product.name} - ${item.name}`
              item.image = response.data.product.image
+             // Need to ensure item has property tax_rate if present in product
+             item.tax_rate = item.tax_rate ?? response.data.product.tax_rate
         }
         addToCart(item)
         toast({
@@ -313,6 +328,42 @@ export function POSTerminal() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [barcodeInput, handleBarcodeScan])
+  
+  const getOrderData = () => ({
+    notes: customerId !== 'walk-in' ? `Customer ID: ${customerId}` : 'Walk-in customer',
+    discount_type: discount.type,
+    discount_value: discount.value,
+    items: cart.map(item => ({
+      product_id: item.id,
+      quantity: item.quantity,
+      unit_price: item.price,
+    })),
+  })
+
+  // Handle Save Draft
+  const handleSaveDraft = async () => {
+      if (cart.length === 0) {
+          toast({ title: "Empty Cart", description: "Add items first.", variant: "destructive" })
+          return
+      }
+      try {
+          // Check if we are UPDATING an existing draft?
+          // Current logic in `PosOrderController` assumes `store` creates new or updates if we passed an ID?
+          // The controller uses `firstOrCreate(['external_id' => ...])`.
+          // We don't track `external_id` or `order_id` in the frontend session yet.
+          // For now, "Save Draft" creates a NEW draft.
+          // To update, we'd need to store `currentOrderId` in the store.
+          // Simplification for now: Always create new draft. (Or maybe we implement `currentOrderId` later).
+          // Ideally, loading a draft should set `currentOrderId` so we update it.
+          // But strict "Save as Draft" usually means "Park Order".
+          
+          await createOrderMutation.mutateAsync(getOrderData())
+          toast({ title: "Draft Saved", description: "Order saved as draft." })
+          clearSessionCart()
+      } catch (error: any) {
+          toast({ title: "Error", description: error.message, variant: "destructive" })
+      }
+  }
 
   // Handle checkout
   const handleCheckout = async () => {
@@ -327,21 +378,12 @@ export function POSTerminal() {
 
     try {
       // Create order
-      const orderData = {
-        notes: customerId !== 'walk-in' ? `Customer ID: ${customerId}` : 'Walk-in customer',
-        items: cart.map(item => ({
-          product_id: item.id,
-          quantity: item.quantity,
-          unit_price: item.price,
-        })),
-      }
-
-      const order = await createOrderMutation.mutateAsync(orderData)
+      const order = await createOrderMutation.mutateAsync(getOrderData())
 
       // Process payment
       const paymentData = {
         method: paymentMethod,
-        amount: round2(total),
+        amount: round2(total), // Pay the discounted total
         reference: `POS-${Date.now()}`,
       }
 
@@ -353,7 +395,7 @@ export function POSTerminal() {
       })
 
       // Clear cart and close dialog
-      clearCart()
+      clearSessionCart()
       setShowCheckoutDialog(false)
 
       // Refresh products to update stock
@@ -577,14 +619,28 @@ export function POSTerminal() {
         <div className="p-4 border-t bg-muted/20 space-y-4">
           {/* Discount Input */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Discount:</span>
+            <span className="text-sm text-muted-foreground w-16">Discount:</span>
+            <Select 
+                value={discount.type} 
+                onValueChange={(val: any) => setDiscount({ ...discount, type: val })}
+            >
+                <SelectTrigger className="w-24 h-8 text-xs">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="fixed">Fixed</SelectItem>
+                    <SelectItem value="percent">%</SelectItem>
+                </SelectContent>
+            </Select>
             <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{getCurrencySymbol()}</span>
+              {discount.type === 'fixed' && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{getCurrencySymbol()}</span>
+              )}
               <Input
                 type="number"
-                className="pl-7 h-8"
-                value={discount || ''}
-                onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                className={cn("h-8", discount.type === 'fixed' ? "pl-7" : "pl-3")}
+                value={discount.value || ''}
+                onChange={(e) => setDiscount({ ...discount, value: userDiscountInput(e.target.value) })}
                 placeholder="0"
               />
             </div>
@@ -599,10 +655,10 @@ export function POSTerminal() {
               <span className="text-muted-foreground">Tax</span>
               <span>{formatCurrency(taxAmount)}</span>
             </div>
-            {discount > 0 && (
+            {discountAmount > 0 && (
               <div className="flex justify-between text-destructive">
-                <span>Discount</span>
-                <span>-{formatCurrency(discount)}</span>
+                <span>Discount ({discount.type === 'percent' ? `${discount.value}%` : 'Fixed'})</span>
+                <span>-{formatCurrency(discountAmount)}</span>
               </div>
             )}
             <Separator />
@@ -613,17 +669,29 @@ export function POSTerminal() {
           </div>
 
           <div className="flex gap-2">
-            <Button
+             <Button
               variant="outline"
               className="flex-1"
-              onClick={clearCart}
-              disabled={cart.length === 0}
+              onClick={handleSaveDraft}
+              disabled={cart.length === 0 || createOrderMutation.isPending}
             >
-              <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-2" />
+              <Icon icon="solar:diskette-bold" className="h-4 w-4 mr-2" />
+              Draft
+            </Button>
+            
+            <Button
+              variant="default"
+              className="flex-1 bg-red-500 hover:bg-red-600"
+              onClick={() => clearSessionCart()}
+              disabled={cart.length === 0}
+              title="Clear Cart"
+            >
+              <Icon icon="solar:broom-bold" className="h-4 w-4 mr-2" />
               Clear
             </Button>
+            
             <Button
-              className="flex-1"
+              className="flex-[2]"
               onClick={() => setShowCheckoutDialog(true)}
               disabled={cart.length === 0}
             >
@@ -666,7 +734,7 @@ export function POSTerminal() {
                   </SelectItem>
                   <SelectItem value="bank_transfer">
                     <div className="flex items-center gap-2">
-                      <Icon icon="solar:bank-bold" className="h-4 w-4" />
+                      <Icon icon="mdi:bank" className="h-4 w-4" />
                       Bank Transfer
                     </div>
                   </SelectItem>
@@ -694,10 +762,10 @@ export function POSTerminal() {
                 <span className="text-muted-foreground">Tax</span>
                 <span>{formatCurrency(taxAmount)}</span>
               </div>
-              {discount > 0 && (
+              {discountAmount > 0 && (
                 <div className="flex justify-between text-destructive">
                   <span>Discount</span>
-                  <span>-{formatCurrency(discount)}</span>
+                  <span>-{formatCurrency(discountAmount)}</span>
                 </div>
               )}
               <Separator />
@@ -727,4 +795,9 @@ export function POSTerminal() {
     </div>
   </div>
   )
+}
+
+function userDiscountInput(val: string): number {
+    const n = parseFloat(val)
+    return isNaN(n) ? 0 : n
 }

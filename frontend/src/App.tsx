@@ -19,6 +19,8 @@ import { ModulesPage } from '@/pages/Modules/ModulesPage'
 import { POSPage } from '@/pages/POSPage'
 import { POSTerminal, POSOrdersPage, POSBarcodePage, POSReportsPage } from '@/pages/POS'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { WebsitesIndex } from '@/pages/WebsiteBuilder/WebsitesIndex'
+import { WebsiteEditor } from '@/pages/WebsiteBuilder/WebsiteEditor'
 import { useSettingsStore } from '@/store/settingsStore'
 
 const queryClient = new QueryClient({
@@ -60,6 +62,12 @@ function App() {
               <Route path="/pos/barcodes" element={<POSBarcodePage />} />
               <Route path="/pos/reports" element={<POSReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/website-builder" element={<WebsitesIndex />} />
+            </Route>
+
+            {/* Website Editor - fullscreen without sidebar */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/website-builder/:id" element={<WebsiteEditor />} />
             </Route>
 
             {/* POS Layout Routes - fullscreen without sidebar */}

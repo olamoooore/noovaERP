@@ -22,7 +22,7 @@ class PosOrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = PosOrder::with(['items', 'payments', 'createdBy'])
+        $query = PosOrder::with(['items.product', 'items.variant', 'payments', 'createdBy'])
             ->orderBy('created_at', 'desc');
 
         // Search by order number
@@ -155,6 +155,8 @@ class PosOrderController extends Controller
             'external_id' => 'nullable|uuid',
             'currency' => 'nullable|string|max:10',
             'notes' => 'nullable|string',
+            'discount_type' => 'nullable|in:fixed,percent',
+            'discount_value' => 'nullable|numeric|min:0',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
@@ -194,8 +196,18 @@ class PosOrderController extends Controller
                 ]
             );
 
+            // Update discount info if provided in the request
+            if (isset($validated['discount_type'])) {
+                $order->discount_type = $validated['discount_type'];
+                $order->discount_value = $validated['discount_value'] ?? 0;
+            }
+
             if ($order->wasRecentlyCreated === false && $order->items()->count() > 0) {
-                return response()->json($order->load('items', 'payments'), 200);
+                 // If it's an existing draft, we might want to update it. 
+                 // For now, let's assume 'store' is mostly for new drafts or syncing.
+                 // If we want to support updating draft items, we'd need to clear old items or update them.
+                 // For simplified "sync", we can delete old items and re-add.
+                 $order->items()->delete();
             }
 
             $subtotal = 0.0; // net
@@ -259,10 +271,23 @@ class PosOrderController extends Controller
                 $totalAmount += $lineTotal;
             }
 
+            // Calculate Discount
+            $discountAmount = 0.0;
+            if ($order->discount_type === 'fixed') {
+                $discountAmount = (float) $order->discount_value;
+            } elseif ($order->discount_type === 'percent') {
+                $discountAmount = $totalAmount * ((float) $order->discount_value / 100);
+            }
+            $discountAmount = round($discountAmount, 2);
+
+            // Final Total
+            $finalTotal = max(0, $totalAmount - $discountAmount);
+
             $order->update([
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($totalAmount, 2),
+                'total' => round($finalTotal, 2),
+                'discount_amount' => $discountAmount,
             ]);
 
             return response()->json($order->load('items', 'payments'), 201);
@@ -322,6 +347,19 @@ class PosOrderController extends Controller
 
             return response()->json($posOrder->fresh()->load('items', 'payments', 'journalEntry'), 200);
         });
+    }
+
+    public function destroy(PosOrder $posOrder)
+    {
+        if ($posOrder->status !== 'draft') {
+            return response()->json(['message' => 'Only draft orders can be deleted'], 422);
+        }
+
+        $posOrder->items()->delete();
+        $posOrder->payments()->delete(); // Should be empty for drafts, but safe cleanup
+        $posOrder->delete();
+
+        return response()->json(['message' => 'Order deleted successfully']);
     }
 
     private function makeOrderNumber(): string

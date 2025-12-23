@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button'
 import { useMemo, useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { usePosSessionStore } from '@/store/posSessionStore'
+import { POSOrderDrawer } from '@/components/pos/POSOrderDrawer'
 
 export function POSLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -124,16 +126,15 @@ export function POSLayout() {
             </span>
           </Button>
 
-          <Link to="/pos/orders">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary-foreground hover:bg-primary-foreground/10"
-            >
-              <Icon icon="solar:document-text-bold" className="h-5 w-5" />
-              <span className="ml-2 hidden sm:inline">Orders</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground hover:bg-primary-foreground/10"
+            onClick={() => setIsDrawerOpen(true)}
+          >
+            <Icon icon="solar:document-text-bold" className="h-5 w-5" />
+            <span className="ml-2 hidden sm:inline">Orders</span>
+          </Button>
 
           <Button
             variant="ghost"
@@ -151,6 +152,8 @@ export function POSLayout() {
       <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
+
+      <POSOrderDrawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen} />
     </div>
   )
 }

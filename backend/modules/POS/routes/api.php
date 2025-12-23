@@ -23,6 +23,7 @@ Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     Route::post('/pos/orders', [PosOrderController::class, 'store']);
     Route::get('/pos/orders/{posOrder}', [PosOrderController::class, 'show']);
     Route::post('/pos/orders/{posOrder}/pay', [PosOrderController::class, 'pay']);
+    Route::delete('/pos/orders/{posOrder}', [PosOrderController::class, 'destroy']);
 
     // POS Dashboard
     Route::get('/pos/dashboard', [PosOrderController::class, 'dashboard']);

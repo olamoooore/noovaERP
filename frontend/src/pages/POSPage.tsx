@@ -22,6 +22,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  SlideOver,
+  SlideOverTrigger,
+  SlideOverContent,
+} from '@/components/ui/slide-over'
+import { POSOrdersPage } from './POS/POSOrdersPage'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { usePosSessionStore } from '@/store/posSessionStore'
@@ -140,12 +146,18 @@ export function POSPage() {
           <p className="text-muted-foreground mt-1">Select a terminal to start selling.</p>
         </div>
         <div className="flex gap-2">
-          <Link to="/pos/orders">
-            <Button variant="outline">
-              <Icon icon="solar:document-text-bold" className="mr-2 h-4 w-4" />
-              Orders
-            </Button>
-          </Link>
+          <SlideOver>
+            <SlideOverTrigger asChild>
+              <Button variant="outline">
+                <Icon icon="solar:document-text-bold" className="mr-2 h-4 w-4" />
+                Orders
+              </Button>
+            </SlideOverTrigger>
+
+            <SlideOverContent>
+              <POSOrdersPage />
+            </SlideOverContent>
+          </SlideOver>
           <Link to="/pos/barcodes">
             <Button variant="outline">
               <Icon icon="solar:qr-code-bold" className="mr-2 h-4 w-4" />

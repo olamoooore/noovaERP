@@ -119,7 +119,7 @@ export function POSOrdersPage() {
       case 'card':
         return 'solar:card-bold'
       case 'bank_transfer':
-        return 'solar:bank-bold'
+        return 'mdi:bank'
       default:
         return 'solar:wallet-bold'
     }

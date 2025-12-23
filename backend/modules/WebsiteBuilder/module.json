@@ -1,0 +1,8 @@
+{
+  "key": "website-builder",
+  "name": "Website Builder",
+  "type": "addon",
+  "providers": [
+    "Modules\\WebsiteBuilder\\Providers\\WebsiteBuilderServiceProvider"
+  ]
+}

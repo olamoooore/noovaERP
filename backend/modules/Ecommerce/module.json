@@ -1,6 +1,6 @@
 {
   "key": "ecommerce",
-  "name": "Ecommerce",
+  "name": "Website",
   "type": "addon",
   "providers": [
     "Modules\\Ecommerce\\Providers\\EcommerceServiceProvider"

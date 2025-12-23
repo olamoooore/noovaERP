@@ -94,6 +94,11 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
+    title: 'Website',
+    href: '/website-builder',
+    icon: 'solar:earth-bold-duotone',
+  },
+  {
     title: 'Modules',
     href: '/modules',
     icon: 'solar:widget-bold-duotone',
@@ -122,9 +127,10 @@ export function Sidebar() {
     features?.filter((f: any) => f.enabled).map((f: any) => f.key)
   )
   
-  // Force enable POS for testing if features list is empty or fails
+  // Force enable POS and Website Builder for testing if features list is empty or fails
   if (!features || features.length === 0) {
     enabledFeatures.add('pos')
+    enabledFeatures.add('website-builder')
   }
 
   const navItems = baseNavItems.filter(item => {
