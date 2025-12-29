@@ -14,6 +14,33 @@ import gjsParserPostcss from 'grapesjs-parser-postcss'
 import gjsTooltip from 'grapesjs-tooltip'
 import gjsTyped from 'grapesjs-typed'
 import gjsStyleBg from 'grapesjs-style-bg'
+import gjsTuiImageEditor from 'grapesjs-tui-image-editor'
+// New plugins
+import gjsPluginExport from 'grapesjs-plugin-export'
+// @ts-ignore - no types available
+import gjsNavbar from 'grapesjs-navbar'
+// @ts-ignore - no types available
+import gjsStyleGradient from 'grapesjs-style-gradient'
+// @ts-ignore - no types available
+import gjsStyleFilter from 'grapesjs-style-filter'
+// @ts-ignore - no types available
+import gjsBlocksFlexbox from 'grapesjs-blocks-flexbox'
+// Note: grapesjs-lory-slider disabled due to compatibility issues with GrapesJS 0.22.x
+// @ts-ignore - no types available
+import gjsUiSuggestClasses from 'grapesjs-ui-suggest-classes'
+// @ts-ignore - no types available
+import gjsClick from 'grapesjs-click'
+// @ts-ignore - no types available
+import gjsFloat from 'grapesjs-float'
+// Note: @silexlabs/grapesjs-fonts requires a Google Fonts API key - disabled for now
+// Note: @silexlabs/grapesjs-symbols is installed but disabled due to compatibility issues
+// with GrapesJS 0.22.x (Cannot set property defaults of Component which has only a getter)
+
+// Note: The following plugins are installed but not enabled by default:
+// - grapesjs-plugin-filestack: Requires Filestack API key
+// - grapesjs-plugin-ckeditor: Requires CKEditor to be loaded
+// - grapesjs-indexeddb: Storage wrapper (we handle storage ourselves)
+// - grapesjs-firestore: Storage wrapper (we handle storage ourselves)
 
 interface GrapesEditorProps {
   initialContent?: {
@@ -74,6 +101,16 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
         gjsTooltip,
         gjsTyped,
         gjsStyleBg,
+        gjsTuiImageEditor,
+        // New plugins
+        gjsPluginExport,
+        gjsNavbar,
+        gjsStyleGradient,
+        gjsStyleFilter,
+        gjsBlocksFlexbox,
+        gjsUiSuggestClasses,
+        gjsClick,
+        gjsFloat,
       ],
       
       pluginsOpts: {
@@ -93,12 +130,30 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
         [gjsTabs as any]: {
           tabsBlock: { category: 'Extra' },
         },
+        [gjsNavbar as any]: {
+          block: { category: 'Extra' },
+        },
+        [gjsBlocksFlexbox as any]: {
+          flexboxBlock: { category: 'Layout' },
+        },
+        [gjsPluginExport as any]: {
+          addExportBtn: true,
+        },
+        [gjsTuiImageEditor as any]: {
+          includeUI: {
+            initMenu: 'filter',
+          },
+        },
+        [gjsStyleGradient as any]: {
+          colorPicker: 'default',
+        },
       },
 
       // Canvas configuration
       canvas: {
         styles: [
           'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
+          'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;500;600;700&family=Lato:wght@300;400;700&family=Montserrat:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700&family=Nunito:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Merriweather:wght@300;400;700&family=Source+Sans+Pro:wght@300;400;600;700&family=Ubuntu:wght@300;400;500;700&family=Oswald:wght@300;400;500;600;700&family=Quicksand:wght@300;400;500;600;700&family=Work+Sans:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap',
         ],
       },
 
@@ -135,6 +190,41 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
             name: 'Typography',
             open: false,
             buildProps: ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'color', 'line-height', 'text-align', 'text-decoration', 'text-shadow'],
+            properties: [
+              {
+                name: 'Font Family',
+                property: 'font-family',
+                type: 'select',
+                defaults: 'Inter, sans-serif',
+                options: [
+                  { id: 'Inter, sans-serif', label: 'Inter' },
+                  { id: 'Arial, Helvetica, sans-serif', label: 'Arial' },
+                  { id: 'Georgia, serif', label: 'Georgia' },
+                  { id: 'Times New Roman, serif', label: 'Times New Roman' },
+                  { id: 'Courier New, monospace', label: 'Courier New' },
+                  { id: 'Verdana, sans-serif', label: 'Verdana' },
+                  { id: 'Trebuchet MS, sans-serif', label: 'Trebuchet MS' },
+                  { id: 'Roboto, sans-serif', label: 'Roboto' },
+                  { id: 'Open Sans, sans-serif', label: 'Open Sans' },
+                  { id: 'Lato, sans-serif', label: 'Lato' },
+                  { id: 'Montserrat, sans-serif', label: 'Montserrat' },
+                  { id: 'Poppins, sans-serif', label: 'Poppins' },
+                  { id: 'Raleway, sans-serif', label: 'Raleway' },
+                  { id: 'Nunito, sans-serif', label: 'Nunito' },
+                  { id: 'Playfair Display, serif', label: 'Playfair Display' },
+                  { id: 'Merriweather, serif', label: 'Merriweather' },
+                  { id: 'Source Sans Pro, sans-serif', label: 'Source Sans Pro' },
+                  { id: 'Ubuntu, sans-serif', label: 'Ubuntu' },
+                  { id: 'Oswald, sans-serif', label: 'Oswald' },
+                  { id: 'Quicksand, sans-serif', label: 'Quicksand' },
+                  { id: 'Work Sans, sans-serif', label: 'Work Sans' },
+                  { id: 'DM Sans, sans-serif', label: 'DM Sans' },
+                  { id: 'Space Grotesk, sans-serif', label: 'Space Grotesk' },
+                  { id: 'Manrope, sans-serif', label: 'Manrope' },
+                  { id: 'Plus Jakarta Sans, sans-serif', label: 'Plus Jakarta Sans' },
+                ],
+              },
+            ],
           },
           {
             name: 'Decorations',
@@ -175,6 +265,44 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
     editorRef.current = editor
     onLoad?.(editor)
 
+    // Customize panel view icons with Solar duotone icons
+    const updatePanelIcons = () => {
+      const panelButtons = document.querySelectorAll('.gjs-pn-views .gjs-pn-btn')
+      const solarIcons = [
+        // Style Manager - brush/wand icon
+        `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M3.845 3.845a2.883 2.883 0 0 0 0 4.077L5.432 9.51c.012-.014.555.503.568.49l4-4c.013-.013-.504-.556-.49-.568L7.922 3.845a2.883 2.883 0 0 0-4.077 0m1.288 11.462a.483.483 0 0 1 .9 0l.157.4a.48.48 0 0 0 .272.273l.398.157a.486.486 0 0 1 0 .903l-.398.158a.48.48 0 0 0-.272.273l-.157.4a.483.483 0 0 1-.9 0l-.157-.4a.48.48 0 0 0-.272-.273l-.398-.158a.486.486 0 0 1 0-.903l.398-.157a.48.48 0 0 0 .272-.274z" opacity="0.5"/><path fill="currentColor" d="M19.967 9.13a.483.483 0 0 1 .9 0l.156.399c.05.125.148.224.273.273l.398.158a.486.486 0 0 1 0 .902l-.398.158a.5.5 0 0 0-.273.273l-.156.4a.483.483 0 0 1-.9 0l-.157-.4a.5.5 0 0 0-.272-.273l-.398-.158a.486.486 0 0 1 0-.902l.398-.158a.5.5 0 0 0 .272-.273z" opacity="0.2"/><path fill="currentColor" d="M16.1 2.307a.483.483 0 0 1 .9 0l.43 1.095a.48.48 0 0 0 .272.274l1.091.432a.486.486 0 0 1 0 .903l-1.09.432a.5.5 0 0 0-.273.273L17 6.81a.483.483 0 0 1-.9 0l-.43-1.095a.5.5 0 0 0-.273-.273l-1.09-.432a.486.486 0 0 1 0-.903l1.09-.432a.5.5 0 0 0 .273-.274z" opacity="0.7"/><path fill="currentColor" d="M10.568 6.49c-.012.014-.555-.503-.568-.49l-4 4c-.013.013.504.556.49.568l9.588 9.587a2.883 2.883 0 1 0 4.078-4.077z"/></svg>`,
+        // Settings - cog icon
+        `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M14.279 2.152C13.909 2 13.439 2 12.5 2s-1.408 0-1.779.152a2 2 0 0 0-1.09 1.083c-.094.223-.13.484-.145.863a1.62 1.62 0 0 1-.796 1.353a1.64 1.64 0 0 1-1.579.008c-.338-.178-.583-.276-.825-.308a2.03 2.03 0 0 0-1.49.396c-.318.242-.553.646-1.022 1.453c-.47.807-.704 1.21-.757 1.605c-.07.526.074 1.058.4 1.479c.148.192.357.353.68.555c.477.297.783.803.783 1.361s-.306 1.064-.782 1.36c-.324.203-.533.364-.682.556a2 2 0 0 0-.399 1.479c.053.394.287.798.757 1.605s.704 1.21 1.022 1.453c.424.323.96.465 1.49.396c.242-.032.487-.13.825-.308a1.64 1.64 0 0 1 1.58.008c.486.28.774.795.795 1.353c.015.38.051.64.145.863c.204.49.596.88 1.09 1.083c.37.152.84.152 1.779.152s1.409 0 1.779-.152a2 2 0 0 0 1.09-1.083c.094-.223.13-.483.145-.863c.02-.558.309-1.074.796-1.353a1.64 1.64 0 0 1 1.579-.008c.338.178.583.276.825.308c.53.07 1.066-.073 1.49-.396c.318-.242.553-.646 1.022-1.453c.47-.807.704-1.21.757-1.605a2 2 0 0 0-.4-1.479c-.148-.192-.357-.353-.68-.555c-.477-.297-.783-.803-.783-1.361s.306-1.064.782-1.36c.324-.203.533-.364.682-.556a2 2 0 0 0 .399-1.479c-.053-.394-.287-.798-.757-1.605s-.704-1.21-1.022-1.453a2.03 2.03 0 0 0-1.49-.396c-.242.032-.487.13-.825.308a1.64 1.64 0 0 1-1.58-.008a1.62 1.62 0 0 1-.795-1.353c-.015-.38-.051-.64-.145-.863a2 2 0 0 0-1.09-1.083" clip-rule="evenodd" opacity="0.5"/><path fill="currentColor" d="M15.523 12c0 1.657-1.354 3-3.023 3s-3.023-1.343-3.023-3S10.83 9 12.5 9s3.023 1.343 3.023 3"/></svg>`,
+        // Layers - layers icon
+        `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.979 9.685C2.993 8.891 2 8.494 2 8s.993-.89 2.979-1.685l2.808-1.123C9.773 4.397 10.767 4 12 4s2.227.397 4.213 1.192l2.808 1.123C21.007 7.109 22 7.506 22 8s-.993.89-2.979 1.685l-2.808 1.124C14.227 11.603 13.233 12 12 12s-2.227-.397-4.213-1.191z"/><path d="m5.766 10l-.787.315C2.993 11.109 2 11.507 2 12s.993.89 2.979 1.685l2.808 1.124C9.773 15.603 10.767 16 12 16s2.227-.397 4.213-1.191l2.808-1.124C21.007 12.891 22 12.493 22 12s-.993-.89-2.979-1.685L18.234 10M5.766 14l-.787.315C2.993 15.109 2 15.507 2 16s.993.89 2.979 1.685l2.808 1.124C9.773 19.603 10.767 20 12 20s2.227-.397 4.213-1.192l2.808-1.123C21.007 16.891 22 16.494 22 16c0-.493-.993-.89-2.979-1.685L18.234 14" opacity="0.5"/></g></svg>`,
+        // Blocks - grid icon
+        `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" d="M14.5 6.5h3m0 0h3m-3 0v3m0-3v-3"/><path d="M2.5 6.5c0-1.886 0-2.828.586-3.414S4.614 2.5 6.5 2.5s2.828 0 3.414.586s.586 1.528.586 3.414s0 2.828-.586 3.414s-1.528.586-3.414.586s-2.828 0-3.414-.586S2.5 8.386 2.5 6.5Zm11 11c0-1.886 0-2.828.586-3.414s1.528-.586 3.414-.586s2.828 0 3.414.586s.586 1.528.586 3.414s0 2.828-.586 3.414s-1.528.586-3.414.586s-2.828 0-3.414-.586s-.586-1.528-.586-3.414Z"/><path d="M2.5 17.5c0-1.886 0-2.828.586-3.414S4.614 13.5 6.5 13.5s2.828 0 3.414.586s.586 1.528.586 3.414s0 2.828-.586 3.414s-1.528.586-3.414.586s-2.828 0-3.414-.586S2.5 19.386 2.5 17.5Z" opacity="0.5"/></g></svg>`,
+      ]
+      
+      panelButtons.forEach((btn, index) => {
+        if (solarIcons[index]) {
+          btn.innerHTML = solarIcons[index]
+        }
+      })
+    }
+
+    // Initial icon update
+    setTimeout(updatePanelIcons, 100)
+
+    // Listen for panel changes to re-apply icons
+    editor.on('run:open-sm', updatePanelIcons)
+    editor.on('run:open-tm', updatePanelIcons)
+    editor.on('run:open-layers', updatePanelIcons)
+    editor.on('run:open-blocks', updatePanelIcons)
+    
+    // Also listen for any panel button clicks
+    const panelViewsContainer = document.querySelector('.gjs-pn-views')
+    if (panelViewsContainer) {
+      panelViewsContainer.addEventListener('click', () => {
+        setTimeout(updatePanelIcons, 50)
+      })
+    }
+
     return () => {
       editor.destroy()
       editorRef.current = null
@@ -195,7 +323,7 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
   )
 }
 
-// Custom blocks for your ERP
+// Custom blocks for your ERP - Using NoovaERP teal theme (#2a9d8f)
 function addCustomBlocks(editor: Editor) {
   const blockManager = editor.BlockManager
 
@@ -204,11 +332,11 @@ function addCustomBlocks(editor: Editor) {
     label: 'Hero Section',
     category: 'Sections',
     content: `
-      <section class="py-20 px-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+      <section class="py-20 px-4 bg-gradient-to-r from-teal-600 to-cyan-600 text-white">
         <div class="max-w-4xl mx-auto text-center">
           <h1 class="text-5xl font-bold mb-6">Welcome to Your Website</h1>
           <p class="text-xl mb-8 opacity-90">Create stunning websites with our drag-and-drop builder</p>
-          <a href="#" class="inline-block px-8 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-gray-100 transition">Get Started</a>
+          <a href="#" class="inline-block px-8 py-3 bg-white text-teal-600 font-semibold rounded-lg hover:bg-gray-100 transition">Get Started</a>
         </div>
       </section>
     `,
@@ -225,21 +353,21 @@ function addCustomBlocks(editor: Editor) {
           <h2 class="text-3xl font-bold text-center mb-12">Our Features</h2>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div class="bg-white p-6 rounded-lg shadow-sm text-center">
-              <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div class="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span class="text-2xl">🚀</span>
               </div>
               <h3 class="text-xl font-semibold mb-2">Fast Performance</h3>
               <p class="text-gray-600">Lightning fast load times for better user experience</p>
             </div>
             <div class="bg-white p-6 rounded-lg shadow-sm text-center">
-              <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div class="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span class="text-2xl">🔒</span>
               </div>
               <h3 class="text-xl font-semibold mb-2">Secure</h3>
               <p class="text-gray-600">Enterprise-grade security for your peace of mind</p>
             </div>
             <div class="bg-white p-6 rounded-lg shadow-sm text-center">
-              <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div class="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span class="text-2xl">📱</span>
               </div>
               <h3 class="text-xl font-semibold mb-2">Responsive</h3>
@@ -269,10 +397,10 @@ function addCustomBlocks(editor: Editor) {
                 <li>Basic Support</li>
                 <li>1GB Storage</li>
               </ul>
-              <a href="#" class="block w-full py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition">Choose Plan</a>
+              <a href="#" class="block w-full py-2 border border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 transition">Choose Plan</a>
             </div>
-            <div class="border-2 border-blue-600 rounded-lg p-6 text-center relative">
-              <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1 text-sm rounded-full">Popular</span>
+            <div class="border-2 border-teal-600 rounded-lg p-6 text-center relative">
+              <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-teal-600 text-white px-3 py-1 text-sm rounded-full">Popular</span>
               <h3 class="text-xl font-semibold mb-2">Professional</h3>
               <div class="text-4xl font-bold mb-4">$29<span class="text-lg text-gray-500">/mo</span></div>
               <ul class="text-gray-600 mb-6 space-y-2">
@@ -280,7 +408,7 @@ function addCustomBlocks(editor: Editor) {
                 <li>Priority Support</li>
                 <li>10GB Storage</li>
               </ul>
-              <a href="#" class="block w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Choose Plan</a>
+              <a href="#" class="block w-full py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition">Choose Plan</a>
             </div>
             <div class="border rounded-lg p-6 text-center">
               <h3 class="text-xl font-semibold mb-2">Enterprise</h3>
@@ -290,7 +418,7 @@ function addCustomBlocks(editor: Editor) {
                 <li>24/7 Support</li>
                 <li>100GB Storage</li>
               </ul>
-              <a href="#" class="block w-full py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition">Contact Us</a>
+              <a href="#" class="block w-full py-2 border border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 transition">Contact Us</a>
             </div>
           </div>
         </div>
@@ -308,10 +436,10 @@ function addCustomBlocks(editor: Editor) {
         <div class="max-w-4xl mx-auto">
           <h2 class="text-3xl font-bold text-center mb-8">Get In Touch</h2>
           <form class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <input type="text" placeholder="Your Name" class="px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none">
-            <input type="email" placeholder="Your Email" class="px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none">
-            <textarea placeholder="Your Message" rows="4" class="md:col-span-2 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"></textarea>
-            <button type="submit" class="md:col-span-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition">Send Message</button>
+            <input type="text" placeholder="Your Name" class="px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-teal-500 focus:outline-none">
+            <input type="email" placeholder="Your Email" class="px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-teal-500 focus:outline-none">
+            <textarea placeholder="Your Message" rows="4" class="md:col-span-2 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-teal-500 focus:outline-none"></textarea>
+            <button type="submit" class="md:col-span-2 px-8 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">Send Message</button>
           </form>
         </div>
       </section>
@@ -329,32 +457,32 @@ function addCustomBlocks(editor: Editor) {
           <div>
             <h4 class="text-white font-semibold mb-4">Company</h4>
             <ul class="space-y-2">
-              <li><a href="#" class="hover:text-white transition">About Us</a></li>
-              <li><a href="#" class="hover:text-white transition">Careers</a></li>
-              <li><a href="#" class="hover:text-white transition">Contact</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">About Us</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Careers</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Contact</a></li>
             </ul>
           </div>
           <div>
             <h4 class="text-white font-semibold mb-4">Products</h4>
             <ul class="space-y-2">
-              <li><a href="#" class="hover:text-white transition">Features</a></li>
-              <li><a href="#" class="hover:text-white transition">Pricing</a></li>
-              <li><a href="#" class="hover:text-white transition">Integrations</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Features</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Pricing</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Integrations</a></li>
             </ul>
           </div>
           <div>
             <h4 class="text-white font-semibold mb-4">Resources</h4>
             <ul class="space-y-2">
-              <li><a href="#" class="hover:text-white transition">Documentation</a></li>
-              <li><a href="#" class="hover:text-white transition">Blog</a></li>
-              <li><a href="#" class="hover:text-white transition">Support</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Documentation</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Blog</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Support</a></li>
             </ul>
           </div>
           <div>
             <h4 class="text-white font-semibold mb-4">Legal</h4>
             <ul class="space-y-2">
-              <li><a href="#" class="hover:text-white transition">Privacy Policy</a></li>
-              <li><a href="#" class="hover:text-white transition">Terms of Service</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Privacy Policy</a></li>
+              <li><a href="#" class="hover:text-teal-400 transition">Terms of Service</a></li>
             </ul>
           </div>
         </div>
@@ -371,13 +499,13 @@ function addCustomBlocks(editor: Editor) {
     label: 'Testimonials',
     category: 'Sections',
     content: `
-      <section class="py-16 px-4 bg-blue-50">
+      <section class="py-16 px-4 bg-teal-50">
         <div class="max-w-4xl mx-auto text-center">
           <h2 class="text-3xl font-bold mb-12">What Our Customers Say</h2>
           <div class="bg-white p-8 rounded-xl shadow-sm">
             <p class="text-xl text-gray-600 italic mb-6">"This website builder has transformed how we create landing pages. It's intuitive, powerful, and saves us hours of development time."</p>
             <div class="flex items-center justify-center gap-4">
-              <div class="w-12 h-12 bg-gray-300 rounded-full"></div>
+              <div class="w-12 h-12 bg-teal-200 rounded-full"></div>
               <div class="text-left">
                 <p class="font-semibold">John Doe</p>
                 <p class="text-gray-500 text-sm">CEO, TechCorp</p>
@@ -395,12 +523,12 @@ function addCustomBlocks(editor: Editor) {
     label: 'CTA Banner',
     category: 'Sections',
     content: `
-      <section class="py-16 px-4 bg-blue-600 text-white">
+      <section class="py-16 px-4 bg-teal-600 text-white">
         <div class="max-w-4xl mx-auto text-center">
           <h2 class="text-3xl font-bold mb-4">Ready to Get Started?</h2>
           <p class="text-xl opacity-90 mb-8">Join thousands of satisfied customers building amazing websites</p>
           <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#" class="px-8 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-gray-100 transition">Start Free Trial</a>
+            <a href="#" class="px-8 py-3 bg-white text-teal-600 font-semibold rounded-lg hover:bg-gray-100 transition">Start Free Trial</a>
             <a href="#" class="px-8 py-3 border-2 border-white text-white font-semibold rounded-lg hover:bg-white/10 transition">Learn More</a>
           </div>
         </div>
@@ -416,14 +544,14 @@ function addCustomBlocks(editor: Editor) {
     content: `
       <nav class="py-4 px-6 bg-white shadow-sm sticky top-0 z-50">
         <div class="max-w-6xl mx-auto flex items-center justify-between">
-          <a href="#" class="text-2xl font-bold text-blue-600">Logo</a>
+          <a href="#" class="text-2xl font-bold text-teal-600">Logo</a>
           <div class="hidden md:flex items-center gap-8">
-            <a href="#" class="text-gray-600 hover:text-blue-600 transition">Home</a>
-            <a href="#" class="text-gray-600 hover:text-blue-600 transition">Features</a>
-            <a href="#" class="text-gray-600 hover:text-blue-600 transition">Pricing</a>
-            <a href="#" class="text-gray-600 hover:text-blue-600 transition">Contact</a>
+            <a href="#" class="text-gray-600 hover:text-teal-600 transition">Home</a>
+            <a href="#" class="text-gray-600 hover:text-teal-600 transition">Features</a>
+            <a href="#" class="text-gray-600 hover:text-teal-600 transition">Pricing</a>
+            <a href="#" class="text-gray-600 hover:text-teal-600 transition">Contact</a>
           </div>
-          <a href="#" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Sign Up</a>
+          <a href="#" class="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition">Sign Up</a>
         </div>
       </nav>
     `,

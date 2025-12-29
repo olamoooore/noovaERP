@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import type { Editor } from 'grapesjs'
+import MonacoEditor from '@monaco-editor/react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -22,6 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface Page {
   id: number
@@ -56,6 +66,15 @@ export function WebsiteEditor() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Dialog states
+  const [showCodeEditor, setShowCodeEditor] = useState(false)
+  const [showAddPage, setShowAddPage] = useState(false)
+  const [codeHtml, setCodeHtml] = useState('')
+  const [codeCss, setCodeCss] = useState('')
+  const [codeView, setCodeView] = useState<'html' | 'css' | 'split'>('split')
+  const [newPageTitle, setNewPageTitle] = useState('')
+  const [newPageSlug, setNewPageSlug] = useState('')
 
   // Fetch website
   const { data: website, isLoading } = useQuery<Website>({
@@ -95,9 +114,38 @@ export function WebsiteEditor() {
     })
   }, [])
 
+  // Device switching functions
+  const setDevice = (device: string) => {
+    if (!editorInstance) return
+    editorInstance.setDevice(device)
+  }
+
+  // GrapesJS command functions
+  const runCommand = (command: string) => {
+    if (!editorInstance) return
+    editorInstance.runCommand(command)
+  }
+
+  const stopCommand = (command: string) => {
+    if (!editorInstance) return
+    editorInstance.stopCommand(command)
+  }
+
+  const toggleCommand = (command: string) => {
+    if (!editorInstance) return
+    if (editorInstance.Commands.isActive(command)) {
+      editorInstance.stopCommand(command)
+    } else {
+      editorInstance.runCommand(command)
+    }
+  }
+
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (data: { html: string; css: string; components: any; styles: any }) => {
+      if (!selectedPageId) {
+        throw new Error('No page selected')
+      }
       setIsSaving(true)
       await api.put(`/website-builder/pages/${selectedPageId}`, {
         content: data,
@@ -109,9 +157,13 @@ export function WebsiteEditor() {
       toast({ title: 'Saved', description: 'Page saved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['page', selectedPageId] })
     },
-    onError: () => {
+    onError: (error: any) => {
       setIsSaving(false)
-      toast({ title: 'Error', description: 'Failed to save.', variant: 'destructive' })
+      toast({ 
+        title: 'Error', 
+        description: error?.response?.data?.message || 'Failed to save.', 
+        variant: 'destructive' 
+      })
     },
   })
 
@@ -126,6 +178,97 @@ export function WebsiteEditor() {
     },
   })
 
+  // Add page mutation
+  const addPageMutation = useMutation({
+    mutationFn: async (data: { title: string; slug?: string }) => {
+      const response = await api.post(`/website-builder/websites/${id}/pages`, data)
+      return response.data
+    },
+    onSuccess: (newPage) => {
+      toast({ title: 'Success', description: 'Page created successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['website', id] })
+      setSelectedPageId(newPage.id)
+      setShowAddPage(false)
+      setNewPageTitle('')
+      setNewPageSlug('')
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Error', 
+        description: error?.response?.data?.message || 'Failed to create page.', 
+        variant: 'destructive' 
+      })
+    },
+  })
+
+  // Open code editor
+  const openCodeEditor = () => {
+    if (!editorInstance) return
+    // Get HTML and format it with proper indentation
+    const rawHtml = editorInstance.getHtml()
+    const rawCss = editorInstance.getCss() || ''
+    
+    // Format HTML with proper line breaks and indentation
+    const formatHtml = (html: string) => {
+      let formatted = ''
+      let indent = 0
+      const tab = '  '
+      
+      // Split by tags but keep the tags
+      const tokens = html.split(/(<[^>]+>)/g).filter(Boolean)
+      
+      tokens.forEach(token => {
+        const isTag = token.startsWith('<')
+        const isClosingTag = token.startsWith('</')
+        const isSelfClosing = token.endsWith('/>') || /^<(img|br|hr|input|meta|link|area|base|col|embed|param|source|track|wbr)/i.test(token)
+        const isVoidTag = /^<(img|br|hr|input|meta|link|area|base|col|embed|param|source|track|wbr)/i.test(token)
+        
+        if (isTag) {
+          if (isClosingTag) {
+            indent = Math.max(0, indent - 1)
+            formatted += '\n' + tab.repeat(indent) + token
+          } else if (isSelfClosing || isVoidTag) {
+            formatted += '\n' + tab.repeat(indent) + token
+          } else {
+            formatted += '\n' + tab.repeat(indent) + token
+            indent++
+          }
+        } else {
+          const trimmed = token.trim()
+          if (trimmed) {
+            formatted += trimmed
+          }
+        }
+      })
+      
+      return formatted.trim()
+    }
+    
+    // Format CSS with proper line breaks
+    const formatCss = (css: string) => {
+      return css
+        .replace(/\{/g, ' {\n  ')
+        .replace(/;/g, ';\n  ')
+        .replace(/\n  \}/g, '\n}')
+        .replace(/\}\s*/g, '}\n\n')
+        .trim()
+    }
+    
+    setCodeHtml(formatHtml(rawHtml))
+    setCodeCss(formatCss(rawCss))
+    setShowCodeEditor(true)
+  }
+
+  // Apply code changes
+  const applyCodeChanges = () => {
+    if (!editorInstance) return
+    editorInstance.setComponents(codeHtml)
+    editorInstance.setStyle(codeCss)
+    setShowCodeEditor(false)
+    setIsDirty(true)
+    toast({ title: 'Applied', description: 'Code changes applied to canvas.' })
+  }
+
   // Handle save
   const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any }) => {
     saveMutation.mutate(data)
@@ -133,7 +276,7 @@ export function WebsiteEditor() {
 
   // Manual save trigger
   const triggerSave = useCallback(() => {
-    if (!editorInstance) return
+    if (!editorInstance || !selectedPageId) return
     
     handleSave({
       html: editorInstance.getHtml(),
@@ -141,7 +284,7 @@ export function WebsiteEditor() {
       components: editorInstance.getComponents(),
       styles: editorInstance.getStyle(),
     })
-  }, [editorInstance, handleSave])
+  }, [editorInstance, handleSave, selectedPageId])
 
   // Handle page change
   const handlePageChange = (pageId: string) => {
@@ -216,16 +359,16 @@ ${html}
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-900">
-        <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-slate-400" />
+      <div className="flex items-center justify-center h-screen bg-zinc-900">
+        <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-zinc-400" />
       </div>
     )
   }
 
   if (!website) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white">
-        <p className="text-slate-400 mb-4">Website not found</p>
+      <div className="flex flex-col items-center justify-center h-screen bg-zinc-900 text-white">
+        <p className="text-zinc-400 mb-4">Website not found</p>
         <Button variant="outline" onClick={() => navigate('/website-builder')}>
           Back to websites
         </Button>
@@ -234,14 +377,14 @@ ${html}
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-900">
+    <div className="flex flex-col h-screen bg-zinc-900">
       {/* Top Toolbar */}
-      <header className="flex items-center justify-between h-14 px-4 bg-slate-800 border-b border-slate-700">
+      <header className="flex items-center justify-between h-14 px-4 bg-zinc-800 border-b border-zinc-700">
         <div className="flex items-center gap-4">
           <Button 
             variant="ghost" 
             size="icon" 
-            className="text-slate-400 hover:text-white hover:bg-slate-700"
+            className="text-zinc-400 hover:text-white hover:bg-zinc-700"
             onClick={() => navigate('/website-builder')}
           >
             <Icon icon="solar:arrow-left-bold" className="h-5 w-5" />
@@ -254,21 +397,158 @@ ${html}
             
             {/* Page Selector */}
             <Select value={selectedPageId?.toString()} onValueChange={handlePageChange}>
-              <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600 text-white">
+              <SelectTrigger className="w-[180px] bg-zinc-700 border-zinc-600 text-white">
                 <SelectValue placeholder="Select page" />
               </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
+              <SelectContent className="bg-zinc-800 border-zinc-700">
                 {website.pages.map((page) => (
                   <SelectItem 
                     key={page.id} 
                     value={page.id.toString()}
-                    className="text-white hover:bg-slate-700 focus:bg-slate-700"
+                    className="text-white hover:bg-zinc-700 focus:bg-zinc-700"
                   >
                     {page.title} {page.is_home && '(Home)'}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            
+            {/* Add Page Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-700"
+              onClick={() => setShowAddPage(true)}
+              title="Add new page"
+            >
+              <Icon icon="solar:add-circle-bold" className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Device Switcher - Center */}
+        <div className="flex items-center gap-4">
+          {/* Responsive Device Buttons */}
+          <div className="flex items-center gap-1 bg-zinc-700 rounded-lg p-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              onClick={() => setDevice('Desktop')}
+              title="Desktop"
+            >
+              <Icon icon="solar:monitor-bold" className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              onClick={() => setDevice('Tablet')}
+              title="Tablet"
+            >
+              <Icon icon="solar:tablet-bold" className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              onClick={() => setDevice('Mobile')}
+              title="Mobile"
+            >
+              <Icon icon="solar:smartphone-bold" className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* GrapesJS Command Buttons */}
+          <div className="flex items-center gap-1 bg-zinc-700 rounded-lg p-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => toggleCommand('sw-visibility')}
+              title="View components"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M15,5H17V3H15M15,21H17V19H15M11,5H13V3H11M19,5H21V3H19M19,9H21V7H19M19,21H21V19H19M19,13H21V11H19M19,17H21V15H19M3,5H5V3H3M3,9H5V7H3M3,13H5V11H3M3,17H5V15H3M3,21H5V19H3M11,21H13V19H11M7,21H9V19H7M7,5H9V3H7V5Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={handlePreview}
+              title="Preview in new tab"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => toggleCommand('fullscreen')}
+              title="Fullscreen"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={openCodeEditor}
+              title="View & Edit code"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12.89,3L14.85,3.4L11.11,21L9.15,20.6L12.89,3M19.59,12L16,8.41V5.58L22.42,12L16,18.41V15.58L19.59,12M1.58,12L8,5.58V8.41L4.41,12L8,15.58V18.41L1.58,12Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => runCommand('core:undo')}
+              title="Undo"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M20 13.5C20 17.09 17.09 20 13.5 20H6V18H13.5C16 18 18 16 18 13.5S16 9 13.5 9H7.83L10.91 12.09L9.5 13.5L4 8L9.5 2.5L10.92 3.91L7.83 7H13.5C17.09 7 20 9.91 20 13.5Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => runCommand('core:redo')}
+              title="Redo"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M10.5 18H18V20H10.5C6.91 20 4 17.09 4 13.5S6.91 7 10.5 7H16.17L13.08 3.91L14.5 2.5L20 8L14.5 13.5L13.09 12.09L16.17 9H10.5C8 9 6 11 6 13.5S8 18 10.5 18Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => runCommand('gjs-export-zip')}
+              title="Export ZIP"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => runCommand('core:canvas-clear')}
+              title="Clear canvas"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+              </svg>
+            </Button>
           </div>
         </div>
 
@@ -281,7 +561,7 @@ ${html}
           <Button
             variant="outline"
             size="sm"
-            className="bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+            className="bg-transparent border-zinc-600 text-zinc-300 hover:bg-zinc-700 hover:text-white"
             onClick={handlePreview}
           >
             <Icon icon="solar:eye-bold" className="h-4 w-4 mr-2" />
@@ -291,9 +571,9 @@ ${html}
           <Button
             variant="outline"
             size="sm"
-            className="bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+            className="bg-transparent border-zinc-600 text-zinc-300 hover:bg-zinc-700 hover:text-white"
             onClick={triggerSave}
-            disabled={!isDirty || isSaving}
+            disabled={!isDirty || isSaving || !selectedPageId}
           >
             {isSaving ? (
               <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
@@ -305,23 +585,23 @@ ${html}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700">
                 <Icon icon="solar:upload-bold" className="h-4 w-4 mr-2" />
                 Publish
                 <Icon icon="solar:alt-arrow-down-bold" className="h-4 w-4 ml-2" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+            <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
               <DropdownMenuItem 
-                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
+                className="text-white hover:bg-zinc-700 focus:bg-zinc-700 cursor-pointer"
                 onClick={() => publishMutation.mutate()}
               >
                 <Icon icon="solar:cloud-upload-bold" className="h-4 w-4 mr-2" />
                 Publish Website
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-700" />
+              <DropdownMenuSeparator className="bg-zinc-700" />
               <DropdownMenuItem 
-                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
+                className="text-white hover:bg-zinc-700 focus:bg-zinc-700 cursor-pointer"
                 onClick={handleExport}
               >
                 <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
@@ -336,7 +616,7 @@ ${html}
       <div className="flex-1 overflow-hidden">
         {isPageLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-slate-400" />
+            <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-zinc-400" />
           </div>
         ) : (
           <GrapesEditor
@@ -348,6 +628,221 @@ ${html}
           />
         )}
       </div>
+
+      {/* Code Editor Dialog */}
+      <Dialog open={showCodeEditor} onOpenChange={setShowCodeEditor}>
+        <DialogContent className="max-w-6xl max-h-[90vh] bg-zinc-900 border-zinc-700 text-white p-0">
+          <div className="flex flex-col h-[85vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Icon icon="solar:code-bold" className="h-5 w-5 text-teal-500" />
+                Edit Code
+              </DialogTitle>
+              
+              {/* View Tabs */}
+              <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
+                <button
+                  onClick={() => setCodeView('html')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    codeView === 'html' 
+                      ? 'bg-teal-600 text-white' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  <Icon icon="solar:code-file-bold" className="h-4 w-4 inline mr-1.5" />
+                  HTML
+                </button>
+                <button
+                  onClick={() => setCodeView('css')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    codeView === 'css' 
+                      ? 'bg-teal-600 text-white' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  <Icon icon="solar:pallete-2-bold" className="h-4 w-4 inline mr-1.5" />
+                  CSS
+                </button>
+                <button
+                  onClick={() => setCodeView('split')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    codeView === 'split' 
+                      ? 'bg-teal-600 text-white' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  <Icon icon="solar:slider-vertical-bold" className="h-4 w-4 inline mr-1.5" />
+                  Split
+                </button>
+              </div>
+            </div>
+            
+            {/* Editor Area */}
+            <div className="flex-1 overflow-hidden">
+              {codeView === 'split' ? (
+                <div className="grid grid-cols-2 h-full divide-x divide-zinc-700">
+                  <div className="flex flex-col">
+                    <div className="px-3 py-2 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-400 font-medium">
+                      index.html
+                    </div>
+                    <MonacoEditor
+                      height="100%"
+                      language="html"
+                      theme="vs-dark"
+                      value={codeHtml}
+                      onChange={(value) => setCodeHtml(value || '')}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'off',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        insertSpaces: true,
+                        folding: true,
+                        lineDecorationsWidth: 10,
+                        renderLineHighlight: 'line',
+                        scrollbar: {
+                          verticalScrollbarSize: 10,
+                          horizontalScrollbarSize: 10,
+                        },
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="px-3 py-2 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-400 font-medium">
+                      styles.css
+                    </div>
+                    <MonacoEditor
+                      height="100%"
+                      language="css"
+                      theme="vs-dark"
+                      value={codeCss}
+                      onChange={(value) => setCodeCss(value || '')}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'off',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        insertSpaces: true,
+                        folding: true,
+                        lineDecorationsWidth: 10,
+                        renderLineHighlight: 'line',
+                        scrollbar: {
+                          verticalScrollbarSize: 10,
+                          horizontalScrollbarSize: 10,
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col h-full">
+                  <div className="px-3 py-2 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-400 font-medium">
+                    {codeView === 'html' ? 'index.html' : 'styles.css'}
+                  </div>
+                  <MonacoEditor
+                    height="100%"
+                    language={codeView}
+                    theme="vs-dark"
+                    value={codeView === 'html' ? codeHtml : codeCss}
+                    onChange={(value) => {
+                      if (codeView === 'html') {
+                        setCodeHtml(value || '')
+                      } else {
+                        setCodeCss(value || '')
+                      }
+                    }}
+                    options={{
+                      minimap: { enabled: true },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'off',
+                      automaticLayout: true,
+                      tabSize: 2,
+                      insertSpaces: true,
+                      folding: true,
+                      lineDecorationsWidth: 10,
+                      renderLineHighlight: 'line',
+                      scrollbar: {
+                        verticalScrollbarSize: 10,
+                        horizontalScrollbarSize: 10,
+                      },
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-700 bg-zinc-800/50">
+              <div className="text-xs text-zinc-500">
+                Press Ctrl+S to format • Changes apply to canvas when you click Apply
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setShowCodeEditor(false)} className="border-zinc-600 text-zinc-300 hover:bg-zinc-700">
+                  Cancel
+                </Button>
+                <Button onClick={applyCodeChanges} className="bg-teal-600 hover:bg-teal-700">
+                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 mr-2" />
+                  Apply Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Page Dialog */}
+      <Dialog open={showAddPage} onOpenChange={setShowAddPage}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:document-add-bold" className="h-5 w-5 text-teal-500" />
+              Add New Page
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Page Title</Label>
+              <Input
+                value={newPageTitle}
+                onChange={(e) => setNewPageTitle(e.target.value)}
+                placeholder="e.g., About Us"
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-zinc-300">URL Slug (optional)</Label>
+              <Input
+                value={newPageSlug}
+                onChange={(e) => setNewPageSlug(e.target.value)}
+                placeholder="e.g., about-us"
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+              <p className="text-xs text-zinc-500">Leave empty to auto-generate from title</p>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowAddPage(false)} className="border-zinc-600 text-zinc-300 hover:bg-zinc-800">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => addPageMutation.mutate({ title: newPageTitle, slug: newPageSlug || undefined })}
+              disabled={!newPageTitle.trim() || addPageMutation.isPending}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {addPageMutation.isPending ? 'Creating...' : 'Create Page'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

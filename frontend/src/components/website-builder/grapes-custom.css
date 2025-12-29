@@ -1,107 +1,257 @@
-/* GrapesJS Custom Theme - Dark Modern */
+/* GrapesJS Custom Theme - Modern Figma/Webflow Style */
+/* Requirements 1.1, 1.2: Neutral zinc palette with teal accent */
+
+:root {
+  /* ===== Editor Theme Color Tokens ===== */
+  /* These tokens are exported for use in JavaScript/TypeScript */
+  
+  /* Background Colors (Zinc Palette) - Requirement 1.1 */
+  --editor-bg-base: #18181b;        /* zinc-900 - Main background */
+  --editor-bg-surface: #27272a;     /* zinc-800 - Panel backgrounds */
+  --editor-bg-elevated: #3f3f46;    /* zinc-700 - Elevated surfaces */
+  --editor-bg-hover: #52525b;       /* zinc-600 - Hover states */
+  
+  /* Border Colors */
+  --editor-border-default: #3f3f46; /* zinc-700 */
+  --editor-border-subtle: #27272a;  /* zinc-800 */
+  --editor-border-focus: #2a9d8f;   /* teal accent */
+  
+  /* Text Colors */
+  --editor-text-primary: #fafafa;   /* zinc-50 */
+  --editor-text-secondary: #a1a1aa; /* zinc-400 */
+  --editor-text-muted: #71717a;     /* zinc-500 */
+  
+  /* Accent Colors (Teal) - Requirement 1.2 */
+  --editor-accent-primary: #2a9d8f;              /* teal */
+  --editor-accent-hover: #3db8a9;                /* teal lighter */
+  --editor-accent-bg: rgba(42, 157, 143, 0.1);   /* teal 10% - hover highlight */
+  --editor-accent-bg-active: rgba(42, 157, 143, 0.2); /* teal 20% - selected/active */
+}
 
 .grapesjs-editor {
-  --gjs-primary-color: #3b82f6;
-  --gjs-secondary-color: #1e293b;
-  --gjs-tertiary-color: #334155;
-  --gjs-quaternary-color: #475569;
-  --gjs-font-color: #e2e8f0;
-  --gjs-font-color-light: #94a3b8;
+  /* ===== Background Colors (Zinc Palette) ===== */
+  /* Requirement 1.1: Neutral gray color palette */
+  --gjs-bg-base: var(--editor-bg-base);        /* zinc-900 - Main background */
+  --gjs-bg-surface: var(--editor-bg-surface);  /* zinc-800 - Panel backgrounds */
+  --gjs-bg-elevated: var(--editor-bg-elevated); /* zinc-700 - Elevated surfaces */
+  --gjs-bg-hover: var(--editor-bg-hover);      /* zinc-600 - Hover states */
+  
+  /* ===== Border Colors ===== */
+  --gjs-border-default: var(--editor-border-default); /* zinc-700 */
+  --gjs-border-subtle: var(--editor-border-subtle);   /* zinc-800 */
+  --gjs-border-focus: var(--editor-border-focus);     /* teal accent */
+  
+  /* ===== Text Colors ===== */
+  --gjs-text-primary: var(--editor-text-primary);     /* zinc-50 */
+  --gjs-text-secondary: var(--editor-text-secondary); /* zinc-400 */
+  --gjs-text-muted: var(--editor-text-muted);         /* zinc-500 */
+  
+  /* ===== Accent Colors (Teal) ===== */
+  /* Requirement 1.2: Teal (#2a9d8f) as primary accent */
+  --gjs-accent-primary: var(--editor-accent-primary);       /* teal */
+  --gjs-accent-hover: var(--editor-accent-hover);           /* teal lighter */
+  --gjs-accent-bg: var(--editor-accent-bg);                 /* teal 10% - hover highlight */
+  --gjs-accent-bg-active: var(--editor-accent-bg-active);   /* teal 20% - selected/active */
+  
+  /* ===== Legacy Variable Mappings (for backward compatibility) ===== */
+  --gjs-primary-color: var(--gjs-accent-primary);
+  --gjs-primary-light: var(--gjs-accent-hover);
+  --gjs-secondary-color: var(--gjs-bg-surface);
+  --gjs-tertiary-color: var(--gjs-bg-elevated);
+  --gjs-quaternary-color: var(--gjs-bg-hover);
+  --gjs-font-color: var(--gjs-text-primary);
+  --gjs-font-color-light: var(--gjs-text-secondary);
 }
 
-/* Main container */
+/* ===== Main Editor Container ===== */
+/* Requirement 1.1: Replace deep blue with neutral zinc palette */
+
+/* Main editor wrapper */
+.gjs-editor {
+  background-color: var(--gjs-bg-base) !important;
+  color: var(--gjs-text-primary) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+/* GrapesJS base color classes */
+/* .gjs-one-bg: Primary background (darkest) */
 .gjs-one-bg {
-  background-color: #0f172a !important;
+  background-color: var(--gjs-bg-base) !important;
 }
 
+/* .gjs-two-color: Primary text color */
 .gjs-two-color {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
 }
 
+/* .gjs-three-bg: Secondary background (panels) */
 .gjs-three-bg {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
 }
 
+/* .gjs-four-color: Accent/highlight color */
 .gjs-four-color,
 .gjs-four-color-h:hover {
-  color: var(--gjs-primary-color) !important;
+  color: var(--gjs-accent-primary) !important;
+}
+
+/* Additional GrapesJS color utility classes */
+.gjs-bg-main {
+  background-color: var(--gjs-bg-base) !important;
+}
+
+.gjs-color-main {
+  color: var(--gjs-text-primary) !important;
+}
+
+.gjs-color-active {
+  color: var(--gjs-accent-primary) !important;
+}
+
+.gjs-color-warn {
+  color: #f59e0b !important; /* amber-500 for warnings */
+}
+
+.gjs-color-hl {
+  color: var(--gjs-accent-primary) !important;
+}
+
+/* Text color variations */
+.gjs-clm-tags .gjs-clm-tag,
+.gjs-clm-sels-info {
+  color: var(--gjs-text-secondary) !important;
+}
+
+/* Ensure all text within editor uses proper colors */
+.gjs-editor *:not(iframe):not(iframe *) {
+  scrollbar-color: var(--gjs-bg-hover) var(--gjs-bg-surface);
 }
 
 /* Panels */
 .gjs-pn-panel {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
 }
 
 .gjs-pn-views-container {
-  background-color: #0f172a !important;
-  border-left: 1px solid var(--gjs-tertiary-color) !important;
+  background-color: var(--gjs-bg-base) !important;
+  border-left: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-pn-views {
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 /* Buttons */
+/* Requirement 1.3: Hover highlight with accent at 10% opacity */
+/* Requirement 1.4: Active state with accent at 20% opacity */
 .gjs-pn-btn {
-  color: var(--gjs-font-color-light) !important;
+  color: var(--gjs-text-secondary) !important;
   border-radius: 4px !important;
   margin: 2px !important;
 }
 
 .gjs-pn-btn:hover {
-  color: var(--gjs-font-color) !important;
-  background-color: var(--gjs-tertiary-color) !important;
+  color: var(--gjs-text-primary) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 .gjs-pn-btn.gjs-pn-active {
-  color: var(--gjs-primary-color) !important;
-  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: var(--gjs-accent-primary) !important;
+  background-color: var(--gjs-accent-bg-active) !important;
 }
 
 /* Blocks */
 .gjs-blocks-c {
   padding: 8px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+}
+
+/* When category is closed, hide blocks */
+.gjs-block-category:not(.gjs-open) .gjs-blocks-c {
+  display: none !important;
 }
 
 .gjs-block {
-  background-color: var(--gjs-tertiary-color) !important;
-  border: 1px solid var(--gjs-quaternary-color) !important;
-  border-radius: 8px !important;
-  padding: 12px 8px !important;
-  margin: 4px !important;
-  min-height: 70px !important;
+  background-color: var(--gjs-bg-elevated) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  border-radius: 6px !important;
+  padding: 8px 4px !important;
+  margin: 3px !important;
+  min-height: 50px !important;
+  width: calc(33.333% - 6px) !important;
   transition: all 0.2s ease !important;
+  text-align: center !important;
 }
 
 .gjs-block:hover {
-  border-color: var(--gjs-primary-color) !important;
-  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-color: var(--gjs-accent-primary) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 .gjs-block-label {
-  color: var(--gjs-font-color) !important;
-  font-size: 11px !important;
+  color: var(--gjs-text-primary) !important;
+  font-size: 9px !important;
   font-weight: 500 !important;
+  text-align: center !important;
+  width: 100% !important;
+  display: block !important;
 }
 
-.gjs-block svg {
-  fill: var(--gjs-font-color-light) !important;
+/* Block media/icon container */
+.gjs-block-media {
+  display: block !important;
+  text-align: center !important;
+  margin-bottom: 4px !important;
+}
+
+.gjs-block svg,
+.gjs-block-svg {
+  fill: var(--gjs-text-secondary) !important;
+  max-width: 28px !important;
+  max-height: 28px !important;
+  display: inline-block !important;
+  margin: 0 auto !important;
 }
 
 /* Block categories */
 .gjs-block-category {
   background-color: transparent !important;
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-block-category .gjs-title {
   background-color: transparent !important;
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
   letter-spacing: 0.5px !important;
   padding: 12px 8px !important;
+  cursor: pointer !important;
+}
+
+/* Block category caret/arrow icon */
+.gjs-block-category .gjs-caret-icon {
+  display: inline-block !important;
+  transition: transform 0.2s ease !important;
+}
+
+/* When category is open */
+.gjs-block-category.gjs-open .gjs-caret-icon {
+  transform: rotate(90deg) !important;
+}
+
+/* Block category content - ensure it can collapse */
+.gjs-block-category .gjs-blocks-c {
+  overflow: hidden !important;
+  transition: max-height 0.3s ease !important;
+}
+
+/* Ensure blocks container is visible when open */
+.gjs-block-category.gjs-open .gjs-blocks-c {
+  max-height: 2000px !important;
 }
 
 /* Layers */
@@ -111,25 +261,25 @@
 
 .gjs-layer-title {
   background-color: transparent !important;
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-layer-title:hover {
-  background-color: var(--gjs-tertiary-color) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 .gjs-layer.gjs-selected .gjs-layer-title {
-  background-color: rgba(59, 130, 246, 0.2) !important;
+  background-color: var(--gjs-accent-bg-active) !important;
 }
 
 /* Style Manager */
 .gjs-sm-sector {
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-sm-sector-title {
   background-color: transparent !important;
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
@@ -147,27 +297,27 @@
 }
 
 .gjs-sm-label {
-  color: var(--gjs-font-color-light) !important;
+  color: var(--gjs-text-secondary) !important;
   font-size: 11px !important;
   margin-bottom: 4px !important;
 }
 
 /* Inputs */
 .gjs-field {
-  background-color: var(--gjs-tertiary-color) !important;
-  border: 1px solid var(--gjs-quaternary-color) !important;
+  background-color: var(--gjs-bg-elevated) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
   border-radius: 6px !important;
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
 }
 
 .gjs-field:focus-within {
-  border-color: var(--gjs-primary-color) !important;
+  border-color: var(--gjs-border-focus) !important;
 }
 
 .gjs-field input,
 .gjs-field select,
 .gjs-field textarea {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   background-color: transparent !important;
 }
 
@@ -179,17 +329,17 @@
 /* Trait Manager */
 .gjs-trt-trait {
   padding: 8px !important;
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-trt-trait__wrp-title {
-  color: var(--gjs-font-color-light) !important;
+  color: var(--gjs-text-secondary) !important;
   font-size: 11px !important;
 }
 
 /* Canvas */
 .gjs-cv-canvas {
-  background-color: #1e293b !important;
+  background-color: var(--gjs-bg-surface) !important;
 }
 
 .gjs-frame-wrapper {
@@ -201,95 +351,97 @@
 
 /* Toolbar */
 .gjs-toolbar {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
   border-radius: 6px !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
 }
 
 .gjs-toolbar-item {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   padding: 6px 8px !important;
 }
 
 .gjs-toolbar-item:hover {
-  background-color: var(--gjs-tertiary-color) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 /* Resizer */
 .gjs-resizer-h {
-  border-color: var(--gjs-primary-color) !important;
+  border-color: var(--gjs-accent-primary) !important;
 }
 
 /* Selection */
+/* Requirement 1.4: Selected state with accent color */
 .gjs-selected {
-  outline: 2px solid var(--gjs-primary-color) !important;
+  outline: 2px solid var(--gjs-accent-primary) !important;
   outline-offset: -2px !important;
 }
 
+/* Requirement 1.3: Hover highlight with accent */
 .gjs-hovered {
-  outline: 1px dashed var(--gjs-primary-color) !important;
+  outline: 1px dashed var(--gjs-accent-primary) !important;
   outline-offset: -1px !important;
 }
 
 /* Modal */
 .gjs-mdl-dialog {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
   border-radius: 12px !important;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
 }
 
 .gjs-mdl-header {
   background-color: transparent !important;
-  border-bottom: 1px solid var(--gjs-tertiary-color) !important;
+  border-bottom: 1px solid var(--gjs-border-default) !important;
 }
 
 .gjs-mdl-title {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   font-weight: 600 !important;
 }
 
 .gjs-mdl-btn-close {
-  color: var(--gjs-font-color-light) !important;
+  color: var(--gjs-text-secondary) !important;
 }
 
 .gjs-mdl-content {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
 }
 
 /* Asset Manager */
 .gjs-am-assets-cont {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
 }
 
 .gjs-am-asset {
-  background-color: var(--gjs-tertiary-color) !important;
+  background-color: var(--gjs-bg-elevated) !important;
   border-radius: 8px !important;
-  border: 1px solid var(--gjs-quaternary-color) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
 }
 
 .gjs-am-asset:hover {
-  border-color: var(--gjs-primary-color) !important;
+  border-color: var(--gjs-accent-primary) !important;
 }
 
 /* Rich Text Editor */
 .gjs-rte-toolbar {
-  background-color: var(--gjs-secondary-color) !important;
+  background-color: var(--gjs-bg-surface) !important;
   border-radius: 6px !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
 }
 
 .gjs-rte-action {
-  color: var(--gjs-font-color) !important;
+  color: var(--gjs-text-primary) !important;
   border-radius: 4px !important;
 }
 
 .gjs-rte-action:hover {
-  background-color: var(--gjs-tertiary-color) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 .gjs-rte-active {
-  background-color: rgba(59, 130, 246, 0.2) !important;
-  color: var(--gjs-primary-color) !important;
+  background-color: var(--gjs-accent-bg-active) !important;
+  color: var(--gjs-accent-primary) !important;
 }
 
 /* Device buttons */
@@ -302,6 +454,81 @@
   box-shadow: none !important;
 }
 
+/* ===== Layout: Panels on Left, Canvas on Right ===== */
+
+/* Hide GrapesJS device panel and commands panel - we use custom ones in header */
+.gjs-pn-devices-c,
+.gjs-pn-commands,
+.gjs-pn-options {
+  display: none !important;
+}
+
+/* Right panel (blocks/styles/layers) - move to LEFT side */
+.gjs-pn-views-container {
+  right: auto !important;
+  left: 0 !important;
+  width: 340px !important;
+  border-left: none !important;
+  border-right: 1px solid var(--gjs-border-default) !important;
+}
+
+/* Views panel tabs - move to left */
+.gjs-pn-views {
+  right: auto !important;
+  left: 0 !important;
+  width: 340px !important;
+  border-right: 1px solid var(--gjs-border-default) !important;
+  border-left: none !important;
+}
+
+/* Canvas - shift to the RIGHT to make room for left panel */
+.gjs-cv-canvas {
+  left: 340px !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Remove padding/margin from canvas frames */
+.gjs-cv-canvas__frames {
+  padding: 0 !important;
+  margin: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+}
+
+/* Frame wrapper - remove shadow and spacing for edge-to-edge */
+.gjs-frame-wrapper {
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  right: 0 !important;
+}
+
+/* The actual iframe frame */
+.gjs-frame {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Scrollbars */
 .gjs-editor ::-webkit-scrollbar {
   width: 8px;
@@ -309,21 +536,21 @@
 }
 
 .gjs-editor ::-webkit-scrollbar-track {
-  background: var(--gjs-secondary-color);
+  background: var(--gjs-bg-surface);
 }
 
 .gjs-editor ::-webkit-scrollbar-thumb {
-  background: var(--gjs-quaternary-color);
+  background: var(--gjs-bg-hover);
   border-radius: 4px;
 }
 
 .gjs-editor ::-webkit-scrollbar-thumb:hover {
-  background: var(--gjs-font-color-light);
+  background: var(--gjs-text-secondary);
 }
 
 /* Badge */
 .gjs-badge {
-  background-color: var(--gjs-primary-color) !important;
+  background-color: var(--gjs-accent-primary) !important;
   color: white !important;
   font-size: 10px !important;
   padding: 2px 6px !important;
@@ -332,12 +559,12 @@
 
 /* Placeholder */
 .gjs-placeholder {
-  border-color: var(--gjs-primary-color) !important;
-  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-color: var(--gjs-accent-primary) !important;
+  background-color: var(--gjs-accent-bg) !important;
 }
 
 /* Sorter */
 .gjs-sorter-drag {
-  background-color: var(--gjs-primary-color) !important;
+  background-color: var(--gjs-accent-primary) !important;
   opacity: 0.3 !important;
 }
