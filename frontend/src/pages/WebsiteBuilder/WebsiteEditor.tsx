@@ -66,6 +66,7 @@ export function WebsiteEditor() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [activeDevice, setActiveDevice] = useState<string>('Desktop')
   
   // Dialog states
   const [showCodeEditor, setShowCodeEditor] = useState(false)
@@ -116,8 +117,12 @@ export function WebsiteEditor() {
 
   // Device switching functions
   const setDevice = (device: string) => {
-    if (!editorInstance) return
+    if (!editorInstance) {
+      console.warn('Editor not ready yet')
+      return
+    }
     editorInstance.setDevice(device)
+    setActiveDevice(device)
   }
 
   // GrapesJS command functions
@@ -433,7 +438,7 @@ ${html}
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              className={`h-8 w-8 ${activeDevice === 'Desktop' ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-600'}`}
               onClick={() => setDevice('Desktop')}
               title="Desktop"
             >
@@ -442,7 +447,7 @@ ${html}
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              className={`h-8 w-8 ${activeDevice === 'Tablet' ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-600'}`}
               onClick={() => setDevice('Tablet')}
               title="Tablet"
             >
@@ -451,7 +456,7 @@ ${html}
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600 data-[active=true]:bg-teal-600 data-[active=true]:text-white"
+              className={`h-8 w-8 ${activeDevice === 'Mobile' ? 'bg-teal-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-600'}`}
               onClick={() => setDevice('Mobile')}
               title="Mobile"
             >
