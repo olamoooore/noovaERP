@@ -28,7 +28,7 @@ import {
   SlideOverContent,
 } from '@/components/ui/slide-over'
 import { POSOrdersPage } from './POS/POSOrdersPage'
-import { Badge } from '@/components/ui/badge'
+// import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { usePosSessionStore } from '@/store/posSessionStore'
 import { cn } from '@/lib/utils'

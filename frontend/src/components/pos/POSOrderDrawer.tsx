@@ -20,7 +20,7 @@ import {
   SlideOverTitle,
 } from '@/components/ui/slide-over'
 import { formatCurrency } from '@/lib/utils'
-import { usePosSessionStore, CartItem, Discount } from '@/store/posSessionStore'
+import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { useToast } from '@/hooks/use-toast'
 
 interface POSOrderDrawerProps {

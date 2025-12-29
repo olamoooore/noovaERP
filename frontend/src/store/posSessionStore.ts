@@ -66,7 +66,7 @@ const makeId = () =>
 
 export const usePosSessionStore = create<PosSessionState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       terminals: [],
       activeTerminalId: null,
       warehouseId: null,

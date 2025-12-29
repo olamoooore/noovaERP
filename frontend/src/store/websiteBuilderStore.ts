@@ -83,7 +83,7 @@ const defaultContent: BuilderNode = {
 }
 
 export const useBuilderStore = create<BuilderState>()(
-  immer((set, get) => ({
+  immer((set) => ({
     websiteId: null,
     pageId: null,
     pageName: '',

@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { useMemo, useState, useEffect } from 'react'
-import { Badge } from '@/components/ui/badge'
+// import { Badge } from '@/components/ui/badge'
 import { usePosSessionStore } from '@/store/posSessionStore'
 import { POSOrderDrawer } from '@/components/pos/POSOrderDrawer'
 
@@ -14,7 +14,7 @@ export function POSLayout() {
 
   const terminals = usePosSessionStore((s) => s.terminals)
   const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
-  const warehouseId = usePosSessionStore((s) => s.warehouseId)
+  // const warehouseId = usePosSessionStore((s) => s.warehouseId) // Reserved for future use
   const openedAt = usePosSessionStore((s) => s.openedAt)
   const clearSession = usePosSessionStore((s) => s.clearSession)
   const [now, setNow] = useState(() => new Date())

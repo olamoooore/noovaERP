@@ -1,7 +1,7 @@
 {
   "key": "website-builder",
   "name": "Website Builder",
-  "type": "addon",
+  "type": "core",
   "providers": [
     "Modules\\WebsiteBuilder\\Providers\\WebsiteBuilderServiceProvider"
   ]

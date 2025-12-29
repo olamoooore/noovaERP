@@ -7,12 +7,20 @@ use Modules\WebsiteBuilder\Http\Controllers\TemplateController;
 use Modules\WebsiteBuilder\Http\Controllers\AssetController;
 use Modules\WebsiteBuilder\Http\Controllers\PublishController;
 use Modules\WebsiteBuilder\Http\Controllers\UploadController;
+use Modules\WebsiteBuilder\Http\Controllers\ImportController;
+
+use Modules\WebsiteBuilder\Http\Controllers\EditorApiController;
 
 Route::middleware(['auth:sanctum', 'feature:website-builder'])->prefix('website-builder')->group(function () {
     // Health check
     Route::get('/health', function () {
         return ['module' => 'website-builder', 'ok' => true];
     });
+
+    // Editor API
+    Route::post('/editor/save', [EditorApiController::class, 'saveContent']);
+    Route::get('/editor/page/{page}', [EditorApiController::class, 'getContent']);
+    Route::post('/editor/upload', [EditorApiController::class, 'upload']);
 
     // Websites
     Route::apiResource('websites', WebsiteController::class);
@@ -40,4 +48,5 @@ Route::middleware(['auth:sanctum', 'feature:website-builder'])->prefix('website-
 
     // Upload (ZIP/HTML)
     Route::post('/upload', [UploadController::class, 'upload']);
+    Route::post('/import', [ImportController::class, 'import']);
 });

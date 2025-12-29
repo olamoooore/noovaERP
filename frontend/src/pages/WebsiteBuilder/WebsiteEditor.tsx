@@ -1,15 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
+import type { Editor } from 'grapesjs'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
-import { useBuilderStore, BuilderNode } from '@/store/websiteBuilderStore'
-import { Canvas } from '@/components/website-builder/Canvas'
-import { ComponentPanel } from '@/components/website-builder/ComponentPanel'
-import { PropertiesPanel } from '@/components/website-builder/PropertiesPanel'
-import { LayersPanel } from '@/components/website-builder/LayersPanel'
+import { GrapesEditor } from '@/components/website-builder/GrapesEditor'
+import '@/components/website-builder/grapes-custom.css'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Page {
   id: number
@@ -18,7 +30,12 @@ interface Page {
   slug: string
   is_home: boolean
   status: string
-  content?: BuilderNode
+  content?: {
+    html: string
+    css: string
+    components?: any
+    styles?: any
+  }
 }
 
 interface Website {
@@ -36,18 +53,9 @@ export function WebsiteEditor() {
   const queryClient = useQueryClient()
   
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null)
-  const [leftPanel, setLeftPanel] = useState<'components' | 'layers'>('components')
-  
-  const {
-    content,
-    setContent,
-    setWebsite,
-    previewMode,
-    setPreviewMode,
-    isDirty,
-    setSaving,
-    markSaved,
-  } = useBuilderStore()
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Fetch website
   const { data: website, isLoading } = useQuery<Website>({
@@ -60,7 +68,7 @@ export function WebsiteEditor() {
   })
 
   // Fetch page content
-  const { data: pageData } = useQuery({
+  const { data: pageData, isLoading: isPageLoading } = useQuery<Page>({
     queryKey: ['page', selectedPageId],
     queryFn: async () => {
       const response = await api.get(`/website-builder/pages/${selectedPageId}`)
@@ -77,29 +85,32 @@ export function WebsiteEditor() {
     }
   }, [website, selectedPageId])
 
-  // Load page content into store
-  useEffect(() => {
-    if (pageData?.content) {
-      setContent(pageData.content)
-      setWebsite(Number(id), pageData.id, pageData.title)
-    }
-  }, [pageData, id, setContent, setWebsite])
+  // Track changes
+  const handleEditorLoad = useCallback((editor: Editor) => {
+    setEditorInstance(editor)
+    
+    // Listen for changes
+    editor.on('change:changesCount', () => {
+      setIsDirty(true)
+    })
+  }, [])
 
   // Save mutation
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      setSaving(true)
+    mutationFn: async (data: { html: string; css: string; components: any; styles: any }) => {
+      setIsSaving(true)
       await api.put(`/website-builder/pages/${selectedPageId}`, {
-        content,
+        content: data,
       })
     },
     onSuccess: () => {
-      markSaved()
-      setSaving(false)
+      setIsDirty(false)
+      setIsSaving(false)
       toast({ title: 'Saved', description: 'Page saved successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['page', selectedPageId] })
     },
     onError: () => {
-      setSaving(false)
+      setIsSaving(false)
       toast({ title: 'Error', description: 'Failed to save.', variant: 'destructive' })
     },
   })
@@ -115,33 +126,107 @@ export function WebsiteEditor() {
     },
   })
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault()
-        if (isDirty && selectedPageId) {
-          saveMutation.mutate()
-        }
+  // Handle save
+  const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any }) => {
+    saveMutation.mutate(data)
+  }, [saveMutation])
+
+  // Manual save trigger
+  const triggerSave = useCallback(() => {
+    if (!editorInstance) return
+    
+    handleSave({
+      html: editorInstance.getHtml(),
+      css: editorInstance.getCss() || '',
+      components: editorInstance.getComponents(),
+      styles: editorInstance.getStyle(),
+    })
+  }, [editorInstance, handleSave])
+
+  // Handle page change
+  const handlePageChange = (pageId: string) => {
+    if (isDirty) {
+      // TODO: Show confirmation dialog
+      const confirm = window.confirm('You have unsaved changes. Do you want to save before switching pages?')
+      if (confirm) {
+        triggerSave()
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isDirty, selectedPageId])
+    setSelectedPageId(Number(pageId))
+    setIsDirty(false)
+  }
+
+  // Preview in new tab
+  const handlePreview = () => {
+    if (!editorInstance) return
+    
+    const html = editorInstance.getHtml()
+    const css = editorInstance.getCss()
+    
+    const previewHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+          <style>${css}</style>
+        </head>
+        <body>${html}</body>
+      </html>
+    `
+    
+    const blob = new Blob([previewHtml], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+  }
+
+  // Export HTML
+  const handleExport = () => {
+    if (!editorInstance) return
+    
+    const html = editorInstance.getHtml()
+    const css = editorInstance.getCss()
+    
+    const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${website?.name || 'Website'}</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+${css}
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`
+    
+    const blob = new Blob([fullHtml], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${website?.slug || 'website'}-${pageData?.slug || 'page'}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center h-screen bg-slate-900">
+        <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     )
   }
 
   if (!website) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <p className="text-muted-foreground">Website not found</p>
-        <Button variant="link" onClick={() => navigate('/website-builder')}>
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white">
+        <p className="text-slate-400 mb-4">Website not found</p>
+        <Button variant="outline" onClick={() => navigate('/website-builder')}>
           Back to websites
         </Button>
       </div>
@@ -149,107 +234,119 @@ export function WebsiteEditor() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-muted">
-      {/* Toolbar */}
-      <header className="flex items-center justify-between h-14 px-4 bg-background border-b">
+    <div className="flex flex-col h-screen bg-slate-900">
+      {/* Top Toolbar */}
+      <header className="flex items-center justify-between h-14 px-4 bg-slate-800 border-b border-slate-700">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/website-builder')}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-slate-400 hover:text-white hover:bg-slate-700"
+            onClick={() => navigate('/website-builder')}
+          >
             <Icon icon="solar:arrow-left-bold" className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="font-semibold">{website.name}</h1>
-            <p className="text-xs text-muted-foreground">
-              {website.pages.find(p => p.id === selectedPageId)?.title || 'No page selected'}
-            </p>
+          
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="font-semibold text-white">{website.name}</h1>
+            </div>
+            
+            {/* Page Selector */}
+            <Select value={selectedPageId?.toString()} onValueChange={handlePageChange}>
+              <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600 text-white">
+                <SelectValue placeholder="Select page" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                {website.pages.map((page) => (
+                  <SelectItem 
+                    key={page.id} 
+                    value={page.id.toString()}
+                    className="text-white hover:bg-slate-700 focus:bg-slate-700"
+                  >
+                    {page.title} {page.is_home && '(Home)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-
-        {/* Viewport Toggles */}
-        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-          <Button
-            variant={previewMode === 'desktop' ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setPreviewMode('desktop')}
-          >
-            <Icon icon="solar:monitor-bold" className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={previewMode === 'tablet' ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setPreviewMode('tablet')}
-          >
-            <Icon icon="solar:tablet-bold" className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={previewMode === 'mobile' ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setPreviewMode('mobile')}
-          >
-            <Icon icon="solar:smartphone-bold" className="h-4 w-4" />
-          </Button>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          {isDirty && (
+            <span className="text-xs text-amber-400 mr-2">Unsaved changes</span>
+          )}
+          
           <Button
             variant="outline"
             size="sm"
-            onClick={() => saveMutation.mutate()}
-            disabled={!isDirty || saveMutation.isPending}
+            className="bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+            onClick={handlePreview}
           >
-            {saveMutation.isPending ? (
+            <Icon icon="solar:eye-bold" className="h-4 w-4 mr-2" />
+            Preview
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+            onClick={triggerSave}
+            disabled={!isDirty || isSaving}
+          >
+            {isSaving ? (
               <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Icon icon="solar:diskette-bold" className="h-4 w-4 mr-2" />
             )}
             Save
           </Button>
-          <Button
-            size="sm"
-            onClick={() => publishMutation.mutate()}
-            disabled={publishMutation.isPending}
-          >
-            <Icon icon="solar:upload-bold" className="h-4 w-4 mr-2" />
-            Publish
-          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Icon icon="solar:upload-bold" className="h-4 w-4 mr-2" />
+                Publish
+                <Icon icon="solar:alt-arrow-down-bold" className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+              <DropdownMenuItem 
+                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
+                onClick={() => publishMutation.mutate()}
+              >
+                <Icon icon="solar:cloud-upload-bold" className="h-4 w-4 mr-2" />
+                Publish Website
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-slate-700" />
+              <DropdownMenuItem 
+                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
+                onClick={handleExport}
+              >
+                <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
+                Export HTML
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
-      {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="w-64 bg-background border-r flex flex-col">
-          <div className="flex border-b">
-            <button
-              className={`flex-1 py-2 text-sm font-medium ${leftPanel === 'components' ? 'bg-muted' : ''}`}
-              onClick={() => setLeftPanel('components')}
-            >
-              Components
-            </button>
-            <button
-              className={`flex-1 py-2 text-sm font-medium ${leftPanel === 'layers' ? 'bg-muted' : ''}`}
-              onClick={() => setLeftPanel('layers')}
-            >
-              Layers
-            </button>
+      {/* Editor */}
+      <div className="flex-1 overflow-hidden">
+        {isPageLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-slate-400" />
           </div>
-          <div className="flex-1 overflow-auto">
-            {leftPanel === 'components' ? <ComponentPanel /> : <LayersPanel />}
-          </div>
-        </aside>
-
-        {/* Canvas */}
-        <main className="flex-1 overflow-auto p-8">
-          <Canvas />
-        </main>
-
-        {/* Right Sidebar - Properties */}
-        <aside className="w-72 bg-background border-l overflow-auto">
-          <PropertiesPanel />
-        </aside>
+        ) : (
+          <GrapesEditor
+            key={selectedPageId} // Force remount on page change
+            initialContent={pageData?.content}
+            onSave={handleSave}
+            onLoad={handleEditorLoad}
+            projectId={selectedPageId || undefined}
+          />
+        )}
       </div>
     </div>
   )
