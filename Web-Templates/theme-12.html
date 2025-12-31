@@ -1,0 +1,913 @@
+<html lang="en" class="scroll-smooth"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Fix AI | Voice Agents for Contractors</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Syne:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Tailwind Config -->
+
+<style>
+body {
+background-color: #050505;
+color: #eeeeee;
+margin: 0;
+overflow-x: hidden;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
+#canvas-container {
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100vh;
+z-index: 0;
+pointer-events: none;
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+width: 5px;
+}
+::-webkit-scrollbar-track {
+background: #050505;
+}
+::-webkit-scrollbar-thumb {
+background: #333;
+border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #F95500;
+}
+/* Utilities */
+.glass-panel {
+background: rgba(10, 10, 10, 0.8);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.08);
+}
+/* Audio Wave Animation */
+.bar {
+width: 4px;
+background: #F95500;
+border-radius: 2px;
+animation: sound 0ms -800ms linear infinite alternate;
+}
+@keyframes sound {
+0% {
+opacity: .35;
+height: 6px;
+}
+100% {
+opacity: 1;
+height: 28px;
+}
+}
+.bar:nth-child(1)  { animation-duration: 474ms; }
+.bar:nth-child(2)  { animation-duration: 433ms; }
+.bar:nth-child(3)  { animation-duration: 407ms; }
+.bar:nth-child(4)  { animation-duration: 458ms; }
+.bar:nth-child(5)  { animation-duration: 400ms; }
+</style></head>
+<body class="font-sans selection:bg-brand/30 selection:text-brand">
+
+    <!-- 3D Background -->
+    <div id="canvas-container"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-6 left-0 w-full z-50 flex justify-center px-4">
+        <div class="glass-panel px-6 py-3 rounded-full flex justify-between items-center gap-8 md:gap-12 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+            <div class="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
+                <div class="relative w-8 h-8 flex items-center justify-center bg-white/5 rounded-full border border-white/10">
+                    <i data-lucide="waves" class="w-4 h-4 text-brand"></i>
+                </div>
+                <span class="font-display font-bold text-sm tracking-tight text-white uppercase">
+                    Lead Fix AI
+                </span>
+            </div>
+            
+            <div class="hidden md:flex items-center gap-6">
+                <a href="#how-it-works" class="text-[11px] font-medium text-white/60 hover:text-white transition-colors">How It Works</a>
+                <a href="#meet-lisa" class="text-[11px] font-medium text-white/60 hover:text-white transition-colors">Meet Lisa</a>
+                <a href="#pricing" class="text-[11px] font-medium text-white/60 hover:text-white transition-colors">Pricing</a>
+                <a href="#faq" class="text-[11px] font-medium text-white/60 hover:text-white transition-colors">FAQ</a>
+            </div>
+
+            <a href="#contact" class="hidden md:block text-[10px] font-bold bg-gradient-to-r from-brand to-brandDark text-white px-5 py-2 rounded-full hover:brightness-110 transition-all shadow-[0_0_15px_rgba(249,85,0,0.3)]">
+                BOOK A DISCOVERY CALL
+            </a>
+
+            <button class="md:hidden text-white/70 hover:text-white">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="relative z-10 w-full flex flex-col items-center">
+        
+        <!-- HERO SECTION -->
+        <section class="min-h-screen w-full max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-center px-6 pt-28 pb-12 gap-12 relative">
+            
+            <!-- Left Content -->
+            <div class="flex-1 w-full space-y-8 relative z-10 text-left">
+                <!-- Badge -->
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-brand/30 bg-brand/5 backdrop-blur-sm animate-fade-in-up opacity-0" style="animation-delay: 0.1s; animation-fill-mode: forwards;">
+                    <i data-lucide="zap" class="w-3 h-3 text-brand fill-brand"></i>
+                    <span class="text-[10px] font-semibold uppercase tracking-widest text-brand">V2.0 Available</span>
+                </div>
+                
+                <div class="space-y-2 animate-fade-in-up opacity-0" style="animation-delay: 0.3s; animation-fill-mode: forwards;">
+                    <p class="text-brand font-medium text-sm tracking-wide">Driven by Science. Built for Contractors.</p>
+                    <h1 class="text-5xl md:text-7xl font-display font-semibold tracking-tighter leading-[0.95] text-white">
+                        Never miss another<br>
+                        <span class="text-brand">$1,200</span> call <span class="text-white/30">again.</span>
+                    </h1>
+                </div>
+                
+                <div class="space-y-6 max-w-lg animate-fade-in-up opacity-0" style="animation-delay: 0.5s; animation-fill-mode: forwards;">
+                    <p class="text-xl text-white font-medium">
+                        Stop losing <span class="text-brand border-b border-brand/30 pb-0.5">revenue</span> to voicemail.
+                    </p>
+                    <p class="text-sm md:text-[15px] text-white/50 leading-relaxed font-light">
+                        85% of callers won't leave one—they call your competitor instead. Our custom AI employees capture every lead, qualify prospects, and book jobs directly onto your calendar. Perfect for Roofers, HVAC &amp; Plumbers.
+                    </p>
+                </div>
+
+                <div class="pt-2 flex flex-wrap items-center gap-4 animate-fade-in-up opacity-0" style="animation-delay: 0.7s; animation-fill-mode: forwards;">
+                    <button class="group relative inline-flex items-center gap-2 pl-6 pr-5 py-3.5 bg-void border border-brand text-white rounded-full text-sm font-semibold tracking-wide hover:bg-brand hover:text-white transition-all duration-300 shadow-[0_0_20px_rgba(249,85,0,0.15)] hover:shadow-[0_0_30px_rgba(249,85,0,0.4)]">
+                        Learn More
+                        <i data-lucide="chevron-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5"></i>
+                    </button>
+                    
+                    <button class="inline-flex items-center gap-3 px-6 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm font-medium text-white transition-all">
+                        <div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
+                            <i data-lucide="play" class="w-3 h-3 fill-white text-white ml-0.5"></i>
+                        </div>
+                        Watch Demo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Content: Phone Mockup -->
+            <div class="flex-1 w-full flex justify-center md:justify-end relative z-10 animate-fade-in-up opacity-0" style="animation-delay: 0.9s; animation-fill-mode: forwards;">
+                
+                <!-- Phone Frame -->
+                <div class="relative w-[320px] h-[640px] bg-[#0a0a0a] rounded-[40px] border-[6px] border-[#1a1a1a] shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_100px_rgba(249,85,0,0.1)] overflow-hidden">
+                    <!-- Dynamic Island / Notch Area -->
+                    <div class="absolute top-0 left-0 w-full h-12 flex justify-between items-end px-6 pb-2 z-20">
+                        <span class="text-white text-xs font-medium">9:41</span>
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="signal" class="w-3 h-3 text-white"></i>
+                            <i data-lucide="wifi" class="w-3 h-3 text-white"></i>
+                            <div class="w-4 h-2.5 border border-white/30 rounded-[2px] relative">
+                                <div class="absolute inset-0.5 bg-white rounded-[1px]"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Screen Content -->
+                    <div class="absolute inset-0 bg-gradient-to-b from-void via-[#150500] to-[#2a0a00] flex flex-col items-center pt-24 pb-12 px-6">
+                        
+                        <!-- Avatar -->
+                        <div class="relative w-24 h-24 mb-6">
+                            <div class="absolute inset-0 bg-brand/20 blur-xl rounded-full animate-pulse"></div>
+                            <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&amp;fit=crop&amp;w=200&amp;q=80" alt="AI Agent" class="w-full h-full object-cover rounded-full border-2 border-white/10 relative z-10">
+                            <div class="absolute bottom-0 right-0 w-6 h-6 bg-[#1a1a1a] rounded-full flex items-center justify-center z-20 border border-white/10">
+                                <div class="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+                            </div>
+                        </div>
+
+                        <!-- Info -->
+                        <div class="text-center space-y-1 mb-2">
+                            <h3 class="text-xl font-semibold text-white">Lead Fix Agent</h3>
+                            <p class="text-xs text-brand font-medium tracking-wide uppercase">Ready to demo</p>
+                        </div>
+
+                        <!-- Live Label -->
+                        <div class="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-12">
+                            <div class="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                            <span class="text-[10px] text-white/50">Click to experience <span class="text-white font-medium">Live Demo</span></span>
+                        </div>
+
+                        <!-- Voice Visualizer -->
+                        <div class="flex items-center gap-1.5 h-16 mb-auto">
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="w-full grid grid-cols-3 gap-4 mt-auto">
+                            <div class="flex flex-col items-center gap-2">
+                                <button class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                                    <i data-lucide="mic-off" class="w-6 h-6 text-white"></i>
+                                </button>
+                                <span class="text-[10px] text-white/50">Mute</span>
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <button class="w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                                    <i data-lucide="volume-2" class="w-6 h-6 text-white"></i>
+                                </button>
+                                <span class="text-[10px] text-white/50">Speaker</span>
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <button class="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shadow-lg shadow-red-500/20">
+                                    <i data-lucide="phone-off" class="w-6 h-6 text-white"></i>
+                                </button>
+                                <span class="text-[10px] text-white/50">End</span>
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <!-- Reflection -->
+                    <div class="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none z-30 rounded-[34px]"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SERVICES / HOW IT WORKS -->
+        <section id="how-it-works" class="w-full max-w-6xl mx-auto px-6 py-24 relative">
+            <div class="flex flex-col md:flex-row justify-between items-end gap-8 mb-16 border-b border-white/5 pb-8">
+                <div>
+                    <h2 class="text-3xl md:text-4xl font-display font-semibold tracking-tight text-white mb-3">
+                        How it Works
+                    </h2>
+                    <p class="text-white/50 text-sm max-w-md">
+                        Automated intake, qualification, and scheduling specifically engineered for trade businesses.
+                    </p>
+                </div>
+                <div class="hidden md:flex items-center gap-2 text-xs text-brand font-medium border border-brand/20 bg-brand/5 px-3 py-1 rounded-full">
+                    <i data-lucide="cpu" class="w-3 h-3"></i>
+                    Powered by Lead Fix Engine
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- Card 1: 24/7 Answering -->
+                <div class="service-card group relative p-1 rounded-2xl bg-gradient-to-b from-white/10 to-transparent hover:from-brand/50 transition-colors duration-500" data-color="#F95500">
+                    <div class="relative h-full bg-void rounded-xl p-6 overflow-hidden border border-white/5 group-hover:border-brand/20 transition-colors">
+                        <div class="absolute inset-0 bg-glow-gradient opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div class="relative z-10 flex flex-col h-full">
+                            <div class="flex justify-between items-start mb-6">
+                                <div class="p-2 bg-white/5 rounded-lg border border-white/10 text-brand">
+                                    <i data-lucide="phone-call" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-mono text-xs text-white/30">01</span>
+                            </div>
+                            
+                            <h3 class="text-base font-semibold text-white mb-2 tracking-tight">24/7 Answering</h3>
+                            <p class="text-xs text-white/50 leading-relaxed mb-6 flex-grow">
+                                Never let a call go to voicemail. Our AI answers instantly, day or night, capturing emergency jobs for Plumbers &amp; HVAC.
+                            </p>
+                            
+                            <div class="h-32 w-full rounded-lg overflow-hidden border border-white/10 relative grayscale group-hover:grayscale-0 transition-all duration-500">
+                                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700">
+                                <div class="absolute inset-0 bg-gradient-to-t from-void to-transparent opacity-80"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Smart Qualification -->
+                <div class="service-card group relative p-1 rounded-2xl bg-gradient-to-b from-white/10 to-transparent hover:from-white/40 transition-colors duration-500" data-color="#FFFFFF">
+                    <div class="relative h-full bg-void rounded-xl p-6 overflow-hidden border border-white/5 group-hover:border-white/20 transition-colors">
+                        <div class="absolute inset-0 bg-glow-gradient opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div class="relative z-10 flex flex-col h-full">
+                            <div class="flex justify-between items-start mb-6">
+                                <div class="p-2 bg-white/5 rounded-lg border border-white/10 text-white">
+                                    <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-mono text-xs text-white/30">02</span>
+                            </div>
+                            
+                            <h3 class="text-base font-semibold text-white mb-2 tracking-tight">Smart Qualification</h3>
+                            <p class="text-xs text-white/50 leading-relaxed mb-6 flex-grow">
+                                Filter out tire-kickers. The AI asks specific questions about roof age, leak locations, or system types before booking.
+                            </p>
+                            
+                            <div class="h-32 w-full rounded-lg overflow-hidden border border-white/10 relative grayscale group-hover:grayscale-0 transition-all duration-500">
+                                <img src="https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&amp;fit=crop&amp;w=800&amp;q=80" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700">
+                                <div class="absolute inset-0 bg-gradient-to-t from-void to-transparent opacity-80"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Instant Scheduling -->
+                <div class="service-card group relative p-1 rounded-2xl bg-gradient-to-b from-white/10 to-transparent hover:from-brand/50 transition-colors duration-500" data-color="#F95500">
+                    <div class="relative h-full bg-void rounded-xl p-6 overflow-hidden border border-white/5 group-hover:border-brand/20 transition-colors">
+                        <div class="absolute inset-0 bg-glow-gradient opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div class="relative z-10 flex flex-col h-full">
+                            <div class="flex justify-between items-start mb-6">
+                                <div class="p-2 bg-white/5 rounded-lg border border-white/10 text-brand">
+                                    <i data-lucide="calendar-check-2" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-mono text-xs text-white/30">03</span>
+                            </div>
+                            
+                            <h3 class="text-base font-semibold text-white mb-2 tracking-tight">Instant Scheduling</h3>
+                            <p class="text-xs text-white/50 leading-relaxed mb-6 flex-grow">
+                                Integrates with ServiceTitan, Housecall Pro, and GCal to book estimates directly into your team's available slots.
+                            </p>
+                            
+                            <div class="h-32 w-full rounded-lg overflow-hidden border border-white/10 relative grayscale group-hover:grayscale-0 transition-all duration-500">
+                                <img src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&amp;fit=crop&amp;w=800&amp;q=80" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700">
+                                <div class="absolute inset-0 bg-gradient-to-t from-void to-transparent opacity-80"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MEET LISA SECTION -->
+        <section id="meet-lisa" class="w-full max-w-5xl mx-auto px-6 py-20 relative z-10 flex flex-col items-center">
+            
+            <div class="text-center mb-16 space-y-3 animate-fade-in-up opacity-0" style="animation-delay: 0.1s; animation-fill-mode: forwards;">
+                <h2 class="text-5xl md:text-7xl font-display font-medium tracking-tight text-white">Meet Lisa</h2>
+                <p class="text-xl md:text-2xl text-white/50 font-light tracking-tight">Your Intelligent AI Digital Employee</p>
+            </div>
+
+            <!-- Grid Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 w-full mb-16 animate-fade-in-up opacity-0" style="animation-delay: 0.2s; animation-fill-mode: forwards;">
+                
+                <!-- Card 1 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">Books Appointments</h3>
+                     <p class="text-sm text-white/60 font-light">Schedules directly into your calendar</p>
+                </div>
+                
+                <!-- Card 2 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">Lead Generation</h3>
+                     <p class="text-sm text-white/60 font-light">Qualifies and nurtures <span class="text-brand">prospects</span></p>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">SMS &amp; Email</h3>
+                     <p class="text-sm text-white/60 font-light">Automated confirmations and <span class="text-brand">follow-ups</span></p>
+                </div>
+
+                <!-- Card 4 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">Multilingual</h3>
+                     <p class="text-sm text-white/60 font-light">Speaks 40+ languages fluently</p>
+                </div>
+
+                <!-- Card 5 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">Calendar Integration</h3>
+                     <p class="text-sm text-white/60 font-light"><span class="text-brand">Real-time</span> availability checking</p>
+                </div>
+
+                <!-- Card 6 -->
+                <div class="group p-8 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300">
+                     <h3 class="text-lg font-semibold text-white mb-2 tracking-tight">Programmable</h3>
+                     <p class="text-sm text-white/60 font-light">Customized to your business</p>
+                </div>
+            </div>
+
+            <!-- Voice Interaction -->
+            <div class="flex flex-col items-center gap-6 animate-fade-in-up opacity-0" style="animation-delay: 0.4s; animation-fill-mode: forwards;">
+                <div class="relative group cursor-pointer">
+                    <!-- Glow -->
+                    <div class="absolute inset-0 bg-brand/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    
+                    <div class="relative z-10 w-28 h-28 rounded-full border border-white/10 bg-gradient-to-b from-white/5 to-black flex flex-col items-center justify-center gap-2 transition-transform duration-300 group-hover:scale-105 group-hover:border-white/20">
+                        <i data-lucide="mic" class="w-8 h-8 text-white stroke-[1.5]"></i>
+                    </div>
+                    <div class="absolute -bottom-8 w-full text-center text-[10px] text-white/40 uppercase tracking-widest font-medium">Talk to Lisa</div>
+                </div>
+
+                <button class="mt-8 px-10 py-3 rounded-full border border-brand text-brand hover:bg-brand hover:text-white transition-all duration-300 text-sm font-medium tracking-wide">
+                    Ready to talk
+                </button>
+            </div>
+        </section>
+
+        <!-- TESTIMONIALS / METRICS -->
+        <section class="w-full max-w-6xl mx-auto px-6 py-24 relative z-10">
+            <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-void">
+                <!-- Background Mesh Gradient -->
+                <div class="absolute -right-20 -top-20 w-96 h-96 bg-brand/10 rounded-full blur-[128px]"></div>
+                
+                <div class="relative z-10 p-8 md:p-12 flex flex-col md:flex-row gap-12 items-center">
+                    <div class="flex-1 space-y-8">
+                        <div class="flex items-center gap-2">
+                            <div class="flex -space-x-2">
+                                <img class="w-8 h-8 rounded-full ring-2 ring-black grayscale" src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&amp;fit=crop&amp;w=100&amp;q=80" alt="">
+                            </div>
+                            <div class="text-xs text-white/50 ml-2">Trusted by <span class="text-white font-medium">50+ Contractors</span> nationwide</div>
+                        </div>
+                        
+                        <h2 class="text-2xl md:text-3xl font-display font-medium leading-snug tracking-tight">
+                            “Lead Fix AI completely changed our business. We went from missing 30% of calls to booking jobs while we sleep.”
+                        </h2>
+                        
+                        <div class="flex items-center gap-4 border-t border-white/5 pt-6">
+                            <div>
+                                <div class="text-sm font-semibold text-white">Mike Stevens</div>
+                                <div class="text-xs text-white/40">Owner, Stevens Roofing &amp; Siding</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full md:w-80 bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-6">
+                        <div class="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-6">Performance</div>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div>
+                                <div class="text-3xl font-mono text-brand font-medium tracking-tighter mb-1">100%</div>
+                                <div class="text-xs text-white/50">Answer Rate</div>
+                            </div>
+                            <div class="w-full h-px bg-white/5"></div>
+                            <div>
+                                <div class="text-3xl font-mono text-brand font-medium tracking-tighter mb-1">&lt; 2min</div>
+                                <div class="text-xs text-white/50">Avg Booking Time</div>
+                            </div>
+                        </div>
+                        <button class="w-full mt-6 py-2.5 bg-brand/10 border border-brand/20 hover:bg-brand/20 text-brand text-xs font-semibold rounded-md transition-all">
+                            View Case Study
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRICING SECTION -->
+        <section id="pricing" class="w-full max-w-7xl mx-auto px-6 py-24 relative z-10">
+            <div class="text-center mb-16 space-y-4">
+                <h2 class="text-4xl md:text-5xl font-display font-semibold tracking-tight text-white">Pricing Plans</h2>
+                <p class="text-white/50 text-sm md:text-base font-light">Choose the plan that fits your business. No hidden fees. Cancel anytime.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+                
+                <!-- Starter Plan -->
+                <div class="p-8 rounded-2xl border border-white/10 bg-[#0A0A0A] flex flex-col h-full hover:border-white/20 transition-all duration-300">
+                    <h3 class="text-lg font-medium text-white mb-2">Starter</h3>
+                    <div class="flex items-baseline gap-1 mb-1">
+                        <span class="text-4xl font-display font-semibold text-white">$297</span>
+                        <span class="text-sm text-white/50">/mo</span>
+                    </div>
+                    <p class="text-brand text-xs font-medium mb-2">$1,500 setup fee</p>
+                    <p class="text-white/40 text-xs mb-8">Basic setup to get started</p>
+
+                    <ul class="space-y-4 mb-8 flex-1">
+                        <!-- Checks -->
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Lisa answers calls 24/7 (worth $597 alone)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">200 minutes included ($1.50/min after)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Calendar booking</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Email call summaries</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Basic setup</span>
+                        </li>
+                        <!-- Crosses -->
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="x" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-red-400">Jack costs $199/mo extra</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="x" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-red-400">NO text-back (email only)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="x" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-red-400">NO knowledge base training</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="x" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-red-400">You handle some setup</span>
+                        </li>
+                    </ul>
+
+                    <button class="w-full py-3 rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-colors text-sm font-medium">
+                        Get Started
+                    </button>
+                </div>
+
+                <!-- Professional Plan -->
+                <div class="relative p-8 rounded-2xl border border-brand bg-[#0A0A0A] flex flex-col h-full shadow-[0_0_50px_rgba(249,85,0,0.1)] transform md:-translate-y-4">
+                    <!-- Badge -->
+                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand text-white text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-full flex items-center gap-1 shadow-lg shadow-brand/20">
+                        <i data-lucide="zap" class="w-3 h-3 fill-white text-white"></i>
+                        Most Popular
+                    </div>
+
+                    <h3 class="text-lg font-medium text-white mb-2">Professional</h3>
+                    <div class="flex items-baseline gap-1 mb-1">
+                        <span class="text-4xl font-display font-semibold text-white">$497</span>
+                        <span class="text-sm text-white/50">/mo</span>
+                    </div>
+                    <p class="text-brand text-xs font-medium mb-2">$1,500 setup fee</p>
+                    <p class="text-white/40 text-xs mb-6">The no-brainer choice</p>
+
+                    <div class="mb-8 bg-[#1a0f0a] border border-brand/20 rounded-lg p-3 text-center">
+                        <p class="text-brand text-xs font-medium">Only $200 more, get $500+ in extra value</p>
+                    </div>
+
+                    <ul class="space-y-4 mb-8 flex-1">
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Everything in Starter</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">500 minutes (2.5x more!)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Jack FREE ($199 value)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Text-back (instant SMS)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">SMS appointment reminders</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Knowledge base training</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Free demo after call</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Fully managed setup</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-brand mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/90">Priority support</span>
+                        </li>
+                    </ul>
+
+                    <button class="w-full py-3 rounded-lg bg-brand hover:bg-brandDark text-white transition-all shadow-[0_0_20px_rgba(249,85,0,0.3)] text-sm font-semibold flex items-center justify-center gap-2">
+                        Get Started
+                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Premium Plan -->
+                <div class="p-8 rounded-2xl border border-white/10 bg-[#0A0A0A] flex flex-col h-full hover:border-white/20 transition-all duration-300">
+                    <h3 class="text-lg font-medium text-white mb-2">Premium</h3>
+                    <div class="flex items-baseline gap-1 mb-1">
+                        <span class="text-4xl font-display font-semibold text-white">$1997</span>
+                        <span class="text-sm text-white/50">/mo</span>
+                    </div>
+                    <p class="text-brand text-xs font-medium mb-2">$1,500 setup fee</p>
+                    <p class="text-white/40 text-xs mb-8">For serious operations</p>
+
+                    <ul class="space-y-4 mb-8 flex-1">
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Everything in Professional</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">UNLIMITED MINUTES (no overage charges)</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Multiple locations/phone numbers</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Dedicated account manager</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Custom CRM integrations</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Advanced analytics dashboard</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">VIP support</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i data-lucide="check" class="w-4 h-4 text-white mt-0.5 shrink-0"></i>
+                            <span class="text-xs text-white/80">Priority feature requests</span>
+                        </li>
+                    </ul>
+
+                    <button class="w-full py-3 rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-colors text-sm font-medium">
+                        Get Started
+                    </button>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- CONTACT SECTION -->
+        <section id="contact" class="w-full bg-[#080808] border-t border-white/5 py-24 px-6 relative z-10">
+            <div class="max-w-5xl mx-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                    <div>
+                        <h2 class="text-4xl md:text-5xl font-display font-semibold tracking-tight text-white mb-6">
+                            Book a<br>Discovery Call
+                        </h2>
+                        <p class="text-white/50 text-sm leading-relaxed mb-8 max-w-sm">
+                            Ready to automate your front desk? See if your business qualifies for Lead Fix AI deployment.
+                        </p>
+                        
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-3 text-sm text-white/70">
+                                <i data-lucide="mail" class="w-4 h-4 text-brand"></i>
+                                growth@leadfix.ai
+                            </div>
+                            <div class="flex items-center gap-3 text-sm text-white/70">
+                                <i data-lucide="phone" class="w-4 h-4 text-brand"></i>
+                                (555) 123-4567
+                            </div>
+                        </div>
+
+                        <div class="mt-12 p-4 rounded-lg bg-white/5 border border-white/10 inline-flex items-center gap-3">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-brand"></span>
+                            </span>
+                            <span class="text-xs font-medium text-white/80">Onboarding 3 new partners this week</span>
+                        </div>
+                    </div>
+
+                    <form class="space-y-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div class="space-y-2">
+                                <label class="text-xs font-medium text-white/40 uppercase tracking-wide">Name</label>
+                                <input type="text" class="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 transition-all" placeholder="John Doe">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs font-medium text-white/40 uppercase tracking-wide">Company</label>
+                                <input type="text" class="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 transition-all" placeholder="Apex Roofing">
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-xs font-medium text-white/40 uppercase tracking-wide">Industry</label>
+                            <div class="relative">
+                                <select class="w-full appearance-none bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 transition-all cursor-pointer">
+                                    <option class="bg-[#111]">Roofing</option>
+                                    <option class="bg-[#111]">HVAC</option>
+                                    <option class="bg-[#111]">Plumbing</option>
+                                    <option class="bg-[#111]">Other Contractor</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="absolute right-4 top-3.5 w-4 h-4 text-white/30 pointer-events-none"></i>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-xs font-medium text-white/40 uppercase tracking-wide">Monthly Call Volume</label>
+                            <div class="relative">
+                                <select class="w-full appearance-none bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 transition-all cursor-pointer">
+                                    <option class="bg-[#111]">0 - 50</option>
+                                    <option class="bg-[#111]">50 - 200</option>
+                                    <option class="bg-[#111]">200+</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="absolute right-4 top-3.5 w-4 h-4 text-white/30 pointer-events-none"></i>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full py-3.5 bg-brand hover:bg-brandDark text-white font-semibold text-xs uppercase tracking-widest rounded-lg transition-colors duration-300 shadow-[0_0_20px_rgba(249,85,0,0.3)]">
+                            Schedule Demo
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="w-full border-t border-white/10 bg-black py-8 px-6">
+            <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="text-xs text-white/30 font-medium">
+                    © 2024 Lead Fix AI. All rights reserved.
+                </div>
+                <div class="flex gap-6">
+                    <a href="#" class="text-white/30 hover:text-white transition-colors"><i data-lucide="twitter" class="w-4 h-4"></i></a>
+                    <a href="#" class="text-white/30 hover:text-white transition-colors"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                    <a href="#" class="text-white/30 hover:text-white transition-colors"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Scripts: Three.js, PostProcessing, GSAP -->
+    <script type="importmap">
+      {
+          "imports": {
+              "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+              "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+          }
+      }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/ScrollTrigger.min.js"></script>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+      import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+      import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+      // --- Init Lucide Icons ---
+      lucide.createIcons();
+
+      // --- Three.js Setup (Global Background) ---
+      const container = document.getElementById('canvas-container');
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.z = 5;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ReinhardToneMapping;
+      container.appendChild(renderer.domElement);
+
+      // --- Post Processing (Bloom) ---
+      const renderScene = new RenderPass(scene, camera);
+
+      // Bloom Pass
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+      bloomPass.threshold = 0;
+      bloomPass.strength = 1.8;
+      bloomPass.radius = 0.5;
+
+      const composer = new EffectComposer(renderer);
+      composer.addPass(renderScene);
+      composer.addPass(bloomPass);
+
+      // --- Scene Objects ---
+
+      const logoGroup = new THREE.Group();
+
+      const material = new THREE.MeshStandardMaterial({
+          color: 0x111111,
+          metalness: 1.0,
+          roughness: 0.1,
+          // Changed to a deep blue emissive to match user request
+          emissive: 0x002244, 
+          emissiveIntensity: 0.2
+      });
+
+      // Changed to Electric Blue (approx 0x00A3FF) instead of Orange
+      const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x00A3FF });
+
+      const geometry = new THREE.SphereGeometry(1.2, 32, 32);
+      const mesh = new THREE.Mesh(geometry, material);
+
+      const wireframe = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
+      mesh.add(wireframe);
+
+      logoGroup.add(mesh);
+      scene.add(logoGroup);
+
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+
+      // Changed Spotlight to Blue
+      const spotlight1 = new THREE.SpotLight(0x00A3FF, 50);
+      spotlight1.position.set(5, 5, 5);
+      spotlight1.angle = 0.3;
+      spotlight1.penumbra = 0.5;
+      scene.add(spotlight1);
+
+      const spotlight2 = new THREE.SpotLight(0xffffff, 10);
+      spotlight2.position.set(-5, 5, 5);
+      spotlight2.angle = 0.5;
+      scene.add(spotlight2);
+
+      const particlesGeometry = new THREE.BufferGeometry();
+      const particlesCount = 2000;
+      const posArray = new Float32Array(particlesCount * 3);
+
+      for(let i = 0; i < particlesCount * 3; i++) {
+          posArray[i] = (Math.random() - 0.5) * 20;
+      }
+
+      particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+      
+      // Changed Particles to Blue to reduce orange overload in Hero
+      const particlesMaterial = new THREE.PointsMaterial({
+          size: 0.05,
+          color: 0x00A3FF, 
+          transparent: true,
+          opacity: 0.8,
+      });
+
+      const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+      particlesMesh.position.y = -5;
+      scene.add(particlesMesh);
+
+      function animate() {
+          requestAnimationFrame(animate);
+
+          const time = Date.now() * 0.002;
+          const scale = 1 + Math.sin(time * 2) * 0.02;
+          logoGroup.scale.set(scale, scale, scale);
+
+          logoGroup.rotation.y += 0.002;
+
+          const positions = particlesGeometry.attributes.position.array;
+          for(let i = 0; i < particlesCount; i++) {
+              const x = positions[i * 3];
+              positions[i * 3 + 1] = Math.sin(Date.now() * 0.001 + x) * 0.5 - 2;
+          }
+          particlesGeometry.attributes.position.needsUpdate = true;
+
+          composer.render();
+      }
+      animate();
+
+      // --- GSAP Animations (Scroll & UI) ---
+      gsap.registerPlugin(ScrollTrigger);
+
+      const tl = gsap.timeline({
+          scrollTrigger: {
+              trigger: "body",
+              start: "top top",
+              end: "bottom bottom",
+              scrub: 1
+          }
+      });
+
+      tl.to(logoGroup.position, { z: -10, y: 5, duration: 2 }, 0)
+        .to(logoGroup.rotation, { x: 1, duration: 2 }, 0)
+        .to(camera.position, { z: 8, duration: 2 }, 0)
+        .to(particlesMesh.position, { y: 0, duration: 2 }, 0.5);
+
+      // This transition brings back the brand orange as you scroll down
+      tl.to(particlesMaterial.color, { r: 0.97, g: 0.33, b: 0, duration: 1 }, 2) 
+        .to(camera.rotation, { z: 0.2, duration: 2 }, 2);
+
+      tl.to(particlesMesh.scale, { x: 2, y: 2, z: 2, duration: 2 }, 4)
+        .to(scene.fog, { density: 0.05, duration: 2 }, 4);
+
+      tl.to(spotlight1, { intensity: 100, angle: 0.1, duration: 2 }, 6)
+        .to(bloomPass, { strength: 3, radius: 1, duration: 2 }, 6);
+
+      // --- Card Interactions (Service Section) ---
+      const serviceCards = document.querySelectorAll('.service-card');
+      serviceCards.forEach(card => {
+          card.addEventListener('mouseenter', () => {
+              const colorHex = card.getAttribute('data-color');
+              const color = new THREE.Color(colorHex);
+              gsap.to(particlesMaterial.color, { r: color.r, g: color.g, b: color.b, duration: 0.5 });
+              gsap.to(bloomPass, { strength: 3, duration: 0.2 });
+          });
+          card.addEventListener('mouseleave', () => {
+              // Return to Brand Orange
+              gsap.to(particlesMaterial.color, { r: 0.97, g: 0.33, b: 0, duration: 0.5 }); 
+              gsap.to(bloomPass, { strength: 1.8, duration: 0.5 });
+          });
+      });
+
+      // --- Resize Handler ---
+      window.addEventListener('resize', () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          composer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Entrance Animations ---
+      gsap.utils.toArray('.animate-fade-in-up').forEach(element => {
+          gsap.fromTo(element,
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 1, ease: "power2.out" }
+          );
+      });
+    </script>
+
+</body></html>

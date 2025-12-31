@@ -254,6 +254,60 @@
   max-height: 2000px !important;
 }
 
+/* ===== Icons Category Grid System (Requirement 1.1) ===== */
+.gjs-category-icons .gjs-blocks-c {
+  display: grid !important;
+  grid-template-columns: repeat(8, 1fr) !important;
+  gap: 4px !important;
+  padding: 8px !important;
+  justify-content: start !important;
+}
+
+.gjs-category-icons .gjs-block {
+  width: 100% !important;
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  margin: 0 !important;
+  border-radius: 4px !important;
+}
+
+.gjs-category-icons .gjs-block:hover {
+  background-color: var(--gjs-accent-bg) !important;
+  border-color: var(--gjs-accent-primary) !important;
+  color: var(--gjs-accent-primary) !important;
+}
+
+/* Hide labels for icons to save space */
+.gjs-category-icons .gjs-block-label {
+  display: none !important;
+}
+
+/* Resize icons for grid */
+.gjs-category-icons .gjs-block svg,
+.gjs-category-icons .gjs-block-svg {
+  width: 18px !important;
+  height: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+  margin: 0 !important;
+  fill: currentColor !important;
+}
+
+.gjs-category-icons .gjs-block-media {
+  margin-bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Layers */
 .gjs-layer {
   background-color: transparent !important;
@@ -498,76 +552,4 @@
 .gjs-cv-canvas__frames {
   padding: 0 !important;
   margin: 0 !important;
-  top: 0 !important;
-  left: 0 !important;
-  bottom: 0 !important;
-  right: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  position: absolute !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: stretch !important;
-  overflow: hidden !important;
-  box-sizing: border-box !important;
-}
-
-/* Frame wrapper - allow GrapesJS to control width for device switching */
-.gjs-frame-wrapper {
-  margin: 0 auto !important;
-  padding: 0 !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
-  border-radius: 0 !important;
-  /* Don't override width - let GrapesJS device manager control it */
-  height: 100% !important;
-  background: white !important;
-  transition: width 0.3s ease !important;
-}
-
-/* The actual iframe frame */
-.gjs-frame {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-/* Scrollbars */
-.gjs-editor ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.gjs-editor ::-webkit-scrollbar-track {
-  background: var(--gjs-bg-surface);
-}
-
-.gjs-editor ::-webkit-scrollbar-thumb {
-  background: var(--gjs-bg-hover);
-  border-radius: 4px;
-}
-
-.gjs-editor ::-webkit-scrollbar-thumb:hover {
-  background: var(--gjs-text-secondary);
-}
-
-/* Badge */
-.gjs-badge {
-  background-color: var(--gjs-accent-primary) !important;
-  color: white !important;
-  font-size: 10px !important;
-  padding: 2px 6px !important;
-  border-radius: 4px !important;
-}
-
-/* Placeholder */
-.gjs-placeholder {
-  border-color: var(--gjs-accent-primary) !important;
-  background-color: var(--gjs-accent-bg) !important;
-}
-
-/* Sorter */
-.gjs-sorter-drag {
-  background-color: var(--gjs-accent-primary) !important;
-  opacity: 0.3 !important;
 }

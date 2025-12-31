@@ -1,0 +1,469 @@
+<html lang="en" class="bg-zinc-950"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>DataFlow Analytics Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap">
+<style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style>
+<style>
+/* Custom Scrollbar for clean look */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+/* Hide scrollbar for ticker but allow functionality */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style></head>
+<body class="min-h-screen antialiased selection:bg-emerald-400/30 text-zinc-200 overflow-x-hidden relative" style="font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;">
+
+    <!-- Background Component (Restored Brightness) -->
+    <div class="fixed top-0 left-0 w-full h-[1000px] pointer-events-none z-0">
+        <!-- Added a manual static glow to ensure brightness even if script loads slowly -->
+        <div class="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-emerald-500/20 blur-[120px] rounded-full mix-blend-screen opacity-100"></div>
+        
+        <!-- Unicorn Studio Script - Removed opacity-80, set to opacity-100 -->
+        <div data-us-project="hQmuxsIsbhqg99eGrTZM" class="w-full h-full opacity-100 mix-blend-screen"></div>
+        <script type="text/javascript">!function(){if(!window.UnicornStudio){window.UnicornStudio={isInitialized:!1};var i=document.createElement("script");i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js",i.onload=function(){window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)},(document.head || document.body).appendChild(i)}}();</script>
+        
+        <!-- Reduced the dark overlay intensity so the green shines through -->
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-zinc-950"></div>
+    </div>
+
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu" class="fixed inset-0 z-[60] bg-zinc-950/95 backdrop-blur-xl transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col pt-24 px-6 md:hidden">
+        <nav class="flex flex-col gap-6 text-lg font-medium text-zinc-300">
+            <a href="#" class="mobile-link hover:text-emerald-400 transition-colors border-b border-white/5 pb-4">Analytics</a>
+            <a href="#" class="mobile-link hover:text-emerald-400 transition-colors border-b border-white/5 pb-4">Platform</a>
+            <a href="#" class="mobile-link hover:text-emerald-400 transition-colors border-b border-white/5 pb-4">Solutions</a>
+            <a href="#" class="mobile-link hover:text-emerald-400 transition-colors border-b border-white/5 pb-4">Enterprise</a>
+            <a href="#" class="mobile-link hover:text-emerald-400 transition-colors border-b border-white/5 pb-4">Pricing</a>
+        </nav>
+        <div class="mt-8 flex flex-col gap-4">
+            <button class="w-full h-12 rounded-xl bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition-colors">Log In</button>
+            <button class="w-full h-12 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20">Get Started</button>
+        </div>
+    </div>
+
+    <!-- Content Wrapper (Relative z-10 to sit above background) -->
+    <div class="relative z-10">
+        
+        <!-- Top Nav -->
+        <div class="fixed top-0 left-0 right-0 z-50 pt-4 px-4 md:pt-6 md:px-6">
+            <div class="max-w-4xl mx-auto border border-white/10 rounded-full px-5 py-3 md:px-6 md:py-3" style="background: linear-gradient(180deg, rgba(14,16,26,0.8), rgba(14,16,26,0.6)) padding-box, linear-gradient(120deg, rgba(255,255,255,0.35), rgba(255,255,255,0.08)) border-box; backdrop-filter: blur(16px); box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg font-semibold text-white/90 tracking-tight font-geist">DataFlow</span>
+                    </div>
+                    
+                    <!-- Desktop Links -->
+                    <ul class="hidden md:flex items-center gap-1 text-sm font-medium text-white/60">
+                        <li><a href="#" class="hover:text-white transition-colors duration-300 px-4 py-2 rounded-full hover:bg-white/5 font-sans">Analytics</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors duration-300 px-4 py-2 rounded-full hover:bg-white/5 font-sans">Platform</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors duration-300 px-4 py-2 rounded-full hover:bg-white/5 font-sans">Solutions</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors duration-300 px-4 py-2 rounded-full hover:bg-white/5 font-sans">Enterprise</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors duration-300 px-4 py-2 rounded-full hover:bg-white/5 font-sans">Pricing</a></li>
+                    </ul>
+
+                    <!-- Right Actions -->
+                    <div class="flex items-center gap-2">
+                        <!-- Mobile Hamburger -->
+                        <button id="mobile-menu-btn" class="inline-flex md:hidden hover:bg-white/5 p-2 rounded-full transition-all duration-300 border border-white/5 active:scale-95 z-[70]" style="background: rgba(255, 255, 255, 0.02);" aria-label="Menu">
+                            <svg id="menu-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 stroke-[1.5] text-white/70">
+                                <line x1="4" y1="6" x2="20" y2="6"></line>
+                                <line x1="4" y1="12" x2="20" y2="12"></line>
+                                <line x1="4" y1="18" x2="20" y2="18"></line>
+                            </svg>
+                            <svg id="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 stroke-[1.5] text-white/70 hidden">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+
+                        <!-- Desktop Actions -->
+                        <button class="hidden md:inline-flex hover:bg-white/5 p-2 rounded-full transition-all duration-300 border border-white/5" style="background: rgba(255, 255, 255, 0.02);" aria-label="Account">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 stroke-[1.5] text-white/60"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        </button>
+                        <button class="hidden md:inline-flex relative hover:bg-white/5 p-2 rounded-full transition-all duration-300 border border-white/5" style="background: rgba(255, 255, 255, 0.02);" aria-label="Dashboard">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 stroke-[1.5] text-white/60"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+                            <span class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 text-white text-xs rounded-full flex items-center justify-center font-medium font-sans">3</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 mt-20 md:mt-0">
+            <section class="relative">
+                <div class="relative py-12 md:py-20 lg:py-24">
+                    <div class="mx-auto max-w-2xl text-center px-2">
+                        <span class="inline-flex items-center gap-2 px-3 h-8 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-400 text-xs font-medium backdrop-blur-sm mb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+                            Powering the next big thing
+                        </span>
+                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-medium text-white tracking-tighter leading-[1.1]">
+                            From Idea to Impact—Build, Launch, and Grow
+                            <span class="bg-clip-text text-transparent bg-emerald-300 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">Faster.</span>
+                        </h1>
+                        <p class="mt-6 text-base md:text-lg text-zinc-300 font-normal max-w-lg mx-auto leading-relaxed">
+                            Ship modern analytics experiences your users love—built for scale, clarity, and speed. Designed for teams who move quickly.
+                        </p>
+
+                        <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto">
+                            <button class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl bg-emerald-500 text-white shadow-[0_10px_30px_-10px_rgba(16,185,129,0.7)] hover:translate-y-[-1px] active:translate-y-0 transition-transform text-sm font-medium">
+                                <span>Get Started</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                            </button>
+                            <a href="#" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 transition-colors text-sm text-zinc-200 font-medium backdrop-blur-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>
+                                <span>View Docs</span>
+                            </a>
+                        </div>
+
+                        <div class="mt-8 flex items-center justify-center gap-3 text-zinc-300">
+                            <div class="flex -space-x-3">
+                                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/096dab35-ecaf-418f-a932-5b514543b035_320w.jpg" alt="User" class="w-8 h-8 object-cover border-2 border-zinc-950 rounded-full">
+                                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d9b7d4a3-6b7c-449c-8be9-129d49363c12_320w.jpg" alt="User" class="w-8 h-8 object-cover border-2 border-zinc-950 rounded-full">
+                                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b7a341e2-b79a-45d0-abac-0b52ed9ce321_320w.jpg" alt="User" class="w-8 h-8 object-cover border-2 border-zinc-950 rounded-full">
+                            </div>
+                            <div class="text-xs sm:text-sm">Trusted by 30,000+ teams</div>
+                        </div>
+                    </div>
+
+                    <!-- Product Dashboard Mockup -->
+                    <div class="mt-12 md:mt-16 relative">
+                        <div class="relative overflow-hidden rounded-[20px] md:rounded-[40px] bg-white/5 border border-white/5 backdrop-blur-lg">
+                            <div class="p-3 md:p-8">
+                                <div class="max-w-6xl mx-auto">
+                                    <div class="relative overflow-hidden text-left bg-zinc-950/90 border border-white/10 rounded-xl md:rounded-2xl shadow-2xl ring-1 ring-emerald-500/10">
+                                        <!-- Header -->
+                                        <div class="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-white/10 bg-black/40">
+                                            <div class="flex items-center gap-3 md:gap-4">
+                                                <div class="relative">
+                                                    <span class="inline-flex h-8 w-8 md:h-10 md:w-10 items-center justify-center bg-zinc-900 rounded-full border border-white/10">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-300 md:w-[18px] md:h-[18px]"><circle cx="12" cy="12" r="10"></circle><line x1="9" x2="15" y1="15" y2="9"></line></svg>
+                                                    </span>
+                                                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 md:w-3.5 md:h-3.5 bg-emerald-400 rounded-full border-2 border-zinc-950 shadow-sm"></span>
+                                                </div>
+                                                <div>
+                                                    <p class="text-sm font-semibold text-white tracking-tight">Product Team</p>
+                                                    <p class="text-[10px] md:text-xs font-medium text-zinc-500">12 members • 3 online</p>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1 text-[10px] md:text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/20">
+                                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                                    Active
+                                                </span>
+                                                <button class="hidden sm:inline-flex items-center justify-center h-8 w-8 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:border-white/20">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Mockup Layout (Sidebar Hidden on Mobile) -->
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-0 h-[400px] md:h-96">
+                                            <!-- Sidebar (Desktop Only) -->
+                                            <div class="hidden md:block bg-zinc-950/70 border-r border-white/10 p-5 overflow-y-auto">
+                                                <div class="space-y-6">
+                                                    <div>
+                                                        <p class="text-xs font-semibold text-zinc-500 mb-3 tracking-wide uppercase">Channels</p>
+                                                        <div class="space-y-1">
+                                                            <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 text-sm font-medium text-white border border-white/10">
+                                                                <span class="w-2 h-2 bg-emerald-400 rounded-full shadow-sm"></span>
+                                                                general
+                                                                <span class="ml-auto text-xs text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">12</span>
+                                                            </div>
+                                                            <div class="flex gap-3 text-sm text-zinc-400 rounded-lg px-3 py-2.5 items-center hover:bg-white/5 hover:text-white transition-colors cursor-pointer">
+                                                                <span class="w-2 h-2 bg-zinc-600 rounded-full"></span>
+                                                                product-updates
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Messages (Full Width on Mobile) -->
+                                            <div class="col-span-1 md:col-span-2 flex flex-col h-full bg-zinc-950/30">
+                                                <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
+                                                    <!-- Message 1 -->
+                                                    <div class="flex items-start gap-3 md:gap-4">
+                                                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f31d4832-3ccc-4ffa-9dc4-260e7c39cc4a_320w.jpg" alt="Sarah" class="w-8 h-8 md:w-9 md:h-9 object-cover border border-white/10 rounded-full">
+                                                        <div class="flex-1 min-w-0">
+                                                            <div class="flex gap-2 mb-1 items-baseline">
+                                                                <span class="text-sm font-semibold text-white">Sarah Chen</span>
+                                                                <span class="text-[10px] text-zinc-500">2:34 PM</span>
+                                                            </div>
+                                                            <div class="rounded-lg border border-white/10 bg-white/5 p-3">
+                                                                <p class="leading-relaxed text-sm text-zinc-300">Great work on the new onboarding flow! The conversion rates look promising 🚀</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Message 2 (File) -->
+                                                    <div class="flex items-start gap-3 md:gap-4">
+                                                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b6d79211-32f1-430e-96b3-9b4d857c1482_320w.jpg" alt="Mike" class="w-8 h-8 md:w-9 md:h-9 object-cover border border-white/10 rounded-full">
+                                                        <div class="flex-1 min-w-0">
+                                                            <div class="flex items-baseline gap-2 mb-1">
+                                                                <span class="text-sm font-semibold text-white">Mike Johnson</span>
+                                                                <span class="text-[10px] text-zinc-500">2:36 PM</span>
+                                                            </div>
+                                                            <p class="text-sm text-zinc-300 mb-2">Attached the updated wireframes</p>
+                                                            <div class="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 max-w-sm flex items-center gap-3">
+                                                                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
+                                                                </div>
+                                                                <div class="flex-1 min-w-0">
+                                                                    <p class="text-xs font-medium text-white truncate">wireframes-v2.figma</p>
+                                                                    <p class="text-[10px] text-zinc-500">2.4 MB</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Input Area -->
+                                                <div class="p-4 border-t border-white/10 bg-zinc-950/50">
+                                                    <div class="flex items-center gap-2 md:gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 md:px-4 md:py-3">
+                                                        <button class="p-1 text-zinc-500 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"></path></svg></button>
+                                                        <input type="text" placeholder="Type a message…" class="flex-1 bg-transparent text-sm text-white placeholder:text-zinc-600 focus:outline-none min-w-0">
+                                                        <button class="p-1.5 rounded-lg bg-emerald-500 text-emerald-950 hover:bg-emerald-400">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path></svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Logo Cloud -->
+                    <div class="mt-16 md:mt-24">
+                        <p class="text-sm text-center text-zinc-500 mb-8">Powering the world’s most focused product teams</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-8 md:gap-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                            <!-- Logos (Using simple text/svg placeholders for reliability on mobile) -->
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Vercel</span></div>
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Stripe</span></div>
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Linear</span></div>
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Raycast</span></div>
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Ramp</span></div>
+                            <div class="flex justify-center items-center"><span class="text-lg font-bold text-white font-geist">Loom</span></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bento Grid Section -->
+            <section class="mt-12 md:mt-20">
+                <div class="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-4 md:gap-6">
+                    
+                    <!-- Main Featured Block -->
+                    <div class="col-span-1 md:col-span-6 lg:col-span-8 group relative overflow-hidden rounded-2xl md:rounded-3xl border border-zinc-900 bg-zinc-950 min-h-[350px] md:min-h-[460px]">
+                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/8af6d262-c6d8-49bb-bc00-17bef2401068_1600w.jpg" alt="Dashboard" class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+                        <div class="absolute bottom-0 left-0 p-6 md:p-8 w-full">
+                            <div class="flex justify-between items-end">
+                                <div>
+                                    <span class="text-xs font-medium text-emerald-400 mb-2 block">Primary Dashboard</span>
+                                    <h3 class="text-2xl md:text-3xl font-semibold text-white tracking-tight">Analytics Hub</h3>
+                                    <p class="text-sm md:text-base text-zinc-300 mt-2 max-w-md">Real-time data insights with predictive modeling and automated reporting.</p>
+                                </div>
+                                <div class="hidden sm:block">
+                                    <button class="h-10 w-10 md:h-12 md:w-12 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Secondary Block -->
+                    <div class="col-span-1 md:col-span-6 lg:col-span-4 relative overflow-hidden rounded-2xl md:rounded-3xl border border-zinc-900 bg-zinc-900 min-h-[300px] md:min-h-[460px] p-6 md:p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-center text-zinc-400 text-xs mb-4">
+                                <span>Intelligence</span>
+                                <span>A+ Rating</span>
+                            </div>
+                            <h3 class="text-2xl md:text-3xl font-semibold text-white tracking-tight leading-tight">
+                                Smart Data<br>Processing
+                            </h3>
+                            <p class="text-sm text-zinc-400 mt-3">Transform raw data into actionable insights instantly.</p>
+                        </div>
+                        <div class="flex gap-2 mt-8">
+                            <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/50 border border-white/5 text-xs text-zinc-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+                                Advanced Analytics
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lower Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mt-4 md:mt-6">
+                    <!-- Card 1 -->
+                    <div class="relative group overflow-hidden rounded-2xl border border-zinc-900 bg-zinc-950 min-h-[240px]">
+                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/487671ad-0426-4ad1-b21a-1f74d3ae5c31_800w.jpg" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent"></div>
+                        <div class="absolute bottom-0 left-0 p-6">
+                            <h4 class="text-lg font-semibold text-white">Report Builder</h4>
+                        </div>
+                    </div>
+                    
+                    <!-- Card 2 -->
+                    <div class="relative group overflow-hidden rounded-2xl border border-zinc-900 bg-zinc-950 min-h-[240px]">
+                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7bfc6f3c-be57-4bc5-aad4-808cc85723d9_800w.jpg" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent"></div>
+                        <div class="absolute bottom-0 left-0 p-6">
+                            <h4 class="text-lg font-semibold text-white">Data Pipelines</h4>
+                        </div>
+                    </div>
+
+                    <!-- Card 3 -->
+                    <div class="relative group overflow-hidden rounded-2xl border border-zinc-900 bg-zinc-950 min-h-[240px] md:col-span-2 lg:col-span-1">
+                        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a60b344-a027-43c6-b9ee-6976be1dc394_800w.jpg" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent"></div>
+                        <div class="absolute bottom-0 left-0 p-6 w-full flex justify-between items-end">
+                            <div>
+                                <h4 class="text-lg font-semibold text-white">ML Insights</h4>
+                                <p class="text-xs text-zinc-400 mt-1">Automated prediction</p>
+                            </div>
+                            <div class="bg-emerald-500/20 p-2 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-emerald-400"><path d="M12 18V5"></path><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Testimonial Ticker -->
+            <section class="mt-20 overflow-hidden">
+                <h2 class="text-2xl font-semibold text-white mb-8 text-center md:text-left">Trusted by teams</h2>
+                <div class="relative">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-zinc-950 to-transparent z-10"></div>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-zinc-950 to-transparent z-10"></div>
+                    
+                    <div class="flex gap-4 animate-scroll whitespace-nowrap overflow-x-auto no-scrollbar pb-4 md:pb-0" style="-webkit-overflow-scrolling: touch;">
+                        <!-- Simple horizontal scroll on mobile, animation on desktop if preferred, but CSS scroll is safer for mobile interaction -->
+                        <div class="shrink-0 w-[280px] bg-white/5 border border-white/5 rounded-xl p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs text-emerald-400 font-bold">AT</div>
+                                <span class="text-sm font-medium text-white">Ava Thompson</span>
+                            </div>
+                            <p class="text-sm text-zinc-400 whitespace-normal">Smart Connect took minutes to wire into our stack. DX is top-tier.</p>
+                        </div>
+                        <div class="shrink-0 w-[280px] bg-white/5 border border-white/5 rounded-xl p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs text-blue-400 font-bold">NP</div>
+                                <span class="text-sm font-medium text-white">Noah Patel</span>
+                            </div>
+                            <p class="text-sm text-zinc-400 whitespace-normal">We shipped our analytics revamp 3x faster. Defaults are sensible.</p>
+                        </div>
+                        <div class="shrink-0 w-[280px] bg-white/5 border border-white/5 rounded-xl p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-xs text-purple-400 font-bold">MK</div>
+                                <span class="text-sm font-medium text-white">Maya Kim</span>
+                            </div>
+                            <p class="text-sm text-zinc-400 whitespace-normal">The platform feels invisible. Fast, reliable pipelines.</p>
+                        </div>
+                        <div class="shrink-0 w-[280px] bg-white/5 border border-white/5 rounded-xl p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-xs text-orange-400 font-bold">EG</div>
+                                <span class="text-sm font-medium text-white">Ethan Garcia</span>
+                            </div>
+                            <p class="text-sm text-zinc-400 whitespace-normal">Finally trust our metrics for decision making. Observability baked in.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="mt-20 md:mt-32 rounded-3xl bg-zinc-900/30 border border-white/5 p-6 md:p-12 mb-10">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    <div>
+                        <h3 class="text-2xl md:text-3xl font-medium text-white font-geist tracking-tight">
+                            Ready to transform? <br>
+                            <span class="text-emerald-400 border-b border-emerald-400/30">Let's get started.</span>
+                        </h3>
+                        <div class="mt-8">
+                            <a href="#" class="inline-flex items-center gap-2 text-white font-medium hover:text-emerald-300 transition-colors">
+                                <span class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-emerald-950">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                                </span>
+                                hello@dataflow.com
+                            </a>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="grid grid-cols-2 gap-8">
+                            <div>
+                                <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Product</p>
+                                <ul class="space-y-3 text-sm text-zinc-400">
+                                    <li><a href="#" class="hover:text-white">Platform</a></li>
+                                    <li><a href="#" class="hover:text-white">Features</a></li>
+                                    <li><a href="#" class="hover:text-white">Pricing</a></li>
+                                </ul>
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Socials</p>
+                                <ul class="space-y-3 text-sm text-zinc-400">
+                                    <li><a href="#" class="hover:text-white">Twitter</a></li>
+                                    <li><a href="#" class="hover:text-white">GitHub</a></li>
+                                    <li><a href="#" class="hover:text-white">Discord</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-zinc-600">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold text-white font-geist">DataFlow</span>
+                        <span>© 2024</span>
+                    </div>
+                    <div class="flex gap-4">
+                        <a href="#" class="hover:text-zinc-400">Privacy</a>
+                        <a href="#" class="hover:text-zinc-400">Terms</a>
+                    </div>
+                </div>
+            </footer>
+    </main></div>
+
+    <!-- Mobile Menu Script -->
+    <script>
+        const menuBtn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+        const menuIcon = document.getElementById('menu-icon');
+        const closeIcon = document.getElementById('close-icon');
+        const mobileLinks = document.querySelectorAll('.mobile-link');
+        let isMenuOpen = false;
+
+        function toggleMenu() {
+            isMenuOpen = !isMenuOpen;
+            if (isMenuOpen) {
+                menu.classList.remove('translate-x-full');
+                menuIcon.classList.add('hidden');
+                closeIcon.classList.remove('hidden');
+                document.body.style.overflow = 'hidden'; // Prevent scrolling when menu is open
+            } else {
+                menu.classList.add('translate-x-full');
+                menuIcon.classList.remove('hidden');
+                closeIcon.classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+        }
+
+        menuBtn.addEventListener('click', toggleMenu);
+
+        // Close menu when a link is clicked
+        mobileLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                if(isMenuOpen) toggleMenu();
+            });
+        });
+    </script>
+
+</body></html>

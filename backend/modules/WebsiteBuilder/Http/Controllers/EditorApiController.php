@@ -4,9 +4,9 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Modules\WebsiteBuilder\Models\Page;
 use Modules\WebsiteBuilder\Models\PageVersion;
-use Modules\WebsiteBuilder\Models\Website;
 
 class EditorApiController extends Controller
 {
@@ -18,6 +18,8 @@ class EditorApiController extends Controller
             // Microweber might send other fields, capturing 'em
             'css' => 'nullable|string',
             'json' => 'nullable|array',
+            'header_js' => 'nullable|string',
+            'body_js' => 'nullable|string',
         ]);
 
         $page = Page::findOrFail($validated['page_id']);
@@ -30,9 +32,11 @@ class EditorApiController extends Controller
                 'html' => $validated['html'],
                 'css' => $request->input('css'),
                 'json' => $request->input('json'),
+                'header_js' => $request->input('header_js'),
+                'body_js' => $request->input('body_js'),
             ],
             'is_current' => true,
-            'created_by' => auth()->id(),
+            'created_by' => Auth::id(),
         ]);
 
         // Unset previous current

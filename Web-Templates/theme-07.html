@@ -1,0 +1,397 @@
+<html lang="en" class="scroll-smooth"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helios Robotics | Robi</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+body {
+font-family: 'Inter', sans-serif;
+background-color: #FACC15; /* Fallback */
+}
+/* Custom Utilities for that "Apple" feel */
+.glass-panel {
+background: rgba(255, 255, 255, 0.25);
+backdrop-filter: blur(12px);
+-webkit-backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.4);
+box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+}
+.text-shadow-sm {
+text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+/* Animation Classes */
+.fade-in-section {
+opacity: 0;
+transform: translateY(30px);
+transition: opacity 1s ease-out, transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+will-change: opacity, transform;
+}
+.fade-in-section.is-visible {
+opacity: 1;
+transform: translateY(0);
+}
+.hero-text-mask {
+mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+/* Hide scrollbar for cleaner look */
+::-webkit-scrollbar {
+width: 0px;
+background: transparent;
+}
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&amp;display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&amp;display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&amp;display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&amp;display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><link id="all-fonts-link-font-newsreader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..800&amp;display=swap"><style id="all-fonts-style-font-newsreader">.font-newsreader { font-family: 'Newsreader', serif !important; }</style><link id="all-fonts-link-font-google-sans-flex" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-google-sans-flex">.font-google-sans-flex { font-family: 'Google Sans Flex', sans-serif !important; }</style><link id="all-fonts-link-font-oswald" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-oswald">.font-oswald { font-family: 'Oswald', sans-serif !important; }</style><link id="all-fonts-link-font-dm-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-dm-sans">.font-dm-sans { font-family: 'DM Sans', sans-serif !important; }</style></head>
+<body class="min-h-screen overflow-x-hidden selection:bg-gray-900 selection:text-white text-gray-900 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-500">
+
+    <!-- Navigation -->
+    <nav class="fixed z-50 transition-all duration-300 md:px-12 md:pt-0 md:pb-0 w-full h-0 pt-0 pr-6 pb-0 pl-6">
+        <nav class="sticky z-50 transition-all duration-500 w-full top-0" id="navbar">
+  <div class="flex max-w-7xl mr-auto ml-auto pt-4 pr-6 pb-4 pl-6 items-center justify-between">
+    
+    <div class="flex items-center group cursor-pointer">
+      <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/288b92a4-f9e1-4169-8097-65331bc9a36c_320w.png" alt="Brand Logo" class="transition-transform duration-300 group-hover:scale-105 w-auto h-10 object-contain">
+    </div>
+
+    <div class="hidden md:flex gap-12 text-lg font-medium text-gray-800/80 items-center" style="display: flex;">
+      <a href="#" class="hover:text-gray-900 transition-colors">Specs</a>
+      <a href="#" class="hover:text-gray-900 transition-colors">Safety</a>
+      <a href="#" class="hover:text-gray-900 transition-colors">Vision</a>
+    </div>
+
+    <button class="hover:bg-gray-800 hover:scale-105 transition-all duration-300 active:scale-95 text-sm font-medium text-white bg-gray-900 rounded-full pt-3 pr-8 pb-3 pl-8 shadow-lg">
+      Reserve
+    </button>
+  </div>
+</nav>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="overflow-hidden bg-center -translate-x-2 md:pl-0 md:pr-0 md:pb-80 md:pt-80 h-100 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/77f6ea12-a46c-43c8-a1fc-871074b4d483_3840w.png)] bg-cover mt-0 mb-0 pt-48 pr-6 pb-32 pl-6 relative translate-y-3">
+  <div class="max-w-7xl z-0 mr-0 mb-0 ml-0 pt-0 pr-10 pl-20 relative">
+
+    <!-- Huge Background Text -->
+    <div class="flex flex-col md:flex-row z-10 mt-0 relative translate-y-16 items-start justify-start">
+      <!-- Left Content -->
+      <div class="md:w-1/3 fade-in-section is-visible mb-0 pt-0 pb-0 space-y-8 gap-x-y-6 gap-y-16" style="mask-image: linear-gradient(170deg, transparent, black 0%, black 100%, transparent); -webkit-mask-image: linear-gradient(170deg, transparent, black 0%, black 100%, transparent);">
+
+
+        <h2 class="leading-tight md:text-3xl text-3xl font-thin text-gray-900 tracking-tighter font-montserrat text-left mt-200 mr-50 ml-5 pr-50 pl-50">
+          The world's first bio-emotive home guardian.
+        </h2>
+        <div class="space-y-3">
+          <button class="hover:bg-gray-800 transition-all hover:shadow-2xl hover:-translate-y-1 text-sm font-medium text-white bg-gray-900 rounded-full mr-10 ml-5 pt-3 pr-10 pb-3 pl-10 shadow-xl">
+                            Reserve
+                        </button>
+          <p class="uppercase text-xs font-medium tracking-wide opacity-60 pr-10 pl-5">Shipping late 2026</p>
+
+        </div>
+      </div>
+
+      <!-- Robot Visual (Placeholder) -->
+
+    </div>
+    <div class="-translate-x-1/2 pointer-events-none select-none z-0 text-center w-full absolute top-0 left-1/2">
+
+    </div>
+
+
+  </div>
+</header>
+
+    <!-- Features Grid -->
+    <section class="md:pt--20 max-w-7xl mr-auto ml-auto pt-12 pr-6 pb-12 pl-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 my-0 pt-0 pb-0 pl-20 gap-x-8 gap-y-8">
+
+        <!-- Card 1 -->
+        <div class="glass-panel flex flex-col fade-in-section hover:scale-[1.02] transition-transform duration-500 is-visible text-center rounded-[2.5rem] pt-10 pr-10 pb-10 pl-10 space-y-6 items-center">
+            <div class="flex bg-center w-20 h-20 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/3892e23a-c434-4bb7-b1d9-4914a210593e_320w.png?w=800&amp;q=80)] bg-cover rounded-2xl mb-2 shadow-sm items-center justify-center">
+
+            </div>
+            <h3 class="text-2xl font-semibold tracking-tight">The
+                Guardian<br><span class="text-lg font-normal opacity-70">Clinical Diagnostics</span></h3>
+            <p class="text-lg leading-relaxed opacity-80">
+                robi detects fever, assesses pain levels, and dispenses precise medication doses instantly.
+            </p>
+            <div class="mt-auto pt-6 text-sm font-medium opacity-60 uppercase tracking-wider border-t border-gray-900/10 w-full">
+                Vitals Monitoring: 24/7
+            </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="glass-panel flex flex-col fade-in-section hover:scale-[1.02] transition-transform duration-500 is-visible text-center rounded-[2.5rem] pt-10 pr-10 pb-10 pl-10 space-y-6 items-center" style="transition-delay: 100ms">
+            <div class="flex bg-center w-20 h-20 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6cf90f9d-ad99-4d22-9d68-277089397c2f_320w.png?w=800&amp;q=80)] bg-cover rounded-2xl mb-2 shadow-sm items-center justify-center">
+
+            </div>
+            <h3 class="text-2xl font-semibold tracking-tight">The
+                Steward<br><span class="text-lg font-normal opacity-70">Household Autonomy</span></h3>
+            <p class="text-lg leading-relaxed opacity-80">
+                From folding laundry to organizing playrooms. robi manages the home so you don't have to.
+            </p>
+            <div class="mt-auto pt-6 text-sm font-medium opacity-60 uppercase tracking-wider border-t border-gray-900/10 w-full">
+                Articulated Precision: 99.9%
+            </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="glass-panel flex flex-col fade-in-section hover:scale-[1.02] transition-transform duration-500 is-visible text-center rounded-[2.5rem] pt-10 pr-10 pb-10 pl-10 space-y-6 items-center" style="transition-delay: 200ms">
+            <div class="flex bg-center w-20 h-20 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ce1daa6a-0269-464a-851b-3789fdf298b6_320w.png)] bg-cover rounded-2xl mb-2 shadow-sm items-center justify-center">
+
+            </div>
+            <h3 class="text-2xl font-semibold tracking-tight">The
+                Companion<br><span class="text-lg font-normal opacity-70">Adaptive EQ</span></h3>
+            <p class="leading-relaxed text-lg opacity-80">
+                Learns your family's humor, teaches lessons, and provides emotional support.
+            </p>
+            <div class="mt-auto pt-6 text-sm font-medium opacity-60 uppercase tracking-wider border-t border-gray-900/10 w-full">
+                Language Modules: 50+
+            </div>
+        </div>
+
+    </div>
+
+<div class="fade-in-section text-center pt-24 pb-24">
+  <p class="md:text-4xl text-2xl font-medium text-gray-900 tracking-tight opacity-90 leading-tight mx-auto max-w-3xl">
+    It's more than a machine, this yellow package is only for 
+  </p>
+  
+  <h1 class="mt-8 md:text-8xl text-6xl font-black text-gray-900 animate-float drop-shadow-[0_10px_10px_rgba(234,179,8,0.3)]">
+    $<span id="count-up">0</span>
+  </h1>
+</div>
+
+<style class="">
+  /* Floating animation */
+  @keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-15px); }
+    100% { transform: translateY(0px); }
+  }
+  .animate-float {
+    display: inline-block;
+    animation: float 4s ease-in-out infinite;
+  }
+</style>
+
+<script class="">
+  function animateNumber(id, targetValue, duration) {
+    const element = document.getElementById(id);
+    let startTimestamp = null;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      
+      // Calculate current value and format with commas
+      const currentValue = Math.floor(progress * targetValue);
+      element.innerText = currentValue.toLocaleString();
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    window.requestAnimationFrame(step);
+  }
+
+  // Start the animation: ID, Target Number, Duration in ms (2000 = 2 seconds)
+  document.addEventListener('DOMContentLoaded', () => {
+    animateNumber('count-up', 18600, 2500);
+  });
+</script>
+
+</section>
+
+    <!-- Split View Section -->
+<section class="w-full max-w-7xl mx-auto mb-32 px-6 relative">
+    <div class="relative rounded-[3rem] overflow-hidden w-full shadow-2xl" style="aspect-ratio: 1950 / 1251;">
+        
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f4d48fd-4b64-4978-bbd5-8e354cb8adf4_1600w.png" alt="Robot Interior" class="bg-center w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0">
+
+        
+
+        <div class="absolute top-1/4 left-12 md:left-20 animate-float-slow">
+            
+        </div>
+
+        <div class="absolute bottom-1/4 right-12 md:right-20 animate-float-delayed text-right">
+            
+        </div>
+
+        
+        
+    </div>
+</section>
+
+<style class="">
+  /* Slow vertical float for "Soft Touch" */
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+  }
+
+  /* Different timing for "Hard Science" so they don't move in perfect sync */
+  @keyframes float-delayed {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(15px); }
+  }
+
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
+
+  .animate-float-delayed {
+    animation: float-delayed 7s ease-in-out infinite;
+  }
+</style>
+
+    <!-- Specs Section -->
+    <section class="px-6 py-12 max-w-7xl mx-auto mb-32">
+        <div class="glass-panel p-8 md:p-12 rounded-[3rem] flex flex-col lg:flex-row gap-12 fade-in-section">
+            
+            <!-- Left: Table -->
+            <div class="lg:w-1/2 flex flex-col justify-center">
+                <h3 class="text-3xl md:text-4xl font-medium tracking-tight mb-10 text-gray-900">Product Specifications</h3>
+                
+                <div class="space-y-6 text-lg">
+                    <div class="flex justify-between items-baseline border-b border-gray-900/10 pb-4">
+                        <span class="font-semibold w-1/3">Exterior</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">Hypoallergenic "Warm-Touch" Silicone</span>
+                    </div>
+                    <div class="flex justify-between items-baseline border-b border-gray-900/10 pb-4">
+                        <span class="font-semibold w-1/3">Skeleton</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">Aerospace-Grade Titanium Alloy</span>
+                    </div>
+                    <div class="flex justify-between items-baseline border-b border-gray-900/10 pb-4">
+                        <span class="font-semibold w-1/3">Processing</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">Neural Engine V4 (Local Processing)</span>
+                    </div>
+                    <div class="flex justify-between items-baseline border-b border-gray-900/10 pb-4">
+                        <span class="font-semibold w-1/3">Battery</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">48 Hours (Active) / 7 Days (Standby)</span>
+                    </div>
+                    <div class="flex justify-between items-baseline border-b border-gray-900/10 pb-4">
+                        <span class="font-semibold w-1/3">Safety</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">ISO 13485 Medical Device Certified</span>
+                    </div>
+                    <div class="flex justify-between items-baseline pb-2">
+                        <span class="font-semibold w-1/3">Privacy</span>
+                        <span class="font-normal opacity-80 w-2/3 text-right">Military-Grade Local Encryption</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Grid Stats -->
+            <div class="lg:w-1/2 grid grid-cols-2 gap-6">
+                <!-- Stat 1 -->
+                <div class="bg-gray-50 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center aspect-square shadow-inner">
+                    <span class="text-5xl font-medium tracking-tight text-gray-900 mb-2">0.02s</span>
+                    <span class="text-lg font-medium text-gray-500">Reaction Time</span>
+                </div>
+                <!-- Stat 2 -->
+                <div class="bg-gray-50 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center aspect-square shadow-inner">
+                    <span class="text-5xl font-medium tracking-tight text-gray-900 mb-2">360°</span>
+                    <span class="text-lg font-medium text-gray-500">Active Shield</span>
+                </div>
+                <!-- Stat 3 -->
+                <div class="bg-gray-50 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center aspect-square shadow-inner">
+                    <span class="text-5xl font-medium tracking-tight text-gray-900 mb-2">100%</span>
+                    <span class="text-lg font-medium text-gray-500">Data Privacy</span>
+                </div>
+                <!-- Stat 4 (Dark) -->
+                <div class="bg-gray-900 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center aspect-square text-white shadow-xl">
+                    <span class="text-5xl font-medium tracking-tight mb-2">24/7</span>
+                    <span class="text-lg font-medium text-gray-400">Autonomous Power</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer / Future Section -->
+    <section class="flex flex-col bg-center text-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/cf57e8da-2b0f-4362-a531-8c64b2d6715d_3840w.png)] max-w-7xl bg-cover mr-auto ml-auto pr-6 pb-20 pl-6 relative items-center">
+        
+        <!-- Robot Graphic -->
+        <div class="fade-in-section w-64 h-64 mb-12 relative">
+             <!-- Abstract representation of the waving robot -->
+             
+        </div>
+
+        <div class="fade-in-section max-w-4xl mx-auto">
+            
+            <p class="md:text-2xl text-xl font-medium text-gray-900 opacity-80 mb-10">
+                Limited first-run production. Secure your allocation.
+            </p>
+
+            <form class="flex flex-col md:flex-row gap-4 w-full max-w-xl mr-auto mb-20 ml-auto items-center justify-center">
+                <input type="email" placeholder="Enter your email address" class="w-full md:w-auto flex-grow px-6 py-4 rounded-full bg-transparent border-2 border-gray-900 placeholder-gray-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/50 focus:bg-white/10 transition-all text-lg font-medium">
+                <button type="submit" class="w-full md:w-auto px-8 py-4 bg-gray-900 text-white rounded-full font-medium text-lg hover:bg-gray-800 transition-all hover:scale-105 shadow-xl">
+                    Join the waitlist
+                </button>
+            </form>
+        </div>
+
+        <!-- Bottom Footer -->
+        <footer class="flex flex-col md:flex-row fade-in-section w-full border-gray-900/10 border-t pt-12 items-center justify-between">
+            
+            <div class="flex gap-6">
+                <a href="#" class="w-10 h-10 rounded-full bg-gray-900/10 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="facebook" class="lucide lucide-facebook w-5 h-5"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>
+                </a>
+                <a href="#" class="w-10 h-10 rounded-full bg-gray-900/10 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="twitter" class="lucide lucide-twitter w-5 h-5"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path></svg>
+                </a>
+                <a href="#" class="w-10 h-10 rounded-full bg-gray-900/10 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="instagram" class="lucide lucide-instagram w-5 h-5"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line></svg>
+                </a>
+                <a href="#" class="w-10 h-10 rounded-full bg-gray-900/10 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="youtube" class="lucide lucide-youtube w-5 h-5"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"></path><path d="m10 15 5-3-5-3z"></path></svg>
+                </a>
+            </div>
+
+            <div class="flex items-center gap-3">
+
+            </div>
+                <div class="flex gap-10 text-sm font-normal text-gray-800/60">
+                <a href="#" class="hover:text-gray-900">Privacy Policy</a>
+                <span>|</span>
+                <a href="#" class="hover:text-gray-900">Terms of Service</a>
+            </div>
+            <div class="md:text-left md:w-auto md:mt-0 text-center w-full mt-4">
+                <span class="text-[10px] uppercase tracking-widest opacity-60">© 2025 Helios Robotics. All Rights Reserved.</span>
+                <p class="text-xs text-gray-600">Designed by Allen Dela Cruz</p>
+            </div>
+        </footer>
+    </section>
+
+    <!-- Scripts for Icon rendering and Animations -->
+    <script class="">
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Intersection Observer for Fade-in animations
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    // Stop observing once visible to run animation only once
+                    observer.unobserve(entry.target); 
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in-section').forEach(section => {
+            observer.observe(section);
+        });
+    </script>
+
+</body></html>

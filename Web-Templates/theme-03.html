@@ -1,0 +1,926 @@
+<html lang="en" class="scroll-smooth"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CharisLooks Beauty</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+darkMode: 'media',
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+serif: ['Playfair Display', 'serif'],
+},
+colors: {
+rose: {
+50: '#fff1f2',
+100: '#ffe4e6',
+200: '#fecdd3',
+300: '#fda4af',
+400: '#fb7185',
+500: '#f43f5e',
+900: '#881337',
+},
+dark: {
+900: '#0a0a0a',
+800: '#171717',
+700: '#262626'
+}
+},
+animation: {
+'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both',
+'fade-in': 'fadeIn 1s ease-out both',
+'blur-in': 'blurIn 0.8s ease-out both',
+'zoom-slow': 'zoomSlow 20s linear infinite alternate',
+},
+keyframes: {
+fadeInUp: {
+'0%': { opacity: '0', transform: 'translateY(30px)' },
+'100%': { opacity: '1', transform: 'translateY(0)' },
+},
+fadeIn: {
+'0%': { opacity: '0' },
+'100%': { opacity: '1' },
+},
+blurIn: {
+'0%': { opacity: '0', filter: 'blur(10px)' },
+'100%': { opacity: '1', filter: 'blur(0)' },
+},
+zoomSlow: {
+'0%': { transform: 'scale(1)' },
+'100%': { transform: 'scale(1.1)' },
+}
+}
+}
+}
+}
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+}
+h1, h2, h3, h4 {
+font-family: 'Playfair Display', serif;
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+width: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background-color: #cbd5e1;
+border-radius: 20px;
+}
+.dark ::-webkit-scrollbar-thumb {
+background-color: #4b5563;
+}
+/* Hide scrollbar for horizontal scroll areas */
+.no-scrollbar::-webkit-scrollbar {
+display: none;
+}
+.no-scrollbar {
+-ms-overflow-style: none;
+scrollbar-width: none;
+}
+/* Comparison Slider Styles */
+.comparison-slider {
+position: relative;
+width: 100%;
+overflow: hidden;
+}
+.comparison-item {
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+overflow: hidden;
+}
+.comparison-handle {
+position: absolute;
+top: 0;
+bottom: 0;
+width: 2px;
+background: #fff;
+cursor: col-resize;
+z-index: 10;
+}
+.comparison-circle {
+position: absolute;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+width: 40px;
+height: 40px;
+background: #fff;
+border-radius: 50%;
+display: flex;
+align-items: center;
+justify-content: center;
+box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+color: #333;
+}
+/* Animation Observer Classes */
+.reveal-on-scroll {
+opacity: 0;
+filter: blur(5px);
+transform: translateY(20px);
+transition: opacity 0.8s ease-out, transform 0.8s ease-out, filter 0.8s ease-out;
+}
+.reveal-on-scroll.is-visible {
+opacity: 1;
+filter: blur(0);
+transform: translateY(0);
+}
+/* Modern Glass Utilities */
+.glass-panel {
+background: rgba(255, 255, 255, 0.03);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.glass-card-hover {
+transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-card-hover:hover {
+transform: translateY(-2px);
+box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1);
+}
+</style><link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&amp;display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&amp;display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&amp;display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&amp;display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&amp;display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><link id="all-fonts-link-font-newsreader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..800&amp;display=swap"><style id="all-fonts-style-font-newsreader">.font-newsreader { font-family: 'Newsreader', serif !important; }</style><link id="all-fonts-link-font-google-sans-flex" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-google-sans-flex">.font-google-sans-flex { font-family: 'Google Sans Flex', sans-serif !important; }</style><link id="all-fonts-link-font-oswald" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-oswald">.font-oswald { font-family: 'Oswald', sans-serif !important; }</style><link id="all-fonts-link-font-dm-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&amp;display=swap"><style id="all-fonts-style-font-dm-sans">.font-dm-sans { font-family: 'DM Sans', sans-serif !important; }</style></head>
+<body class="bg-white text-neutral-900 dark:bg-dark-900 dark:text-neutral-100 transition-colors duration-300">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 transition-all duration-300" id="navbar">
+        <div class="absolute inset-0 backdrop-blur-none border-transparent transition-all duration-300" id="nav-bg"></div>
+        <div class="relative flex h-24 max-w-7xl mr-auto ml-auto pr-6 pl-6 items-center justify-between">
+            <!-- Logo -->
+            <a href="#" class="flex items-center gap-3 group">
+                <div class="w-8 h-8 text-white" id="logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" class=""><path fill="currentColor" d="M12 2L9 9l-7 3l7 3l3 7l3-7l7-3l-7-3z"></path></svg>
+                </div>
+                <span class="group-hover:opacity-80 transition-opacity text-xl font-medium text-slate-50 tracking-tight font-serif" id="logo-text">Lumina AI</span>
+            </a>
+
+            <!-- Desktop Menu -->
+            <div class="hidden md:flex items-center gap-8 text-sm font-medium text-white/80" id="nav-links">
+                <a href="#services" class="transition-colors">AI Photobooths</a>
+                <a href="#portfolio" class="transition-colors">Portfolio</a>
+                <a href="#reviews" class="transition-colors">Stories</a>
+                <a href="#contact" class="transition-colors">Contact</a>
+            </div>
+
+            <!-- CTA -->
+            <div class="hidden md:block">
+                <a href="#booking" class="bg-white text-neutral-900 px-5 py-2.5 rounded-full text-xs font-medium tracking-wide hover:bg-neutral-100 transition-colors">
+  Book Photobooth
+</a>
+            </div>
+
+            <!-- Mobile Toggle -->
+            <button class="md:hidden p-2 text-white" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="menu" class="lucide lucide-menu w-6 h-6"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg>
+            </button>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="hidden absolute top-24 left-0 w-full bg-white dark:bg-dark-900 border-b border-neutral-100 dark:border-neutral-800 p-6 flex flex-col gap-4 md:hidden">
+            <a href="#services" class="text-lg font-serif text-neutral-900 dark:text-white">Services</a>
+            <a href="#portfolio" class="text-lg font-serif text-neutral-900 dark:text-white">Portfolio</a>
+            <a href="#booking" class="text-lg font-serif text-indigo-400">Book Now</a>
+        </div>
+    </nav>
+
+    <!-- Modern Redesigned Hero Section -->
+    <header class="relative w-full h-screen min-h-[750px] overflow-hidden bg-dark-900">
+        <!-- Background Image with Slow Zoom -->
+        <div class="absolute inset-0 w-full h-full animate-zoom-slow">
+            <img src="https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?q=80&amp;w=2500&amp;auto=format&amp;fit=crop" alt="Luxury Beauty" class="w-full h-full object-cover opacity-90">
+            <!-- Gradient Overlays for readability and style -->
+            <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-dark-900"></div>
+            <div class="bg-gradient-to-r from-black/60 via-black/20 to-transparent absolute top-0 right-0 bottom-0 left-0"></div>
+        </div>
+
+        <!-- Main Content Container -->
+        <div class="flex flex-col z-10 h-full max-w-7xl mr-auto ml-auto pr-6 pl-6 relative justify-center">
+
+  <!-- Typography & CTA Block -->
+  <div class="max-w-2xl mt-16">
+    <!-- Badge -->
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-panel mb-8 animate-fade-in-up" style="animation-delay: 100ms;">
+      <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
+      <span class="text-[10px] uppercase tracking-widest text-neutral-300 font-medium">New Collection 2024</span>
+    </div>
+
+    <!-- Headline -->
+    <h1 class="md:text-8xl leading-[0.9] animate-fade-in-up text-6xl text-white tracking-tight font-serif mb-8" style="animation-delay: 200ms">The Future of Events <span class="italic font-light text-white/80">is Here.</span>
+    </h1>
+
+    <!-- Subtext -->
+    <p class="text-lg text-neutral-300 font-light max-w-md mb-10 leading-relaxed animate-fade-in-up" style="animation-delay: 300ms;">
+      AI-Powered Photobooths for Dubai’s Most Exclusive Celebrations.
+    </p>
+
+    <!-- Buttons -->
+    <div class="flex flex-col sm:flex-row items-center gap-4 animate-fade-in-up" style="animation-delay: 400ms;">
+      <a href="#booking" class="w-full sm:w-auto px-8 py-4 bg-white text-neutral-900 rounded-full text-sm font-semibold hover:bg-neutral-200 transition-colors text-center">
+        Book Photobooth
+      </a>
+      <a href="#services" class="w-full sm:w-auto px-8 py-4 glass-panel text-white rounded-full text-sm font-medium hover:bg-white/10 transition-colors flex items-center justify-center gap-2 group">
+        Explore Services
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:translate-x-1 transition-transform">
+          <path d="M5 12h14"></path>
+          <path d="m12 5 7 7-7 7"></path>
+        </svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- Floating Card Element (Desktop Only) -->
+  <div class="hidden lg:block absolute right-6 bottom-32 animate-fade-in-up" style="animation-delay: 600ms;">
+    <div class="glass-panel p-6 rounded-2xl max-w-xs backdrop-blur-xl border border-white/10">
+      <div class="flex items-center justify-between mb-4">
+        <span class="text-xs font-medium text-neutral-400 uppercase tracking-wider">Trending Now</span>
+        <div class="flex -space-x-2">
+          <img class="w-6 h-6 rounded-full border border-black" src="https://randomuser.me/api/portraits/women/32.jpg" alt="">
+          <img class="w-6 h-6 rounded-full border border-black" src="https://randomuser.me/api/portraits/women/44.jpg" alt="">
+          <div class="w-6 h-6 rounded-full border border-black bg-neutral-800 flex items-center justify-center text-[8px] text-white">
+            +12</div>
+        </div>
+      </div>
+      <h3 class="text-lg text-white font-serif mb-1">Super Hero Photobooth</h3>
+      <p class="text-xs text-neutral-400 mb-4">Turn yourself into your favourite Super Hero!</p>
+      <div class="flex gap-2 text-xs text-indigo-300 gap-x-2 gap-y-2 items-center">
+        <div class="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+        Available Today
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll Indicator -->
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-60 animate-pulse">
+    <span class="text-[10px] uppercase tracking-widest text-white">Scroll</span>
+    <div class="w-px h-12 bg-gradient-to-b from-white to-transparent"></div>
+  </div>
+</div>
+    </header>
+
+    <!-- Featured Services -->
+    <section class="dark:bg-dark-900 bg-white pt-24 pr-6 pb-24 pl-6" id="services">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-end mb-16 reveal-on-scroll">
+                <div>
+                    <h2 class="text-3xl md:text-4xl mb-2 tracking-tight">Our AI Photobooths</h2>
+                    <p class="text-neutral-500 dark:text-neutral-400 text-sm font-light">We don't just take photos. We create digital assets</p>
+                </div>
+                <a href="#all-services" class="hidden md:flex items-center gap-2 text-sm font-medium hover:text-indigo-400 transition-colors mt-4 md:mt-0">
+                    View Full Menu <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" class="lucide lucide-arrow-right w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                </a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Service 1 -->
+                <div class="group cursor-pointer reveal-on-scroll delay-100">
+                    <div class="aspect-[4/5] overflow-hidden rounded-2xl mb-6 bg-neutral-100 dark:bg-neutral-800">
+                        <img src="https://images.unsplash.com/photo-1562322140-8baeececf3df?q=80&amp;w=1000&amp;auto=format&amp;fit=crop" alt="Hair Styling" class="group-hover:scale-105 transition-transform duration-700 w-full h-full object-cover">
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div class="">
+                            <h3 class="text-xl mb-1 font-serif italic">Celebrity Selphie</h3>
+                            <p class="text-neutral-500 dark:text-neutral-400 text-xs">Your Guests. Their Heroes.</p>
+                        </div>
+                        <span class="text-sm font-medium">$250+</span>
+                    </div>
+                </div>
+
+                <!-- Service 2 -->
+                <div class="group cursor-pointer reveal-on-scroll delay-200">
+                    <div class="aspect-[4/5] overflow-hidden rounded-2xl mb-6 bg-neutral-100 dark:bg-neutral-800">
+                        <img src="https://images.unsplash.com/photo-1512496015851-a90fb38ba796?q=80&amp;w=1000&amp;auto=format&amp;fit=crop" alt="Skincare" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div class="">
+                            <h3 class="text-xl mb-1 font-serif italic">Superhero Transformation</h3>
+                            <p class="text-neutral-500 dark:text-neutral-400 text-xs">Your Guests. Their Dreams.</p>
+                        </div>
+                        <span class="text-sm font-medium">$120+</span>
+                    </div>
+                </div>
+
+                <!-- Service 3 -->
+                <div class="group cursor-pointer reveal-on-scroll delay-300">
+                    <div class="aspect-[4/5] overflow-hidden rounded-2xl mb-6 bg-neutral-100 dark:bg-neutral-800">
+                        <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?q=80&amp;w=1000&amp;auto=format&amp;fit=crop" alt="Makeup" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-xl mb-1 font-serif italic">Brand Ambassador</h3>
+                            <p class="text-neutral-500 dark:text-neutral-400 text-xs">Your Guests. Your Brand Universe.</p>
+                        </div>
+                        <span class="text-sm font-medium">from AED 3,000</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfolio & Transformation -->
+    <section id="portfolio" class="py-24 px-6 bg-neutral-50 dark:bg-dark-800">
+        <div class="max-w-7xl mr-auto ml-auto">
+            <div class="mb-16 text-center reveal-on-scroll">
+                <span class="text-indigo-400 text-xs font-bold tracking-widest uppercase mb-2 block">The Results</span>
+                <h2 class="md:text-4xl text-3xl tracking-tight">AI Photobooth Results</h2>
+            </div>
+
+            <!-- Before/After Slider Component -->
+            <div class="max-w-4xl mx-auto mb-24 reveal-on-scroll">
+                <div class="aspect-[16/9] md:aspect-[21/9] overflow-hidden comparison-slider w-full rounded-2xl relative shadow-2xl" id="comparisonSlider">
+                    <!-- After Image (Base) -->
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7fe5b4c3-d530-47ff-9a33-88198c09d7ed_1600w.jpg?w=800&amp;q=80" class="w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0" alt="After">
+                    <span class="absolute top-4 right-4 bg-black/50 text-white px-2 py-1 text-xs rounded backdrop-blur-sm">AFTER</span>
+
+                    <!-- Before Image (Overlay) -->
+                    <div class="comparison-item" id="comparisonOverlay" style="width: 50.558%;">
+                        
+                        <span class="absolute top-4 left-4 bg-black/50 text-white px-2 py-1 text-xs rounded backdrop-blur-sm">BEFORE</span><img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7fe5b4c3-d530-47ff-9a33-88198c09d7ed_3840w.jpg?w=800&amp;q=80" class="md:w-[64rem] lg:w-[56rem] w-[100vw] h-full max-w-none object-cover absolute top-0 left-0" alt="Before" style="width: 896px" id="comparisonImageBefore">
+                    </div>
+
+                    <!-- Handle -->
+                    <div class="comparison-handle" id="comparisonHandle" style="left: 50.558%;">
+                        <div class="comparison-circle bg-white text-indigo-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevrons-left-right" class="lucide lucide-chevrons-left-right w-5 h-5"><path d="m9 7-5 5 5 5"></path><path d="m15 7 5 5-5 5"></path></svg>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-center text-xs text-neutral-400 mt-4">Drag the slider to see the transformation</p>
+            </div>
+
+            <!-- Masonry Grid -->
+            <div class="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
+                <!-- Item 1 -->
+                <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll">
+                    <img src="https://images.unsplash.com/photo-1526045612212-70caf35c14df?q=80&amp;w=800&amp;auto=format&amp;fit=crop" class="w-full object-cover">
+                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span class="text-white font-serif text-xl italic">Bridal</span>
+                    </div>
+                </div>
+                <!-- Item 2 -->
+                <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll delay-100">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" class="w-full object-cover">
+                </div>
+                 <!-- Item 3 -->
+                 <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll">
+                    <img src="https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?q=80&amp;w=800&amp;auto=format&amp;fit=crop" class="w-full object-cover">
+                </div>
+                <!-- Item 4 -->
+                <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll delay-100">
+                    <img src="https://images.unsplash.com/photo-1515688594390-b649af70d282?q=80&amp;w=800&amp;auto=format&amp;fit=crop" class="w-full object-cover">
+                </div>
+                <!-- Item 5 -->
+                <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4734259a-bad7-422f-981e-ce01e79184f2_1600w.jpg" class="w-full object-cover">
+                </div>
+                 <!-- Item 6 -->
+                 <div class="break-inside-avoid rounded-xl overflow-hidden relative group reveal-on-scroll delay-100">
+                    <img src="https://images.unsplash.com/photo-1457972851104-4fd469440bf9?q=80&amp;w=800&amp;auto=format&amp;fit=crop" class="w-full object-cover">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- REDESIGNED Service Menu Section (Modern Split Layout) -->
+    <section class="py-24 px-6 bg-white dark:bg-dark-900 border-t border-neutral-100 dark:border-neutral-800" id="all-services">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 xl:gap-20">
+                
+                <!-- Sticky Left Column: Visual Anchor -->
+                <div class="lg:col-span-5 relative">
+                    <div class="sticky top-32 flex flex-col gap-6 reveal-on-scroll">
+                        <div class="relative aspect-[3/4] w-full rounded-3xl overflow-hidden shadow-2xl">
+                            <!-- Dynamic Image Card -->
+                            <img src="https://images.unsplash.com/photo-1481437156560-3205f6a55735?q=80&amp;w=1200&amp;auto=format&amp;fit=crop" alt="Menu Visual" class="absolute inset-0 w-full h-full object-cover opacity-90 hover:scale-105 transition-transform duration-1000">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                            
+                            <!-- Card Content -->
+                            <div class="absolute bottom-0 left-0 p-8 w-full">
+                                <div class="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl">
+                                    <h3 class="text-2xl font-serif text-white italic mb-2">The Collection</h3>
+                                    <p class="text-white/80 text-xs font-light leading-relaxed mb-4">
+                                        Explore our full range of services designed for the modern aesthetic. Each treatment is tailored to your unique features.
+                                    </p>
+                                    <a href="#booking" class="inline-flex items-center gap-2 text-white text-xs font-medium tracking-wide uppercase hover:text-indigo-300 transition-colors">
+                                        Book Consultation <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Interactive Menu List -->
+                <div class="lg:col-span-7">
+                    <div class="flex flex-col gap-16">
+                        
+                        <!-- Header -->
+                        <div class="flex flex-col gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-8 reveal-on-scroll">
+                            <span class="text-indigo-500 font-bold text-[10px] tracking-[0.2em] uppercase">Service Menu</span>
+                            <h2 class="text-4xl md:text-5xl font-serif text-neutral-900 dark:text-white">Curated Treatments</h2>
+                        </div>
+
+                        <!-- Category: Hair -->
+                        <div class="reveal-on-scroll delay-100">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scissors"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" x2="8.12" y1="4" y2="15.88"></line><line x1="14.47" x2="20" y1="14.48" y2="20"></line><line x1="8.12" x2="12" y1="8.12" y2="12"></line></svg>
+                                </div>
+                                <h3 class="text-xl font-medium tracking-tight">Hair Artistry</h3>
+                            </div>
+                            
+                            <div class="grid gap-3">
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Signature Blowout</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$65</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Includes scalp massage, wash, and volume styling.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">45m</span>
+                                    </div>
+                                </div>
+
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Balayage &amp; Tone</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$280+</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Hand-painted highlights for natural gradation + gloss.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">180m</span>
+                                    </div>
+                                </div>
+
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Keratin Treatment</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$350</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Smooths frizz and restores shine for up to 4 months.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">150m</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category: Face -->
+                        <div class="reveal-on-scroll delay-200">
+                             <div class="flex items-center gap-4 mb-6">
+                                <div class="w-8 h-8 rounded-full bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center text-rose-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M9 3v4"></path><path d="M3 5h4"></path><path d="M3 9h4"></path></svg>
+                                </div>
+                                <h3 class="text-xl font-medium tracking-tight">Face &amp; Skin</h3>
+                            </div>
+
+                            <div class="grid gap-3">
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Signature Soft Glam</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$95</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Radiant skin, defined eyes, and neutral lip application.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">60m</span>
+                                    </div>
+                                </div>
+
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Hydra-Glow Facial</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$140</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Deep cleansing with hyaluronic infusion.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">50m</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                         <!-- Category: Lashes -->
+                         <div class="reveal-on-scroll delay-200">
+                             <div class="flex items-center gap-4 mb-6">
+                                <div class="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </div>
+                                <h3 class="text-xl font-medium tracking-tight">Lashes &amp; Brows</h3>
+                            </div>
+
+                            <div class="grid gap-3">
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Lash Lift &amp; Tint</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$85</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Semi-permanent curl and color for natural lashes.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">45m</span>
+                                    </div>
+                                </div>
+
+                                <!-- Item -->
+                                <div class="group relative p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-transparent hover:bg-white hover:border-neutral-200 dark:hover:bg-neutral-800 dark:hover:border-neutral-700 transition-all duration-300 glass-card-hover cursor-default">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <span class="text-base font-medium text-neutral-900 dark:text-white">Brow Lamination</span>
+                                        <span class="text-sm font-medium text-neutral-900 dark:text-white">$90</span>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 font-light max-w-[80%]">Restructures brow hairs to keep them in a desired shape.</p>
+                                        <span class="text-[10px] text-neutral-400 font-mono">40m</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Booking System -->
+    <section id="booking" class="py-24 px-6 bg-neutral-900 text-white dark:bg-black relative overflow-hidden">
+        <!-- Decorative background elements -->
+        <div class="absolute top-0 left-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div class="absolute bottom-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+
+        <div class="max-w-6xl mx-auto relative z-10">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 gap-x-12 gap-y-12">
+                
+                <!-- Booking Header -->
+                <div class="lg:col-span-4 flex flex-col justify-center reveal-on-scroll">
+                    <h2 class="text-4xl md:text-5xl font-serif mb-6">Secure Your <br><span class="text-indigo-400 italic">Spot</span></h2>
+                    <p class="text-neutral-400 mb-8 font-light">Select your preferred treatment and time. We require a 20% deposit for all online bookings.</p>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3 text-sm text-neutral-300">
+                            <div class="p-2 rounded-full bg-white/5 border border-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" class="lucide lucide-check w-4 h-4"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                            <span>Instant Confirmation</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-sm text-neutral-300">
+                            <div class="p-2 rounded-full bg-white/5 border border-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="calendar" class="lucide lucide-calendar w-4 h-4"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path></svg></div>
+                            <span>24h Cancellation Policy</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Booking UI -->
+                <div class="lg:col-span-8 bg-white dark:bg-dark-800 rounded-3xl p-6 md:p-8 shadow-2xl text-neutral-900 dark:text-white reveal-on-scroll delay-200">
+                    <!-- Step Indicators -->
+                    <div class="flex items-center gap-4 mb-8 text-xs font-bold tracking-widest uppercase text-neutral-400">
+                        <span class="text-indigo-400">01. Service</span>
+                        <span class="w-8 h-px bg-neutral-200 dark:bg-neutral-700"></span>
+                        <span class="">02. Date</span>
+                        <span class="w-8 h-px bg-neutral-200 dark:bg-neutral-700"></span>
+                        <span class="">03. Details</span>
+                    </div>
+
+                    <!-- Simulated Step 1: Services -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                        <button class="text-left p-4 rounded-xl border-2 border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20 relative">
+                            <div class="absolute top-3 right-3 text-indigo-400"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="check-circle-2" class="lucide lucide-check-circle-2 w-5 h-5"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg></div>
+                            <span class="block font-medium text-sm mb-1">Signature Soft Glam</span>
+                            <span class="block text-xs text-neutral-500 dark:text-neutral-400">60 mins • $95</span>
+                        </button>
+                        <button class="text-left p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-indigo-300 transition-colors">
+                            <span class="block font-medium text-sm mb-1">Bridal Trial</span>
+                            <span class="block text-xs text-neutral-500 dark:text-neutral-400">90 mins • $150</span>
+                        </button>
+                        <button class="text-left p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-indigo-300 transition-colors">
+                            <span class="block font-medium text-sm mb-1">Luxe Facial</span>
+                            <span class="block text-xs text-neutral-500 dark:text-neutral-400">50 mins • $120</span>
+                        </button>
+                        <button class="text-left p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-indigo-300 transition-colors">
+                            <span class="block font-medium text-sm mb-1">Blowout</span>
+                            <span class="block text-xs text-neutral-500 dark:text-neutral-400">45 mins • $65</span>
+                        </button>
+                    </div>
+
+                    <!-- Simulated Step 2: Date & Time -->
+                    <div class="mb-8">
+                        <h4 class="text-sm font-medium mb-4">Select Date &amp; Time</h4>
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <!-- Calendar Visual -->
+                            <div class="flex-1 bg-neutral-50 dark:bg-dark-900 rounded-xl p-4">
+                                <div class="flex justify-between mb-4 text-sm font-medium">
+                                    <span>October 2023</span>
+                                    <div class="flex gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-left" class="lucide lucide-chevron-left w-4 h-4 cursor-pointer"><path d="m15 18-6-6 6-6"></path></svg>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-right" class="lucide lucide-chevron-right w-4 h-4 cursor-pointer"><path d="m9 18 6-6-6-6"></path></svg>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-7 gap-2 text-center text-xs text-neutral-400 mb-2">
+                                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                </div>
+                                <div class="grid grid-cols-7 gap-2 text-center text-xs font-medium">
+                                    <span class="text-neutral-300">29</span><span class="text-neutral-300">30</span><span>1</span><span>2</span><span class="bg-indigo-400 text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto shadow-lg shadow-indigo-400/40">3</span><span>4</span><span>5</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Times -->
+                            <div class="flex-1 grid grid-cols-2 gap-2 content-start">
+                                <button class="py-2 px-3 rounded-lg text-xs border border-neutral-200 dark:border-neutral-700 hover:bg-indigo-50 dark:hover:bg-white/5">10:00 AM</button>
+                                <button class="py-2 px-3 rounded-lg text-xs bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-md">11:30 AM</button>
+                                <button class="py-2 px-3 rounded-lg text-xs border border-neutral-200 dark:border-neutral-700 hover:bg-indigo-50 dark:hover:bg-white/5">2:00 PM</button>
+                                <button class="py-2 px-3 rounded-lg text-xs border border-neutral-200 dark:border-neutral-700 hover:bg-indigo-50 dark:hover:bg-white/5">4:15 PM</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action -->
+                    <button class="w-full py-4 bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 rounded-xl font-medium text-sm hover:opacity-90 transition-opacity shadow-lg">
+                        Confirm Booking
+                    </button>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="dark:bg-dark-900 overflow-hidden bg-white pt-24 pb-24" id="reviews">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex reveal-on-scroll mb-12 items-end justify-between">
+                <h2 class="text-3xl font-serif">Client Stories</h2>
+                <div class="flex gap-2">
+                    <button class="p-2 rounded-full border border-neutral-200 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-left" class="lucide lucide-arrow-left w-5 h-5"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+                    </button>
+                    <button class="p-2 rounded-full border border-neutral-200 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" class="lucide lucide-arrow-right w-5 h-5"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-6 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-8 reveal-on-scroll delay-100">
+                <!-- Review 1 -->
+                <div class="min-w-[300px] md:min-w-[400px] dark:bg-dark-800 snap-center bg-neutral-50 rounded-2xl pt-8 pr-8 pb-8 pl-8">
+                    <div class="flex gap-1 text-indigo-400 mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                    </div>
+                    <p class="text-lg font-serif italic mb-6 text-neutral-700 dark:text-neutral-300">"Absolutely transformed my look for my wedding. The attention to detail was impeccable."</p>
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-neutral-200 rounded-full overflow-hidden">
+                            <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="User" class="w-full h-full object-cover">
+                        </div>
+                        <div class="">
+                            <p class="text-sm font-medium">Sarah Jenkins</p>
+                            <p class="text-xs text-neutral-400">Bridal Package</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Review 2 -->
+                <div class="min-w-[300px] md:min-w-[400px] bg-neutral-50 dark:bg-dark-800 p-8 rounded-2xl snap-center">
+                    <div class="flex gap-1 text-indigo-400 mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                    </div>
+                    <p class="text-lg font-serif italic mb-6 text-neutral-700 dark:text-neutral-300">"The atmosphere is so calming and high-end. Best facial I've had in the city."</p>
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-neutral-200 rounded-full overflow-hidden">
+                            <img src="https://randomuser.me/api/portraits/women/65.jpg" alt="User" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium">Elena Rodriguez</p>
+                            <p class="text-xs text-neutral-400">Skincare</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Review 3 -->
+                <div class="min-w-[300px] md:min-w-[400px] bg-neutral-50 dark:bg-dark-800 p-8 rounded-2xl snap-center">
+                    <div class="flex gap-1 text-indigo-400 mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="star" class="lucide lucide-star w-4 h-4 fill-current"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+                    </div>
+                    <p class="text-lg font-serif italic mb-6 text-neutral-700 dark:text-neutral-300">"My hair has never looked healthier. The balayage technique used is pure magic."</p>
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-neutral-200 rounded-full overflow-hidden">
+                            <img src="https://randomuser.me/api/portraits/women/22.jpg" alt="User" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium">Priya Patel</p>
+                            <p class="text-xs text-neutral-400">Hair Styling</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer & Contact -->
+    <footer class="text-neutral-300 bg-neutral-900 border-neutral-800 border-t pt-20 pr-6 pb-20 pl-6" id="contact">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+            <!-- Brand -->
+            <div class="space-y-6">
+                <div class="flex items-center gap-2 text-indigo-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2L9 9l-7 3l7 3l3 7l3-7l7-3l-7-3z"></path></svg>
+                    <span class="text-xl text-white tracking-tight font-serif">Lumina AI</span>
+                </div>
+                <p class="leading-relaxed text-xs font-light text-neutral-500 max-w-xs">AI-Powered Photobooths for Dubai’s Most Exclusive Celebrations. Located in the heart of Dubai.</p>
+                <div class="flex gap-4">
+                    <a href="#" class="hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="instagram" class="lucide lucide-instagram w-5 h-5"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line></svg></a>
+                    <a href="#" class="hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="facebook" class="lucide lucide-facebook w-5 h-5"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg></a>
+                    <a href="#" class="hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="twitter" class="lucide lucide-twitter w-5 h-5"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path></svg></a>
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div>
+                <h4 class="text-white font-medium mb-6 text-sm">Explore</h4>
+                <ul class="space-y-3 text-xs font-light">
+                    <li><a href="#" class="hover:text-indigo-400 transition-colors">About Us</a></li>
+                    <li><a href="#services" class="hover:text-indigo-400 transition-colors">Services Menu</a></li>
+                    
+                    
+                </ul>
+            </div>
+
+            <!-- Contact -->
+            <div class="">
+                <h4 class="text-white font-medium mb-6 text-sm">Contact</h4>
+                <ul class="space-y-3 text-xs font-light">
+                    <li class="flex gap-2 items-start">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="map-pin" class="lucide lucide-map-pin w-4 h-4 shrink-0 mt-0.5"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <span class="">123 Fifth Avenue, New York, NY 10010</span>
+                    </li>
+                    <li class="flex gap-2 items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="phone" class="lucide lucide-phone w-4 h-4 shrink-0"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"></path></svg>
+                        <span>+1 (212) 555-0199</span>
+                    </li>
+                    
+                </ul>
+            </div>
+
+            <!-- FAQ / Newsletter -->
+            <div>
+                <h4 class="text-white font-medium mb-6 text-sm">FAQ</h4>
+                <div class="space-y-3 text-xs font-light">
+                    <details class="group cursor-pointer">
+                        <summary class="list-none flex justify-between items-center border-b border-neutral-800 pb-2 group-hover:text-white transition-colors">
+                            <span>Do you accept walk-ins?</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" class="lucide lucide-chevron-down w-3 h-3 group-open:rotate-180 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+                        </summary>
+                        <p class="pt-2 text-neutral-500">We recommend booking in advance, but walk-ins are welcome based on availability.</p>
+                    </details>
+                    <details class="group cursor-pointer">
+                        <summary class="list-none flex justify-between items-center border-b border-neutral-800 pb-2 group-hover:text-white transition-colors">
+                            <span>What is the cancellation policy?</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" class="lucide lucide-chevron-down w-3 h-3 group-open:rotate-180 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+                        </summary>
+                        <p class="pt-2 text-neutral-500">Cancellations must be made 24 hours prior to avoid a 50% service fee.</p>
+                    </details>
+                </div>
+            </div>
+        </div>
+        
+        <div class="max-w-7xl mx-auto px-6 mt-16 pt-8 border-t border-neutral-800 flex flex-col md:flex-row justify-between items-center text-xs text-neutral-600">
+            <p class="">©2025 Lumina AI. All rights reserved.</p>
+            <div class="flex gap-6 mt-4 md:mt-0">
+                <a href="#" class="hover:text-white">Privacy</a>
+                <a href="#" class="hover:text-white">Terms</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons({
+            attrs: {
+                'stroke-width': 1.5
+            }
+        });
+
+        // Animation Observer
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.reveal-on-scroll').forEach((el) => {
+            observer.observe(el);
+        });
+
+        // Navbar Scroll Effect (Handle transition from Dark Hero to White content)
+        const navbar = document.getElementById('navbar');
+        const navBg = document.getElementById('nav-bg');
+        const logoText = document.getElementById('logo-text');
+        const navLinks = document.getElementById('nav-links');
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navBg.classList.remove('bg-white/0', 'dark:bg-dark-900/0');
+                navBg.classList.add('bg-white/90', 'dark:bg-dark-900/90', 'backdrop-blur-md', 'border-b', 'border-neutral-100', 'dark:border-neutral-800');
+                
+                // Change text color on scroll if mostly white bg
+                if (!document.documentElement.classList.contains('dark')) {
+                     logoText.classList.remove('text-white');
+                     logoText.classList.add('text-neutral-900');
+                     
+                     Array.from(navLinks.children).forEach(link => {
+                         link.classList.remove('text-white/80', 'hover:text-white');
+                         link.classList.add('text-neutral-500', 'hover:text-neutral-900');
+                     });
+                }
+            } else {
+                navBg.classList.add('bg-white/0', 'dark:bg-dark-900/0');
+                navBg.classList.remove('bg-white/90', 'dark:bg-dark-900/90', 'backdrop-blur-md', 'border-b', 'border-neutral-100', 'dark:border-neutral-800');
+                
+                // Revert text color
+                if (!document.documentElement.classList.contains('dark')) {
+                     logoText.classList.add('text-white');
+                     logoText.classList.remove('text-neutral-900');
+                     
+                     Array.from(navLinks.children).forEach(link => {
+                         link.classList.add('text-white/80', 'hover:text-white');
+                         link.classList.remove('text-neutral-500', 'hover:text-neutral-900');
+                     });
+                }
+            }
+        });
+
+        // Before & After Slider Logic
+        const slider = document.getElementById('comparisonSlider');
+        const overlay = document.getElementById('comparisonOverlay');
+        const handle = document.getElementById('comparisonHandle');
+        const beforeImg = document.getElementById('comparisonImageBefore');
+        let isDown = false;
+
+        function updateSlider(x) {
+            if (!slider) return;
+            const rect = slider.getBoundingClientRect();
+            let position = ((x - rect.left) / rect.width) * 100;
+            
+            if (position < 0) position = 0;
+            if (position > 100) position = 100;
+
+            overlay.style.width = `${position}%`;
+            handle.style.left = `${position}%`;
+        }
+
+        if (slider) {
+            slider.addEventListener('mousedown', () => isDown = true);
+            window.addEventListener('mouseup', () => isDown = false);
+            slider.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                updateSlider(e.clientX);
+            });
+
+            // Touch support
+            slider.addEventListener('touchstart', () => isDown = true);
+            window.addEventListener('touchend', () => isDown = false);
+            slider.addEventListener('touchmove', (e) => {
+                if (!isDown) return;
+                updateSlider(e.touches[0].clientX);
+            });
+            
+            // Make Before Image same width as container on resize
+            const resizeImg = () => {
+                const width = slider.getBoundingClientRect().width;
+                if(beforeImg) beforeImg.style.width = width + 'px';
+            };
+            window.addEventListener('resize', resizeImg);
+            setTimeout(resizeImg, 100);
+        }
+
+    </script>
+
+</body></html>

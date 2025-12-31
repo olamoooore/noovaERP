@@ -45,6 +45,8 @@ interface Page {
     css: string
     components?: any
     styles?: any
+    header_js?: string
+    body_js?: string
   }
 }
 
@@ -68,12 +70,18 @@ export function WebsiteEditor() {
   const [isSaving, setIsSaving] = useState(false)
   const [activeDevice, setActiveDevice] = useState<string>('Desktop')
   
+  // Content states
+  const [headerJs, setHeaderJs] = useState('')
+  const [bodyJs, setBodyJs] = useState('')
+  
   // Dialog states
   const [showCodeEditor, setShowCodeEditor] = useState(false)
   const [showAddPage, setShowAddPage] = useState(false)
   const [codeHtml, setCodeHtml] = useState('')
   const [codeCss, setCodeCss] = useState('')
-  const [codeView, setCodeView] = useState<'html' | 'css' | 'split'>('split')
+  const [codeHeaderJs, setCodeHeaderJs] = useState('')
+  const [codeBodyJs, setCodeBodyJs] = useState('')
+  const [codeView, setCodeView] = useState<'html' | 'css' | 'js' | 'split'>('split')
   const [newPageTitle, setNewPageTitle] = useState('')
   const [newPageSlug, setNewPageSlug] = useState('')
 
@@ -96,6 +104,14 @@ export function WebsiteEditor() {
     },
     enabled: !!selectedPageId,
   })
+
+  // Sync JS content
+  useEffect(() => {
+    if (pageData?.content) {
+      setHeaderJs(pageData.content.header_js || '')
+      setBodyJs(pageData.content.body_js || '')
+    }
+  }, [pageData])
 
   // Auto-select first page
   useEffect(() => {
@@ -131,11 +147,6 @@ export function WebsiteEditor() {
     editorInstance.runCommand(command)
   }
 
-  const stopCommand = (command: string) => {
-    if (!editorInstance) return
-    editorInstance.stopCommand(command)
-  }
-
   const toggleCommand = (command: string) => {
     if (!editorInstance) return
     if (editorInstance.Commands.isActive(command)) {
@@ -147,7 +158,7 @@ export function WebsiteEditor() {
 
   // Save mutation
   const saveMutation = useMutation({
-    mutationFn: async (data: { html: string; css: string; components: any; styles: any }) => {
+    mutationFn: async (data: { html: string; css: string; components: any; styles: any; header_js?: string; body_js?: string }) => {
       if (!selectedPageId) {
         throw new Error('No page selected')
       }
@@ -261,6 +272,8 @@ export function WebsiteEditor() {
     
     setCodeHtml(formatHtml(rawHtml))
     setCodeCss(formatCss(rawCss))
+    setCodeHeaderJs(headerJs)
+    setCodeBodyJs(bodyJs)
     setShowCodeEditor(true)
   }
 
@@ -269,15 +282,21 @@ export function WebsiteEditor() {
     if (!editorInstance) return
     editorInstance.setComponents(codeHtml)
     editorInstance.setStyle(codeCss)
+    setHeaderJs(codeHeaderJs)
+    setBodyJs(codeBodyJs)
     setShowCodeEditor(false)
     setIsDirty(true)
     toast({ title: 'Applied', description: 'Code changes applied to canvas.' })
   }
 
   // Handle save
-  const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any }) => {
-    saveMutation.mutate(data)
-  }, [saveMutation])
+  const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any; header_js?: string; body_js?: string }) => {
+    saveMutation.mutate({
+      ...data,
+      header_js: data.header_js ?? headerJs,
+      body_js: data.body_js ?? bodyJs,
+    })
+  }, [saveMutation, headerJs, bodyJs])
 
   // Manual save trigger
   const triggerSave = useCallback(() => {
@@ -319,8 +338,12 @@ export function WebsiteEditor() {
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
           <style>${css}</style>
+          <script>${headerJs}</script>
         </head>
-        <body>${html}</body>
+        <body>
+          ${html}
+          <script>${bodyJs}</script>
+        </body>
       </html>
     `
     
@@ -347,9 +370,15 @@ export function WebsiteEditor() {
   <style>
 ${css}
   </style>
+  <script>
+${headerJs}
+  </script>
 </head>
 <body>
 ${html}
+<script>
+${bodyJs}
+</script>
 </body>
 </html>`
     
@@ -481,17 +510,6 @@ ${html}
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
-              onClick={handlePreview}
-              title="Preview in new tab"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/>
-              </svg>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
               onClick={() => toggleCommand('fullscreen')}
               title="Fullscreen"
             >
@@ -530,6 +548,17 @@ ${html}
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M10.5 18H18V20H10.5C6.91 20 4 17.09 4 13.5S6.91 7 10.5 7H16.17L13.08 3.91L14.5 2.5L20 8L14.5 13.5L13.09 12.09L16.17 9H10.5C8 9 6 11 6 13.5S8 18 10.5 18Z"/>
+              </svg>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-600"
+              onClick={() => runCommand('upload-file')}
+              title="Upload HTML/CSS/JS"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
             </Button>
             <Button
@@ -670,6 +699,17 @@ ${html}
                   CSS
                 </button>
                 <button
+                  onClick={() => setCodeView('js')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    codeView === 'js' 
+                      ? 'bg-teal-600 text-white' 
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  <Icon icon="solar:code-circle-bold" className="h-4 w-4 inline mr-1.5" />
+                  JS
+                </button>
+                <button
                   onClick={() => setCodeView('split')}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     codeView === 'split' 
@@ -726,6 +766,67 @@ ${html}
                       theme="vs-dark"
                       value={codeCss}
                       onChange={(value) => setCodeCss(value || '')}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'off',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        insertSpaces: true,
+                        folding: true,
+                        lineDecorationsWidth: 10,
+                        renderLineHighlight: 'line',
+                        scrollbar: {
+                          verticalScrollbarSize: 10,
+                          horizontalScrollbarSize: 10,
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : codeView === 'js' ? (
+                <div className="grid grid-cols-2 h-full divide-x divide-zinc-700">
+                  <div className="flex flex-col">
+                    <div className="px-3 py-2 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-400 font-medium">
+                      Header JS (in &lt;head&gt;)
+                    </div>
+                    <MonacoEditor
+                      height="100%"
+                      language="javascript"
+                      theme="vs-dark"
+                      value={codeHeaderJs}
+                      onChange={(value) => setCodeHeaderJs(value || '')}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'off',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        insertSpaces: true,
+                        folding: true,
+                        lineDecorationsWidth: 10,
+                        renderLineHighlight: 'line',
+                        scrollbar: {
+                          verticalScrollbarSize: 10,
+                          horizontalScrollbarSize: 10,
+                        },
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="px-3 py-2 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-400 font-medium">
+                      Body JS (end of &lt;body&gt;)
+                    </div>
+                    <MonacoEditor
+                      height="100%"
+                      language="javascript"
+                      theme="vs-dark"
+                      value={codeBodyJs}
+                      onChange={(value) => setCodeBodyJs(value || '')}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,
