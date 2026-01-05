@@ -21,6 +21,22 @@ import { POSTerminal, POSOrdersPage, POSBarcodePage, POSReportsPage } from '@/pa
 import { SettingsPage } from '@/pages/SettingsPage'
 import { WebsitesIndex } from '@/pages/WebsiteBuilder/WebsitesIndex'
 import { WebsiteEditor } from '@/pages/WebsiteBuilder/WebsiteEditor'
+import { PageManagement } from '@/pages/WebsiteBuilder/PageManagement'
+import { PublicSiteViewer } from '@/pages/PublicSite/PublicSiteViewer'
+import {
+  InventoryDashboard,
+  SuppliersPage,
+  StockMovementsPage,
+  StockInPage,
+  StockOutPage,
+  StockAdjustPage,
+  StockManagementPage,
+  PurchaseOrdersPage,
+  PurchaseOrderCreatePage,
+  WarehouseTransfersPage,
+  WarehouseTransferCreatePage,
+  WarehousesPage,
+} from '@/pages/Inventory'
 import { useSettingsStore } from '@/store/settingsStore'
 
 const queryClient = new QueryClient({
@@ -43,6 +59,10 @@ function App() {
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           
+          {/* Public site viewer - no auth required */}
+          <Route path="/sites/:websiteSlug" element={<PublicSiteViewer />} />
+          <Route path="/sites/:websiteSlug/:pageSlug" element={<PublicSiteViewer />} />
+          
           <Route element={<ProtectedRoute />}>
             {/* Main Layout Routes - with sidebar */}
             <Route element={<MainLayout />}>
@@ -63,11 +83,26 @@ function App() {
               <Route path="/pos/reports" element={<POSReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/website-builder" element={<WebsitesIndex />} />
+              
+              {/* Inventory Module Routes */}
+              <Route path="/inventory" element={<InventoryDashboard />} />
+              <Route path="/inventory/suppliers" element={<SuppliersPage />} />
+              <Route path="/inventory/warehouses" element={<WarehousesPage />} />
+              <Route path="/inventory/stock" element={<StockManagementPage />} />
+              <Route path="/inventory/movements" element={<StockMovementsPage />} />
+              <Route path="/inventory/stock/in" element={<StockInPage />} />
+              <Route path="/inventory/stock/out" element={<StockOutPage />} />
+              <Route path="/inventory/stock/adjust" element={<StockAdjustPage />} />
+              <Route path="/inventory/purchase-orders" element={<PurchaseOrdersPage />} />
+              <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
+              <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />
+              <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
             </Route>
 
             {/* Website Editor - fullscreen without sidebar */}
             <Route element={<ProtectedRoute />}>
               <Route path="/website-builder/:id" element={<WebsiteEditor />} />
+              <Route path="/website-builder/:id/pages" element={<PageManagement />} />
             </Route>
 
             {/* POS Layout Routes - fullscreen without sidebar */}

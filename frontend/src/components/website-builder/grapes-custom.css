@@ -553,3 +553,247 @@
   padding: 0 !important;
   margin: 0 !important;
 }
+
+/* ===== Gradient Picker Styling ===== */
+/* Scope all gradient styles to the gradient property container only */
+
+/* The gradient property container - contain everything inside */
+.gjs-sm-property__gradient {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+/* Main gradient wrapper - MUST be contained */
+.gjs-sm-property__gradient .grp-wrapper {
+  position: relative !important;
+  padding: 12px !important;
+  background: var(--gjs-bg-elevated) !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  overflow: hidden !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Gradient preview bar */
+.gjs-sm-property__gradient .grp-preview {
+  border-radius: 6px !important;
+  margin-bottom: 12px !important;
+  height: 28px !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Gradient handler bar (the slider with color stops) */
+.gjs-sm-property__gradient .grp-handler-wrap {
+  margin: 12px 0 !important;
+  position: relative !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Color stops container */
+.gjs-sm-property__gradient .grp-handler-cp-wrap {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-top: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Each color picker in gradient */
+.gjs-sm-property__gradient .grp-handler-cp-wrap > div {
+  position: relative !important;
+  flex: 1 1 calc(50% - 4px) !important;
+  min-width: 80px !important;
+  max-width: calc(50% - 4px) !important;
+  box-sizing: border-box !important;
+}
+
+/* Color picker boxes */
+.gjs-sm-property__gradient .gjs-field-color-picker {
+  width: 100% !important;
+  height: 32px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  box-sizing: border-box !important;
+}
+
+/* Remove button (x) for color stops - position inside the color box */
+.gjs-sm-property__gradient .grp-handler-close {
+  position: absolute !important;
+  top: -6px !important;
+  right: -6px !important;
+  width: 16px !important;
+  height: 16px !important;
+  background: #ef4444 !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 9px !important;
+  cursor: pointer !important;
+  z-index: 5 !important;
+  color: white !important;
+  line-height: 1 !important;
+}
+
+/* Gradient type selector (linear/radial) */
+.gjs-sm-property__gradient .grp-select {
+  width: 100% !important;
+  background-color: var(--gjs-bg-base) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  border-radius: 4px !important;
+  color: var(--gjs-text-primary) !important;
+  padding: 6px 8px !important;
+  font-size: 11px !important;
+  margin-bottom: 8px !important;
+  box-sizing: border-box !important;
+}
+
+/* Gradient direction/angle input */
+.gjs-sm-property__gradient .grp-input-unit {
+  width: 100% !important;
+  background-color: var(--gjs-bg-base) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  border-radius: 4px !important;
+  color: var(--gjs-text-primary) !important;
+  padding: 6px 8px !important;
+  font-size: 11px !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
+/* Add color stop button */
+.gjs-sm-property__gradient .grp-handler-add {
+  margin-top: 8px !important;
+  padding: 6px 12px !important;
+  background: var(--gjs-accent-primary) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 10px !important;
+  cursor: pointer !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Stack properties (box-shadow, etc) - normal layout */
+.gjs-sm-stack .gjs-sm-properties {
+  padding: 8px !important;
+}
+
+.gjs-sm-stack .gjs-sm-property {
+  margin-bottom: 8px !important;
+}
+
+/* Stack layers */
+.gjs-sm-layer {
+  margin-bottom: 8px !important;
+  padding: 10px !important;
+  border-radius: 6px !important;
+  background: var(--gjs-bg-elevated) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+}
+
+.gjs-sm-stack .gjs-sm-stack-add {
+  margin-top: 8px !important;
+  background: var(--gjs-accent-primary) !important;
+  color: white !important;
+  border-radius: 4px !important;
+}
+
+
+/* ===== Background Image Upload Button ===== */
+.bg-image-upload-container {
+  padding: 0 !important;
+}
+
+.bg-image-upload-container .bg-upload-btn:hover {
+  background: rgba(42,157,143,0.3) !important;
+  border-color: #2a9d8f !important;
+  color: #3db8a9 !important;
+}
+
+.bg-image-upload-container .bg-remove-btn:hover {
+  background: rgba(239,68,68,0.2) !important;
+  border-color: rgba(239,68,68,0.5) !important;
+}
+
+
+/* ===== Fallback: Target gradient by property name ===== */
+/* Contain the Custom Gradient property */
+.gjs-sm-property[data-property="background"] {
+  position: relative !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-wrapper {
+  position: relative !important;
+  padding: 10px !important;
+  background: var(--gjs-bg-elevated) !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  overflow: hidden !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 4px !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-wrapper * {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-preview {
+  height: 24px !important;
+  border-radius: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-handler-cp-wrap {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-handler-cp-wrap > div {
+  flex: 1 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  position: relative !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-handler-close {
+  position: absolute !important;
+  top: -5px !important;
+  right: -5px !important;
+  width: 14px !important;
+  height: 14px !important;
+  font-size: 8px !important;
+  background: #ef4444 !important;
+  color: white !important;
+  border-radius: 50% !important;
+  z-index: 10 !important;
+}
+
+.gjs-sm-property[data-property="background"] .grp-select,
+.gjs-sm-property[data-property="background"] .grp-input-unit {
+  width: 100% !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  margin-bottom: 6px !important;
+  background: var(--gjs-bg-base) !important;
+  border: 1px solid var(--gjs-bg-hover) !important;
+  border-radius: 4px !important;
+  color: var(--gjs-text-primary) !important;
+}
+
+
+/* Fix gradient handler positions on the gradient bar */
+.gjs-sm-property[data-property="background"] .grp-handler:last-child {
+  left: 60% !important;
+}

@@ -14,8 +14,18 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        // Only eager load relationships that exist
         $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax'])
             ->orderBy('name');
+        
+        // Try to load brand relationship if the table exists
+        try {
+            if (\Schema::hasTable('brands')) {
+                $query->with('brand');
+            }
+        } catch (\Exception $e) {
+            // Ignore if brands table doesn't exist
+        }
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -29,6 +39,10 @@ class ProductController extends Controller
 
         if ($request->filled('category_id')) {
             $query->where('category_id', (int) $request->input('category_id'));
+        }
+
+        if ($request->filled('brand_id')) {
+            $query->where('brand_id', (int) $request->input('brand_id'));
         }
 
         if ($request->filled('type')) {
@@ -52,8 +66,15 @@ class ProductController extends Controller
         if ($request->filled('is_preorder')) {
             $query->where('is_preorder', true);
         }
+        if ($request->filled('show_on_website')) {
+            $query->where('show_on_website', true);
+        }
         if ($request->filled('out_of_stock')) {
             $query->where('stock_quantity', '<=', 0);
+        }
+        if ($request->filled('low_stock')) {
+            $query->whereColumn('stock_quantity', '<=', 'min_stock_threshold')
+                  ->where('stock_quantity', '>', 0);
         }
 
         $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at'];
@@ -85,6 +106,7 @@ class ProductController extends Controller
             'barcode' => 'nullable|string|unique:products,barcode',
             'description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
+            'brand_id' => 'nullable|exists:brands,id',
             'type' => 'required|in:product,service',
             'cost' => 'required|numeric|min:0',
             'price' => 'required|numeric|min:0',
@@ -117,6 +139,7 @@ class ProductController extends Controller
             'custom_field_values.*.value' => 'nullable|string',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
+            'show_on_website' => 'boolean',
             'variants' => 'nullable|array',
             'variants.*.name' => 'required|string',
             'variants.*.sku' => 'required|string',
@@ -172,9 +195,11 @@ class ProductController extends Controller
             'incomeAccount',
             'expenseAccount',
             'category',
+            'brand',
             'tax',
             'variants',
-            'stockMovements',
+            'stockMovements' => fn($q) => $q->latest()->limit(20),
+            'stockLevels.warehouse',
             'featureValues',
             'customFieldValues',
         ]));
@@ -189,6 +214,7 @@ class ProductController extends Controller
             'barcode' => 'nullable|string|unique:products,barcode,' . $product->id,
             'description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
+            'brand_id' => 'nullable|exists:brands,id',
             'type' => 'in:product,service',
             'cost' => 'numeric|min:0',
             'price' => 'numeric|min:0',
@@ -220,6 +246,7 @@ class ProductController extends Controller
             'custom_field_values.*.value' => 'nullable|string',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
+            'show_on_website' => 'boolean',
         ]);
 
         $featureValues = $validated['feature_values'] ?? null;

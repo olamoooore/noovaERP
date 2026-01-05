@@ -75,7 +75,8 @@ export function ProductsPage() {
       if (categoryId !== 'all') params.category_id = parseInt(categoryId)
 
       const response = await api.get('/products', { params })
-      return response.data.data
+      // Handle both paginated and non-paginated responses
+      return response.data?.data || response.data || []
     },
   })
 

@@ -114,6 +114,7 @@ export function ProductEditPage() {
     track_inventory: true,
     is_preorder: false,
     is_new_arrival: false,
+    show_on_website: false,
     preorder_available_at: '',
     stock_quantity: '',
     description: '',
@@ -248,6 +249,7 @@ export function ProductEditPage() {
       track_inventory: !!product.track_inventory,
       is_preorder: !!product.is_preorder,
       is_new_arrival: !!product.is_new_arrival,
+      show_on_website: !!product.show_on_website,
       preorder_available_at: product.preorder_available_at ? String(product.preorder_available_at).slice(0, 10) : '',
       stock_quantity: product.stock_quantity != null ? String(product.stock_quantity) : '',
       description: product.description || '',
@@ -442,6 +444,7 @@ export function ProductEditPage() {
       track_inventory: !!formData.track_inventory,
       is_preorder: !!formData.is_preorder,
       is_new_arrival: !!formData.is_new_arrival,
+      show_on_website: !!formData.show_on_website,
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
       stock_quantity: formData.track_inventory ? parseInt(formData.stock_quantity) : null,
       description: formData.description || null,
@@ -809,6 +812,26 @@ export function ProductEditPage() {
                   >
                     Mark as New Arrival
                   </Label>
+                </div>
+
+                <div className="flex items-center gap-2 h-fit">
+                  <Checkbox
+                    checked={formData.show_on_website}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, show_on_website: checked === true })
+                    }
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      className="cursor-pointer"
+                      onClick={() => setFormData({ ...formData, show_on_website: !formData.show_on_website })}
+                    >
+                      Show on Website
+                    </Label>
+                    <div className="text-xs text-muted-foreground">
+                      Display this product on your e-commerce website.
+                    </div>
+                  </div>
                 </div>
 
                 {formData.track_inventory && (

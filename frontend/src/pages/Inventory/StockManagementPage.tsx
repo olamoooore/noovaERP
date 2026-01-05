@@ -1,0 +1,957 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Icon } from '@iconify/react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { formatCurrency } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
+import api from '@/lib/api'
+
+interface Product {
+  id: number
+  name: string
+  sku: string
+  stock_quantity: number
+  cost: number
+  price: number
+  image: string | null
+  is_active: boolean
+  min_stock_threshold: number | null
+  category?: { name: string }
+}
+
+interface Warehouse {
+  id: number
+  name: string
+  code: string
+}
+
+interface StockMovement {
+  id: number
+  product: Product
+  warehouse?: Warehouse
+  type: string
+  quantity: number
+  old_quantity: number
+  balance_after: number
+  reference: string | null
+  notes: string | null
+  created_by: { name: string } | null
+  created_at: string
+}
+
+interface AdjustmentReason {
+  id: number
+  name: string
+  code: string
+  type: string
+}
+
+type OperationType = 'in' | 'out' | 'adjust'
+type ActiveTab = 'products' | 'movements' | 'low-stock' | 'out-of-stock'
+
+export function StockManagementPage() {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ActiveTab>('products')
+  
+  // Dialog state
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [operationType, setOperationType] = useState<OperationType>('in')
+  
+  // Form state
+  const [productId, setProductId] = useState('')
+  const [warehouseId, setWarehouseId] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [newQuantity, setNewQuantity] = useState('')
+  const [reasonId, setReasonId] = useState('')
+  const [reference, setReference] = useState('')
+  const [notes, setNotes] = useState('')
+  
+  // Filter state
+  const [searchProducts, setSearchProducts] = useState('')
+  const [searchMovements, setSearchMovements] = useState('')
+  const [filterType, setFilterType] = useState('all')
+  const [filterWarehouse, setFilterWarehouse] = useState('all')
+
+  // Queries
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['products-stock', searchProducts],
+    queryFn: async () => {
+      const params: Record<string, any> = { per_page: 200 }
+      if (searchProducts) params.search = searchProducts
+      const res = await api.get('/products', { params })
+      // Handle both paginated and non-paginated responses
+      const data = res.data?.data || res.data || []
+      return Array.isArray(data) ? data : []
+    },
+  })
+
+  const { data: warehouses } = useQuery<Warehouse[]>({
+    queryKey: ['warehouses'],
+    queryFn: async () => {
+      const res = await api.get('/warehouses')
+      return res.data
+    },
+  })
+
+  const { data: reasons } = useQuery<AdjustmentReason[]>({
+    queryKey: ['adjustment-reasons'],
+    queryFn: async () => {
+      const res = await api.get('/stock/adjustment-reasons')
+      return res.data
+    },
+  })
+
+  const { data: movementsData, isLoading: movementsLoading } = useQuery({
+    queryKey: ['stock-movements', searchMovements, filterType, filterWarehouse],
+    queryFn: async () => {
+      const params: Record<string, any> = { per_page: 50 }
+      if (searchMovements) params.search = searchMovements
+      if (filterType !== 'all') params.type = filterType
+      if (filterWarehouse !== 'all') params.warehouse_id = filterWarehouse
+      const res = await api.get('/stock/movements', { params })
+      return res.data
+    },
+  })
+
+  const { data: lowStockData } = useQuery({
+    queryKey: ['low-stock'],
+    queryFn: async () => {
+      const res = await api.get('/stock/low-stock', { params: { limit: 50 } })
+      return res.data
+    },
+  })
+
+  const { data: outOfStockData } = useQuery({
+    queryKey: ['out-of-stock'],
+    queryFn: async () => {
+      const res = await api.get('/stock/out-of-stock', { params: { limit: 50 } })
+      return res.data
+    },
+  })
+
+  // Mutations
+  const stockInMutation = useMutation({
+    mutationFn: () => api.post('/stock/in', {
+      product_id: parseInt(productId),
+      warehouse_id: parseInt(warehouseId),
+      quantity: parseInt(quantity),
+      reference: reference || null,
+      notes: notes || null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
+      toast({ title: 'Stock added successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to add stock', variant: 'destructive' })
+    },
+  })
+
+  const stockOutMutation = useMutation({
+    mutationFn: () => api.post('/stock/out', {
+      product_id: parseInt(productId),
+      warehouse_id: parseInt(warehouseId),
+      quantity: parseInt(quantity),
+      reference: reference || null,
+      notes: notes || null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
+      toast({ title: 'Stock removed successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to remove stock', variant: 'destructive' })
+    },
+  })
+
+  const adjustMutation = useMutation({
+    mutationFn: () => api.post('/stock/adjust', {
+      product_id: parseInt(productId),
+      warehouse_id: parseInt(warehouseId),
+      new_quantity: parseInt(newQuantity),
+      reason_id: parseInt(reasonId),
+      notes: notes || null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
+      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
+      toast({ title: 'Stock adjusted successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to adjust stock', variant: 'destructive' })
+    },
+  })
+
+  const closeDialog = () => {
+    setIsDialogOpen(false)
+    setProductId('')
+    setWarehouseId('')
+    setQuantity('')
+    setNewQuantity('')
+    setReasonId('')
+    setReference('')
+    setNotes('')
+  }
+
+  const openDialog = (type: OperationType, preselectedProductId?: number) => {
+    setOperationType(type)
+    if (preselectedProductId) {
+      setProductId(String(preselectedProductId))
+    }
+    setIsDialogOpen(true)
+  }
+
+  const handleSubmit = () => {
+    if (!productId || !warehouseId) {
+      toast({ title: 'Please select product and warehouse', variant: 'destructive' })
+      return
+    }
+
+    if (operationType === 'adjust') {
+      if (newQuantity === '' || !reasonId) {
+        toast({ title: 'Please fill all required fields', variant: 'destructive' })
+        return
+      }
+      adjustMutation.mutate()
+    } else {
+      if (!quantity || parseInt(quantity) <= 0) {
+        toast({ title: 'Please enter a valid quantity', variant: 'destructive' })
+        return
+      }
+      if (operationType === 'in') {
+        stockInMutation.mutate()
+      } else {
+        stockOutMutation.mutate()
+      }
+    }
+  }
+
+  const products: Product[] = productsData || []
+  const selectedProduct = products.find(p => p.id === parseInt(productId))
+  const movements = movementsData?.data || []
+  const isSubmitting = stockInMutation.isPending || stockOutMutation.isPending || adjustMutation.isPending
+
+  const getTypeConfig = (type: string) => {
+    const configs: Record<string, { color: string; icon: string; label: string }> = {
+      in: { color: 'bg-primary/10 text-primary border-primary/20', icon: 'solar:arrow-down-bold', label: 'Stock In' },
+      out: { color: 'bg-rose-500/10 text-rose-600 border-rose-500/20', icon: 'solar:arrow-up-bold', label: 'Stock Out' },
+      purchase: { color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', icon: 'solar:cart-large-2-bold', label: 'Purchase' },
+      sale: { color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', icon: 'solar:bag-bold', label: 'Sale' },
+      adjustment: { color: 'bg-violet-500/10 text-violet-600 border-violet-500/20', icon: 'solar:tuning-2-bold', label: 'Adjustment' },
+      transfer_in: { color: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20', icon: 'solar:login-2-bold', label: 'Transfer In' },
+      transfer_out: { color: 'bg-orange-500/10 text-orange-600 border-orange-500/20', icon: 'solar:logout-2-bold', label: 'Transfer Out' },
+      return: { color: 'bg-teal-500/10 text-teal-600 border-teal-500/20', icon: 'solar:undo-left-bold', label: 'Return' },
+    }
+    return configs[type] || { color: 'bg-gray-500/10 text-gray-600 border-gray-500/20', icon: 'solar:question-circle-bold', label: type }
+  }
+
+  const getStockStatus = (product: Product) => {
+    const threshold = product.min_stock_threshold || 10
+    if (product.stock_quantity <= 0) return { label: 'Out of Stock', color: 'bg-rose-100 text-rose-800' }
+    if (product.stock_quantity <= threshold) return { label: 'Low Stock', color: 'bg-amber-100 text-amber-800' }
+    return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Stock Management</h1>
+          <p className="text-muted-foreground mt-1">Manage your inventory stock levels and movements</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => openDialog('in')} className="bg-primary hover:bg-primary/90">
+            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+            Stock In
+          </Button>
+          <Button onClick={() => openDialog('out')} variant="destructive">
+            <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
+            Stock Out
+          </Button>
+          <Button onClick={() => openDialog('adjust')} variant="outline">
+            <Icon icon="solar:tuning-2-bold" className="mr-2 h-4 w-4" />
+            Adjust
+          </Button>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="relative overflow-hidden">
+          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
+            <div className="absolute h-full w-full rounded-full bg-primary/10" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Products</CardDescription>
+            <CardTitle className="text-3xl font-bold">{products.length}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Active inventory items</p>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden">
+          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
+            <div className="absolute h-full w-full rounded-full bg-blue-500/10" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription>Warehouses</CardDescription>
+            <CardTitle className="text-3xl font-bold">{warehouses?.length || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Storage locations</p>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-amber-500/50">
+          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
+            <div className="absolute h-full w-full rounded-full bg-amber-500/10" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 text-amber-500" />
+              Low Stock
+            </CardDescription>
+            <CardTitle className="text-3xl font-bold text-amber-600">{lowStockData?.length || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Items below threshold</p>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-rose-500/50">
+          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
+            <div className="absolute h-full w-full rounded-full bg-rose-500/10" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Icon icon="solar:close-circle-bold" className="h-4 w-4 text-rose-500" />
+              Out of Stock
+            </CardDescription>
+            <CardTitle className="text-3xl font-bold text-rose-600">{outOfStockData?.length || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Items need restocking</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ActiveTab)} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
+          <TabsTrigger value="products" className="gap-2">
+            <Icon icon="solar:box-bold" className="h-4 w-4" />
+            Products
+          </TabsTrigger>
+          <TabsTrigger value="movements" className="gap-2">
+            <Icon icon="solar:history-bold" className="h-4 w-4" />
+            Movements
+          </TabsTrigger>
+          <TabsTrigger value="low-stock" className="gap-2">
+            <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
+            Low Stock
+          </TabsTrigger>
+          <TabsTrigger value="out-of-stock" className="gap-2">
+            <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+            Out of Stock
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Products Tab - Shows all products with stock */}
+        <TabsContent value="products" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle>Product Stock Levels</CardTitle>
+                  <CardDescription>View and manage stock for all products</CardDescription>
+                </div>
+                <div className="relative max-w-sm">
+                  <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search products..."
+                    value={searchProducts}
+                    onChange={(e) => setSearchProducts(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[300px]">Product</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                            Loading products...
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : products.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Icon icon="solar:box-bold-duotone" className="h-10 w-10" />
+                            <p>No products found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      products.map((product) => {
+                        const status = getStockStatus(product)
+                        return (
+                          <TableRow key={product.id} className="group hover:bg-muted/50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden border">
+                                  {product.image ? (
+                                    <img src={product.image} alt="" className="h-full w-full object-cover" />
+                                  ) : (
+                                    <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{product.sku}</TableCell>
+                            <TableCell className="text-muted-foreground">{product.category?.name || '-'}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(product.cost)}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(product.price)}</TableCell>
+                            <TableCell className="text-right">
+                              <span className="font-semibold text-lg">{product.stock_quantity ?? 0}</span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={status.color}>
+                                {status.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="sm" variant="ghost" onClick={() => openDialog('in', product.id)} title="Stock In">
+                                  <Icon icon="solar:add-circle-bold" className="h-4 w-4 text-primary" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => openDialog('out', product.id)} title="Stock Out">
+                                  <Icon icon="solar:minus-circle-bold" className="h-4 w-4 text-rose-500" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => openDialog('adjust', product.id)} title="Adjust">
+                                  <Icon icon="solar:tuning-2-bold" className="h-4 w-4 text-violet-500" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Movements Tab */}
+        <TabsContent value="movements" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle>Stock Movement History</CardTitle>
+                  <CardDescription>Track all inventory changes</CardDescription>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="relative">
+                    <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search movements..."
+                      value={searchMovements}
+                      onChange={(e) => setSearchMovements(e.target.value)}
+                      className="pl-9 w-[200px]"
+                    />
+                  </div>
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="in">Stock In</SelectItem>
+                      <SelectItem value="out">Stock Out</SelectItem>
+                      <SelectItem value="adjustment">Adjustment</SelectItem>
+                      <SelectItem value="purchase">Purchase</SelectItem>
+                      <SelectItem value="sale">Sale</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Warehouses</SelectItem>
+                      {warehouses?.map((w) => (
+                        <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[200px]">Product</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Qty Change</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead>Reference</TableHead>
+                      <TableHead>By</TableHead>
+                      <TableHead>Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {movementsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-32 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                            Loading movements...
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : movements.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Icon icon="solar:history-bold-duotone" className="h-10 w-10" />
+                            <p>No stock movements found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      movements.map((movement: StockMovement) => {
+                        const config = getTypeConfig(movement.type)
+                        const isIncoming = ['in', 'purchase', 'transfer_in', 'return'].includes(movement.type)
+                        return (
+                          <TableRow key={movement.id} className="group hover:bg-muted/50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                                  {movement.product?.image ? (
+                                    <img src={movement.product.image} alt="" className="h-full w-full object-cover" />
+                                  ) : (
+                                    <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{movement.product?.name}</p>
+                                  <p className="text-xs text-muted-foreground">{movement.product?.sku}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`${config.color} border gap-1`}>
+                                <Icon icon={config.icon} className="h-3 w-3" />
+                                {config.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={`font-semibold ${isIncoming ? 'text-primary' : 'text-rose-600'}`}>
+                                {isIncoming ? '+' : '-'}{movement.quantity}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{movement.balance_after}</TableCell>
+                            <TableCell className="text-muted-foreground">{movement.reference || '-'}</TableCell>
+                            <TableCell className="text-muted-foreground">{movement.created_by?.name || '-'}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(movement.created_at).toLocaleDateString()}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Low Stock Tab */}
+        <TabsContent value="low-stock" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+                  <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <CardTitle>Low Stock Items</CardTitle>
+                  <CardDescription>Products below minimum threshold that need restocking</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!lowStockData || lowStockData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mb-4">
+                    <Icon icon="solar:check-circle-bold" className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">All Stock Levels Healthy</h3>
+                  <p className="text-muted-foreground mt-1">No products are below their minimum threshold</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {lowStockData.map((item: any) => (
+                    <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-amber-500/5 border-amber-500/20">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                          {item.image ? (
+                            <img src={item.image} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-muted-foreground">{item.sku}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Current Stock</p>
+                          <p className="text-xl font-bold text-amber-600">{item.stock_quantity}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Min Threshold</p>
+                          <p className="text-lg font-medium">{item.min_stock_threshold || 10}</p>
+                        </div>
+                        <Button size="sm" onClick={() => openDialog('in', item.id)}>
+                          <Icon icon="solar:add-circle-bold" className="mr-1 h-4 w-4" />
+                          Restock
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Out of Stock Tab */}
+        <TabsContent value="out-of-stock" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-500/10">
+                  <Icon icon="solar:close-circle-bold" className="h-5 w-5 text-rose-500" />
+                </div>
+                <div>
+                  <CardTitle>Out of Stock Items</CardTitle>
+                  <CardDescription>Products with zero inventory that need immediate attention</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!outOfStockData || outOfStockData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mb-4">
+                    <Icon icon="solar:check-circle-bold" className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">No Out of Stock Items</h3>
+                  <p className="text-muted-foreground mt-1">All products have available inventory</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {outOfStockData.map((item: any) => (
+                    <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-rose-500/5 border-rose-500/20">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                          {item.image ? (
+                            <img src={item.image} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-muted-foreground">{item.sku}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <Badge variant="destructive" className="gap-1">
+                            <Icon icon="solar:close-circle-bold" className="h-3 w-3" />
+                            Out of Stock
+                          </Badge>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Cost</p>
+                          <p className="font-medium">{formatCurrency(item.cost || 0)}</p>
+                        </div>
+                        <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => openDialog('in', item.id)}>
+                          <Icon icon="solar:add-circle-bold" className="mr-1 h-4 w-4" />
+                          Add Stock
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Stock Operation Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {operationType === 'in' && (
+                <>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                    <Icon icon="solar:add-circle-bold" className="h-4 w-4 text-primary" />
+                  </div>
+                  Stock In
+                </>
+              )}
+              {operationType === 'out' && (
+                <>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10">
+                    <Icon icon="solar:minus-circle-bold" className="h-4 w-4 text-rose-500" />
+                  </div>
+                  Stock Out
+                </>
+              )}
+              {operationType === 'adjust' && (
+                <>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
+                    <Icon icon="solar:tuning-2-bold" className="h-4 w-4 text-violet-500" />
+                  </div>
+                  Adjust Stock
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {operationType === 'in' && 'Add stock to your inventory'}
+              {operationType === 'out' && 'Remove stock from your inventory'}
+              {operationType === 'adjust' && 'Set a new stock quantity for a product'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Product Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Product</label>
+              <Select value={productId} onValueChange={setProductId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((product) => (
+                    <SelectItem key={product.id} value={String(product.id)}>
+                      <div className="flex items-center gap-2">
+                        <span>{product.name}</span>
+                        <span className="text-muted-foreground">({product.sku})</span>
+                        <Badge variant="outline" className="ml-2">{product.stock_quantity} in stock</Badge>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Warehouse Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Warehouse</label>
+              <Select value={warehouseId} onValueChange={setWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses?.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={String(warehouse.id)}>
+                      {warehouse.name} ({warehouse.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Selected Product Info */}
+            {selectedProduct && (
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-lg bg-background flex items-center justify-center overflow-hidden">
+                    {selectedProduct.image ? (
+                      <img src={selectedProduct.image} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">{selectedProduct.name}</p>
+                    <p className="text-sm text-muted-foreground">{selectedProduct.sku}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Current Stock</p>
+                    <p className="text-xl font-bold">{selectedProduct.stock_quantity}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quantity Input */}
+            {operationType !== 'adjust' ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Quantity</label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Enter quantity"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">New Quantity</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Enter new stock quantity"
+                    value={newQuantity}
+                    onChange={(e) => setNewQuantity(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Adjustment Reason</label>
+                  <Select value={reasonId} onValueChange={setReasonId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a reason" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reasons?.map((reason) => (
+                        <SelectItem key={reason.id} value={String(reason.id)}>
+                          {reason.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            {/* Reference (for Stock In/Out) */}
+            {operationType !== 'adjust' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Reference (Optional)</label>
+                <Input
+                  placeholder="e.g., PO-001, Invoice #123"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes (Optional)</label>
+              <Textarea
+                placeholder="Add any additional notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className={
+                operationType === 'in' ? 'bg-primary hover:bg-primary/90' :
+                operationType === 'out' ? 'bg-rose-600 hover:bg-rose-700' :
+                'bg-violet-600 hover:bg-violet-700'
+              }
+            >
+              {isSubmitting ? (
+                <>
+                  <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  {operationType === 'in' && 'Add Stock'}
+                  {operationType === 'out' && 'Remove Stock'}
+                  {operationType === 'adjust' && 'Adjust Stock'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

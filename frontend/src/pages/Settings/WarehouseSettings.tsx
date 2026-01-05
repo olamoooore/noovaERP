@@ -28,7 +28,11 @@ interface Warehouse {
   name: string
   code: string
   address: string
+  phone: string | null
+  email: string | null
+  manager_name: string | null
   is_active: boolean
+  is_default: boolean
 }
 
 export function WarehouseSettings() {
@@ -40,7 +44,11 @@ export function WarehouseSettings() {
     name: '',
     code: '',
     address: '',
+    phone: '',
+    email: '',
+    manager_name: '',
     is_active: true,
+    is_default: false,
   })
 
   const { data: warehouses = [], isLoading } = useQuery<Warehouse[]>({
@@ -87,7 +95,7 @@ export function WarehouseSettings() {
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ name: '', code: '', address: '', is_active: true })
+    setFormData({ name: '', code: '', address: '', phone: '', email: '', manager_name: '', is_active: true, is_default: false })
   }
 
   const handleEdit = (w: Warehouse) => {
@@ -96,7 +104,11 @@ export function WarehouseSettings() {
       name: w.name,
       code: w.code || '',
       address: w.address || '',
+      phone: w.phone || '',
+      email: w.email || '',
+      manager_name: w.manager_name || '',
       is_active: w.is_active,
+      is_default: w.is_default,
     })
     setIsDialogOpen(true)
   }
@@ -130,21 +142,23 @@ export function WarehouseSettings() {
               <DialogTitle>{editingId ? 'Edit Warehouse' : 'Add Warehouse'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Name</label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Main Warehouse"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Code</label>
-                <Input
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  placeholder="WH-001"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Name *</label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Main Warehouse"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Code</label>
+                  <Input
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    placeholder="WH-001"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Address</label>
@@ -154,12 +168,48 @@ export function WarehouseSettings() {
                   placeholder="123 Storage Lane"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={formData.is_active}
-                  onCheckedChange={(c: boolean) => setFormData({ ...formData, is_active: c })}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Phone</label>
+                  <Input
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+1234567890"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="warehouse@example.com"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Manager Name</label>
+                <Input
+                  value={formData.manager_name}
+                  onChange={(e) => setFormData({ ...formData, manager_name: e.target.value })}
+                  placeholder="John Doe"
                 />
-                <label className="text-sm font-medium">Active</label>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.is_active}
+                    onCheckedChange={(c: boolean) => setFormData({ ...formData, is_active: c })}
+                  />
+                  <label className="text-sm font-medium">Active</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.is_default}
+                    onCheckedChange={(c: boolean) => setFormData({ ...formData, is_default: c })}
+                  />
+                  <label className="text-sm font-medium">Default Warehouse</label>
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -179,6 +229,7 @@ export function WarehouseSettings() {
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Address</TableHead>
+              <TableHead>Manager</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -186,20 +237,26 @@ export function WarehouseSettings() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-4">Loading...</TableCell>
+                <TableCell colSpan={6} className="text-center py-4">Loading...</TableCell>
               </TableRow>
             ) : warehouses.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                   No warehouses found.
                 </TableCell>
               </TableRow>
             ) : (
               warehouses.map((w) => (
                 <TableRow key={w.id}>
-                  <TableCell className="font-medium">{w.name}</TableCell>
-                  <TableCell>{w.code}</TableCell>
-                  <TableCell>{w.address}</TableCell>
+                  <TableCell className="font-medium">
+                    {w.name}
+                    {w.is_default && (
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Default</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{w.code || '-'}</TableCell>
+                  <TableCell>{w.address || '-'}</TableCell>
+                  <TableCell>{w.manager_name || '-'}</TableCell>
                   <TableCell>
                     {w.is_active ? (
                       <span className="text-green-600 text-xs font-medium px-2 py-1 bg-green-100 rounded-full">Active</span>

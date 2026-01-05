@@ -5,7 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Inventory\Models\Brand;
+use Modules\Inventory\Models\StockLevel;
 
 class Product extends Model
 {
@@ -18,6 +21,7 @@ class Product extends Model
         'barcode',
         'description',
         'category_id',
+        'brand_id',
         'type',
         'cost',
         'price',
@@ -31,9 +35,11 @@ class Product extends Model
         'track_inventory',
         'is_preorder',
         'is_new_arrival',
+        'show_on_website',
         'preorder_available_at',
         'stock_quantity',
         'reorder_level',
+        'min_stock_threshold',
         'unit',
         'image',
         'gallery',
@@ -52,6 +58,7 @@ class Product extends Model
         'track_inventory' => 'boolean',
         'is_preorder' => 'boolean',
         'is_new_arrival' => 'boolean',
+        'show_on_website' => 'boolean',
         'preorder_available_at' => 'date:Y-m-d',
         'is_active' => 'boolean',
     ];
@@ -88,6 +95,16 @@ class Product extends Model
         return $this->belongsTo(ProductCategory::class, 'category_id');
     }
 
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class);
+    }
+
+    public function stockLevels(): HasMany
+    {
+        return $this->hasMany(StockLevel::class);
+    }
+
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
@@ -103,19 +120,55 @@ class Product extends Model
         return $this->hasMany(ProductCustomFieldValue::class);
     }
 
-    public function adjustStock(int $quantity, string $type, ?string $reference = null): void
+    public function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
         $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
         $this->save();
 
         StockMovement::create([
             'product_id' => $this->id,
+            'warehouse_id' => $warehouseId,
             'type' => $type,
             'quantity' => abs($quantity),
+            'old_quantity' => $this->stock_quantity - ($type === 'in' ? $quantity : -$quantity),
             'reference' => $reference,
             'balance_after' => $this->stock_quantity,
             'created_by' => auth()->id(),
         ]);
+    }
+
+    /**
+     * Get stock level for a specific warehouse
+     */
+    public function getStockInWarehouse(int $warehouseId): int
+    {
+        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+        return $stockLevel ? $stockLevel->quantity : 0;
+    }
+
+    /**
+     * Get available stock (total - reserved) for a specific warehouse
+     */
+    public function getAvailableStockInWarehouse(int $warehouseId): int
+    {
+        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+        return $stockLevel ? $stockLevel->available_quantity : 0;
+    }
+
+    /**
+     * Check if product is low on stock
+     */
+    public function isLowStock(): bool
+    {
+        return $this->stock_quantity <= $this->min_stock_threshold;
+    }
+
+    /**
+     * Check if product is out of stock
+     */
+    public function isOutOfStock(): bool
+    {
+        return $this->stock_quantity <= 0;
     }
 
     public static function findSellableByBarcodeOrSku(string $code): ?array

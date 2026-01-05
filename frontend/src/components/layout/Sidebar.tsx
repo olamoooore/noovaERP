@@ -94,6 +94,43 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
+    title: 'Inventory',
+    href: '/inventory',
+    icon: 'solar:box-minimalistic-bold-duotone',
+    children: [
+      {
+        title: 'Overview',
+        href: '/inventory',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Stock Management',
+        href: '/inventory/stock',
+        icon: 'solar:transfer-horizontal-bold-duotone',
+      },
+      {
+        title: 'Warehouses',
+        href: '/inventory/warehouses',
+        icon: 'solar:buildings-bold-duotone',
+      },
+      {
+        title: 'Suppliers',
+        href: '/inventory/suppliers',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
+        title: 'Purchase Orders',
+        href: '/inventory/purchase-orders',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Transfers',
+        href: '/inventory/transfers',
+        icon: 'solar:round-transfer-horizontal-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Website',
     href: '/website-builder',
     icon: 'solar:earth-bold-duotone',

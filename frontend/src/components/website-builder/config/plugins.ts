@@ -10,7 +10,6 @@ import gjsParserPostcss from 'grapesjs-parser-postcss'
 import gjsTooltip from 'grapesjs-tooltip'
 import gjsTyped from 'grapesjs-typed'
 import gjsStyleBg from 'grapesjs-style-bg'
-import gjsTuiImageEditor from 'grapesjs-tui-image-editor'
 import gjsPluginExport from 'grapesjs-plugin-export'
 // @ts-ignore - no types available
 import gjsNavbar from 'grapesjs-navbar'
@@ -28,6 +27,7 @@ import gjsClick from 'grapesjs-click'
 import gjsFloat from 'grapesjs-float'
 import { Editor } from 'grapesjs'
 
+// All plugins including grapesjs-tabs
 export const plugins = [
   gjsPresetWebpage,
   gjsBlocksBasic,
@@ -40,7 +40,29 @@ export const plugins = [
   gjsTooltip,
   gjsTyped,
   gjsStyleBg,
-  gjsTuiImageEditor,
+  gjsPluginExport,
+  gjsNavbar,
+  gjsStyleGradient,
+  gjsStyleFilter,
+  gjsBlocksFlexbox,
+  gjsUiSuggestClasses,
+  gjsClick,
+  gjsFloat,
+]
+
+// Plugins without grapesjs-tabs - use this to avoid conflicts with custom tab presets
+export const getPluginsWithoutTabs = () => [
+  gjsPresetWebpage,
+  gjsBlocksBasic,
+  gjsPluginForms,
+  gjsComponentCountdown,
+  // gjsTabs removed to prevent conflicts with custom tab presets
+  gjsCustomCode,
+  gjsTouch,
+  gjsParserPostcss,
+  gjsTooltip,
+  gjsTyped,
+  gjsStyleBg,
   gjsPluginExport,
   gjsNavbar,
   gjsStyleGradient,
@@ -76,11 +98,6 @@ export const getPluginsOpts = (_editor: Editor) => ({
   },
   [gjsPluginExport as any]: {
     addExportBtn: true,
-  },
-  [gjsTuiImageEditor as any]: {
-    includeUI: {
-      initMenu: 'filter',
-    },
   },
   [gjsStyleGradient as any]: {
     colorPicker: 'default',

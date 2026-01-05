@@ -38,6 +38,39 @@ class PageController extends Controller
             'content' => 'nullable|array',
         ]);
 
+        // Generate slug if not provided
+        $slug = $validated['slug'] ?? \Str::slug($validated['title']);
+        
+        // Check if a soft-deleted page with this slug exists and restore it
+        $existingPage = $website->pages()->withTrashed()->where('slug', $slug)->first();
+        
+        if ($existingPage) {
+            if ($existingPage->trashed()) {
+                // Restore the soft-deleted page
+                $existingPage->restore();
+                $existingPage->update([
+                    'title' => $validated['title'],
+                    'is_home' => $validated['is_home'] ?? false,
+                    'seo_title' => $validated['seo_title'] ?? null,
+                    'seo_description' => $validated['seo_description'] ?? null,
+                    'status' => 'draft',
+                ]);
+                
+                // Update content if provided
+                if (!empty($validated['content'])) {
+                    $existingPage->createVersion($validated['content'], auth()->id());
+                }
+                
+                return response()->json(new PageResource($existingPage->load('currentVersion')), 201);
+            } else {
+                // Page already exists and is not deleted
+                return response()->json([
+                    'message' => 'A page with this slug already exists.',
+                    'page' => new PageResource($existingPage->load('currentVersion')),
+                ], 409);
+            }
+        }
+
         // If this is set as home, unset other home pages
         if (!empty($validated['is_home'])) {
             $website->pages()->update(['is_home' => false]);
@@ -45,7 +78,7 @@ class PageController extends Controller
 
         $page = $website->pages()->create([
             'title' => $validated['title'],
-            'slug' => $validated['slug'] ?? null,
+            'slug' => $slug,
             'is_home' => $validated['is_home'] ?? false,
             'seo_title' => $validated['seo_title'] ?? null,
             'seo_description' => $validated['seo_description'] ?? null,

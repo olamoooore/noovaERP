@@ -5,6 +5,12 @@ import { LUCIDE_ICON_OPTIONS } from './icons'
 export function registerCustomBlocks(editor: Editor) {
   const blockManager = editor.BlockManager
 
+  // Register Video Background component type
+  registerVideoBackgroundComponent(editor)
+
+  // Register Overlay component type
+  registerOverlayComponent(editor)
+
   // Fix: Override the default button component from grapesjs-plugin-forms
   const defaultButton = editor.DomComponents.getType('button')
   if (defaultButton) {
@@ -54,8 +60,632 @@ export function registerCustomBlocks(editor: Editor) {
     media: '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
   })
 
+  // Add Video Background block
+  blockManager.add('video-background', {
+    label: 'Video Background',
+    category: 'Media',
+    content: { type: 'video-background-section' },
+    media: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><polygon points="10 8 16 12 10 16 10 8"/></svg>`,
+  })
+
+  // Add Overlay block
+  blockManager.add('overlay', {
+    label: 'Overlay',
+    category: 'Layout',
+    content: { type: 'overlay-component' },
+    media: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><rect x="7" y="7" width="10" height="10" rx="1" ry="1" fill="currentColor" opacity="0.3"/></svg>`,
+  })
+
   // Add Section blocks
   addSectionBlocks(blockManager)
+}
+
+function registerVideoBackgroundComponent(editor: Editor) {
+  // Register Video Background Section component
+  editor.DomComponents.addType('video-background-section', {
+    isComponent: (el) => {
+      if (el.classList?.contains('video-bg-section')) {
+        return { type: 'video-background-section' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'section',
+        name: 'Video Background Section',
+        draggable: true,
+        droppable: true,
+        selectable: true,
+        hoverable: true,
+        removable: true,
+        copyable: true,
+        classes: ['video-bg-section'],
+        style: {
+          position: 'relative',
+          width: '100%',
+          'min-height': '500px',
+          overflow: 'hidden',
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'center',
+        },
+        // Custom properties for video
+        'video-url': 'https://www.w3schools.com/html/mov_bbb.mp4',
+        'video-type': 'file', // 'file' or 'youtube'
+        'youtube-id': '',
+        'video-autoplay': true,
+        'video-loop': true,
+        'video-muted': true,
+        'video-poster': '',
+        'overlay-color': 'rgba(0, 0, 0, 0.5)',
+        'overlay-enabled': true,
+        traits: [
+          {
+            type: 'select',
+            name: 'video-type',
+            label: 'Video Source',
+            options: [
+              { id: 'file', name: 'Video File (MP4/WebM)' },
+              { id: 'youtube', name: 'YouTube Video' },
+            ],
+            changeProp: true,
+          },
+          {
+            type: 'text',
+            name: 'video-url',
+            label: 'Video URL',
+            placeholder: 'https://example.com/video.mp4',
+            changeProp: true,
+          },
+          {
+            type: 'button',
+            name: 'upload-video-btn',
+            label: 'Upload Video',
+            text: 'Choose Video File',
+            command: 'upload-video-background',
+          },
+          {
+            type: 'text',
+            name: 'youtube-id',
+            label: 'YouTube Video ID',
+            placeholder: 'e.g., dQw4w9WgXcQ',
+            changeProp: true,
+          },
+          {
+            type: 'text',
+            name: 'video-poster',
+            label: 'Poster Image URL',
+            placeholder: 'https://example.com/poster.jpg',
+            changeProp: true,
+          },
+          {
+            type: 'checkbox',
+            name: 'video-autoplay',
+            label: 'Autoplay',
+            changeProp: true,
+          },
+          {
+            type: 'checkbox',
+            name: 'video-loop',
+            label: 'Loop',
+            changeProp: true,
+          },
+          {
+            type: 'checkbox',
+            name: 'video-muted',
+            label: 'Muted',
+            changeProp: true,
+          },
+          {
+            type: 'checkbox',
+            name: 'overlay-enabled',
+            label: 'Enable Overlay',
+            changeProp: true,
+          },
+          {
+            type: 'color',
+            name: 'overlay-color',
+            label: 'Overlay Color',
+            changeProp: true,
+          },
+        ],
+        components: [
+          {
+            tagName: 'video',
+            type: 'video-bg-element',
+            classes: ['video-bg-element'],
+            attributes: {
+              autoplay: true,
+              loop: true,
+              muted: true,
+              playsinline: true,
+            },
+            style: {
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              'min-width': '100%',
+              'min-height': '100%',
+              width: 'auto',
+              height: 'auto',
+              'object-fit': 'cover',
+              'z-index': '0',
+              'pointer-events': 'none',
+            },
+            components: [
+              {
+                tagName: 'source',
+                attributes: {
+                  src: 'https://www.w3schools.com/html/mov_bbb.mp4',
+                  type: 'video/mp4',
+                },
+              },
+            ],
+          },
+          {
+            tagName: 'div',
+            type: 'video-overlay',
+            classes: ['video-overlay'],
+            style: {
+              position: 'absolute',
+              top: '0',
+              left: '0',
+              width: '100%',
+              height: '100%',
+              background: 'rgba(0, 0, 0, 0.5)',
+              'z-index': '1',
+              'pointer-events': 'none',
+            },
+          },
+          {
+            tagName: 'div',
+            classes: ['video-content'],
+            droppable: true,
+            style: {
+              position: 'relative',
+              'z-index': '2',
+              'text-align': 'center',
+              color: '#ffffff',
+              padding: '40px',
+              'max-width': '800px',
+            },
+            components: [
+              {
+                tagName: 'h2',
+                content: 'Video Background Section',
+                style: {
+                  'font-size': '48px',
+                  'font-weight': 'bold',
+                  'margin-bottom': '20px',
+                  color: '#ffffff',
+                },
+              },
+              {
+                tagName: 'p',
+                content: 'Add your content here. The video plays in the background.',
+                style: {
+                  'font-size': '18px',
+                  opacity: '0.9',
+                  color: '#ffffff',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      init() {
+        this.on('change:video-url', this.updateVideoUrl)
+        this.on('change:video-type', this.updateVideoType)
+        this.on('change:youtube-id', this.updateYouTubeId)
+        this.on('change:video-poster', this.updateVideoPoster)
+        this.on('change:video-autoplay', this.updateVideoAutoplay)
+        this.on('change:video-loop', this.updateVideoLoop)
+        this.on('change:video-muted', this.updateVideoMuted)
+        this.on('change:overlay-color', this.updateOverlayColor)
+        this.on('change:overlay-enabled', this.updateOverlayEnabled)
+      },
+      updateVideoType() {
+        const type = this.get('video-type')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        const iframe = this.components().find((c: any) => c.get('tagName') === 'iframe')
+        
+        if (type === 'youtube') {
+          // Hide video, show/create iframe
+          if (video) {
+            video.setStyle({ ...video.getStyle(), display: 'none' })
+          }
+          if (!iframe) {
+            const youtubeId = this.get('youtube-id') || 'dQw4w9WgXcQ'
+            this.components().add({
+              tagName: 'iframe',
+              classes: ['youtube-bg-element'],
+              attributes: {
+                src: `https://www.youtube.com/embed/${youtubeId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${youtubeId}&showinfo=0&rel=0&iv_load_policy=3&playsinline=1`,
+                frameborder: '0',
+                allowfullscreen: true,
+              },
+              style: {
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '100vw',
+                height: '56.25vw',
+                'min-height': '100%',
+                'min-width': '177.77vh',
+                transform: 'translate(-50%, -50%)',
+                'z-index': '0',
+                'pointer-events': 'none',
+                border: 'none',
+              },
+            }, { at: 0 })
+          }
+        } else {
+          // Show video, hide iframe
+          if (video) {
+            video.setStyle({ ...video.getStyle(), display: 'block' })
+          }
+          if (iframe) {
+            iframe.remove()
+          }
+        }
+      },
+      updateYouTubeId() {
+        const youtubeId = this.get('youtube-id')
+        if (!youtubeId) return
+        
+        const iframe = this.components().find((c: any) => c.get('tagName') === 'iframe')
+        if (iframe) {
+          const url = `https://www.youtube.com/embed/${youtubeId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${youtubeId}&showinfo=0&rel=0&iv_load_policy=3&playsinline=1`
+          iframe.addAttributes({ src: url })
+        } else if (this.get('video-type') === 'youtube') {
+          // Create iframe if it doesn't exist
+          this.updateVideoType()
+        }
+      },
+      updateVideoUrl() {
+        const url = this.get('video-url')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        if (video) {
+          const source = video.components().at(0)
+          if (source) {
+            source.addAttributes({ src: url })
+          }
+        }
+      },
+      updateVideoPoster() {
+        const poster = this.get('video-poster')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        if (video) {
+          if (poster) {
+            video.addAttributes({ poster })
+          } else {
+            video.removeAttributes('poster')
+          }
+        }
+      },
+      updateVideoAutoplay() {
+        const autoplay = this.get('video-autoplay')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        if (video) {
+          if (autoplay) {
+            video.addAttributes({ autoplay: true })
+          } else {
+            video.removeAttributes('autoplay')
+          }
+        }
+      },
+      updateVideoLoop() {
+        const loop = this.get('video-loop')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        if (video) {
+          if (loop) {
+            video.addAttributes({ loop: true })
+          } else {
+            video.removeAttributes('loop')
+          }
+        }
+      },
+      updateVideoMuted() {
+        const muted = this.get('video-muted')
+        const video = this.components().find((c: any) => c.get('type') === 'video-bg-element')
+        if (video) {
+          if (muted) {
+            video.addAttributes({ muted: true })
+          } else {
+            video.removeAttributes('muted')
+          }
+        }
+      },
+      updateOverlayColor() {
+        const color = this.get('overlay-color')
+        const overlay = this.components().find((c: any) => c.get('type') === 'video-overlay')
+        if (overlay) {
+          overlay.setStyle({ ...overlay.getStyle(), background: color })
+        }
+      },
+      updateOverlayEnabled() {
+        const enabled = this.get('overlay-enabled')
+        const overlay = this.components().find((c: any) => c.get('type') === 'video-overlay')
+        if (overlay) {
+          overlay.setStyle({ ...overlay.getStyle(), display: enabled ? 'block' : 'none' })
+        }
+      },
+    },
+  })
+
+  // Register the video element type (non-selectable background video)
+  editor.DomComponents.addType('video-bg-element', {
+    isComponent: (el) => {
+      if (el.classList?.contains('video-bg-element')) {
+        return { type: 'video-bg-element' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'video',
+        name: 'Background Video',
+        draggable: false,
+        droppable: false,
+        selectable: false,
+        hoverable: false,
+        removable: false,
+        copyable: false,
+        layerable: false,
+      },
+    },
+  })
+
+  // Register the video overlay type
+  editor.DomComponents.addType('video-overlay', {
+    isComponent: (el) => {
+      if (el.classList?.contains('video-overlay')) {
+        return { type: 'video-overlay' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'div',
+        name: 'Video Overlay',
+        draggable: false,
+        droppable: false,
+        selectable: false,
+        hoverable: false,
+        removable: false,
+        copyable: false,
+        layerable: false,
+      },
+    },
+  })
+}
+
+function registerOverlayComponent(editor: Editor) {
+  // Register standalone Overlay component
+  editor.DomComponents.addType('overlay-component', {
+    isComponent: (el) => {
+      if (el.classList?.contains('overlay-component')) {
+        return { type: 'overlay-component' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'div',
+        name: 'Overlay Container',
+        draggable: true,
+        droppable: true,
+        selectable: true,
+        hoverable: true,
+        removable: true,
+        copyable: true,
+        classes: ['overlay-component'],
+        style: {
+          position: 'relative',
+          width: '100%',
+          'min-height': '400px',
+          overflow: 'hidden',
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'center',
+        },
+        // Custom properties
+        'bg-image': '',
+        'overlay-type': 'color',
+        'overlay-color': 'rgba(0, 0, 0, 0.5)',
+        'overlay-gradient': 'linear-gradient(135deg, rgba(42, 157, 143, 0.8) 0%, rgba(38, 70, 83, 0.9) 100%)',
+        traits: [
+          {
+            type: 'text',
+            name: 'bg-image',
+            label: 'Background Image URL',
+            placeholder: 'https://example.com/image.jpg',
+            changeProp: true,
+          },
+          {
+            type: 'select',
+            name: 'overlay-type',
+            label: 'Overlay Type',
+            changeProp: true,
+            options: [
+              { id: 'color', name: 'Solid Color' },
+              { id: 'gradient', name: 'Gradient' },
+              { id: 'none', name: 'None' },
+            ],
+          },
+          {
+            type: 'color',
+            name: 'overlay-color',
+            label: 'Overlay Color',
+            changeProp: true,
+          },
+          {
+            type: 'select',
+            name: 'overlay-gradient',
+            label: 'Overlay Gradient',
+            changeProp: true,
+            options: [
+              { id: 'linear-gradient(135deg, rgba(42, 157, 143, 0.8) 0%, rgba(38, 70, 83, 0.9) 100%)', name: 'Teal Dark' },
+              { id: 'linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%)', name: 'Dark Fade' },
+              { id: 'linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, transparent 50%, rgba(0, 0, 0, 0.8) 100%)', name: 'Vignette' },
+              { id: 'linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%)', name: 'Purple Haze' },
+              { id: 'linear-gradient(135deg, rgba(240, 147, 251, 0.7) 0%, rgba(245, 87, 108, 0.7) 100%)', name: 'Pink Sunset' },
+              { id: 'linear-gradient(135deg, rgba(79, 172, 254, 0.7) 0%, rgba(0, 242, 254, 0.7) 100%)', name: 'Ocean Blue' },
+              { id: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, transparent 100%)', name: 'Top Fade' },
+              { id: 'linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 100%)', name: 'Bottom Fade' },
+            ],
+          },
+        ],
+        components: [
+          {
+            tagName: 'div',
+            type: 'overlay-bg',
+            classes: ['overlay-bg'],
+            style: {
+              position: 'absolute',
+              top: '0',
+              left: '0',
+              width: '100%',
+              height: '100%',
+              'background-size': 'cover',
+              'background-position': 'center',
+              'background-repeat': 'no-repeat',
+              'z-index': '0',
+            },
+          },
+          {
+            tagName: 'div',
+            type: 'overlay-layer',
+            classes: ['overlay-layer'],
+            style: {
+              position: 'absolute',
+              top: '0',
+              left: '0',
+              width: '100%',
+              height: '100%',
+              background: 'rgba(0, 0, 0, 0.5)',
+              'z-index': '1',
+            },
+          },
+          {
+            tagName: 'div',
+            classes: ['overlay-content'],
+            droppable: true,
+            style: {
+              position: 'relative',
+              'z-index': '2',
+              'text-align': 'center',
+              color: '#ffffff',
+              padding: '40px',
+              'max-width': '800px',
+            },
+            components: [
+              {
+                tagName: 'h2',
+                content: 'Overlay Section',
+                style: {
+                  'font-size': '42px',
+                  'font-weight': 'bold',
+                  'margin-bottom': '16px',
+                  color: '#ffffff',
+                },
+              },
+              {
+                tagName: 'p',
+                content: 'Add a background image and customize the overlay color or gradient.',
+                style: {
+                  'font-size': '18px',
+                  opacity: '0.9',
+                  color: '#ffffff',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      init() {
+        this.on('change:bg-image', this.updateBgImage)
+        this.on('change:overlay-type', this.updateOverlay)
+        this.on('change:overlay-color', this.updateOverlay)
+        this.on('change:overlay-gradient', this.updateOverlay)
+      },
+      updateBgImage() {
+        const url = this.get('bg-image')
+        const bg = this.components().find((c: any) => c.get('type') === 'overlay-bg')
+        if (bg) {
+          if (url) {
+            bg.setStyle({ ...bg.getStyle(), 'background-image': `url(${url})` })
+          } else {
+            const style = { ...bg.getStyle() }
+            delete style['background-image']
+            bg.setStyle(style)
+          }
+        }
+      },
+      updateOverlay() {
+        const type = this.get('overlay-type')
+        const color = this.get('overlay-color')
+        const gradient = this.get('overlay-gradient')
+        const overlay = this.components().find((c: any) => c.get('type') === 'overlay-layer')
+        if (overlay) {
+          let background = 'transparent'
+          if (type === 'color') {
+            background = color || 'rgba(0, 0, 0, 0.5)'
+          } else if (type === 'gradient') {
+            background = gradient || 'linear-gradient(135deg, rgba(42, 157, 143, 0.8) 0%, rgba(38, 70, 83, 0.9) 100%)'
+          }
+          overlay.setStyle({ ...overlay.getStyle(), background })
+        }
+      },
+    },
+  })
+
+  // Register background layer (non-selectable)
+  editor.DomComponents.addType('overlay-bg', {
+    isComponent: (el) => {
+      if (el.classList?.contains('overlay-bg')) {
+        return { type: 'overlay-bg' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'div',
+        name: 'Background Layer',
+        draggable: false,
+        droppable: false,
+        selectable: false,
+        hoverable: false,
+        removable: false,
+        copyable: false,
+        layerable: false,
+      },
+    },
+  })
+
+  // Register overlay layer (non-selectable)
+  editor.DomComponents.addType('overlay-layer', {
+    isComponent: (el) => {
+      if (el.classList?.contains('overlay-layer')) {
+        return { type: 'overlay-layer' }
+      }
+      return false
+    },
+    model: {
+      defaults: {
+        tagName: 'div',
+        name: 'Overlay Layer',
+        draggable: false,
+        droppable: false,
+        selectable: false,
+        hoverable: false,
+        removable: false,
+        copyable: false,
+        layerable: false,
+      },
+    },
+  })
 }
 
 function registerLucideIconComponent(editor: Editor) {
@@ -354,6 +984,22 @@ function registerLucideIconComponent(editor: Editor) {
 }
 
 function addSectionBlocks(blockManager: any) {
+  // Video Background Hero
+  blockManager.add('video-hero', {
+    label: 'Video Hero',
+    category: 'Sections',
+    content: { type: 'video-background-section' },
+    media: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><polygon points="10 8 16 12 10 16 10 8"/></svg>`,
+  })
+
+  // Image with Overlay Hero
+  blockManager.add('overlay-hero', {
+    label: 'Overlay Hero',
+    category: 'Sections',
+    content: { type: 'overlay-component' },
+    media: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  })
+
   // Hero Section
   blockManager.add('hero-section', {
     label: 'Hero Section',

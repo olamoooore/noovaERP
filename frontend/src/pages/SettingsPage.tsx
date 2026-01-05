@@ -1,4 +1,3 @@
-import { WarehouseSettings } from './Settings/WarehouseSettings'
 import { GeneralSettings } from './Settings/GeneralSettings'
 
 // ... existing imports ...
@@ -209,16 +208,11 @@ export function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="warehouses">Warehouses</TabsTrigger>
           <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
           <GeneralSettings />
-        </TabsContent>
-
-        <TabsContent value="warehouses">
-          <WarehouseSettings />
         </TabsContent>
 
         <TabsContent value="tax">

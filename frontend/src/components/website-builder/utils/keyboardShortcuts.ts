@@ -1,78 +1,79 @@
-// Keyboard Shortcuts for GrapesJS Editor
 import { Editor } from 'grapesjs'
+import { 
+  copyComponent, 
+  pasteComponent, 
+  duplicateComponent, 
+  deleteComponent, 
+  pasteStyleComponent 
+} from './contextMenu'
 
-// Local clipboard for keyboard shortcuts
-let localClipboard: any = null
-let localClipboardStyles: any = null
+// Actions are now imported from contextMenu.ts to ensure shared state
 
-// Copy component
-function copySelected(editor: Editor): void {
-  const selected = editor.getSelected()
-  if (selected) {
-    localClipboard = selected.clone()
-    const styles = selected.getStyle()
-    localClipboardStyles = JSON.parse(JSON.stringify(styles))
-  }
-}
-
-// Paste component
-function pasteSelected(editor: Editor): void {
-  if (localClipboard) {
-    const selected = editor.getSelected()
-    const clone = localClipboard.clone()
-    if (selected) {
-      const parent = selected.parent()
-      if (parent) {
-        const idx = parent.components().indexOf(selected)
-        parent.components().add(clone, { at: idx + 1 })
-      }
-    } else {
-      editor.getWrapper()?.components().add(clone)
-    }
-    editor.select(clone)
-  }
-}
-
-// Paste style
-function pasteStyleSelected(editor: Editor): void {
-  const selected = editor.getSelected()
-  if (selected && localClipboardStyles) {
-    const stylesToApply = JSON.parse(JSON.stringify(localClipboardStyles))
-    selected.setStyle(stylesToApply)
-    editor.refresh()
-  }
-}
-
-// Duplicate component
-function duplicateSelected(editor: Editor): void {
-  const selected = editor.getSelected()
-  if (selected) {
-    const parent = selected.parent()
-    if (parent) {
-      const idx = parent.components().indexOf(selected)
-      const clone = selected.clone()
-      parent.components().add(clone, { at: idx + 1 })
-      editor.select(clone)
-    }
-  }
-}
-
-// Delete component
-function deleteSelected(editor: Editor): void {
-  const selected = editor.getSelected()
-  if (selected) {
-    selected.remove()
-  }
-}
-
-// Check if target is an input field
+// Check if target is an input field or in text editing mode
 function isInputField(target: HTMLElement): boolean {
   const tagName = target.tagName?.toUpperCase()
-  return tagName === 'INPUT' || 
-         tagName === 'TEXTAREA' || 
-         target.isContentEditable ||
-         !!target.closest('.gjs-rte-toolbar') ||
-         !!target.closest('[contenteditable="true"]')
+  
+  // Standard input elements
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+    return true
+  }
+  
+  // Contenteditable elements (RTE mode)
+  if (target.isContentEditable) {
+    return true
+  }
+  
+  // Check if inside RTE toolbar or contenteditable
+  if (target.closest('.gjs-rte-toolbar') || target.closest('[contenteditable="true"]')) {
+    return true
+  }
+  
+  // Check if inside GrapesJS RTE active element
+  if (target.closest('.gjs-rte-active')) {
+    return true
+  }
+  
+  // Check if the target or any parent has contenteditable attribute
+  let el: HTMLElement | null = target
+  while (el) {
+    if (el.getAttribute?.('contenteditable') === 'true') {
+      return true
+    }
+    el = el.parentElement
+  }
+  
+  return false
+}
+
+// Check if RTE (Rich Text Editor) is currently active
+function isRTEActive(editor: Editor): boolean {
+  // Check if any selected component is in editing mode (GrapesJS native)
+  const selected = editor.getSelected()
+  if (selected && selected.get('status') === 'editing') {
+    return true
+  }
+
+  // Check if RTE is enabled on any component
+  const rte = editor.RichTextEditor
+  if (rte && typeof rte.isActive === 'function' && rte.isActive()) {
+    return true
+  }
+  
+  // Also check for active contenteditable in the canvas
+  const canvas = editor.Canvas.getElement()
+  const canvasFrame = canvas?.querySelector('iframe') as HTMLIFrameElement | null
+  if (canvasFrame?.contentDocument) {
+    const activeElement = canvasFrame.contentDocument.activeElement
+    if (activeElement?.getAttribute?.('contenteditable') === 'true' || (activeElement as any)?.isContentEditable) {
+      return true
+    }
+    // Check if any element has gjs-rte-active class
+    if (canvasFrame.contentDocument.querySelector('.gjs-rte-active')) {
+      return true
+    }
+  }
+  
+  return false
 }
 
 // Setup keyboard shortcuts for the editor
@@ -96,8 +97,8 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
       return
     }
 
-    // Skip other shortcuts if in input field
-    if (isInputField(target)) return
+    // Skip other shortcuts if in input field or RTE is active
+    if (isInputField(target) || isRTEActive(editor)) return
 
     isHandling = true
 
@@ -125,7 +126,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        copySelected(editor)
+        copyComponent(editor)
         return
       }
 
@@ -134,7 +135,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        pasteStyleSelected(editor)
+        pasteStyleComponent(editor)
         return
       }
 
@@ -143,7 +144,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        pasteSelected(editor)
+        pasteComponent(editor)
         return
       }
 
@@ -152,7 +153,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        duplicateSelected(editor)
+        duplicateComponent(editor)
         return
       }
 
@@ -161,7 +162,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        deleteSelected(editor)
+        deleteComponent(editor)
         return
       }
 

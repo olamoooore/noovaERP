@@ -8,6 +8,8 @@ import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { GrapesEditor } from '@/components/website-builder/GrapesEditor'
+import { generateFullHtml } from '@/components/website-builder/utils/renderStyles'
+import { getShopPageDefaultContent } from '@/components/website-builder/shopPresets'
 import '@/components/website-builder/grapes-custom.css'
 import {
   DropdownMenu,
@@ -32,6 +34,23 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
+// Shop settings interface
+interface ShopSettings {
+  enabled: boolean
+  primaryColor: string
+  primaryHoverColor: string
+  primaryLightColor: string
+  showSidebar: boolean
+  productsPerPage: number
+  showWishlist: boolean
+  showSearch: boolean
+  cartPageSlug: string
+  checkoutPageSlug: string
+  shopPageSlug: string
+}
 
 interface Page {
   id: number
@@ -56,7 +75,38 @@ interface Website {
   slug: string
   status: string
   pages: Page[]
+  settings?: {
+    shop?: ShopSettings
+    [key: string]: any
+  }
 }
+
+// Default shop settings
+const defaultShopSettings: ShopSettings = {
+  enabled: false,
+  primaryColor: '#00b207',
+  primaryHoverColor: '#009906',
+  primaryLightColor: '#e6f8e7',
+  showSidebar: true,
+  productsPerPage: 28,
+  showWishlist: true,
+  showSearch: true,
+  cartPageSlug: 'cart',
+  checkoutPageSlug: 'checkout',
+  shopPageSlug: 'shop',
+}
+
+// Color presets for quick selection
+const colorPresets = [
+  { name: 'Green', primary: '#00b207', hover: '#009906', light: '#e6f8e7' },
+  { name: 'Blue', primary: '#3b82f6', hover: '#2563eb', light: '#eff6ff' },
+  { name: 'Purple', primary: '#8b5cf6', hover: '#7c3aed', light: '#f5f3ff' },
+  { name: 'Orange', primary: '#f97316', hover: '#ea580c', light: '#fff7ed' },
+  { name: 'Pink', primary: '#ec4899', hover: '#db2777', light: '#fdf2f8' },
+  { name: 'Teal', primary: '#14b8a6', hover: '#0d9488', light: '#f0fdfa' },
+  { name: 'Red', primary: '#ef4444', hover: '#dc2626', light: '#fef2f2' },
+  { name: 'Indigo', primary: '#6366f1', hover: '#4f46e5', light: '#eef2ff' },
+]
 
 export function WebsiteEditor() {
   const { id } = useParams<{ id: string }>()
@@ -69,6 +119,10 @@ export function WebsiteEditor() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [activeDevice, setActiveDevice] = useState<string>('Desktop')
+  
+  // Shop settings state
+  const [showShopSettings, setShowShopSettings] = useState(false)
+  const [shopSettings, setShopSettings] = useState<ShopSettings>(defaultShopSettings)
   
   // Content states
   const [headerJs, setHeaderJs] = useState('')
@@ -112,6 +166,13 @@ export function WebsiteEditor() {
       setBodyJs(pageData.content.body_js || '')
     }
   }, [pageData])
+
+  // Sync shop settings from website
+  useEffect(() => {
+    if (website?.settings?.shop) {
+      setShopSettings({ ...defaultShopSettings, ...website.settings.shop })
+    }
+  }, [website])
 
   // Auto-select first page
   useEffect(() => {
@@ -212,6 +273,116 @@ export function WebsiteEditor() {
       toast({ 
         title: 'Error', 
         description: error?.response?.data?.message || 'Failed to create page.', 
+        variant: 'destructive' 
+      })
+    },
+  })
+
+  // Save shop settings mutation - also creates shop pages when enabled
+  const saveShopSettingsMutation = useMutation({
+    mutationFn: async (settings: ShopSettings) => {
+      const currentSettings = website?.settings || {}
+      
+      // Save settings first
+      await api.put(`/website-builder/websites/${id}`, {
+        settings: { ...currentSettings, shop: settings }
+      })
+      
+      // If shop is being enabled, create the shop pages if they don't exist
+      if (settings.enabled) {
+        // Fetch fresh list of pages to avoid stale data
+        const pagesResponse = await api.get(`/website-builder/websites/${id}`)
+        const freshPages = pagesResponse.data?.pages || []
+        const existingSlugs = freshPages.map((p: Page) => p.slug)
+        
+        console.log('Existing page slugs:', existingSlugs)
+        
+        const pagesToCreate: Array<{
+          title: string
+          slug: string
+          is_shop_page?: boolean
+          content?: { html: string; css: string }
+        }> = []
+        
+        // Check which pages need to be created with their default content
+        if (!existingSlugs.includes(settings.shopPageSlug)) {
+          pagesToCreate.push({
+            title: 'Shop',
+            slug: settings.shopPageSlug,
+            content: getShopPageDefaultContent('shop'),
+          })
+        }
+        
+        if (!existingSlugs.includes(settings.cartPageSlug)) {
+          pagesToCreate.push({
+            title: 'Cart',
+            slug: settings.cartPageSlug,
+            content: getShopPageDefaultContent('cart'),
+          })
+        }
+        
+        if (!existingSlugs.includes(settings.checkoutPageSlug)) {
+          pagesToCreate.push({
+            title: 'Checkout',
+            slug: settings.checkoutPageSlug,
+            content: getShopPageDefaultContent('checkout'),
+          })
+        }
+        
+        // Also create product page for single product view
+        if (!existingSlugs.includes('product')) {
+          pagesToCreate.push({
+            title: 'Product',
+            slug: 'product',
+            content: getShopPageDefaultContent('product'),
+          })
+        }
+        
+        console.log('Pages to create:', pagesToCreate.map(p => p.slug))
+        
+        // Create all pages and track actual successes
+        let actuallyCreated = 0
+        for (const pageData of pagesToCreate) {
+          try {
+            console.log('Creating page:', pageData.slug, pageData)
+            const response = await api.post(`/website-builder/websites/${id}/pages`, pageData)
+            console.log('Page created successfully:', pageData.slug, response.data)
+            actuallyCreated++
+          } catch (e: any) {
+            // 409 means page already exists - that's fine
+            if (e?.response?.status === 409) {
+              console.log('Page already exists:', pageData.slug)
+              actuallyCreated++ // Count as success since page exists
+            } else {
+              console.error('Failed to create page:', pageData.slug, e?.response?.data || e)
+            }
+          }
+        }
+        
+        return { pagesCreated: actuallyCreated, attempted: pagesToCreate.length }
+      }
+      
+      return { pagesCreated: 0, attempted: 0 }
+    },
+    onSuccess: (data) => {
+      let message = 'Shop settings saved.'
+      if (data?.attempted > 0) {
+        if (data.pagesCreated === data.attempted) {
+          message = `Shop settings saved. ${data.pagesCreated} page(s) created.`
+        } else if (data.pagesCreated > 0) {
+          message = `Shop settings saved. ${data.pagesCreated} of ${data.attempted} page(s) created.`
+        } else {
+          message = `Shop settings saved. Failed to create pages - check console for errors.`
+        }
+      }
+      toast({ title: 'Saved', description: message })
+      queryClient.invalidateQueries({ queryKey: ['website', id] })
+      setShowShopSettings(false)
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Error', 
+        description: error?.response?.data?.message || 'Failed to save shop settings.', 
         variant: 'destructive' 
       })
     },
@@ -328,28 +499,30 @@ export function WebsiteEditor() {
     if (!editorInstance) return
     
     const html = editorInstance.getHtml()
-    const css = editorInstance.getCss()
+    const css = editorInstance.getCss() || ''
     
-    const previewHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-          <style>${css}</style>
-          <script>${headerJs}</script>
-        </head>
-        <body>
-          ${html}
-          <script>${bodyJs}</script>
-        </body>
-      </html>
-    `
+    // Use the shared utility to generate full HTML with all styles and scripts
+    const previewHtml = generateFullHtml({
+      title: `Preview - ${pageData?.title || 'Page'}`,
+      html,
+      css,
+      headerJs,
+      bodyJs,
+      apiBaseUrl: `${window.location.origin}/api/v1/website-public`,
+      shopSettings: shopSettings.enabled ? shopSettings : undefined,
+    })
     
+    // Create a blob URL for the preview
     const blob = new Blob([previewHtml], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
+    
+    // Open in new window
+    const previewWindow = window.open(url, '_blank')
+    
+    // Clean up the blob URL after a delay
+    if (previewWindow) {
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
   }
 
   // Export HTML
@@ -357,30 +530,17 @@ export function WebsiteEditor() {
     if (!editorInstance) return
     
     const html = editorInstance.getHtml()
-    const css = editorInstance.getCss()
+    const css = editorInstance.getCss() || ''
     
-    const fullHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${website?.name || 'Website'}</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <style>
-${css}
-  </style>
-  <script>
-${headerJs}
-  </script>
-</head>
-<body>
-${html}
-<script>
-${bodyJs}
-</script>
-</body>
-</html>`
+    // Use the shared utility to generate full HTML with all styles and scripts
+    const fullHtml = generateFullHtml({
+      title: website?.name || 'Website',
+      html,
+      css,
+      headerJs,
+      bodyJs,
+      shopSettings: shopSettings.enabled ? shopSettings : undefined,
+    })
     
     const blob = new Blob([fullHtml], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
@@ -456,6 +616,28 @@ ${bodyJs}
               title="Add new page"
             >
               <Icon icon="solar:add-circle-bold" className="h-5 w-5" />
+            </Button>
+            
+            {/* Manage Pages Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-700"
+              onClick={() => navigate(`/website-builder/${id}/pages`)}
+              title="Manage pages"
+            >
+              <Icon icon="solar:settings-bold" className="h-5 w-5" />
+            </Button>
+            
+            {/* Shop Settings Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${shopSettings.enabled ? 'text-green-400 hover:text-green-300' : 'text-zinc-400 hover:text-white'} hover:bg-zinc-700`}
+              onClick={() => setShowShopSettings(true)}
+              title="Shop settings"
+            >
+              <Icon icon="solar:bag-4-bold" className="h-5 w-5" />
             </Button>
           </div>
         </div>
@@ -634,6 +816,13 @@ ${bodyJs}
                 Publish Website
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-zinc-700" />
+              <DropdownMenuItem 
+                className="text-white hover:bg-zinc-700 focus:bg-zinc-700 cursor-pointer"
+                onClick={() => navigate(`/website-builder/${id}/pages`)}
+              >
+                <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
+                Manage Pages
+              </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-white hover:bg-zinc-700 focus:bg-zinc-700 cursor-pointer"
                 onClick={handleExport}
@@ -945,6 +1134,259 @@ ${bodyJs}
               className="bg-teal-600 hover:bg-teal-700"
             >
               {addPageMutation.isPending ? 'Creating...' : 'Create Page'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Shop Settings Dialog */}
+      <Dialog open={showShopSettings} onOpenChange={setShowShopSettings}>
+        <DialogContent className="max-w-2xl bg-zinc-900 border-zinc-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:bag-4-bold" className="h-5 w-5 text-green-500" />
+              Shop Settings
+            </DialogTitle>
+          </DialogHeader>
+          
+          <Tabs defaultValue="general" className="mt-4">
+            <TabsList className="bg-zinc-800 border-zinc-700">
+              <TabsTrigger value="general" className="data-[state=active]:bg-zinc-700">General</TabsTrigger>
+              <TabsTrigger value="colors" className="data-[state=active]:bg-zinc-700">Colors</TabsTrigger>
+              <TabsTrigger value="pages" className="data-[state=active]:bg-zinc-700">Pages</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="general" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-lg">
+                <div>
+                  <Label className="text-white font-medium">Enable E-Commerce</Label>
+                  <p className="text-xs text-zinc-400 mt-1">Add shopping functionality to your website</p>
+                </div>
+                <Switch
+                  checked={shopSettings.enabled}
+                  onCheckedChange={(checked) => setShopSettings({ ...shopSettings, enabled: checked })}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-lg">
+                <div>
+                  <Label className="text-white font-medium">Show Sidebar</Label>
+                  <p className="text-xs text-zinc-400 mt-1">Display category filter sidebar on shop page</p>
+                </div>
+                <Switch
+                  checked={shopSettings.showSidebar}
+                  onCheckedChange={(checked) => setShopSettings({ ...shopSettings, showSidebar: checked })}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-lg">
+                <div>
+                  <Label className="text-white font-medium">Show Wishlist</Label>
+                  <p className="text-xs text-zinc-400 mt-1">Allow customers to save products to wishlist</p>
+                </div>
+                <Switch
+                  checked={shopSettings.showWishlist}
+                  onCheckedChange={(checked) => setShopSettings({ ...shopSettings, showWishlist: checked })}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-lg">
+                <div>
+                  <Label className="text-white font-medium">Show Search</Label>
+                  <p className="text-xs text-zinc-400 mt-1">Display product search in header</p>
+                </div>
+                <Switch
+                  checked={shopSettings.showSearch}
+                  onCheckedChange={(checked) => setShopSettings({ ...shopSettings, showSearch: checked })}
+                />
+              </div>
+              
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium">Products Per Page</Label>
+                <p className="text-xs text-zinc-400 mt-1 mb-3">Number of products to display per page</p>
+                <Select
+                  value={shopSettings.productsPerPage.toString()}
+                  onValueChange={(value) => setShopSettings({ ...shopSettings, productsPerPage: parseInt(value) })}
+                >
+                  <SelectTrigger className="w-32 bg-zinc-700 border-zinc-600">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                    <SelectItem value="8">8</SelectItem>
+                    <SelectItem value="12">12</SelectItem>
+                    <SelectItem value="16">16</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="24">24</SelectItem>
+                    <SelectItem value="28">28</SelectItem>
+                    <SelectItem value="32">32</SelectItem>
+                    <SelectItem value="48">48</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="colors" className="space-y-4 mt-4">
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium mb-3 block">Quick Color Presets</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {colorPresets.map((preset) => (
+                    <button
+                      key={preset.name}
+                      onClick={() => setShopSettings({
+                        ...shopSettings,
+                        primaryColor: preset.primary,
+                        primaryHoverColor: preset.hover,
+                        primaryLightColor: preset.light,
+                      })}
+                      className={`p-3 rounded-lg border-2 transition-all ${
+                        shopSettings.primaryColor === preset.primary 
+                          ? 'border-white' 
+                          : 'border-transparent hover:border-zinc-600'
+                      }`}
+                      style={{ backgroundColor: preset.primary }}
+                    >
+                      <span className="text-white text-xs font-medium drop-shadow">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-4 bg-zinc-800 rounded-lg">
+                  <Label className="text-white font-medium mb-2 block">Primary Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={shopSettings.primaryColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryColor: e.target.value })}
+                      className="w-10 h-10 rounded cursor-pointer"
+                    />
+                    <Input
+                      value={shopSettings.primaryColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryColor: e.target.value })}
+                      className="bg-zinc-700 border-zinc-600 text-white font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-zinc-800 rounded-lg">
+                  <Label className="text-white font-medium mb-2 block">Hover Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={shopSettings.primaryHoverColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryHoverColor: e.target.value })}
+                      className="w-10 h-10 rounded cursor-pointer"
+                    />
+                    <Input
+                      value={shopSettings.primaryHoverColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryHoverColor: e.target.value })}
+                      className="bg-zinc-700 border-zinc-600 text-white font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-zinc-800 rounded-lg">
+                  <Label className="text-white font-medium mb-2 block">Light Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={shopSettings.primaryLightColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryLightColor: e.target.value })}
+                      className="w-10 h-10 rounded cursor-pointer"
+                    />
+                    <Input
+                      value={shopSettings.primaryLightColor}
+                      onChange={(e) => setShopSettings({ ...shopSettings, primaryLightColor: e.target.value })}
+                      className="bg-zinc-700 border-zinc-600 text-white font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium mb-3 block">Preview</Label>
+                <div className="flex items-center gap-4">
+                  <button
+                    style={{ backgroundColor: shopSettings.primaryColor }}
+                    className="px-6 py-2 rounded-full text-white font-medium"
+                  >
+                    Add to Cart
+                  </button>
+                  <button
+                    style={{ backgroundColor: shopSettings.primaryLightColor, color: shopSettings.primaryColor }}
+                    className="px-6 py-2 rounded-full font-medium"
+                  >
+                    View Details
+                  </button>
+                  <span
+                    style={{ backgroundColor: shopSettings.primaryColor }}
+                    className="px-3 py-1 rounded-full text-white text-sm"
+                  >
+                    In Stock
+                  </span>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="pages" className="space-y-4 mt-4">
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium">Shop Page Slug</Label>
+                <p className="text-xs text-zinc-400 mt-1 mb-2">URL path for the main shop page</p>
+                <Input
+                  value={shopSettings.shopPageSlug}
+                  onChange={(e) => setShopSettings({ ...shopSettings, shopPageSlug: e.target.value })}
+                  placeholder="shop"
+                  className="bg-zinc-700 border-zinc-600 text-white"
+                />
+              </div>
+              
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium">Cart Page Slug</Label>
+                <p className="text-xs text-zinc-400 mt-1 mb-2">URL path for the shopping cart page</p>
+                <Input
+                  value={shopSettings.cartPageSlug}
+                  onChange={(e) => setShopSettings({ ...shopSettings, cartPageSlug: e.target.value })}
+                  placeholder="cart"
+                  className="bg-zinc-700 border-zinc-600 text-white"
+                />
+              </div>
+              
+              <div className="p-4 bg-zinc-800 rounded-lg">
+                <Label className="text-white font-medium">Checkout Page Slug</Label>
+                <p className="text-xs text-zinc-400 mt-1 mb-2">URL path for the checkout page</p>
+                <Input
+                  value={shopSettings.checkoutPageSlug}
+                  onChange={(e) => setShopSettings({ ...shopSettings, checkoutPageSlug: e.target.value })}
+                  placeholder="checkout"
+                  className="bg-zinc-700 border-zinc-600 text-white"
+                />
+              </div>
+              
+              <div className="p-4 bg-amber-900/30 border border-amber-700/50 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Icon icon="solar:info-circle-bold" className="h-5 w-5 text-amber-500 mt-0.5" />
+                  <div>
+                    <p className="text-amber-200 text-sm font-medium">Auto-created Pages</p>
+                    <p className="text-amber-200/70 text-xs mt-1">
+                      When e-commerce is enabled, shop, cart, and checkout pages will be automatically created if they don't exist.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <DialogFooter className="mt-6">
+            <Button variant="outline" onClick={() => setShowShopSettings(false)} className="border-zinc-600 text-zinc-300 hover:bg-zinc-800">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => saveShopSettingsMutation.mutate(shopSettings)}
+              disabled={saveShopSettingsMutation.isPending}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {saveShopSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
             </Button>
           </DialogFooter>
         </DialogContent>

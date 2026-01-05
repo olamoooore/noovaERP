@@ -250,6 +250,52 @@ svg.h-8 { height: 2rem; }
 
 /* Font families for footer presets */
 .font-serif { font-family: 'Playfair Display', 'Lora', Georgia, serif; }
+
+/* ============================================
+   E-commerce / Shop Styles
+   ============================================ */
+
+/* E-commerce animations */
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes addToCartPop { 
+  0% { transform: scale(1); } 
+  30% { transform: scale(0.95); } 
+  60% { transform: scale(1.05); } 
+  100% { transform: scale(1); } 
+}
+@keyframes cartBadgePop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+/* Product card hover effects */
+.product-card { transition: all 0.3s ease; }
+.product-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+
+/* Add to cart button animation */
+.add-to-cart-btn { transition: all 0.2s ease; position: relative; overflow: hidden; }
+.add-to-cart-btn:hover:not(:disabled) { transform: scale(1.05); }
+.add-to-cart-btn:active:not(:disabled) { transform: scale(0.95); }
+.add-to-cart-btn.adding { animation: addToCartPop 0.4s ease; pointer-events: none; }
+
+/* Cart badge animation */
+.cart-badge.pop { animation: cartBadgePop 0.3s ease; }
+
+/* Wishlist button animation */
+.heart-icon { transition: all 0.2s ease; }
+.heart-icon:hover { transform: scale(1.1); }
+.heart-icon:active { transform: scale(0.9); }
+
+/* Category button hover */
+[data-category-filter] button { transition: all 0.2s ease; }
+[data-category-filter] button:hover { transform: translateX(4px); }
+
+/* Loading spinner */
+.shop-loading { animation: spin 1s linear infinite; }
 `
 
 // Lucide icons CSS - only Lucide-specific styles
@@ -350,15 +396,28 @@ svg.gjs-svg-selectable {
 
 export const canvasConfig = {
   styles: [
+    // Tailwind CSS CDN (will be overridden by theme's own Tailwind config)
     'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
-    // Google Fonts
-    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;500;600;700&family=Lato:wght@300;400;700&family=Montserrat:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700&family=Nunito:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Merriweather:wght@300;400;700&family=Source+Sans+Pro:wght@300;400;600;700&family=Ubuntu:wght@300;400;500;700&family=Oswald:wght@300;400;500;600;700&family=Quicksand:wght@300;400;500;600;700&family=Work+Sans:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap',
+    // Google Fonts - comprehensive list
+    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;500;600;700&family=Lato:wght@300;400;700&family=Montserrat:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700&family=Nunito:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Merriweather:wght@300;400;700&family=Source+Sans+Pro:wght@300;400;600;700&family=Ubuntu:wght@300;400;500;700&family=Oswald:wght@300;400;500;600;700&family=Quicksand:wght@300;400;500;600;700&family=Work+Sans:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700&family=Outfit:wght@400;500;600;700&family=Syne:wght@400;700;800&display=swap',
+    // RemixIcon icons CSS
+    'https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css',
     // Lucide icons CSS
     'data:text/css,' + encodeURIComponent(lucideCSS),
     // Custom Tailwind CSS
     'data:text/css,' + encodeURIComponent(customTailwindCSS),
   ],
   scripts: [
+    // API Base URL configuration for e-commerce (must be first)
+    'data:text/javascript,' + encodeURIComponent(`window.__API_BASE_URL__ = window.parent?.location?.origin + '/api/v1/website-public' || '/api/v1/website-public';`),
+    // Tailwind CSS CDN (for dynamic config)
+    'https://cdn.tailwindcss.com',
+    // Lucide icons
     'https://unpkg.com/lucide@latest/dist/umd/lucide.min.js',
+    // GSAP for animations
+    'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js',
+    // Lenis smooth scroll
+    'https://unpkg.com/@studio-freight/lenis@1.0.29/dist/lenis.min.js',
   ],
 }

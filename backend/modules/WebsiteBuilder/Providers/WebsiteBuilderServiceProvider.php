@@ -20,7 +20,8 @@ class WebsiteBuilderServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations/tenant');
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Routes are loaded via ModuleManager in routes/tenant.php with proper tenant context
+        // $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
         $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'website-builder');
     }
