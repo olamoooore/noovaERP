@@ -34,7 +34,7 @@ export function EventPortalPage() {
   const { data: eventsResponse, isLoading, error } = useQuery({
     queryKey: ['public-events'],
     queryFn: async () => {
-      const response = await api.get('/events/public')
+      const response = await api.get('/public/event-management/events')
       return response.data
     },
     retry: 2,

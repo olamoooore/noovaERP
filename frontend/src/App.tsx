@@ -41,6 +41,8 @@ import MyEventsDashboard from '@/pages/EventManagement/MyEventsDashboard'
 import BrowseEventsPage from '@/pages/EventManagement/BrowseEventsPage'
 import MyBookingsPage from '@/pages/EventManagement/MyBookingsPage'
 import MyTicketsPage from '@/pages/EventManagement/MyTicketsPage'
+import { StaffManagementPage, LiveOperationsDashboard } from '@/pages/EventManagement'
+import { EventPortalPage } from '@/pages/EventPortal'
 import { useSettingsStore } from '@/store/settingsStore'
 
 const queryClient = new QueryClient({
@@ -101,10 +103,15 @@ function App() {
               <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
               <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />
               <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
+              
+              {/* Event Management Module Routes */}
               <Route path="/events" element={<MyEventsDashboard />} />
               <Route path="/events/browse" element={<BrowseEventsPage />} />
               <Route path="/events/bookings" element={<MyBookingsPage />} />
               <Route path="/events/tickets" element={<MyTicketsPage />} />
+              <Route path="/event-portal" element={<EventPortalPage />} />
+              <Route path="/event-management/staff" element={<StaffManagementPage />} />
+              <Route path="/event-management/operations" element={<LiveOperationsDashboard />} />
             </Route>
 
             {/* Website Editor - fullscreen without sidebar */}

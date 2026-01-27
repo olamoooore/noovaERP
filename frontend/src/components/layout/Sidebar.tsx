@@ -161,6 +161,21 @@ const baseNavItems: NavItem[] = [
         href: '/events/tickets',
         icon: 'solar:ticket-sale-bold-duotone',
       },
+      {
+        title: 'Event Portal',
+        href: '/event-portal',
+        icon: 'solar:door-bold-duotone',
+      },
+      {
+        title: 'Staff Management',
+        href: '/event-management/staff',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
+        title: 'Live Operations',
+        href: '/event-management/operations',
+        icon: 'solar:monitor-bold-duotone',
+      },
     ],
   },
   {
