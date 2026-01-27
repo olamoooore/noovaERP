@@ -136,6 +136,34 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:earth-bold-duotone',
   },
   {
+    title: 'Events',
+    href: '/events',
+    icon: 'solar:calendar-bold-duotone',
+    featureKey: 'event-management',
+    children: [
+      {
+        title: 'My Events',
+        href: '/events',
+        icon: 'solar:ticket-bold-duotone',
+      },
+      {
+        title: 'Browse Events',
+        href: '/events/browse',
+        icon: 'solar:gallery-bold-duotone',
+      },
+      {
+        title: 'My Bookings',
+        href: '/events/bookings',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Tickets',
+        href: '/events/tickets',
+        icon: 'solar:ticket-sale-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Modules',
     href: '/modules',
     icon: 'solar:widget-bold-duotone',
@@ -164,11 +192,11 @@ export function Sidebar() {
     features?.filter((f: any) => f.enabled).map((f: any) => f.key)
   )
   
-  // Force enable POS and Website Builder for testing if features list is empty or fails
-  if (!features || features.length === 0) {
-    enabledFeatures.add('pos')
-    enabledFeatures.add('website-builder')
-  }
+  // Force enable core features (POS, Website Builder, Event Management)
+  // These are always shown regardless of feature flag status
+  enabledFeatures.add('pos')
+  enabledFeatures.add('website-builder')
+  enabledFeatures.add('event-management')
 
   const navItems = baseNavItems.filter(item => {
     if (!item.featureKey) return true

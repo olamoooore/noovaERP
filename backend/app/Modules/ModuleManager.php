@@ -33,7 +33,7 @@ final class ModuleManager
 
         $modules = [];
         foreach (File::directories($basePath) as $dir) {
-            $manifestPath = $dir.'/module.json';
+            $manifestPath = $dir . '/module.json';
             if (!is_file($manifestPath)) {
                 continue;
             }
@@ -43,9 +43,9 @@ final class ModuleManager
                 continue;
             }
 
-            $key = (string)($raw['key'] ?? '');
-            $name = (string)($raw['name'] ?? '');
-            $type = (string)($raw['type'] ?? 'addon');
+            $key = (string) ($raw['key'] ?? '');
+            $name = (string) ($raw['name'] ?? '');
+            $type = (string) ($raw['type'] ?? 'addon');
             $providers = $raw['providers'] ?? [];
 
             if ($key === '' || $name === '') {
@@ -60,6 +60,7 @@ final class ModuleManager
                 providers: is_array($providers) ? $providers : [],
             );
         }
+
 
         usort($modules, function (Module $a, Module $b): int {
             return [$a->isCore() ? 0 : 1, $a->key] <=> [$b->isCore() ? 0 : 1, $b->key];

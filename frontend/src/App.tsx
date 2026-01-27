@@ -37,6 +37,7 @@ import {
   WarehouseTransferCreatePage,
   WarehousesPage,
 } from '@/pages/Inventory'
+import MyEventsDashboard from '@/pages/EventManagement/MyEventsDashboard'
 import { useSettingsStore } from '@/store/settingsStore'
 
 const queryClient = new QueryClient({
@@ -97,6 +98,7 @@ function App() {
               <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
               <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />
               <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
+              <Route path="/events" element={<MyEventsDashboard />} />
             </Route>
 
             {/* Website Editor - fullscreen without sidebar */}

@@ -1,0 +1,1 @@
+export { EventPortalPage } from './EventPortalPage'
