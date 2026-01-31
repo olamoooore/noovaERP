@@ -12,6 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // In testing, skip - central migrations already created these tables
+        if (app()->environment('testing')) {
+            return;
+        }
+
         Schema::create('features', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique(); // pos, loyalty, whatsapp, ai
@@ -34,7 +39,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('tenant_features');
-        Schema::dropIfExists('features');
+        if (!app()->environment('testing')) {
+            Schema::dropIfExists('tenant_features');
+            Schema::dropIfExists('features');
+        }
     }
 };

@@ -1,0 +1,8 @@
+{
+  "key": "ocr-bookkeeping",
+  "name": "OCR Bookkeeping",
+  "type": "addon",
+  "providers": [
+    "Modules\\OCRBookkeeping\\Providers\\OCRBookkeepingServiceProvider"
+  ]
+}

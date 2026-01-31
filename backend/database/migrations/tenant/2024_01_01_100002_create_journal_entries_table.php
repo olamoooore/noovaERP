@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -46,40 +47,44 @@ return new class extends Migration
             $table->index('journal_entry_id');
         });
 
-        // Trigger to validate debit = credit (PostgreSQL)
-        DB::statement('
-            CREATE OR REPLACE FUNCTION check_journal_balance()
-            RETURNS TRIGGER AS $$
-            DECLARE
-                total_debit NUMERIC(20,2);
-                total_credit NUMERIC(20,2);
-            BEGIN
-                SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
-                INTO total_debit, total_credit
-                FROM journal_entry_lines
-                WHERE journal_entry_id = NEW.journal_entry_id;
+        // Trigger to validate debit = credit (PostgreSQL only)
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('
+                CREATE OR REPLACE FUNCTION check_journal_balance()
+                RETURNS TRIGGER AS $$
+                DECLARE
+                    total_debit NUMERIC(20,2);
+                    total_credit NUMERIC(20,2);
+                BEGIN
+                    SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
+                    INTO total_debit, total_credit
+                    FROM journal_entry_lines
+                    WHERE journal_entry_id = NEW.journal_entry_id;
 
-                IF total_debit != total_credit THEN
-                    RAISE EXCEPTION \'Journal entry does not balance: Debit % != Credit %\', total_debit, total_credit;
-                END IF;
+                    IF total_debit != total_credit THEN
+                        RAISE EXCEPTION \'Journal entry does not balance: Debit % != Credit %\', total_debit, total_credit;
+                    END IF;
 
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-        ');
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            ');
 
-        DB::statement('
-            CREATE TRIGGER enforce_journal_balance
-            AFTER INSERT OR UPDATE ON journal_entry_lines
-            FOR EACH ROW
-            EXECUTE FUNCTION check_journal_balance();
-        ');
+            DB::statement('
+                CREATE TRIGGER enforce_journal_balance
+                AFTER INSERT OR UPDATE ON journal_entry_lines
+                FOR EACH ROW
+                EXECUTE FUNCTION check_journal_balance();
+            ');
+        }
     }
 
     public function down(): void
     {
-        DB::statement('DROP TRIGGER IF EXISTS enforce_journal_balance ON journal_entry_lines');
-        DB::statement('DROP FUNCTION IF EXISTS check_journal_balance()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('DROP TRIGGER IF EXISTS enforce_journal_balance ON journal_entry_lines');
+            DB::statement('DROP FUNCTION IF EXISTS check_journal_balance()');
+        }
         
         Schema::dropIfExists('journal_entry_lines');
         Schema::dropIfExists('journal_entries');

@@ -17,24 +17,41 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        // For development: automatically switch to demo tenant
+        $tenant = \App\Models\Tenant::where('email', $request->email)->first();
+        
+        if (!$tenant) {
+            // Try to find tenant by user email in tenant database
+            $tenant = \App\Models\Tenant::first(); // Use first tenant for development
+            
+            if (!$tenant) {
+                throw ValidationException::withMessages([
+                    'email' => ['No tenant configured. Please run seeders.'],
+                ]);
+            }
+        }
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+        // Run the login logic in tenant context
+        return $tenant->run(function () use ($request) {
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                throw ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+
+            $token = $user->createToken('auth-token')->plainTextToken;
+
+            return response()->json([
+                'user' => $user,
+                'token' => $token,
+                'tenant' => [
+                    'id' => tenant('id'),
+                    'name' => tenant('name'),
+                ],
             ]);
-        }
-
-        if (!$user->is_active) {
-            return response()->json(['message' => 'Account is inactive'], 403);
-        }
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        return response()->json([
-            'user' => $user,
-            'token' => $token,
-        ]);
+        });
     }
 
     public function logout(Request $request)

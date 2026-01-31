@@ -7,6 +7,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Only run on PostgreSQL
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // The original trigger validates balance after each row insert, which breaks
         // multi-line journal entries. Recreate it as a DEFERRABLE constraint trigger.
         DB::statement('DROP TRIGGER IF EXISTS enforce_journal_balance ON journal_entry_lines');
@@ -44,6 +49,11 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Only run on PostgreSQL
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('DROP TRIGGER IF EXISTS enforce_journal_balance ON journal_entry_lines');
         DB::statement('DROP FUNCTION IF EXISTS check_journal_balance()');
 

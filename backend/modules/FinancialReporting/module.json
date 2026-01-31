@@ -1,0 +1,24 @@
+{
+    "key": "financial-reporting",
+    "name": "FinancialReporting",
+    "type": "addon",
+    "alias": "financialreporting",
+    "description": "Financial Reporting & Analytics Module - Comprehensive reporting, dashboards, and business intelligence",
+    "keywords": [
+        "financial",
+        "reporting",
+        "analytics",
+        "dashboard",
+        "profit-loss",
+        "balance-sheet",
+        "cash-flow",
+        "inventory",
+        "sales"
+    ],
+    "priority": 50,
+    "providers": [
+        "Modules\\FinancialReporting\\Providers\\FinancialReportingServiceProvider"
+    ],
+    "files": [],
+    "requires": []
+}

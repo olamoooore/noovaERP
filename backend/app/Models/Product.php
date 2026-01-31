@@ -7,90 +7,208 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Models\StockLevel;
+use Modules\Inventory\Models\Supplier;
 
+/**
+ * Product Model - Central Master Data Hub
+ * Comprehensive ERP product management with full lifecycle support
+ */
 class Product extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // Status constants
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_PENDING_APPROVAL = 'pending_approval';
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_DISCONTINUED = 'discontinued';
+    public const STATUS_ARCHIVED = 'archived';
+
+    // Tracking method constants
+    public const TRACKING_NONE = 'none';
+    public const TRACKING_QUANTITY = 'quantity';
+    public const TRACKING_BATCH = 'batch';
+    public const TRACKING_SERIAL = 'serial';
+
+    // Product types
+    public const TYPE_PRODUCT = 'product';
+    public const TYPE_SERVICE = 'service';
+
     protected $fillable = [
+        // Basic Info
         'name',
         'secondary_name',
+        'slug',
         'sku',
         'barcode',
+        'barcodes',
         'description',
         'category_id',
         'brand_id',
         'type',
+        'is_digital',
+        'is_subscription',
+        'download_url',
+        'license_key',
+        
+        // Bundle
+        'is_bundle',
+        'bundle_type',
+        
+        // Pricing
         'cost',
         'price',
+        'wholesale_price',
+        'msrp',
+        'min_price',
+        'max_price',
+        
+        // Tax
         'tax_rate',
         'tax_mode',
         'tax_included',
         'tax_rate_override',
         'tax_id',
+        
+        // Accounting
         'income_account_id',
         'expense_account_id',
+        
+        // Inventory
         'track_inventory',
+        'tracking_method',
+        'stock_quantity',
+        'reorder_level',
+        'safety_stock',
+        'max_stock',
+        'reorder_quantity',
+        'min_stock_threshold',
+        'unit',
+        
+        // Physical Attributes
+        'weight',
+        'length',
+        'width',
+        'height',
+        'dimensional_weight',
+        
+        // Storage & Handling
+        'is_hazmat',
+        'hazmat_class',
+        'storage_conditions',
+        'is_fragile',
+        'shelf_life_days',
+        
+        // Compliance
+        'hs_code',
+        'country_of_origin',
+        'warranty_months',
+        'warranty_type',
+        'certifications',
+        
+        // Manufacturer
+        'manufacturer',
+        'manufacturer_part_number',
+        
+        // Media
+        'image',
+        'gallery',
+        
+        // SEO
+        'meta_title',
+        'meta_description',
+        'meta_keywords',
+        
+        // Localization
+        'localized_names',
+        'localized_descriptions',
+        
+        // Attributes
+        'attributes',
+        
+        // Status & Flags
+        'status',
+        'is_active',
         'is_preorder',
         'is_new_arrival',
         'show_on_website',
         'preorder_available_at',
-        'stock_quantity',
-        'reorder_level',
-        'min_stock_threshold',
-        'unit',
-        'image',
-        'gallery',
-        'attributes',
-        'is_active',
+        
+        // Approval
+        'approved_by',
+        'approved_at',
+        'discontinued_by',
+        'discontinued_at',
     ];
 
     protected $casts = [
+        // Pricing
         'cost' => 'decimal:2',
         'price' => 'decimal:2',
+        'wholesale_price' => 'decimal:2',
+        'msrp' => 'decimal:2',
+        'min_price' => 'decimal:2',
+        'max_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_rate_override' => 'decimal:2',
+        
+        // Physical
+        'weight' => 'decimal:3',
+        'length' => 'decimal:2',
+        'width' => 'decimal:2',
+        'height' => 'decimal:2',
+        'dimensional_weight' => 'decimal:3',
+        
+        // Booleans
         'tax_included' => 'boolean',
-        'gallery' => 'array',
-        'attributes' => 'array',
         'track_inventory' => 'boolean',
+        'is_active' => 'boolean',
         'is_preorder' => 'boolean',
         'is_new_arrival' => 'boolean',
         'show_on_website' => 'boolean',
+        'is_hazmat' => 'boolean',
+        'is_fragile' => 'boolean',
+        'is_digital' => 'boolean',
+        'is_subscription' => 'boolean',
+        'is_bundle' => 'boolean',
+        
+        // Dates
         'preorder_available_at' => 'date:Y-m-d',
-        'is_active' => 'boolean',
+        'approved_at' => 'datetime',
+        'discontinued_at' => 'datetime',
+        
+        // JSON
+        'gallery' => 'array',
+        'attributes' => 'array',
+        'barcodes' => 'array',
+        'certifications' => 'array',
+        'localized_names' => 'array',
+        'localized_descriptions' => 'array',
     ];
 
-    public function tax()
+    protected $appends = ['stock'];
+
+    // ==================== RELATIONSHIPS ====================
+
+    public function tax(): BelongsTo
     {
         return $this->belongsTo(Tax::class);
     }
 
-    protected $appends = ['stock'];
-
-    public function getStockAttribute()
-    {
-        return $this->stock_quantity;
-    }
-
-    public function incomeAccount()
+    public function incomeAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'income_account_id');
     }
 
-    public function expenseAccount()
+    public function expenseAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'expense_account_id');
     }
 
-    public function stockMovements(): HasMany
-    {
-        return $this->hasMany(StockMovement::class);
-    }
-
-    public function category()
+    public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
     }
@@ -98,6 +216,21 @@ class Product extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function discontinuedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'discontinued_by');
+    }
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
     }
 
     public function stockLevels(): HasMany
@@ -110,6 +243,11 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    public function defaultVariant()
+    {
+        return $this->hasOne(ProductVariant::class)->where('is_default', true);
+    }
+
     public function featureValues(): HasMany
     {
         return $this->hasMany(ProductFeatureValue::class);
@@ -120,8 +258,228 @@ class Product extends Model
         return $this->hasMany(ProductCustomFieldValue::class);
     }
 
+    // UOMs
+    public function uoms(): HasMany
+    {
+        return $this->hasMany(ProductUom::class);
+    }
+
+    // Suppliers
+    public function suppliers(): BelongsToMany
+    {
+        return $this->belongsToMany(Supplier::class, 'product_suppliers')
+            ->withPivot([
+                'supplier_sku', 'supplier_barcode', 'cost', 'last_cost',
+                'lead_time_days', 'moq', 'order_multiple', 'priority',
+                'is_preferred', 'last_purchase_date', 'notes', 'is_active'
+            ])
+            ->withTimestamps();
+    }
+
+    public function productSuppliers(): HasMany
+    {
+        return $this->hasMany(ProductSupplier::class);
+    }
+
+    public function preferredSupplier()
+    {
+        return $this->productSuppliers()->where('is_preferred', true)->first();
+    }
+
+    // Bundles
+    public function bundleComponents(): HasMany
+    {
+        return $this->hasMany(ProductBundle::class, 'bundle_product_id');
+    }
+
+    public function partOfBundles(): HasMany
+    {
+        return $this->hasMany(ProductBundle::class, 'component_product_id');
+    }
+
+    // Relationships (cross-sell, up-sell, etc.)
+    public function relationships(): HasMany
+    {
+        return $this->hasMany(ProductRelationship::class);
+    }
+
+    public function crossSellProducts()
+    {
+        return $this->relationships()->where('type', 'cross_sell')->with('relatedProduct');
+    }
+
+    public function upSellProducts()
+    {
+        return $this->relationships()->where('type', 'up_sell')->with('relatedProduct');
+    }
+
+    public function substituteProducts()
+    {
+        return $this->relationships()->where('type', 'substitute')->with('relatedProduct');
+    }
+
+    public function accessoryProducts()
+    {
+        return $this->relationships()->where('type', 'accessory')->with('relatedProduct');
+    }
+
+    // Pricing
+    public function priceTiers(): HasMany
+    {
+        return $this->hasMany(ProductPriceTier::class);
+    }
+
+    // Batch & Serial
+    public function batches(): HasMany
+    {
+        return $this->hasMany(ProductBatch::class);
+    }
+
+    public function serials(): HasMany
+    {
+        return $this->hasMany(ProductSerial::class);
+    }
+
+    // Documents
+    public function documents(): HasMany
+    {
+        return $this->hasMany(ProductDocument::class);
+    }
+
+    // Audit
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(ProductAuditLog::class);
+    }
+
+    // ==================== ACCESSORS ====================
+
+    public function getStockAttribute(): int
+    {
+        return $this->stock_quantity ?? 0;
+    }
+
+    public function getVolumeAttribute(): ?float
+    {
+        if ($this->length && $this->width && $this->height) {
+            return $this->length * $this->width * $this->height;
+        }
+        return null;
+    }
+
+    public function getMarginAttribute(): float
+    {
+        if (!$this->cost || $this->cost == 0) {
+            return 100;
+        }
+        return (($this->price - $this->cost) / $this->price) * 100;
+    }
+
+    public function getMarkupAttribute(): float
+    {
+        if (!$this->cost || $this->cost == 0) {
+            return 0;
+        }
+        return (($this->price - $this->cost) / $this->cost) * 100;
+    }
+
+    // ==================== STATUS METHODS ====================
+
+    public function isDraft(): bool
+    {
+        return $this->status === self::STATUS_DRAFT;
+    }
+
+    public function isPendingApproval(): bool
+    {
+        return $this->status === self::STATUS_PENDING_APPROVAL;
+    }
+
+    public function isActiveStatus(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function isDiscontinued(): bool
+    {
+        return $this->status === self::STATUS_DISCONTINUED;
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->status === self::STATUS_ARCHIVED;
+    }
+
+    public function submitForApproval(): void
+    {
+        if ($this->status === self::STATUS_DRAFT) {
+            $this->status = self::STATUS_PENDING_APPROVAL;
+            $this->save();
+            ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STATUS_CHANGED, 'status', 'draft', 'pending_approval');
+        }
+    }
+
+    public function approve(): void
+    {
+        if ($this->status === self::STATUS_PENDING_APPROVAL) {
+            $this->status = self::STATUS_ACTIVE;
+            $this->approved_by = auth()->id();
+            $this->approved_at = now();
+            $this->save();
+            ProductAuditLog::log($this->id, ProductAuditLog::ACTION_APPROVED, 'status', 'pending_approval', 'active');
+        }
+    }
+
+    public function discontinue(): void
+    {
+        $oldStatus = $this->status;
+        $this->status = self::STATUS_DISCONTINUED;
+        $this->discontinued_by = auth()->id();
+        $this->discontinued_at = now();
+        $this->save();
+        ProductAuditLog::log($this->id, ProductAuditLog::ACTION_DISCONTINUED, 'status', $oldStatus, 'discontinued');
+    }
+
+    public function archive(): void
+    {
+        $oldStatus = $this->status;
+        $this->status = self::STATUS_ARCHIVED;
+        $this->save();
+        ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STATUS_CHANGED, 'status', $oldStatus, 'archived');
+    }
+
+    // ==================== STOCK METHODS ====================
+
+    public function isLowStock(): bool
+    {
+        return $this->stock_quantity <= ($this->min_stock_threshold ?? $this->reorder_level ?? 0);
+    }
+
+    public function isOutOfStock(): bool
+    {
+        return $this->stock_quantity <= 0;
+    }
+
+    public function needsReorder(): bool
+    {
+        return $this->stock_quantity <= $this->reorder_level;
+    }
+
+    public function getStockInWarehouse(int $warehouseId): int
+    {
+        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+        return $stockLevel ? $stockLevel->quantity : 0;
+    }
+
+    public function getAvailableStockInWarehouse(int $warehouseId): int
+    {
+        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+        return $stockLevel ? $stockLevel->available_quantity : 0;
+    }
+
     public function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
+        $oldQuantity = $this->stock_quantity;
         $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
         $this->save();
 
@@ -130,46 +488,101 @@ class Product extends Model
             'warehouse_id' => $warehouseId,
             'type' => $type,
             'quantity' => abs($quantity),
-            'old_quantity' => $this->stock_quantity - ($type === 'in' ? $quantity : -$quantity),
+            'old_quantity' => $oldQuantity,
             'reference' => $reference,
             'balance_after' => $this->stock_quantity,
             'created_by' => auth()->id(),
         ]);
+
+        ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STOCK_CHANGED, 'stock_quantity', $oldQuantity, $this->stock_quantity);
     }
 
-    /**
-     * Get stock level for a specific warehouse
-     */
-    public function getStockInWarehouse(int $warehouseId): int
+    // ==================== PRICING METHODS ====================
+
+    public function getPriceForQuantity(int $quantity, ?int $customerId = null): float
     {
-        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
-        return $stockLevel ? $stockLevel->quantity : 0;
+        // Check for customer-specific pricing first
+        if ($customerId) {
+            $customerTier = $this->priceTiers()
+                ->where('customer_id', $customerId)
+                ->where('is_active', true)
+                ->where('min_quantity', '<=', $quantity)
+                ->where(function ($q) use ($quantity) {
+                    $q->whereNull('max_quantity')
+                      ->orWhere('max_quantity', '>=', $quantity);
+                })
+                ->orderBy('min_quantity', 'desc')
+                ->first();
+
+            if ($customerTier) {
+                return $customerTier->calculatePrice($this->price);
+            }
+        }
+
+        // Check for volume pricing
+        $tier = $this->priceTiers()
+            ->whereNull('customer_id')
+            ->where('is_active', true)
+            ->where('min_quantity', '<=', $quantity)
+            ->where(function ($q) use ($quantity) {
+                $q->whereNull('max_quantity')
+                  ->orWhere('max_quantity', '>=', $quantity);
+            })
+            ->orderBy('min_quantity', 'desc')
+            ->first();
+
+        if ($tier) {
+            return $tier->calculatePrice($this->price);
+        }
+
+        return (float) $this->price;
     }
 
-    /**
-     * Get available stock (total - reserved) for a specific warehouse
-     */
-    public function getAvailableStockInWarehouse(int $warehouseId): int
+    // ==================== BUNDLE METHODS ====================
+
+    public function getBundleTotalCost(): float
     {
-        $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
-        return $stockLevel ? $stockLevel->available_quantity : 0;
+        if (!$this->is_bundle) {
+            return (float) $this->cost;
+        }
+
+        return $this->bundleComponents->sum(function ($component) {
+            return $component->componentProduct->cost * $component->quantity;
+        });
     }
 
-    /**
-     * Check if product is low on stock
-     */
-    public function isLowStock(): bool
+    public function getBundleTotalPrice(): float
     {
-        return $this->stock_quantity <= $this->min_stock_threshold;
+        if (!$this->is_bundle) {
+            return (float) $this->price;
+        }
+
+        return $this->bundleComponents->sum(function ($component) {
+            return $component->discounted_price;
+        });
     }
 
-    /**
-     * Check if product is out of stock
-     */
-    public function isOutOfStock(): bool
+    public function canFulfillBundle(int $quantity = 1): bool
     {
-        return $this->stock_quantity <= 0;
+        if (!$this->is_bundle) {
+            return $this->stock_quantity >= $quantity;
+        }
+
+        foreach ($this->bundleComponents as $component) {
+            if ($component->is_optional) {
+                continue;
+            }
+            
+            $needed = $component->quantity * $quantity;
+            if ($component->componentProduct->stock_quantity < $needed) {
+                return false;
+            }
+        }
+
+        return true;
     }
+
+    // ==================== STATIC METHODS ====================
 
     public static function findSellableByBarcodeOrSku(string $code): ?array
     {
@@ -178,9 +591,12 @@ class Product extends Model
             return null;
         }
 
+        // Check variants first
         $variant = ProductVariant::query()
             ->where(function ($q) use ($code) {
-                $q->where('barcode', $code)->orWhere('sku', $code);
+                $q->where('barcode', $code)
+                  ->orWhere('sku', $code)
+                  ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
             ->first();
@@ -193,11 +609,15 @@ class Product extends Model
             ];
         }
 
+        // Check products
         $product = Product::query()
             ->where(function ($q) use ($code) {
-                $q->where('barcode', $code)->orWhere('sku', $code);
+                $q->where('barcode', $code)
+                  ->orWhere('sku', $code)
+                  ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
+            ->where('status', self::STATUS_ACTIVE)
             ->first();
 
         if (!$product) {
@@ -208,5 +628,64 @@ class Product extends Model
             'type' => 'product',
             'product' => $product,
         ];
+    }
+
+    public static function statuses(): array
+    {
+        return [
+            self::STATUS_DRAFT,
+            self::STATUS_PENDING_APPROVAL,
+            self::STATUS_ACTIVE,
+            self::STATUS_DISCONTINUED,
+            self::STATUS_ARCHIVED,
+        ];
+    }
+
+    public static function trackingMethods(): array
+    {
+        return [
+            self::TRACKING_NONE,
+            self::TRACKING_QUANTITY,
+            self::TRACKING_BATCH,
+            self::TRACKING_SERIAL,
+        ];
+    }
+
+    // ==================== BOOT ====================
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($product) {
+            // Generate slug if not provided
+            if (empty($product->slug)) {
+                $product->slug = \Illuminate\Support\Str::slug($product->name);
+                $count = static::where('slug', 'like', $product->slug . '%')->count();
+                if ($count > 0) {
+                    $product->slug .= '-' . ($count + 1);
+                }
+            }
+
+            // Set default status
+            if (empty($product->status)) {
+                $product->status = self::STATUS_ACTIVE;
+            }
+        });
+
+        static::created(function ($product) {
+            ProductAuditLog::log($product->id, ProductAuditLog::ACTION_CREATED);
+        });
+
+        static::updating(function ($product) {
+            // Log changes
+            $original = $product->getOriginal();
+            $changes = $product->getDirty();
+            ProductAuditLog::logChanges($product->id, $original, $changes);
+        });
+
+        static::deleted(function ($product) {
+            ProductAuditLog::log($product->id, ProductAuditLog::ACTION_DELETED);
+        });
     }
 }

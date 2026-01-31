@@ -6,26 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductCustomFieldValue;
 use App\Models\ProductFeatureValue;
 use App\Models\Product;
+use App\Models\ProductAuditLog;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        // Only eager load relationships that exist
-        $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax'])
+        $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax', 'brand'])
             ->orderBy('name');
-        
-        // Try to load brand relationship if the table exists
-        try {
-            if (\Schema::hasTable('brands')) {
-                $query->with('brand');
-            }
-        } catch (\Exception $e) {
-            // Ignore if brands table doesn't exist
-        }
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -33,7 +25,8 @@ class ProductController extends Controller
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('secondary_name', 'like', "%{$search}%")
                     ->orWhere('sku', 'like', "%{$search}%")
-                    ->orWhere('barcode', 'like', "%{$search}%");
+                    ->orWhere('barcode', 'like', "%{$search}%")
+                    ->orWhere('manufacturer_part_number', 'like', "%{$search}%");
             });
         }
 
@@ -52,6 +45,16 @@ class ProductController extends Controller
             }
         }
 
+        // Status filter
+        if ($request->filled('status')) {
+            $status = $request->input('status');
+            if (is_array($status)) {
+                $query->whereIn('status', $status);
+            } else {
+                $query->where('status', $status);
+            }
+        }
+
         if ($request->filled('is_active')) {
             $isActive = $request->input('is_active');
             $bool = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -66,18 +69,41 @@ class ProductController extends Controller
         if ($request->filled('is_preorder')) {
             $query->where('is_preorder', true);
         }
-        if ($request->filled('show_on_website')) {
-            $query->where('show_on_website', true);
+        if ($request->filled('is_bundle')) {
+            $query->where('is_bundle', true);
+        }
+        if ($request->filled('is_digital')) {
+            $query->where('is_digital', true);
         }
         if ($request->filled('out_of_stock')) {
             $query->where('stock_quantity', '<=', 0);
         }
         if ($request->filled('low_stock')) {
-            $query->whereColumn('stock_quantity', '<=', 'min_stock_threshold')
-                  ->where('stock_quantity', '>', 0);
+            $query->whereColumn('stock_quantity', '<=', 'reorder_level');
         }
 
-        $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at'];
+        // Tracking method filter
+        if ($request->filled('tracking_method')) {
+            $query->where('tracking_method', $request->tracking_method);
+        }
+
+        // Price range filter
+        if ($request->filled('min_price')) {
+            $query->where('price', '>=', (float) $request->min_price);
+        }
+        if ($request->filled('max_price')) {
+            $query->where('price', '<=', (float) $request->max_price);
+        }
+
+        // Supplier filter
+        if ($request->filled('supplier_id')) {
+            $supplierId = (int) $request->supplier_id;
+            $query->whereHas('productSuppliers', function ($q) use ($supplierId) {
+                $q->where('supplier_id', $supplierId);
+            });
+        }
+
+        $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at', 'sku', 'status'];
         $sortBy = (string) $request->input('sort_by', 'name');
         $sortDir = strtolower((string) $request->input('sort_dir', 'asc'));
         if (!in_array($sortBy, $allowedSorts, true)) {
@@ -106,7 +132,6 @@ class ProductController extends Controller
             'barcode' => 'nullable|string|unique:products,barcode',
             'description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
-            'brand_id' => 'nullable|exists:brands,id',
             'type' => 'required|in:product,service',
             'cost' => 'required|numeric|min:0',
             'price' => 'required|numeric|min:0',
@@ -139,7 +164,6 @@ class ProductController extends Controller
             'custom_field_values.*.value' => 'nullable|string',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
-            'show_on_website' => 'boolean',
             'variants' => 'nullable|array',
             'variants.*.name' => 'required|string',
             'variants.*.sku' => 'required|string',
@@ -189,20 +213,316 @@ class ProductController extends Controller
         return response()->json($product->load(['incomeAccount', 'expenseAccount', 'category', 'tax']), 201);
     }
 
-    public function show(Product $product)
+    public function show(Product $product): JsonResponse
     {
         return response()->json($product->load([
             'incomeAccount',
             'expenseAccount',
             'category',
-            'brand',
             'tax',
+            'brand',
             'variants',
-            'stockMovements' => fn($q) => $q->latest()->limit(20),
-            'stockLevels.warehouse',
-            'featureValues',
-            'customFieldValues',
+            'stockMovements' => fn($q) => $q->latest()->limit(50),
+            'featureValues.feature',
+            'customFieldValues.customField',
+            'uoms',
+            'productSuppliers.supplier',
+            'bundleComponents.componentProduct' => fn($q) => $q->select('id', 'name', 'sku', 'price', 'cost', 'image'),
+            'priceTiers',
+            'documents',
         ]));
+    }
+
+    /**
+     * Get product audit log
+     */
+    public function auditLog(Product $product, Request $request): JsonResponse
+    {
+        $perPage = $request->get('per_page', 50);
+        
+        $logs = $product->auditLogs()
+            ->with('user:id,name,email')
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        return response()->json($logs);
+    }
+
+    /**
+     * Get products needing reorder
+     */
+    public function reorderReport(Request $request): JsonResponse
+    {
+        $query = Product::where('track_inventory', true)
+            ->whereNotNull('reorder_level')
+            ->whereColumn('stock_quantity', '<=', 'reorder_level')
+            ->with(['category', 'preferredSupplier.supplier']);
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        $products = $query->orderBy('stock_quantity', 'asc')
+            ->paginate($request->get('per_page', 50));
+
+        return response()->json($products);
+    }
+
+    /**
+     * Submit product for approval
+     */
+    public function submitForApproval(Product $product): JsonResponse
+    {
+        if ($product->status !== Product::STATUS_DRAFT) {
+            return response()->json([
+                'message' => 'Only draft products can be submitted for approval'
+            ], 422);
+        }
+
+        $product->submitForApproval();
+
+        return response()->json([
+            'message' => 'Product submitted for approval',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Approve a product
+     */
+    public function approve(Product $product): JsonResponse
+    {
+        if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
+            return response()->json([
+                'message' => 'Only products pending approval can be approved'
+            ], 422);
+        }
+
+        $product->approve();
+
+        return response()->json([
+            'message' => 'Product approved successfully',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Reject a product (send back to draft)
+     */
+    public function reject(Request $request, Product $product): JsonResponse
+    {
+        if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
+            return response()->json([
+                'message' => 'Only products pending approval can be rejected'
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $product->status = Product::STATUS_DRAFT;
+        $product->save();
+
+        ProductAuditLog::log($product->id, 'rejected', 'status', 'pending_approval', 'draft', [
+            'rejection_reason' => $validated['reason']
+        ]);
+
+        return response()->json([
+            'message' => 'Product rejected and returned to draft',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Discontinue a product
+     */
+    public function discontinue(Product $product): JsonResponse
+    {
+        if ($product->status === Product::STATUS_DISCONTINUED) {
+            return response()->json([
+                'message' => 'Product is already discontinued'
+            ], 422);
+        }
+
+        $product->discontinue();
+
+        return response()->json([
+            'message' => 'Product discontinued successfully',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Archive a product
+     */
+    public function archive(Product $product): JsonResponse
+    {
+        $product->archive();
+
+        return response()->json([
+            'message' => 'Product archived successfully',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Reactivate a product
+     */
+    public function reactivate(Product $product): JsonResponse
+    {
+        if ($product->status === Product::STATUS_ACTIVE) {
+            return response()->json([
+                'message' => 'Product is already active'
+            ], 422);
+        }
+
+        $oldStatus = $product->status;
+        $product->status = Product::STATUS_ACTIVE;
+        $product->discontinued_at = null;
+        $product->discontinued_by = null;
+        $product->save();
+
+        ProductAuditLog::log($product->id, 'reactivated', 'status', $oldStatus, 'active');
+
+        return response()->json([
+            'message' => 'Product reactivated successfully',
+            'product' => $product
+        ]);
+    }
+
+    /**
+     * Get product statistics
+     */
+    public function statistics(): JsonResponse
+    {
+        $stats = [
+            'total' => Product::count(),
+            'active' => Product::where('status', Product::STATUS_ACTIVE)->count(),
+            'draft' => Product::where('status', Product::STATUS_DRAFT)->count(),
+            'pending_approval' => Product::where('status', Product::STATUS_PENDING_APPROVAL)->count(),
+            'discontinued' => Product::where('status', Product::STATUS_DISCONTINUED)->count(),
+            'archived' => Product::where('status', Product::STATUS_ARCHIVED)->count(),
+            'out_of_stock' => Product::where('track_inventory', true)->where('stock_quantity', '<=', 0)->count(),
+            'low_stock' => Product::where('track_inventory', true)
+                ->whereNotNull('reorder_level')
+                ->whereColumn('stock_quantity', '<=', 'reorder_level')
+                ->count(),
+            'bundles' => Product::where('is_bundle', true)->count(),
+            'digital' => Product::where('is_digital', true)->count(),
+            'by_category' => Product::selectRaw('category_id, COUNT(*) as count')
+                ->groupBy('category_id')
+                ->with('category:id,name')
+                ->get(),
+            'by_tracking_method' => Product::selectRaw('tracking_method, COUNT(*) as count')
+                ->groupBy('tracking_method')
+                ->get(),
+        ];
+
+        return response()->json($stats);
+    }
+
+    /**
+     * Calculate price for quantity
+     */
+    public function calculatePrice(Request $request, Product $product): JsonResponse
+    {
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:1',
+            'customer_id' => 'nullable|exists:customers,id',
+            'uom_id' => 'nullable|exists:product_uoms,id',
+        ]);
+
+        $unitPrice = $product->getPriceForQuantity(
+            $validated['quantity'], 
+            $validated['customer_id'] ?? null
+        );
+
+        // Apply UOM multiplier if specified
+        if (!empty($validated['uom_id'])) {
+            $uom = $product->uoms()->find($validated['uom_id']);
+            if ($uom) {
+                $unitPrice = $unitPrice * $uom->price_multiplier;
+            }
+        }
+
+        return response()->json([
+            'product_id' => $product->id,
+            'quantity' => $validated['quantity'],
+            'unit_price' => round($unitPrice, 2),
+            'total_price' => round($unitPrice * $validated['quantity'], 2),
+            'regular_price' => (float) $product->price,
+            'discount_amount' => round(($product->price - $unitPrice) * $validated['quantity'], 2),
+        ]);
+    }
+
+    /**
+     * Duplicate a product
+     */
+    public function duplicate(Request $request, Product $product): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'sku' => 'nullable|string|unique:products,sku',
+        ]);
+
+        $newProduct = DB::transaction(function () use ($product, $validated) {
+            $newName = $validated['name'] ?? $product->name . ' (Copy)';
+            $newSku = $validated['sku'] ?? $product->sku . '-COPY-' . Str::random(4);
+
+            $data = $product->toArray();
+            unset($data['id'], $data['created_at'], $data['updated_at'], $data['deleted_at']);
+            
+            $data['name'] = $newName;
+            $data['sku'] = $newSku;
+            $data['barcode'] = null; // Must be unique
+            $data['status'] = Product::STATUS_DRAFT;
+            $data['stock_quantity'] = 0;
+            $data['approved_by'] = null;
+            $data['approved_at'] = null;
+
+            $newProduct = Product::create($data);
+
+            // Copy UOMs
+            foreach ($product->uoms as $uom) {
+                $uomData = $uom->toArray();
+                unset($uomData['id'], $uomData['product_id'], $uomData['created_at'], $uomData['updated_at']);
+                $uomData['barcode'] = null; // Must be unique
+                $newProduct->uoms()->create($uomData);
+            }
+
+            // Copy price tiers
+            foreach ($product->priceTiers as $tier) {
+                $tierData = $tier->toArray();
+                unset($tierData['id'], $tierData['product_id'], $tierData['created_at'], $tierData['updated_at']);
+                $newProduct->priceTiers()->create($tierData);
+            }
+
+            // Copy feature values
+            foreach ($product->featureValues as $value) {
+                ProductFeatureValue::create([
+                    'product_id' => $newProduct->id,
+                    'product_feature_id' => $value->product_feature_id,
+                    'value' => $value->value,
+                ]);
+            }
+
+            // Copy custom field values
+            foreach ($product->customFieldValues as $value) {
+                ProductCustomFieldValue::create([
+                    'product_id' => $newProduct->id,
+                    'product_custom_field_id' => $value->product_custom_field_id,
+                    'value' => $value->value,
+                ]);
+            }
+
+            return $newProduct;
+        });
+
+        return response()->json([
+            'message' => 'Product duplicated successfully',
+            'product' => $newProduct->load(['category', 'brand'])
+        ], 201);
     }
 
     public function update(Request $request, Product $product)
@@ -214,7 +534,6 @@ class ProductController extends Controller
             'barcode' => 'nullable|string|unique:products,barcode,' . $product->id,
             'description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
-            'brand_id' => 'nullable|exists:brands,id',
             'type' => 'in:product,service',
             'cost' => 'numeric|min:0',
             'price' => 'numeric|min:0',
@@ -246,7 +565,6 @@ class ProductController extends Controller
             'custom_field_values.*.value' => 'nullable|string',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
-            'show_on_website' => 'boolean',
         ]);
 
         $featureValues = $validated['feature_values'] ?? null;

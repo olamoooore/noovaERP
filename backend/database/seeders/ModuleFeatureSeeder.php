@@ -16,7 +16,7 @@ class ModuleFeatureSeeder extends Seeder
         $modules = app(ModuleManager::class);
 
         foreach ($modules->all() as $module) {
-            $feature = Feature::query()->updateOrCreate(
+            Feature::query()->updateOrCreate(
                 ['key' => $module->key],
                 [
                     'name' => $module->name,
@@ -25,13 +25,6 @@ class ModuleFeatureSeeder extends Seeder
                     'price' => $module->isCore() ? 0 : 0,
                 ]
             );
-
-            if ($module->isCore()) {
-                TenantFeature::query()->firstOrCreate(
-                    ['feature_id' => $feature->id],
-                    ['is_enabled' => true, 'enabled_at' => now()]
-                );
-            }
         }
     }
 }

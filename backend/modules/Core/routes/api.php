@@ -13,6 +13,9 @@ use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductFeatureController;
 use App\Http\Controllers\Api\ProductCustomFieldController;
+use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\ProductBundleController;
+use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\FeatureController;
 use App\Http\Controllers\Api\SettingsController;
@@ -55,6 +58,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('products', ProductController::class);
     Route::post('/products/import', [ProductController::class, 'import']);
+    Route::get('/products-statistics', [ProductController::class, 'statistics']);
+    Route::get('/products-reorder-report', [ProductController::class, 'reorderReport']);
+    Route::get('/products/{product}/audit-log', [ProductController::class, 'auditLog']);
+    Route::post('/products/{product}/submit-for-approval', [ProductController::class, 'submitForApproval']);
+    Route::post('/products/{product}/approve', [ProductController::class, 'approve']);
+    Route::post('/products/{product}/reject', [ProductController::class, 'reject']);
+    Route::post('/products/{product}/discontinue', [ProductController::class, 'discontinue']);
+    Route::post('/products/{product}/archive', [ProductController::class, 'archive']);
+    Route::post('/products/{product}/reactivate', [ProductController::class, 'reactivate']);
+    Route::post('/products/{product}/calculate-price', [ProductController::class, 'calculatePrice']);
+    Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate']);
 
     // Product categories
     Route::get('/product-categories', [ProductCategoryController::class, 'index']);
@@ -73,6 +87,45 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/{product}/variants', [ProductVariantController::class, 'store']);
     Route::put('/product-variants/{productVariant}', [ProductVariantController::class, 'update']);
     Route::delete('/product-variants/{productVariant}', [ProductVariantController::class, 'destroy']);
+
+    // Suppliers
+    Route::apiResource('suppliers', SupplierController::class);
+    Route::get('/suppliers/{supplier}/products', [SupplierController::class, 'products']);
+    Route::post('/suppliers/{supplier}/products', [SupplierController::class, 'linkProduct']);
+    Route::put('/suppliers/{supplier}/products/{product}', [SupplierController::class, 'updateProductLink']);
+    Route::delete('/suppliers/{supplier}/products/{product}', [SupplierController::class, 'unlinkProduct']);
+    Route::get('/suppliers-statistics', [SupplierController::class, 'statistics']);
+
+    // Product Bundles
+    Route::get('/bundles', [ProductBundleController::class, 'index']);
+    Route::get('/products/{product}/bundle-components', [ProductBundleController::class, 'components']);
+    Route::post('/products/{product}/bundle-components', [ProductBundleController::class, 'addComponent']);
+    Route::put('/products/{bundle}/bundle-components/{component}', [ProductBundleController::class, 'updateComponent']);
+    Route::delete('/products/{bundle}/bundle-components/{component}', [ProductBundleController::class, 'removeComponent']);
+    Route::post('/products/{bundle}/bundle-components/reorder', [ProductBundleController::class, 'reorderComponents']);
+    Route::get('/products/{bundle}/bundle-availability', [ProductBundleController::class, 'checkAvailability']);
+    Route::post('/products/{product}/convert-to-bundle', [ProductBundleController::class, 'convertToBundle']);
+    Route::delete('/products/{product}/remove-bundle', [ProductBundleController::class, 'removeBundle']);
+
+    // Product Batch Tracking
+    Route::get('/products/{product}/batches', [ProductTrackingController::class, 'batches']);
+    Route::post('/products/{product}/batches', [ProductTrackingController::class, 'createBatch']);
+    Route::put('/products/{product}/batches/{batch}', [ProductTrackingController::class, 'updateBatch']);
+    Route::post('/products/{product}/batches/{batch}/adjust', [ProductTrackingController::class, 'adjustBatch']);
+    Route::post('/products/{product}/batches/{batch}/reserve', [ProductTrackingController::class, 'reserveBatch']);
+    Route::post('/products/{product}/batches/{batch}/release', [ProductTrackingController::class, 'releaseBatch']);
+    Route::get('/batches/expiring', [ProductTrackingController::class, 'expiringBatches']);
+    Route::get('/batches/expired', [ProductTrackingController::class, 'expiredBatches']);
+
+    // Product Serial Number Tracking
+    Route::get('/products/{product}/serials', [ProductTrackingController::class, 'serials']);
+    Route::post('/products/{product}/serials', [ProductTrackingController::class, 'createSerial']);
+    Route::post('/products/{product}/serials/bulk', [ProductTrackingController::class, 'createSerialsBulk']);
+    Route::put('/products/{product}/serials/{serial}', [ProductTrackingController::class, 'updateSerial']);
+    Route::post('/products/{product}/serials/{serial}/sell', [ProductTrackingController::class, 'markSerialSold']);
+    Route::post('/products/{product}/serials/{serial}/return', [ProductTrackingController::class, 'markSerialReturned']);
+    Route::get('/serials/find', [ProductTrackingController::class, 'findSerial']);
+    Route::get('/serials/{serial}/warranty', [ProductTrackingController::class, 'warrantyStatus']);
 
     // Customers
     Route::apiResource('customers', CustomerController::class);

@@ -94,87 +94,57 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
-    title: 'Inventory',
-    href: '/inventory',
-    icon: 'solar:box-minimalistic-bold-duotone',
+    title: 'OCR Documents',
+    href: '/ocr/documents',
+    icon: 'solar:document-add-bold-duotone',
+    featureKey: 'accounting',
+  },
+  {
+    title: 'Dashboards',
+    href: '/dashboards/executive',
+    icon: 'solar:chart-square-bold-duotone',
     children: [
       {
-        title: 'Overview',
-        href: '/inventory',
-        icon: 'solar:chart-square-bold-duotone',
+        title: 'Executive',
+        href: '/dashboards/executive',
+        icon: 'solar:graph-new-bold-duotone',
       },
       {
-        title: 'Stock Management',
-        href: '/inventory/stock',
-        icon: 'solar:transfer-horizontal-bold-duotone',
+        title: 'Sales',
+        href: '/dashboards/sales',
+        icon: 'solar:cart-large-2-bold-duotone',
       },
       {
-        title: 'Warehouses',
-        href: '/inventory/warehouses',
-        icon: 'solar:buildings-bold-duotone',
-      },
-      {
-        title: 'Suppliers',
-        href: '/inventory/suppliers',
-        icon: 'solar:users-group-rounded-bold-duotone',
-      },
-      {
-        title: 'Purchase Orders',
-        href: '/inventory/purchase-orders',
-        icon: 'solar:document-text-bold-duotone',
-      },
-      {
-        title: 'Transfers',
-        href: '/inventory/transfers',
-        icon: 'solar:round-transfer-horizontal-bold-duotone',
+        title: 'Inventory',
+        href: '/dashboards/inventory',
+        icon: 'solar:box-bold-duotone',
       },
     ],
   },
   {
-    title: 'Website',
-    href: '/website-builder',
-    icon: 'solar:earth-bold-duotone',
-  },
-  {
-    title: 'Events',
-    href: '/events',
-    icon: 'solar:calendar-bold-duotone',
-    featureKey: 'event-management',
+    title: 'Reports',
+    href: '/reports/financial',
+    icon: 'solar:document-text-bold-duotone',
     children: [
       {
-        title: 'My Events',
-        href: '/events',
-        icon: 'solar:ticket-bold-duotone',
+        title: 'Financial Reports',
+        href: '/reports/financial',
+        icon: 'solar:dollar-bold-duotone',
       },
       {
-        title: 'Browse Events',
-        href: '/events/browse',
-        icon: 'solar:gallery-bold-duotone',
+        title: 'Inventory Reports',
+        href: '/reports/inventory',
+        icon: 'solar:box-bold-duotone',
       },
       {
-        title: 'My Bookings',
-        href: '/events/bookings',
-        icon: 'solar:clipboard-list-bold-duotone',
+        title: 'Sales Analytics',
+        href: '/reports/sales-analytics',
+        icon: 'solar:chart-2-bold-duotone',
       },
       {
-        title: 'Tickets',
-        href: '/events/tickets',
-        icon: 'solar:ticket-sale-bold-duotone',
-      },
-      {
-        title: 'Event Portal',
-        href: '/event-portal',
-        icon: 'solar:door-bold-duotone',
-      },
-      {
-        title: 'Staff Management',
-        href: '/event-management/staff',
-        icon: 'solar:users-group-rounded-bold-duotone',
-      },
-      {
-        title: 'Live Operations',
-        href: '/event-management/operations',
-        icon: 'solar:monitor-bold-duotone',
+        title: 'Expense Analytics',
+        href: '/reports/expense-analytics',
+        icon: 'solar:wallet-money-bold-duotone',
       },
     ],
   },
@@ -207,11 +177,10 @@ export function Sidebar() {
     features?.filter((f: any) => f.enabled).map((f: any) => f.key)
   )
   
-  // Force enable core features (POS, Website Builder, Event Management)
-  // These are always shown regardless of feature flag status
-  enabledFeatures.add('pos')
-  enabledFeatures.add('website-builder')
-  enabledFeatures.add('event-management')
+  // Force enable POS for testing if features list is empty or fails
+  if (!features || features.length === 0) {
+    enabledFeatures.add('pos')
+  }
 
   const navItems = baseNavItems.filter(item => {
     if (!item.featureKey) return true
