@@ -152,6 +152,8 @@ export function ProductCreatePage() {
     unit: '',
     price: '',
     cost: '',
+    wholesale_price: '',
+    msrp: '',
     track_inventory: true,
     is_preorder: false,
     is_new_arrival: false,
@@ -522,6 +524,8 @@ export function ProductCreatePage() {
       category_id: finalCategoryId ? parseInt(finalCategoryId) : null,
       cost: Number.isFinite(baseCost) ? baseCost : 0,
       price: Number.isFinite(basePrice) ? basePrice : 0,
+      wholesale_price: formData.wholesale_price ? parseFloat(formData.wholesale_price) : null,
+      msrp: formData.msrp ? parseFloat(formData.msrp) : null,
       track_inventory: !!formData.track_inventory,
       is_preorder: !!formData.is_preorder,
       is_new_arrival: !!formData.is_new_arrival,
@@ -563,7 +567,7 @@ export function ProductCreatePage() {
         supplier_sku: s.supplier_sku || null,
         cost: s.cost ? parseFloat(s.cost) : null,
         is_preferred: s.is_preferred,
-        min_order_quantity: s.min_order_quantity ? parseInt(s.min_order_quantity) : 1,
+        moq: s.min_order_quantity ? parseInt(s.min_order_quantity) : 1,
         lead_time_days: s.lead_time_days ? parseInt(s.lead_time_days) : null,
       })),
 
@@ -990,29 +994,76 @@ export function ProductCreatePage() {
 
                 {!hasVariants ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="cost">Cost</Label>
-                        <Input
-                          id="cost"
-                          type="number"
-                          step="0.01"
-                          value={formData.cost}
-                          onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                          required
-                        />
+                    {/* Pricing Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium text-muted-foreground">Pricing</h3>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="cost">Cost Price</Label>
+                          <Input
+                            id="cost"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={formData.cost}
+                            onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Your purchase cost</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="price">Selling Price *</Label>
+                          <Input
+                            id="price"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={formData.price}
+                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                            required
+                          />
+                          <p className="text-xs text-muted-foreground">Retail price</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="wholesale_price">Wholesale Price</Label>
+                          <Input
+                            id="wholesale_price"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={formData.wholesale_price}
+                            onChange={(e) => setFormData({ ...formData, wholesale_price: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">B2B/bulk price</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="msrp">MSRP</Label>
+                          <Input
+                            id="msrp"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={formData.msrp}
+                            onChange={(e) => setFormData({ ...formData, msrp: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Manufacturer's suggested price</p>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="price">Price</Label>
-                        <Input
-                          id="price"
-                          type="number"
-                          step="0.01"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          required
-                        />
-                      </div>
+                      {formData.cost && formData.price && parseFloat(formData.cost) > 0 && parseFloat(formData.price) > 0 && (
+                        <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Profit Margin: </span>
+                            <span className="font-medium text-green-600">
+                              {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.price)) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Markup: </span>
+                            <span className="font-medium">
+                              {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.cost)) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">

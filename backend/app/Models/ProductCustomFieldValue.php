@@ -13,6 +13,14 @@ class ProductCustomFieldValue extends Model
         return $this->belongsTo(ProductCustomField::class, 'product_custom_field_id');
     }
 
+    /**
+     * Alias for field() to match eager loading convention
+     */
+    public function customField()
+    {
+        return $this->belongsTo(ProductCustomField::class, 'product_custom_field_id');
+    }
+
     public function product()
     {
         return $this->belongsTo(Product::class);

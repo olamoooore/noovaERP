@@ -71,9 +71,90 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
-    title: 'Customers',
-    href: '/customers',
-    icon: 'solar:users-group-rounded-bold-duotone',
+    title: 'Inventory',
+    href: '/inventory',
+    icon: 'solar:box-minimalistic-bold-duotone',
+    featureKey: 'inventory',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/inventory',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Stock Management',
+        href: '/inventory/stock',
+        icon: 'solar:box-bold-duotone',
+      },
+      {
+        title: 'Stock Movements',
+        href: '/inventory/movements',
+        icon: 'solar:transfer-horizontal-bold-duotone',
+      },
+      {
+        title: 'Stock Operations',
+        href: '/inventory/operations',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Purchase Orders',
+        href: '/inventory/purchase-orders',
+        icon: 'solar:cart-large-4-bold-duotone',
+      },
+      {
+        title: 'Warehouse Transfers',
+        href: '/inventory/transfers',
+        icon: 'solar:round-transfer-horizontal-bold-duotone',
+      },
+      {
+        title: 'Warehouses',
+        href: '/inventory/warehouses',
+        icon: 'solar:buildings-3-bold-duotone',
+      },
+      {
+        title: 'Suppliers',
+        href: '/inventory/suppliers',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+      },
+    ],
+  },
+  {
+    title: 'Sales',
+    href: '/sales',
+    icon: 'solar:cart-large-2-bold-duotone',
+    featureKey: 'sales',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/sales',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Orders',
+        href: '/sales/orders',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Quotes',
+        href: '/sales/quotes',
+        icon: 'solar:file-text-bold-duotone',
+      },
+      {
+        title: 'Customers',
+        href: '/customers',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
+        title: 'Invoices',
+        href: '/invoices',
+        icon: 'solar:bill-list-bold-duotone',
+      },
+      {
+        title: 'Payments',
+        href: '/payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+    ],
   },
   {
     title: 'Invoices',
@@ -177,9 +258,12 @@ export function Sidebar() {
     features?.filter((f: any) => f.enabled).map((f: any) => f.key)
   )
   
-  // Force enable POS for testing if features list is empty or fails
+  // Force enable core modules for testing if features list is empty or fails
   if (!features || features.length === 0) {
     enabledFeatures.add('pos')
+    enabledFeatures.add('inventory')
+    enabledFeatures.add('sales')
+    enabledFeatures.add('accounting')
   }
 
   const navItems = baseNavItems.filter(item => {

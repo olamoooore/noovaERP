@@ -157,6 +157,9 @@ class PosOrderController extends Controller
             'notes' => 'nullable|string',
             'discount_type' => 'nullable|in:fixed,percent',
             'discount_value' => 'nullable|numeric|min:0',
+            'customer_id' => 'nullable|exists:customers,id',
+            'session_id' => 'nullable|exists:pos_sessions,id',
+            'terminal_id' => 'nullable|exists:pos_terminals,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
@@ -192,6 +195,10 @@ class PosOrderController extends Controller
                     'status' => 'draft',
                     'currency' => $validated['currency'] ?? ($currencySetting['code'] ?? 'USD'),
                     'notes' => $validated['notes'] ?? null,
+                    'customer_id' => $validated['customer_id'] ?? null,
+                    'session_id' => $validated['session_id'] ?? null,
+                    'terminal_id' => $validated['terminal_id'] ?? null,
+                    'cashier_name' => auth()->user()?->name,
                     'created_by' => auth()->id(),
                 ]
             );
@@ -343,9 +350,13 @@ class PosOrderController extends Controller
                 'status' => 'paid',
                 'paid_at' => now(),
                 'journal_entry_id' => $entry->id,
+                'receipt_number' => PosOrder::generateReceiptNumber(),
             ]);
 
-            return response()->json($posOrder->fresh()->load('items', 'payments', 'journalEntry'), 200);
+            // Process loyalty points if customer is linked
+            $posOrder->processLoyaltyPoints();
+
+            return response()->json($posOrder->fresh()->load('items', 'payments', 'journalEntry', 'customer'), 200);
         });
     }
 
@@ -360,6 +371,59 @@ class PosOrderController extends Controller
         $posOrder->delete();
 
         return response()->json(['message' => 'Order deleted successfully']);
+    }
+
+    /**
+     * Create a return/refund for a paid order
+     */
+    public function createReturn(Request $request, PosOrder $posOrder)
+    {
+        if ($posOrder->status !== 'paid') {
+            return response()->json(['message' => 'Only paid orders can be returned'], 422);
+        }
+
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|exists:pos_order_items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'notes' => 'nullable|string',
+            'refund_method' => 'nullable|in:cash,card,store_credit',
+        ]);
+
+        return DB::transaction(function () use ($validated, $posOrder) {
+            $returnOrder = $posOrder->createReturn($validated['items'], $validated['notes']);
+
+            // Process stock returns
+            foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
+                $qty = abs($item->quantity); // Returns are stored as negative
+                
+                if ($item->variant && $item->variant->track_inventory) {
+                    $item->variant->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
+                } elseif ($item->product && $item->product->track_inventory) {
+                    $item->product->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
+                }
+            }
+
+            // Reverse loyalty points if applicable
+            if ($posOrder->customer_id && $posOrder->loyalty_points_earned > 0) {
+                $customer = $posOrder->customer;
+                $returnRatio = abs($returnOrder->total) / $posOrder->total;
+                $pointsToRemove = (int) ceil($posOrder->loyalty_points_earned * $returnRatio);
+                
+                $customer->redeemLoyaltyPoints(
+                    $pointsToRemove,
+                    'pos_return',
+                    $returnOrder->id,
+                    'Points reversed due to return'
+                );
+            }
+
+            return response()->json([
+                'message' => 'Return created successfully',
+                'return_order' => $returnOrder->load('items'),
+                'original_order' => $posOrder->fresh()->load('items', 'returns'),
+            ]);
+        });
     }
 
     private function makeOrderNumber(): string

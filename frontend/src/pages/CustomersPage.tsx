@@ -4,43 +4,139 @@ import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
 
+interface Customer {
+  id: number
+  code: string
+  type: 'individual' | 'company'
+  name: string
+  email: string
+  phone: string
+  mobile: string
+  company: string
+  tax_number: string
+  website: string
+  billing_address: string
+  shipping_address: string
+  credit_limit: number
+  payment_terms: number
+  total_outstanding: number
+  total_purchases: number
+  total_orders: number
+  loyalty_points: number
+  is_active: boolean
+  customer_since: string
+  categories: { id: number; name: string; color: string }[]
+  salesperson?: { id: number; name: string }
+  invoices_count?: number
+  pos_orders_count?: number
+}
+
+interface CustomerFormData {
+  type: 'individual' | 'company'
+  name: string
+  email: string
+  phone: string
+  mobile: string
+  company: string
+  tax_number: string
+  website: string
+  billing_address: string
+  shipping_address: string
+  credit_limit: string
+  payment_terms: string
+  preferred_contact: string
+  marketing_opt_in: boolean
+  notes: string
+  category_ids: number[]
+}
+
+const initialFormData: CustomerFormData = {
+  type: 'individual',
+  name: '',
+  email: '',
+  phone: '',
+  mobile: '',
+  company: '',
+  tax_number: '',
+  website: '',
+  billing_address: '',
+  shipping_address: '',
+  credit_limit: '',
+  payment_terms: '30',
+  preferred_contact: 'email',
+  marketing_opt_in: false,
+  notes: '',
+  category_ids: [],
+}
+
 export function CustomersPage() {
   const [open, setOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    company: '',
-    billing_address: '',
-  })
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState<string>('all')
+  const [editMode, setEditMode] = useState(false)
+  const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const { data: customers } = useQuery({
-    queryKey: ['customers'],
+  // Fetch customers
+  const { data: customersData, isLoading } = useQuery({
+    queryKey: ['customers', searchTerm, filterType],
     queryFn: async () => {
-      const response = await api.get('/customers')
-      return response.data.data
+      const params = new URLSearchParams()
+      if (searchTerm) params.append('search', searchTerm)
+      if (filterType && filterType !== 'all') params.append('type', filterType)
+      const response = await api.get(`/customers?${params.toString()}`)
+      return response.data
     },
   })
 
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['customer-categories'],
+    queryFn: async () => {
+      const response = await api.get('/customer-categories')
+      return response.data.categories || []
+    },
+  })
+
+  // Fetch customer detail
+  const { data: customerDetail } = useQuery({
+    queryKey: ['customer', selectedCustomer?.id],
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return null
+      const response = await api.get(`/customers/${selectedCustomer.id}`)
+      return response.data
+    },
+    enabled: !!selectedCustomer?.id && detailOpen,
+  })
+
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/customers', data)
+    mutationFn: async (data: Partial<CustomerFormData>) => {
+      const response = await api.post('/customers', {
+        ...data,
+        credit_limit: data.credit_limit ? parseFloat(data.credit_limit as string) : null,
+        payment_terms: data.payment_terms ? parseInt(data.payment_terms as string) : 30,
+      })
       return response.data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] })
       setOpen(false)
-      setFormData({ name: '', email: '', phone: '', company: '', billing_address: '' })
+      setFormData(initialFormData)
       toast({ title: 'Customer created successfully' })
     },
     onError: () => {
@@ -48,118 +144,883 @@ export function CustomersPage() {
     },
   })
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<CustomerFormData> }) => {
+      const response = await api.put(`/customers/${id}`, {
+        ...data,
+        credit_limit: data.credit_limit ? parseFloat(data.credit_limit as string) : null,
+        payment_terms: data.payment_terms ? parseInt(data.payment_terms as string) : 30,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      queryClient.invalidateQueries({ queryKey: ['customer', selectedCustomer?.id] })
+      setEditMode(false)
+      toast({ title: 'Customer updated successfully' })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Failed to update customer' })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/customers/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      setDetailOpen(false)
+      setSelectedCustomer(null)
+      toast({ title: 'Customer deleted successfully' })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Failed to delete customer' })
+    },
+  })
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate(formData)
+    if (editMode && selectedCustomer) {
+      updateMutation.mutate({ id: selectedCustomer.id, data: formData })
+    } else {
+      createMutation.mutate(formData)
+    }
   }
+
+  const openCustomerDetail = (customer: Customer) => {
+    setSelectedCustomer(customer)
+    setDetailOpen(true)
+    setEditMode(false)
+  }
+
+  const startEdit = () => {
+    if (customerDetail) {
+      setFormData({
+        type: customerDetail.type || 'individual',
+        name: customerDetail.name || '',
+        email: customerDetail.email || '',
+        phone: customerDetail.phone || '',
+        mobile: customerDetail.mobile || '',
+        company: customerDetail.company || '',
+        tax_number: customerDetail.tax_number || '',
+        website: customerDetail.website || '',
+        billing_address: customerDetail.billing_address || '',
+        shipping_address: customerDetail.shipping_address || '',
+        credit_limit: customerDetail.credit_limit?.toString() || '',
+        payment_terms: customerDetail.payment_terms?.toString() || '30',
+        preferred_contact: customerDetail.preferred_contact || 'email',
+        marketing_opt_in: customerDetail.marketing_opt_in || false,
+        notes: customerDetail.notes || '',
+        category_ids: customerDetail.categories?.map((c: any) => c.id) || [],
+      })
+      setEditMode(true)
+    }
+  }
+
+  const customers = customersData?.data || []
+  const categories = categoriesData || []
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Customers</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <div>
+          <h1 className="text-3xl font-bold">Customers</h1>
+          <p className="text-muted-foreground">Manage your customers, contacts and relationships</p>
+        </div>
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setFormData(initialFormData) }}>
           <DialogTrigger asChild>
             <Button>
               <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
               Add Customer
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Customer</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Customer Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
-                <Input
-                  id="company"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address">Billing Address</Label>
-                <Input
-                  id="address"
-                  value={formData.billing_address}
-                  onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-                Create Customer
-              </Button>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                  <TabsTrigger value="addresses">Addresses</TabsTrigger>
+                  <TabsTrigger value="financial">Financial</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="basic" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Customer Type</Label>
+                      <Select 
+                        value={formData.type} 
+                        onValueChange={(v) => setFormData({ ...formData, type: v as 'individual' | 'company' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="individual">Individual</SelectItem>
+                          <SelectItem value="company">Company</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Name *</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {formData.type === 'company' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="company">Company Name</Label>
+                        <Input
+                          id="company"
+                          value={formData.company}
+                          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="tax_number">Tax Number</Label>
+                        <Input
+                          id="tax_number"
+                          value={formData.tax_number}
+                          onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="mobile">Mobile</Label>
+                      <Input
+                        id="mobile"
+                        value={formData.mobile}
+                        onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="website">Website</Label>
+                      <Input
+                        id="website"
+                        type="url"
+                        placeholder="https://"
+                        value={formData.website}
+                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Preferred Contact Method</Label>
+                    <Select 
+                      value={formData.preferred_contact} 
+                      onValueChange={(v) => setFormData({ ...formData, preferred_contact: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="phone">Phone</SelectItem>
+                        <SelectItem value="sms">SMS</SelectItem>
+                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="addresses" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_address">Billing Address</Label>
+                    <Textarea
+                      id="billing_address"
+                      rows={3}
+                      value={formData.billing_address}
+                      onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping_address">Shipping Address</Label>
+                    <Textarea
+                      id="shipping_address"
+                      rows={3}
+                      value={formData.shipping_address}
+                      onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+                    />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="financial" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="credit_limit">Credit Limit</Label>
+                      <Input
+                        id="credit_limit"
+                        type="number"
+                        step="0.01"
+                        value={formData.credit_limit}
+                        onChange={(e) => setFormData({ ...formData, credit_limit: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="payment_terms">Payment Terms (days)</Label>
+                      <Input
+                        id="payment_terms"
+                        type="number"
+                        value={formData.payment_terms}
+                        onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      rows={3}
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="marketing_opt_in"
+                      checked={formData.marketing_opt_in}
+                      onChange={(e) => setFormData({ ...formData, marketing_opt_in: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <Label htmlFor="marketing_opt_in" className="font-normal">
+                      Opt-in for marketing communications
+                    </Label>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? 'Creating...' : 'Create Customer'}
+                </Button>
+              </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Customers</p>
+                <p className="text-2xl font-bold">{customersData?.total || customers.length}</p>
+              </div>
+              <Icon icon="solar:users-group-rounded-bold" className="h-8 w-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Companies</p>
+                <p className="text-2xl font-bold">
+                  {customers.filter((c: Customer) => c.type === 'company').length}
+                </p>
+              </div>
+              <Icon icon="solar:buildings-bold" className="h-8 w-8 text-blue-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Individuals</p>
+                <p className="text-2xl font-bold">
+                  {customers.filter((c: Customer) => c.type === 'individual').length}
+                </p>
+              </div>
+              <Icon icon="solar:user-bold" className="h-8 w-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Outstanding</p>
+                <p className="text-2xl font-bold">
+                  {formatCurrency(customers.reduce((sum: number, c: Customer) => sum + (c.total_outstanding || 0), 0))}
+                </p>
+              </div>
+              <Icon icon="solar:wallet-money-bold" className="h-8 w-8 text-orange-500" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters & Search */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <Icon icon="solar:magnifer-linear" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search customers..."
+            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="individual">Individuals</SelectItem>
+            <SelectItem value="company">Companies</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Customers Table */}
       <Card>
         <CardHeader>
           <CardTitle>All Customers</CardTitle>
+          <CardDescription>Click on a customer to view details</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Outstanding</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {customers?.map((customer: any) => (
-                <TableRow key={customer.id}>
-                  <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell>{customer.company || '-'}</TableCell>
-                  <TableCell>{customer.email || '-'}</TableCell>
-                  <TableCell>{customer.phone || '-'}</TableCell>
-                  <TableCell>{formatCurrency(customer.total_outstanding || 0)}</TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                        customer.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {customer.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </TableCell>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
+                  <TableHead className="text-right">Total Purchases</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {customers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                      No customers found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  customers.map((customer: Customer) => (
+                    <TableRow 
+                      key={customer.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => openCustomerDetail(customer)}
+                    >
+                      <TableCell className="font-mono text-sm">{customer.code || '-'}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{customer.name}</div>
+                          {customer.company && (
+                            <div className="text-sm text-muted-foreground">{customer.company}</div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={customer.type === 'company' ? 'default' : 'secondary'}>
+                          {customer.type === 'company' ? 'Company' : 'Individual'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{customer.email || '-'}</TableCell>
+                      <TableCell>{customer.phone || customer.mobile || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(customer.total_outstanding || 0)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(customer.total_purchases || 0)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={customer.is_active ? 'default' : 'secondary'}>
+                          {customer.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
+
+      {/* Customer Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={(o) => { setDetailOpen(o); if (!o) { setEditMode(false); setSelectedCustomer(null); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{editMode ? 'Edit Customer' : 'Customer Details'}</span>
+              {!editMode && customerDetail && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={startEdit}>
+                    <Icon icon="solar:pen-bold" className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete this customer?')) {
+                        deleteMutation.mutate(customerDetail.id)
+                      }
+                    }}
+                  >
+                    <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {customerDetail && !editMode ? (
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                <TabsTrigger value="loyalty">Loyalty</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="space-y-6 mt-4">
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Basic Info */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Basic Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Code</span>
+                        <span className="font-mono">{customerDetail.code}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type</span>
+                        <Badge variant={customerDetail.type === 'company' ? 'default' : 'secondary'}>
+                          {customerDetail.type === 'company' ? 'Company' : 'Individual'}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Name</span>
+                        <span>{customerDetail.name}</span>
+                      </div>
+                      {customerDetail.company && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Company</span>
+                          <span>{customerDetail.company}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Email</span>
+                        <span>{customerDetail.email || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Phone</span>
+                        <span>{customerDetail.phone || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Mobile</span>
+                        <span>{customerDetail.mobile || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Customer Since</span>
+                        <span>{customerDetail.customer_since || '-'}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Financial Info */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Financial Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Credit Limit</span>
+                        <span>{formatCurrency(customerDetail.credit_limit || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Outstanding</span>
+                        <span className={customerDetail.total_outstanding > 0 ? 'text-orange-600 font-medium' : ''}>
+                          {formatCurrency(customerDetail.total_outstanding || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Purchases</span>
+                        <span className="font-medium">{formatCurrency(customerDetail.total_purchases || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Orders</span>
+                        <span>{customerDetail.total_orders || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Avg. Order Value</span>
+                        <span>{formatCurrency(customerDetail.average_order_value || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Payment Terms</span>
+                        <span>{customerDetail.payment_terms || 30} days</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Addresses */}
+                <div className="grid grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Billing Address</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm">{customerDetail.billing_address || 'No billing address set'}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Shipping Address</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm">{customerDetail.shipping_address || 'No shipping address set'}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Notes */}
+                {customerDetail.notes && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Notes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm">{customerDetail.notes}</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="transactions" className="mt-4">
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Recent Invoices</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {customerDetail.invoices?.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Invoice #</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {customerDetail.invoices.map((inv: any) => (
+                              <TableRow key={inv.id}>
+                                <TableCell>{inv.invoice_number}</TableCell>
+                                <TableCell>{inv.issue_date}</TableCell>
+                                <TableCell>
+                                  <Badge>{inv.status}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right">{formatCurrency(inv.total)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted-foreground text-center py-4">No invoices yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Recent POS Orders</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {customerDetail.pos_orders?.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Order #</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {customerDetail.pos_orders.map((order: any) => (
+                              <TableRow key={order.id}>
+                                <TableCell>{order.order_number}</TableCell>
+                                <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  <Badge>{order.status}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right">{formatCurrency(order.total)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted-foreground text-center py-4">No POS orders yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="loyalty" className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Icon icon="solar:star-bold" className="h-5 w-5 text-yellow-500" />
+                      Loyalty Points
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center py-6">
+                      <div className="text-5xl font-bold text-primary">{customerDetail.loyalty_points || 0}</div>
+                      <p className="text-muted-foreground mt-2">Available Points</p>
+                    </div>
+                    {customerDetail.loyalty_balances?.map((balance: any) => (
+                      <div key={balance.id} className="border-t pt-4 mt-4">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Program</span>
+                          <span>{balance.program?.name}</span>
+                        </div>
+                        <div className="flex justify-between text-sm mt-2">
+                          <span className="text-muted-foreground">Total Earned</span>
+                          <span className="text-green-600">+{balance.points_earned_total}</span>
+                        </div>
+                        <div className="flex justify-between text-sm mt-2">
+                          <span className="text-muted-foreground">Total Redeemed</span>
+                          <span className="text-orange-600">-{balance.points_redeemed_total}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          ) : editMode ? (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Same form as create but for editing */}
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                  <TabsTrigger value="addresses">Addresses</TabsTrigger>
+                  <TabsTrigger value="financial">Financial</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="basic" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Customer Type</Label>
+                      <Select 
+                        value={formData.type} 
+                        onValueChange={(v) => setFormData({ ...formData, type: v as 'individual' | 'company' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="individual">Individual</SelectItem>
+                          <SelectItem value="company">Company</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-name">Name *</Label>
+                      <Input
+                        id="edit-name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {formData.type === 'company' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-company">Company Name</Label>
+                        <Input
+                          id="edit-company"
+                          value={formData.company}
+                          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-tax">Tax Number</Label>
+                        <Input
+                          id="edit-tax"
+                          value={formData.tax_number}
+                          onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-email">Email</Label>
+                      <Input
+                        id="edit-email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-phone">Phone</Label>
+                      <Input
+                        id="edit-phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-mobile">Mobile</Label>
+                      <Input
+                        id="edit-mobile"
+                        value={formData.mobile}
+                        onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-website">Website</Label>
+                      <Input
+                        id="edit-website"
+                        type="url"
+                        value={formData.website}
+                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="addresses" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-billing">Billing Address</Label>
+                    <Textarea
+                      id="edit-billing"
+                      rows={3}
+                      value={formData.billing_address}
+                      onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-shipping">Shipping Address</Label>
+                    <Textarea
+                      id="edit-shipping"
+                      rows={3}
+                      value={formData.shipping_address}
+                      onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+                    />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="financial" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-credit">Credit Limit</Label>
+                      <Input
+                        id="edit-credit"
+                        type="number"
+                        step="0.01"
+                        value={formData.credit_limit}
+                        onChange={(e) => setFormData({ ...formData, credit_limit: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-terms">Payment Terms (days)</Label>
+                      <Input
+                        id="edit-terms"
+                        type="number"
+                        value={formData.payment_terms}
+                        onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-notes">Notes</Label>
+                    <Textarea
+                      id="edit-notes"
+                      rows={3}
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditMode(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <div className="flex items-center justify-center py-10">
+              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -5,48 +5,380 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\POS\Models\PosOrder;
 
 class Customer extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        // Basic Info
+        'type',
+        'code',
         'name',
         'email',
         'phone',
+        'mobile',
         'company',
         'tax_number',
+        'website',
+        'language',
+        
+        // Addresses (legacy - use customer_addresses for multiple)
         'billing_address',
         'shipping_address',
+        
+        // Financial
         'credit_limit',
         'payment_terms',
         'total_outstanding',
+        'price_list_id',
+        
+        // Personal (for individuals)
+        'date_of_birth',
+        'gender',
+        
+        // Relationships
+        'parent_id',
+        'salesperson_id',
+        
+        // Preferences
+        'preferred_contact',
+        'marketing_opt_in',
+        
+        // Stats
+        'customer_since',
+        'last_interaction_at',
+        'total_purchases',
+        'total_orders',
+        'average_order_value',
+        
+        // Status
         'is_active',
         'notes',
     ];
 
     protected $casts = [
+        'type' => 'string',
         'credit_limit' => 'decimal:2',
         'total_outstanding' => 'decimal:2',
+        'total_purchases' => 'decimal:2',
+        'average_order_value' => 'decimal:2',
         'is_active' => 'boolean',
+        'marketing_opt_in' => 'boolean',
+        'date_of_birth' => 'date',
+        'customer_since' => 'date',
+        'last_interaction_at' => 'datetime',
     ];
 
+    protected $appends = ['display_name', 'loyalty_points'];
+
+    // ==========================================
+    // RELATIONSHIPS
+    // ==========================================
+
+    /**
+     * Parent company (for contacts)
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, 'parent_id');
+    }
+
+    /**
+     * Child contacts (for companies)
+     */
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(Customer::class, 'parent_id');
+    }
+
+    /**
+     * Customer contacts (separate table)
+     */
+    public function customerContacts(): HasMany
+    {
+        return $this->hasMany(CustomerContact::class);
+    }
+
+    /**
+     * Customer addresses
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(CustomerAddress::class);
+    }
+
+    /**
+     * Default billing address
+     */
+    public function defaultBillingAddress()
+    {
+        return $this->addresses()->where('type', 'billing')->where('is_default', true)->first();
+    }
+
+    /**
+     * Default shipping address
+     */
+    public function defaultShippingAddress()
+    {
+        return $this->addresses()->where('type', 'shipping')->where('is_default', true)->first();
+    }
+
+    /**
+     * Categories/Tags
+     */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(CustomerCategory::class, 'customer_category');
+    }
+
+    /**
+     * Assigned salesperson
+     */
+    public function salesperson(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesperson_id');
+    }
+
+    /**
+     * Price list
+     */
+    public function priceList(): BelongsTo
+    {
+        return $this->belongsTo(CustomerPriceList::class, 'price_list_id');
+    }
+
+    /**
+     * Loyalty balances
+     */
+    public function loyaltyBalances(): HasMany
+    {
+        return $this->hasMany(CustomerLoyaltyBalance::class);
+    }
+
+    /**
+     * Loyalty transactions
+     */
+    public function loyaltyTransactions(): HasMany
+    {
+        return $this->hasMany(CustomerLoyaltyTransaction::class);
+    }
+
+    /**
+     * Invoices
+     */
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
     }
 
+    /**
+     * Payments
+     */
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
     }
 
+    /**
+     * POS Orders
+     */
+    public function posOrders(): HasMany
+    {
+        return $this->hasMany(PosOrder::class);
+    }
+
+    // ==========================================
+    // ACCESSORS
+    // ==========================================
+
+    /**
+     * Display name (name + company if applicable)
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        if ($this->type === 'company' && $this->company) {
+            return $this->company;
+        }
+        return $this->name . ($this->company ? " ({$this->company})" : '');
+    }
+
+    /**
+     * Get current loyalty points
+     */
+    public function getLoyaltyPointsAttribute(): int
+    {
+        return $this->loyaltyBalances()->sum('points_balance') ?? 0;
+    }
+
+    // ==========================================
+    // METHODS
+    // ==========================================
+
+    /**
+     * Update outstanding balance from invoices
+     */
     public function updateOutstanding(): void
     {
         $this->total_outstanding = $this->invoices()
             ->whereIn('status', ['sent', 'overdue'])
             ->sum('balance');
         $this->save();
+    }
+
+    /**
+     * Update purchase statistics
+     */
+    public function updatePurchaseStats(): void
+    {
+        $this->total_orders = $this->posOrders()->where('status', 'completed')->count() 
+                            + $this->invoices()->whereIn('status', ['sent', 'paid'])->count();
+        
+        $posTotal = $this->posOrders()->where('status', 'completed')->sum('total');
+        $invoiceTotal = $this->invoices()->whereIn('status', ['sent', 'paid'])->sum('total');
+        $this->total_purchases = $posTotal + $invoiceTotal;
+        
+        $this->average_order_value = $this->total_orders > 0 
+            ? $this->total_purchases / $this->total_orders 
+            : 0;
+        
+        $this->last_interaction_at = now();
+        $this->save();
+    }
+
+    /**
+     * Add loyalty points
+     */
+    public function addLoyaltyPoints(int $points, string $referenceType = null, int $referenceId = null, string $notes = null): void
+    {
+        $balance = $this->loyaltyBalances()->first();
+        
+        if (!$balance) {
+            $program = CustomerLoyaltyProgram::where('is_active', true)->first();
+            if (!$program) return;
+            
+            $balance = $this->loyaltyBalances()->create([
+                'program_id' => $program->id,
+                'points_balance' => 0,
+                'points_earned_total' => 0,
+                'points_redeemed_total' => 0,
+            ]);
+        }
+        
+        $balance->points_balance += $points;
+        $balance->points_earned_total += $points;
+        $balance->last_activity_at = now();
+        $balance->save();
+        
+        $this->loyaltyTransactions()->create([
+            'program_id' => $balance->program_id,
+            'type' => 'earn',
+            'points' => $points,
+            'balance_after' => $balance->points_balance,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+            'notes' => $notes,
+            'created_by' => auth()->id(),
+        ]);
+    }
+
+    /**
+     * Redeem loyalty points
+     */
+    public function redeemLoyaltyPoints(int $points, string $referenceType = null, int $referenceId = null, string $notes = null): bool
+    {
+        $balance = $this->loyaltyBalances()->first();
+        
+        if (!$balance || $balance->points_balance < $points) {
+            return false;
+        }
+        
+        $balance->points_balance -= $points;
+        $balance->points_redeemed_total += $points;
+        $balance->last_activity_at = now();
+        $balance->save();
+        
+        $this->loyaltyTransactions()->create([
+            'program_id' => $balance->program_id,
+            'type' => 'redeem',
+            'points' => -$points,
+            'balance_after' => $balance->points_balance,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+            'notes' => $notes,
+            'created_by' => auth()->id(),
+        ]);
+        
+        return true;
+    }
+
+    /**
+     * Get customer's special price for a product
+     */
+    public function getProductPrice(Product $product): ?float
+    {
+        if (!$this->price_list_id) {
+            return null;
+        }
+        
+        $priceListItem = CustomerPriceListItem::where('price_list_id', $this->price_list_id)
+            ->where('product_id', $product->id)
+            ->first();
+        
+        if ($priceListItem) {
+            return $priceListItem->price;
+        }
+        
+        // Apply general price list discount
+        $priceList = $this->priceList;
+        if ($priceList && $priceList->discount_value > 0) {
+            $basePrice = $product->price;
+            if ($priceList->discount_type === 'percentage') {
+                return $basePrice * (1 - $priceList->discount_value / 100);
+            }
+            return max(0, $basePrice - $priceList->discount_value);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Generate unique customer code
+     */
+    public static function generateCode(string $prefix = 'CUST'): string
+    {
+        $lastCustomer = static::withTrashed()
+            ->where('code', 'like', $prefix . '%')
+            ->orderBy('code', 'desc')
+            ->first();
+        
+        if ($lastCustomer && preg_match('/(\d+)$/', $lastCustomer->code, $matches)) {
+            $number = intval($matches[1]) + 1;
+        } else {
+            $number = 1;
+        }
+        
+        return $prefix . str_pad($number, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Boot method
+     */
+    protected static function boot()
+    {
+        parent::boot();
+        
+        static::creating(function ($customer) {
+            if (empty($customer->code)) {
+                $customer->code = static::generateCode();
+            }
+            if (empty($customer->customer_since)) {
+                $customer->customer_since = now()->toDateString();
+            }
+        });
     }
 }

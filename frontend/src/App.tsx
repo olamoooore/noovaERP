@@ -43,6 +43,15 @@ const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashbo
 
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
+const InventoryDashboardPage = lazy(() => import('@/pages/Inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
+const StockManagementPage = lazy(() => import('@/pages/Inventory/StockManagementPage').then(m => ({ default: m.StockManagementPage })))
+const StockMovementsPage = lazy(() => import('@/pages/Inventory/StockMovementsPage').then(m => ({ default: m.StockMovementsPage })))
+const StockOperationsPage = lazy(() => import('@/pages/Inventory/StockOperationsPage').then(m => ({ default: m.StockOperationsPage })))
+const PurchaseOrdersPage = lazy(() => import('@/pages/Inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })))
+const PurchaseOrderCreatePage = lazy(() => import('@/pages/Inventory/PurchaseOrderCreatePage').then(m => ({ default: m.PurchaseOrderCreatePage })))
+const WarehouseTransfersPage = lazy(() => import('@/pages/Inventory/WarehouseTransfersPage').then(m => ({ default: m.WarehouseTransfersPage })))
+const WarehouseTransferCreatePage = lazy(() => import('@/pages/Inventory/WarehouseTransferCreatePage').then(m => ({ default: m.WarehouseTransferCreatePage })))
+const WarehousesPage = lazy(() => import('@/pages/Inventory/WarehousesPage').then(m => ({ default: m.WarehousesPage })))
 
 // Loading fallback component
 const PageLoader = () => (
@@ -81,7 +90,25 @@ function App() {
                 <Route path="/products/:id" element={<ProductViewPage />} />
                 <Route path="/products/:id/edit" element={<ProductEditPage />} />
                 <Route path="/products/settings" element={<ProductSettingsPage />} />
+                
+                {/* Inventory Routes */}
+                <Route path="/inventory" element={<InventoryDashboardPage />} />
+                <Route path="/inventory/stock" element={<StockManagementPage />} />
+                <Route path="/inventory/movements" element={<StockMovementsPage />} />
+                <Route path="/inventory/operations" element={<StockOperationsPage />} />
+                <Route path="/inventory/purchase-orders" element={<PurchaseOrdersPage />} />
+                <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
+                <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />
+                <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
+                <Route path="/inventory/warehouses" element={<WarehousesPage />} />
+                <Route path="/inventory/suppliers" element={<SuppliersPage />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
+                
+                {/* Sales Routes */}
+                <Route path="/sales" element={<SalesDashboard />} />
+                <Route path="/sales/orders" element={<POSOrdersPage />} />
+                <Route path="/sales/quotes" element={<InvoicesPage />} />
+                
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />

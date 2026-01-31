@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -24,10 +25,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
+import { POSReceipt } from '@/components/pos/POSReceipt'
 
 interface Product {
   id: number
@@ -54,6 +69,9 @@ interface Customer {
   name: string
   email?: string
   phone?: string
+  code?: string
+  loyalty_points?: number
+  type?: 'individual' | 'company'
 }
 
 interface Warehouse {
@@ -89,6 +107,18 @@ export function POSTerminal() {
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
+  
+  // Customer Search & Add States
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' })
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  
+  // Receipt Dialog State
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false)
+  const [lastOrder, setLastOrder] = useState<any>(null)
+  const receiptRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!activeTerminalId || !openedAt) {
@@ -128,13 +158,53 @@ export function POSTerminal() {
     },
   })
 
-  // Fetch Customers
-  const { data: customers } = useQuery<Customer[]>({
+  // Fetch Customers - For initial list
+  const { data: customers, refetch: refetchCustomers } = useQuery<Customer[]>({
     queryKey: ['customers-pos'],
     queryFn: async () => {
       const response = await api.get('/customers', { params: { per_page: 100 } })
       return Array.isArray(response.data) ? response.data : (response.data.data || [])
     },
+  })
+
+  // Customer Search Query
+  const { data: searchedCustomers, isLoading: searchingCustomers } = useQuery<Customer[]>({
+    queryKey: ['customers-search', customerSearch],
+    queryFn: async () => {
+      if (!customerSearch || customerSearch.length < 2) return []
+      const response = await api.get('/customers', { 
+        params: { search: customerSearch, per_page: 20 } 
+      })
+      return Array.isArray(response.data) ? response.data : (response.data.data || [])
+    },
+    enabled: customerSearch.length >= 2,
+  })
+
+  // Create Customer Mutation
+  const createCustomerMutation = useMutation({
+    mutationFn: async (data: { name: string; phone?: string; email?: string }) => {
+      const response = await api.post('/customers', { 
+        ...data, 
+        type: 'individual',
+        is_active: true 
+      })
+      return response.data
+    },
+    onSuccess: (newCust) => {
+      refetchCustomers()
+      toast({ title: 'Customer Created', description: newCust.name })
+      setSelectedCustomer(newCust)
+      setCustomerId(newCust.id.toString())
+      setShowAddCustomerDialog(false)
+      setNewCustomer({ name: '', phone: '', email: '' })
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Error', 
+        description: error.response?.data?.message || 'Failed to create customer', 
+        variant: 'destructive' 
+      })
+    }
   })
 
   // Fetch Warehouses
@@ -330,7 +400,11 @@ export function POSTerminal() {
   }, [barcodeInput, handleBarcodeScan])
   
   const getOrderData = () => ({
-    notes: customerId !== 'walk-in' ? `Customer ID: ${customerId}` : 'Walk-in customer',
+    customer_id: customerId !== 'walk-in' ? parseInt(customerId) : null,
+    session_id: activeTerminalId ? parseInt(activeTerminalId) : null,
+    notes: customerId !== 'walk-in' 
+      ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}` 
+      : 'Walk-in customer',
     discount_type: discount.type,
     discount_value: discount.value,
     items: cart.map(item => ({
@@ -389,14 +463,47 @@ export function POSTerminal() {
 
       await payOrderMutation.mutateAsync({ orderId: order.id, paymentData })
 
+      // Store order data for receipt
+      setLastOrder({
+        orderNumber: order.order_number,
+        receiptNumber: order.receipt_number || order.order_number,
+        date: new Date(),
+        customer: selectedCustomer ? {
+          name: selectedCustomer.name,
+          phone: selectedCustomer.phone,
+          email: selectedCustomer.email,
+          loyaltyPoints: selectedCustomer.loyalty_points
+        } : { name: 'Walk-in Customer' },
+        items: cart.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          line_total: item.line_total
+        })),
+        subtotal,
+        taxAmount,
+        discountAmount,
+        discountType: discount.type,
+        discountValue: discount.value,
+        total,
+        paymentMethod,
+        amountPaid: total,
+        change: 0,
+        terminal: activeTerminalId,
+      })
+
       toast({
         title: "Payment Successful",
         description: `Order #${order.order_number} completed`,
       })
 
-      // Clear cart and close dialog
-      clearSessionCart()
+      // Close checkout dialog and show receipt
       setShowCheckoutDialog(false)
+      setShowReceiptDialog(true)
+
+      // Clear cart after showing receipt
+      clearSessionCart()
+      setSelectedCustomer(null)
 
       // Refresh products to update stock
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
@@ -526,17 +633,121 @@ export function POSTerminal() {
           
           {/* Customer & Warehouse Selection */}
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Customer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-                {customers?.map((c) => (
-                  <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Customer Searchable Dropdown */}
+            <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={customerSearchOpen}
+                  className="h-9 justify-between text-sm"
+                >
+                  <span className="truncate">
+                    {selectedCustomer ? selectedCustomer.name : 
+                     customerId === 'walk-in' ? 'Walk-in Customer' : 'Select Customer'}
+                  </span>
+                  <Icon icon="solar:alt-arrow-down-linear" className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput 
+                    placeholder="Search customers..." 
+                    value={customerSearch}
+                    onValueChange={setCustomerSearch}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      {searchingCustomers ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin mr-2" />
+                          Searching...
+                        </div>
+                      ) : customerSearch.length >= 2 ? (
+                        <div className="py-4 text-center text-sm">
+                          No customer found.
+                          <Button 
+                            variant="link" 
+                            className="p-0 h-auto ml-1"
+                            onClick={() => {
+                              setNewCustomer({ ...newCustomer, name: customerSearch })
+                              setShowAddCustomerDialog(true)
+                              setCustomerSearchOpen(false)
+                            }}
+                          >
+                            Add new?
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="py-4 text-center text-sm text-muted-foreground">
+                          Type at least 2 characters to search
+                        </div>
+                      )}
+                    </CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="walk-in"
+                        onSelect={() => {
+                          setCustomerId('walk-in')
+                          setSelectedCustomer(null)
+                          setCustomerSearchOpen(false)
+                          setCustomerSearch('')
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <Icon icon="solar:user-bold" className="mr-2 h-4 w-4" />
+                        Walk-in Customer
+                        {customerId === 'walk-in' && (
+                          <Icon icon="solar:check-circle-bold" className="ml-auto h-4 w-4" />
+                        )}
+                      </CommandItem>
+                      {(customerSearch.length >= 2 ? searchedCustomers : customers)?.map((customer) => (
+                        <CommandItem
+                          key={customer.id}
+                          value={customer.id.toString()}
+                          onSelect={() => {
+                            setCustomerId(customer.id.toString())
+                            setSelectedCustomer(customer)
+                            setCustomerSearchOpen(false)
+                            setCustomerSearch('')
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <div className="flex flex-col flex-1">
+                            <span className="font-medium">{customer.name}</span>
+                            {customer.phone && (
+                              <span className="text-xs text-muted-foreground">{customer.phone}</span>
+                            )}
+                          </div>
+                          {customer.loyalty_points !== undefined && customer.loyalty_points > 0 && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              {customer.loyalty_points} pts
+                            </Badge>
+                          )}
+                          {customerId === customer.id.toString() && (
+                            <Icon icon="solar:check-circle-bold" className="ml-2 h-4 w-4" />
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                  <div className="border-t p-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full justify-start"
+                      onClick={() => {
+                        setShowAddCustomerDialog(true)
+                        setCustomerSearchOpen(false)
+                      }}
+                    >
+                      <Icon icon="solar:user-plus-bold" className="mr-2 h-4 w-4" />
+                      Add New Customer
+                    </Button>
+                  </div>
+                </Command>
+              </PopoverContent>
+            </Popover>
             
             <Select
               value={warehouseId}
@@ -556,6 +767,37 @@ export function POSTerminal() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Selected Customer Info */}
+          {selectedCustomer && (
+            <div className="mt-3 p-2 rounded-lg border bg-primary/5 flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Icon icon="solar:user-circle-bold" className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{selectedCustomer.name}</p>
+                {selectedCustomer.phone && (
+                  <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                )}
+              </div>
+              {selectedCustomer.loyalty_points !== undefined && selectedCustomer.loyalty_points > 0 && (
+                <Badge variant="secondary" className="shrink-0">
+                  ★ {selectedCustomer.loyalty_points}
+                </Badge>
+              )}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-6 w-6 shrink-0" 
+                onClick={() => {
+                  setSelectedCustomer(null)
+                  setCustomerId('walk-in')
+                }}
+              >
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </CardHeader>
 
         <ScrollArea className="flex-1 px-4">
@@ -713,6 +955,26 @@ export function POSTerminal() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* Customer Info */}
+            {selectedCustomer && (
+              <div className="rounded-lg border p-3 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Icon icon="solar:user-circle-bold" className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="font-medium text-sm">{selectedCustomer.name}</p>
+                    {selectedCustomer.phone && (
+                      <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                    )}
+                  </div>
+                  {selectedCustomer.loyalty_points !== undefined && (
+                    <Badge variant="secondary" className="ml-auto">
+                      {selectedCustomer.loyalty_points} points
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Payment Method</label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -736,6 +998,12 @@ export function POSTerminal() {
                     <div className="flex items-center gap-2">
                       <Icon icon="mdi:bank" className="h-4 w-4" />
                       Bank Transfer
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="mobile_money">
+                    <div className="flex items-center gap-2">
+                      <Icon icon="solar:smartphone-bold" className="h-4 w-4" />
+                      Mobile Money
                     </div>
                   </SelectItem>
                   <SelectItem value="other">
@@ -788,6 +1056,146 @@ export function POSTerminal() {
                 <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
               )}
               Complete Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Customer Dialog */}
+      <Dialog open={showAddCustomerDialog} onOpenChange={setShowAddCustomerDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Customer</DialogTitle>
+            <DialogDescription>
+              Quickly add a customer to this order
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="cust-name">Name *</Label>
+              <Input
+                id="cust-name"
+                placeholder="Customer name"
+                value={newCustomer.name}
+                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cust-phone">Phone</Label>
+              <Input
+                id="cust-phone"
+                placeholder="Phone number"
+                value={newCustomer.phone}
+                onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cust-email">Email</Label>
+              <Input
+                id="cust-email"
+                type="email"
+                placeholder="Email address"
+                value={newCustomer.email}
+                onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddCustomerDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createCustomerMutation.mutate(newCustomer)}
+              disabled={!newCustomer.name.trim() || createCustomerMutation.isPending}
+            >
+              {createCustomerMutation.isPending && (
+                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Add Customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Dialog */}
+      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
+        <DialogContent className="sm:max-w-[400px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:document-text-bold" className="h-5 w-5" />
+              Order Receipt
+            </DialogTitle>
+          </DialogHeader>
+          
+          {lastOrder && (
+            <div className="border rounded-lg overflow-hidden bg-white">
+              <POSReceipt
+                ref={receiptRef}
+                data={lastOrder}
+                businessName="NoovaERP Store"
+                businessAddress="Your Business Address"
+                businessPhone="+1 234 567 890"
+                footerMessage="Thank you for shopping with us!"
+              />
+            </div>
+          )}
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowReceiptDialog(false)}
+              className="flex-1"
+            >
+              Close
+            </Button>
+            <Button 
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                // Email receipt functionality placeholder
+                toast({ 
+                  title: "Coming Soon", 
+                  description: "Email receipt feature coming soon" 
+                })
+              }}
+            >
+              <Icon icon="solar:letter-bold" className="h-4 w-4 mr-2" />
+              Email
+            </Button>
+            <Button 
+              className="flex-1"
+              onClick={() => {
+                if (receiptRef.current) {
+                  const printWindow = window.open('', '_blank')
+                  if (printWindow) {
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>Receipt</title>
+                          <style>
+                            body { margin: 0; padding: 20px; font-family: 'Courier New', Courier, monospace; }
+                            @media print { body { padding: 0; } }
+                          </style>
+                        </head>
+                        <body>
+                          ${receiptRef.current.innerHTML}
+                        </body>
+                      </html>
+                    `)
+                    printWindow.document.close()
+                    printWindow.focus()
+                    setTimeout(() => {
+                      printWindow.print()
+                      printWindow.close()
+                    }, 250)
+                  }
+                }
+              }}
+            >
+              <Icon icon="solar:printer-bold" className="h-4 w-4 mr-2" />
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>

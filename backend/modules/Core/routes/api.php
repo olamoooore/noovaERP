@@ -127,8 +127,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/serials/find', [ProductTrackingController::class, 'findSerial']);
     Route::get('/serials/{serial}/warranty', [ProductTrackingController::class, 'warrantyStatus']);
 
-    // Customers
+    // Customers - Enhanced with res.partner features
     Route::apiResource('customers', CustomerController::class);
+    Route::get('/customers-search', [CustomerController::class, 'search']);
+    Route::get('/customer-categories', [CustomerController::class, 'categories']);
+    Route::post('/customer-categories', [CustomerController::class, 'storeCategory']);
+    
+    // Customer Addresses
+    Route::post('/customers/{customer}/addresses', [CustomerController::class, 'addAddress']);
+    Route::put('/customers/{customer}/addresses/{address}', [CustomerController::class, 'updateAddress']);
+    Route::delete('/customers/{customer}/addresses/{address}', [CustomerController::class, 'deleteAddress']);
+    
+    // Customer Contacts
+    Route::post('/customers/{customer}/contacts', [CustomerController::class, 'addContact']);
+    Route::put('/customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
+    Route::delete('/customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
+    
+    // Customer Loyalty
+    Route::get('/customers/{customer}/loyalty', [CustomerController::class, 'loyaltyHistory']);
+    Route::post('/customers/{customer}/loyalty/adjust', [CustomerController::class, 'adjustLoyalty']);
 
     // Invoices
     Route::apiResource('invoices', InvoiceController::class);

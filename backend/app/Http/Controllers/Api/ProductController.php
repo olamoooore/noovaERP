@@ -226,7 +226,7 @@ class ProductController extends Controller
             'featureValues.feature',
             'customFieldValues.customField',
             'uoms',
-            'productSuppliers.supplier',
+            'suppliers',
             'bundleComponents.componentProduct' => fn($q) => $q->select('id', 'name', 'sku', 'price', 'cost', 'image'),
             'priceTiers',
             'documents',
