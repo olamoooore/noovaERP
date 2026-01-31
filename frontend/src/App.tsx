@@ -41,6 +41,9 @@ const SalesDashboard = lazy(() => import('@/pages/dashboards/SalesDashboard').th
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
+// Inventory pages
+const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
+
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen">
@@ -78,6 +81,7 @@ function App() {
                 <Route path="/products/:id" element={<ProductViewPage />} />
                 <Route path="/products/:id/edit" element={<ProductEditPage />} />
                 <Route path="/products/settings" element={<ProductSettingsPage />} />
+                <Route path="/suppliers" element={<SuppliersPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />
