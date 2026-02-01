@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -81,6 +82,7 @@ const initialFormData: CustomerFormData = {
 }
 
 export function CustomersPage() {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -514,6 +516,20 @@ export function CustomersPage() {
             <SelectItem value="company">Companies</SelectItem>
           </SelectContent>
         </Select>
+        {categories.length > 0 && (
+          <div className="flex items-center gap-2">
+            {categories.slice(0, 5).map((cat: { id: number; name: string; color: string }) => (
+              <Badge 
+                key={cat.id} 
+                variant="outline" 
+                className="cursor-pointer hover:bg-muted"
+                style={{ borderColor: cat.color, color: cat.color }}
+              >
+                {cat.name}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Customers Table */}
@@ -539,12 +555,13 @@ export function CustomersPage() {
                   <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead className="text-right">Total Purchases</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {customers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                       No customers found
                     </TableCell>
                   </TableRow>
@@ -553,7 +570,7 @@ export function CustomersPage() {
                     <TableRow 
                       key={customer.id} 
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => openCustomerDetail(customer)}
+                      onClick={() => navigate(`/customers/${customer.id}`)}
                     >
                       <TableCell className="font-mono text-sm">{customer.code || '-'}</TableCell>
                       <TableCell>
@@ -581,6 +598,32 @@ export function CustomersPage() {
                         <Badge variant={customer.is_active ? 'default' : 'secondary'}>
                           {customer.is_active ? 'Active' : 'Inactive'}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openCustomerDetail(customer)
+                            }}
+                            title="Quick View"
+                          >
+                            <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/customers/${customer.id}`)
+                            }}
+                            title="Full Details"
+                          >
+                            <Icon icon="solar:arrow-right-bold" className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

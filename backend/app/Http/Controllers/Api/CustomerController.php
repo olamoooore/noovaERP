@@ -175,7 +175,7 @@ class CustomerController extends Controller
                 'parent',
                 'contacts',
                 'invoices' => fn($q) => $q->latest()->limit(10),
-                'posOrders' => fn($q) => $q->latest()->limit(10),
+                'posOrders' => fn($q) => $q->with('items.product:id,name')->latest()->limit(10),
             ])
         );
     }
@@ -425,5 +425,256 @@ class CustomerController extends Controller
         ->get(['id', 'code', 'name', 'email', 'phone', 'company', 'type']);
 
         return response()->json(['customers' => $customers]);
+    }
+
+    // ==========================================
+    // STATISTICS & ANALYTICS
+    // ==========================================
+
+    /**
+     * Get overall customer statistics
+     */
+    public function statistics(): JsonResponse
+    {
+        $totalCustomers = Customer::count();
+        $activeCustomers = Customer::where('is_active', true)->count();
+        $companies = Customer::where('type', 'company')->count();
+        $individuals = Customer::where('type', 'individual')->count();
+        
+        $totalOutstanding = Customer::sum('total_outstanding');
+        $totalPurchases = Customer::sum('total_purchases');
+        
+        $newThisMonth = Customer::whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->count();
+        
+        $topCustomers = Customer::where('is_active', true)
+            ->orderBy('total_purchases', 'desc')
+            ->limit(5)
+            ->get(['id', 'name', 'company', 'total_purchases', 'total_orders']);
+
+        return response()->json([
+            'total_customers' => $totalCustomers,
+            'active_customers' => $activeCustomers,
+            'companies' => $companies,
+            'individuals' => $individuals,
+            'total_outstanding' => $totalOutstanding,
+            'total_purchases' => $totalPurchases,
+            'new_this_month' => $newThisMonth,
+            'top_customers' => $topCustomers,
+        ]);
+    }
+
+    /**
+     * Get individual customer statistics
+     */
+    public function customerStatistics(Customer $customer): JsonResponse
+    {
+        // Calculate additional stats
+        $posOrderStats = $customer->posOrders()
+            ->where('status', 'paid')
+            ->where('is_return', false)
+            ->selectRaw('
+                COUNT(*) as total_orders,
+                SUM(total) as total_revenue,
+                AVG(total) as avg_order_value,
+                MAX(total) as highest_order,
+                MIN(total) as lowest_order,
+                MAX(created_at) as last_order_date
+            ')
+            ->first();
+
+        $invoiceStats = $customer->invoices()
+            ->whereIn('status', ['sent', 'paid'])
+            ->selectRaw('
+                COUNT(*) as total_invoices,
+                SUM(total) as total_invoiced,
+                SUM(balance) as outstanding_balance,
+                SUM(CASE WHEN status = \'paid\' THEN total ELSE 0 END) as paid_amount
+            ')
+            ->first();
+
+        // Monthly trend (last 12 months)
+        $monthlyTrend = $customer->posOrders()
+            ->where('status', 'paid')
+            ->where('is_return', false)
+            ->where('created_at', '>=', now()->subMonths(12))
+            ->selectRaw('DATE_TRUNC(\'month\', created_at) as month, COUNT(*) as orders, SUM(total) as revenue')
+            ->groupBy('month')
+            ->orderBy('month')
+            ->get();
+
+        // Favorite products
+        $favoriteProducts = $customer->posOrders()
+            ->where('status', 'paid')
+            ->join('pos_order_items', 'pos_orders.id', '=', 'pos_order_items.pos_order_id')
+            ->join('products', 'pos_order_items.product_id', '=', 'products.id')
+            ->selectRaw('products.id, products.name, SUM(pos_order_items.quantity) as total_qty, SUM(pos_order_items.line_total) as total_spent')
+            ->groupBy('products.id', 'products.name')
+            ->orderBy('total_qty', 'desc')
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'pos_orders' => $posOrderStats,
+            'invoices' => $invoiceStats,
+            'monthly_trend' => $monthlyTrend,
+            'favorite_products' => $favoriteProducts,
+            'loyalty_points' => $customer->loyalty_points,
+            'customer_since' => $customer->customer_since,
+            'last_interaction' => $customer->last_interaction_at,
+        ]);
+    }
+
+    /**
+     * Get customer activity timeline
+     */
+    public function activity(Customer $customer, Request $request): JsonResponse
+    {
+        $limit = $request->limit ?? 20;
+        $activities = collect();
+
+        // POS Orders
+        $posOrders = $customer->posOrders()
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'type' => 'pos_order',
+                    'id' => $order->id,
+                    'title' => "POS Order #{$order->order_number}",
+                    'description' => $order->status === 'paid' ? 'Completed purchase' : ucfirst($order->status),
+                    'amount' => $order->total,
+                    'status' => $order->status,
+                    'date' => $order->paid_at ?? $order->created_at,
+                    'icon' => 'cart',
+                ];
+            });
+
+        // Invoices
+        $invoices = $customer->invoices()
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(function ($invoice) {
+                return [
+                    'type' => 'invoice',
+                    'id' => $invoice->id,
+                    'title' => "Invoice #{$invoice->invoice_number}",
+                    'description' => ucfirst($invoice->status),
+                    'amount' => $invoice->total,
+                    'status' => $invoice->status,
+                    'date' => $invoice->issue_date,
+                    'icon' => 'document',
+                ];
+            });
+
+        // Payments
+        $payments = $customer->payments()
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(function ($payment) {
+                return [
+                    'type' => 'payment',
+                    'id' => $payment->id,
+                    'title' => "Payment #{$payment->payment_number}",
+                    'description' => ucfirst($payment->method) . ' payment',
+                    'amount' => $payment->amount,
+                    'status' => 'completed',
+                    'date' => $payment->payment_date,
+                    'icon' => 'money',
+                ];
+            });
+
+        // Loyalty transactions
+        $loyaltyTx = $customer->loyaltyTransactions()
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(function ($tx) {
+                return [
+                    'type' => 'loyalty',
+                    'id' => $tx->id,
+                    'title' => $tx->type === 'earn' ? 'Points Earned' : ($tx->type === 'redeem' ? 'Points Redeemed' : ucfirst($tx->type)),
+                    'description' => $tx->notes ?? ($tx->points > 0 ? "+{$tx->points} points" : "{$tx->points} points"),
+                    'amount' => null,
+                    'points' => $tx->points,
+                    'status' => 'completed',
+                    'date' => $tx->created_at,
+                    'icon' => 'star',
+                ];
+            });
+
+        // Merge and sort by date
+        $activities = $activities
+            ->merge($posOrders)
+            ->merge($invoices)
+            ->merge($payments)
+            ->merge($loyaltyTx)
+            ->sortByDesc('date')
+            ->take($limit)
+            ->values();
+
+        return response()->json(['activities' => $activities]);
+    }
+
+    /**
+     * Recalculate customer statistics
+     */
+    public function recalculateStats(Customer $customer): JsonResponse
+    {
+        $customer->updatePurchaseStats();
+        $customer->updateOutstanding();
+
+        return response()->json([
+            'message' => 'Customer statistics recalculated',
+            'customer' => $customer->fresh(),
+        ]);
+    }
+
+    /**
+     * Send email to customer
+     */
+    public function sendEmail(Request $request, Customer $customer): JsonResponse
+    {
+        $validated = $request->validate([
+            'subject' => 'required|string|max:255',
+            'body' => 'required|string',
+        ]);
+
+        if (!$customer->email) {
+            return response()->json([
+                'message' => 'Customer does not have an email address',
+            ], 422);
+        }
+
+        try {
+            // Send the email using Laravel's Mail facade
+            \Illuminate\Support\Facades\Mail::send([], [], function ($message) use ($customer, $validated) {
+                $message->to($customer->email, $customer->name)
+                    ->subject($validated['subject'])
+                    ->html(nl2br($validated['body']));
+            });
+
+            // Log the activity
+            $customer->update([
+                'last_interaction_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Email sent successfully',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to send customer email', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to send email. Please check your mail configuration.',
+            ], 500);
+        }
     }
 }

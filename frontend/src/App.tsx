@@ -16,6 +16,7 @@ const ProductViewPage = lazy(() => import('@/pages/Products/ProductViewPage').th
 const ProductEditPage = lazy(() => import('@/pages/Products/ProductEditPage').then(m => ({ default: m.ProductEditPage })))
 const ProductSettingsPage = lazy(() => import('@/pages/Products/ProductSettingsPage').then(m => ({ default: m.ProductSettingsPage })))
 const CustomersPage = lazy(() => import('@/pages/CustomersPage').then(m => ({ default: m.CustomersPage })))
+const CustomerDetailsPage = lazy(() => import('@/pages/Customers/CustomerDetailsPage').then(m => ({ default: m.CustomerDetailsPage })))
 const InvoicesPage = lazy(() => import('@/pages/InvoicesPage').then(m => ({ default: m.InvoicesPage })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
@@ -109,7 +110,10 @@ function App() {
                 <Route path="/sales/orders" element={<POSOrdersPage />} />
                 <Route path="/sales/quotes" element={<InvoicesPage />} />
                 
+                {/* Customer Routes */}
                 <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/customers/:id" element={<CustomerDetailsPage />} />
+                
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />
                 <Route path="/accounting" element={<AccountingPage />} />

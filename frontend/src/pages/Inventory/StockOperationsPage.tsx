@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 
 interface Product {
   id: number
@@ -70,13 +71,10 @@ export function StockOperationsPage() {
     notes: '',
   })
 
-  const { data: products } = useQuery<Product[]>({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const res = await api.get('/products', { params: { per_page: 200 } })
-      return res.data.data || []
-    },
-  })
+  // Selected products for showing stock quantity
+  const [selectedStockInProduct, setSelectedStockInProduct] = useState<Product | undefined>()
+  const [selectedStockOutProduct, setSelectedStockOutProduct] = useState<Product | undefined>()
+  const [selectedAdjustProduct, setSelectedAdjustProduct] = useState<Product | undefined>()
 
   const { data: warehouses } = useQuery<Warehouse[]>({
     queryKey: ['warehouses'],
@@ -111,6 +109,7 @@ export function StockOperationsPage() {
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['products-list'] })
+      queryClient.invalidateQueries({ queryKey: ['products-search'] })
       toast({ title: 'Stock added successfully' })
       setStockInData({
         productId: '',
@@ -121,6 +120,7 @@ export function StockOperationsPage() {
         batchNumber: '',
         expiryDate: '',
       })
+      setSelectedStockInProduct(undefined)
     },
     onError: (error: any) => {
       toast({
@@ -146,6 +146,7 @@ export function StockOperationsPage() {
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['products-list'] })
+      queryClient.invalidateQueries({ queryKey: ['products-search'] })
       toast({ title: 'Stock removed successfully' })
       setStockOutData({
         productId: '',
@@ -154,6 +155,7 @@ export function StockOperationsPage() {
         reference: '',
         notes: '',
       })
+      setSelectedStockOutProduct(undefined)
     },
     onError: (error: any) => {
       toast({
@@ -179,6 +181,7 @@ export function StockOperationsPage() {
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['products-list'] })
+      queryClient.invalidateQueries({ queryKey: ['products-search'] })
       toast({ title: 'Stock adjusted successfully' })
       setAdjustData({
         productId: '',
@@ -187,6 +190,7 @@ export function StockOperationsPage() {
         reasonId: '',
         notes: '',
       })
+      setSelectedAdjustProduct(undefined)
     },
     onError: (error: any) => {
       toast({
@@ -223,9 +227,6 @@ export function StockOperationsPage() {
     }
     adjustMutation.mutate()
   }
-
-  const getSelectedProduct = (productId: string) => 
-    products?.find((p) => p.id === parseInt(productId))
 
   return (
     <div className="space-y-6">
@@ -269,24 +270,17 @@ export function StockOperationsPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Product *</Label>
-                    <Select 
-                      value={stockInData.productId} 
-                      onValueChange={(v) => setStockInData({ ...stockInData, productId: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products?.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name} ({p.sku})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {getSelectedProduct(stockInData.productId) && (
+                    <ProductSearchCombobox
+                      value={stockInData.productId}
+                      onValueChange={(value, product) => {
+                        setStockInData({ ...stockInData, productId: value })
+                        setSelectedStockInProduct(product)
+                      }}
+                      placeholder="Search products..."
+                    />
+                    {selectedStockInProduct && (
                       <p className="text-sm text-muted-foreground">
-                        Current stock: <Badge variant="outline">{getSelectedProduct(stockInData.productId)?.stock_quantity}</Badge>
+                        Current stock: <Badge variant="outline">{selectedStockInProduct.stock_quantity}</Badge>
                       </p>
                     )}
                   </div>
@@ -392,24 +386,17 @@ export function StockOperationsPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Product *</Label>
-                    <Select 
-                      value={stockOutData.productId} 
-                      onValueChange={(v) => setStockOutData({ ...stockOutData, productId: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products?.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name} ({p.sku})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {getSelectedProduct(stockOutData.productId) && (
+                    <ProductSearchCombobox
+                      value={stockOutData.productId}
+                      onValueChange={(value, product) => {
+                        setStockOutData({ ...stockOutData, productId: value })
+                        setSelectedStockOutProduct(product)
+                      }}
+                      placeholder="Search products..."
+                    />
+                    {selectedStockOutProduct && (
                       <p className="text-sm text-muted-foreground">
-                        Current stock: <Badge variant="outline">{getSelectedProduct(stockOutData.productId)?.stock_quantity}</Badge>
+                        Current stock: <Badge variant="outline">{selectedStockOutProduct.stock_quantity}</Badge>
                       </p>
                     )}
                   </div>
@@ -497,24 +484,17 @@ export function StockOperationsPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Product *</Label>
-                    <Select 
-                      value={adjustData.productId} 
-                      onValueChange={(v) => setAdjustData({ ...adjustData, productId: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products?.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name} ({p.sku})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {getSelectedProduct(adjustData.productId) && (
+                    <ProductSearchCombobox
+                      value={adjustData.productId}
+                      onValueChange={(value, product) => {
+                        setAdjustData({ ...adjustData, productId: value })
+                        setSelectedAdjustProduct(product)
+                      }}
+                      placeholder="Search products..."
+                    />
+                    {selectedAdjustProduct && (
                       <p className="text-sm text-muted-foreground">
-                        Current stock: <Badge variant="outline">{getSelectedProduct(adjustData.productId)?.stock_quantity}</Badge>
+                        Current stock: <Badge variant="outline">{selectedAdjustProduct.stock_quantity}</Badge>
                       </p>
                     )}
                   </div>
@@ -545,15 +525,15 @@ export function StockOperationsPage() {
                       onChange={(e) => setAdjustData({ ...adjustData, newQuantity: e.target.value })}
                       placeholder="Enter new quantity"
                     />
-                    {getSelectedProduct(adjustData.productId) && adjustData.newQuantity && (
+                    {selectedAdjustProduct && adjustData.newQuantity && (
                       <p className="text-sm">
-                        {parseInt(adjustData.newQuantity) > (getSelectedProduct(adjustData.productId)?.stock_quantity || 0) ? (
+                        {parseInt(adjustData.newQuantity) > (selectedAdjustProduct.stock_quantity || 0) ? (
                           <span className="text-green-600">
-                            +{parseInt(adjustData.newQuantity) - (getSelectedProduct(adjustData.productId)?.stock_quantity || 0)} units
+                            +{parseInt(adjustData.newQuantity) - (selectedAdjustProduct.stock_quantity || 0)} units
                           </span>
-                        ) : parseInt(adjustData.newQuantity) < (getSelectedProduct(adjustData.productId)?.stock_quantity || 0) ? (
+                        ) : parseInt(adjustData.newQuantity) < (selectedAdjustProduct.stock_quantity || 0) ? (
                           <span className="text-red-600">
-                            {parseInt(adjustData.newQuantity) - (getSelectedProduct(adjustData.productId)?.stock_quantity || 0)} units
+                            {parseInt(adjustData.newQuantity) - (selectedAdjustProduct.stock_quantity || 0)} units
                           </span>
                         ) : (
                           <span className="text-muted-foreground">No change</span>

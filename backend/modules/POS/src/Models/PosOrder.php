@@ -117,6 +117,10 @@ class PosOrder extends Model
         }
 
         $customer = $this->customer;
+        
+        // Always update customer purchase stats regardless of loyalty program
+        $customer->updatePurchaseStats();
+        
         $program = CustomerLoyaltyProgram::where('is_active', true)->first();
         
         if (!$program) {
@@ -131,9 +135,6 @@ class PosOrder extends Model
             $this->loyalty_points_earned = $points;
             $this->save();
         }
-
-        // Update customer stats
-        $customer->updatePurchaseStats();
     }
 
     /**

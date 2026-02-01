@@ -17,28 +17,33 @@ class SalesAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         try {
-            $sales = DB::table('invoice_items as ii')
-                ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
-                ->join('products as p', 'p.id', '=', 'ii.product_id')
-                ->whereBetween('i.invoice_date', [$startDate, $endDate])
-                ->whereIn('i.status', ['paid', 'partial'])
+            $sales = DB::table('pos_order_items as poi')
+                ->join('pos_orders as po', 'po.id', '=', 'poi.pos_order_id')
+                ->join('products as p', 'p.id', '=', 'poi.product_id')
+                ->whereBetween('po.created_at', [$startDate, $endDate->endOfDay()])
+                ->where('po.status', 'paid')
+                ->where('po.is_return', false)
                 ->select([
                     'p.id',
                     'p.name',
                     'p.sku',
                     'p.cost',
                     'p.price',
-                    DB::raw('SUM(ii.quantity) as total_quantity'),
-                    DB::raw('SUM(ii.line_total) as total_revenue'),
-                    DB::raw('SUM(ii.quantity * p.cost) as total_cost'),
-                    DB::raw('SUM(ii.line_total - (ii.quantity * p.cost)) as total_profit'),
-                    DB::raw('CASE WHEN SUM(ii.line_total) > 0 THEN (SUM(ii.line_total - (ii.quantity * p.cost)) / SUM(ii.line_total) * 100) ELSE 0 END as profit_margin'),
-                    DB::raw('COUNT(DISTINCT i.id) as invoice_count'),
+                    DB::raw('SUM(poi.quantity) as total_quantity'),
+                    DB::raw('SUM(poi.line_total) as total_revenue'),
+                    DB::raw('SUM(poi.quantity * COALESCE(p.cost, 0)) as total_cost'),
+                    DB::raw('SUM(poi.line_total - (poi.quantity * COALESCE(p.cost, 0))) as total_profit'),
+                    DB::raw('CASE WHEN SUM(poi.line_total) > 0 THEN (SUM(poi.line_total - (poi.quantity * COALESCE(p.cost, 0))) / SUM(poi.line_total) * 100) ELSE 0 END as profit_margin'),
+                    DB::raw('COUNT(DISTINCT po.id) as order_count'),
                 ])
                 ->groupBy('p.id', 'p.name', 'p.sku', 'p.cost', 'p.price')
                 ->orderByDesc('total_revenue')
                 ->get();
         } catch (\Exception $e) {
+            \Log::error('SalesAnalyticsService getSalesByProduct error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'title' => 'Sales by Product',
                 'data' => [],
@@ -67,6 +72,7 @@ class SalesAnalyticsService
                 'product_name' => $item->name,
                 'sku' => $item->sku,
                 'total_quantity' => (int) $item->total_quantity,
+                'quantity_sold' => (int) $item->total_quantity,
                 'total_revenue' => round($item->total_revenue, 2),
                 'total_sales' => round($item->total_revenue, 2),
                 'total_cost' => round($item->total_cost, 2),
@@ -87,24 +93,28 @@ class SalesAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         try {
-            $query = DB::table('invoices as i')
-                ->leftJoin('customers as c', 'c.id', '=', 'i.customer_id')
-                ->whereBetween('i.invoice_date', [$startDate, $endDate])
-                ->whereIn('i.status', ['paid', 'partial'])
+            $sales = DB::table('pos_orders as po')
+                ->leftJoin('customers as c', 'c.id', '=', 'po.customer_id')
+                ->whereBetween('po.created_at', [$startDate, $endDate->endOfDay()])
+                ->where('po.status', 'paid')
+                ->where('po.is_return', false)
                 ->select([
-                    'i.customer_id',
+                    'po.customer_id',
                     'c.name as customer_name',
                     'c.email as customer_email',
-                    DB::raw('COUNT(*) as invoice_count'),
-                    DB::raw('SUM(i.total) as total_revenue'),
-                    DB::raw('AVG(i.total) as average_order_value'),
-                    DB::raw('MAX(i.invoice_date) as last_purchase_date'),
+                    DB::raw('COUNT(*) as order_count'),
+                    DB::raw('SUM(po.total) as total_revenue'),
+                    DB::raw('AVG(po.total) as average_order_value'),
+                    DB::raw('MAX(po.paid_at) as last_purchase_date'),
                 ])
-                ->groupBy('i.customer_id', 'c.name', 'c.email')
-                ->orderByDesc('total_revenue');
-
-            $sales = $query->get();
+                ->groupBy('po.customer_id', 'c.name', 'c.email')
+                ->orderByDesc('total_revenue')
+                ->get();
         } catch (\Exception $e) {
+            \Log::error('SalesAnalyticsService getSalesByCustomer error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'title' => 'Sales by Customer',
                 'data' => [],
@@ -113,11 +123,12 @@ class SalesAnalyticsService
         }
 
         $summary = [
-            'total_customers' => $sales->count(),
+            'total_customers' => $sales->where('customer_id', '!=', null)->count(),
+            'walk_in_sales' => round($sales->where('customer_id', null)->sum('total_revenue'), 2),
             'total_revenue' => round($sales->sum('total_revenue'), 2),
             'average_revenue_per_customer' => $sales->count() > 0 ? round($sales->avg('total_revenue'), 2) : 0,
             'average_order_value' => $sales->count() > 0 ? round($sales->avg('average_order_value'), 2) : 0,
-            'total_invoices' => (int) $sales->sum('invoice_count'),
+            'total_orders' => (int) $sales->sum('order_count'),
         ];
 
         return [
@@ -128,9 +139,11 @@ class SalesAnalyticsService
             ],
             'data' => $sales->map(fn($item) => [
                 'id' => $item->customer_id,
-                'name' => $item->customer_name ?? 'Unknown',
-                'total_orders' => (int) $item->invoice_count,
+                'name' => $item->customer_name ?? 'Walk-in Customer',
+                'customer_name' => $item->customer_name ?? 'Walk-in Customer',
+                'total_orders' => (int) $item->order_count,
                 'total_revenue' => round($item->total_revenue, 2),
+                'total_sales' => round($item->total_revenue, 2),
                 'average_order_value' => round($item->average_order_value, 2),
                 'last_purchase_date' => $item->last_purchase_date,
             ])->toArray(),
@@ -157,12 +170,13 @@ class SalesAnalyticsService
         };
 
         try {
-            $trends = DB::table('invoices')
-                ->whereBetween('invoice_date', [$startDate, $endDate])
-                ->whereIn('status', ['paid', 'partial'])
+            $trends = DB::table('pos_orders')
+                ->whereBetween('created_at', [$startDate, $endDate->endOfDay()])
+                ->where('status', 'paid')
+                ->where('is_return', false)
                 ->select([
-                    DB::raw("TO_CHAR(invoice_date, '{$dateFormat}') as period"),
-                    DB::raw('COUNT(*) as invoice_count'),
+                    DB::raw("TO_CHAR(created_at, '{$dateFormat}') as period"),
+                    DB::raw('COUNT(*) as order_count'),
                     DB::raw('SUM(total) as total_revenue'),
                     DB::raw('AVG(total) as average_order_value'),
                 ])
@@ -170,6 +184,10 @@ class SalesAnalyticsService
                 ->orderBy('period')
                 ->get();
         } catch (\Exception $e) {
+            \Log::error('SalesAnalyticsService getSalesTrends error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'title' => 'Sales Trends',
                 'data' => [],
@@ -189,7 +207,7 @@ class SalesAnalyticsService
 
             $data[] = [
                 'period' => $trend->period,
-                'invoice_count' => (int) $trend->invoice_count,
+                'order_count' => (int) $trend->order_count,
                 'total_sales' => round($trend->total_revenue, 2),
                 'revenue' => round($trend->total_revenue, 2),
                 'average_order_value' => round($trend->average_order_value, 2),
@@ -205,6 +223,7 @@ class SalesAnalyticsService
             'average_revenue_per_period' => count($data) > 0 ? round($trends->avg('total_revenue'), 2) : 0,
             'highest_revenue_period' => $trends->sortByDesc('total_revenue')->first()?->period,
             'lowest_revenue_period' => $trends->sortBy('total_revenue')->first()?->period,
+            'total_orders' => (int) $trends->sum('order_count'),
         ];
 
         return [
@@ -229,30 +248,35 @@ class SalesAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         try {
-            $sales = DB::table('invoice_items as ii')
-                ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
-                ->join('products as p', 'p.id', '=', 'ii.product_id')
-                ->join('categories as c', 'c.id', '=', 'p.category_id')
-                ->whereBetween('i.invoice_date', [$startDate, $endDate])
-                ->whereIn('i.status', ['paid', 'partial'])
+            $sales = DB::table('pos_order_items as poi')
+                ->join('pos_orders as po', 'po.id', '=', 'poi.pos_order_id')
+                ->join('products as p', 'p.id', '=', 'poi.product_id')
+                ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->whereBetween('po.created_at', [$startDate, $endDate->endOfDay()])
+                ->where('po.status', 'paid')
+                ->where('po.is_return', false)
                 ->select([
                     'c.id as category_id',
                     'c.name as category_name',
                     DB::raw('COUNT(DISTINCT p.id) as product_count'),
-                    DB::raw('SUM(ii.quantity) as total_quantity'),
-                    DB::raw('SUM(ii.line_total) as total_revenue'),
-                    DB::raw('SUM(ii.quantity * p.cost) as total_cost'),
-                    DB::raw('SUM(ii.line_total - (ii.quantity * p.cost)) as total_profit'),
-                    DB::raw('CASE WHEN SUM(ii.line_total) > 0 THEN (SUM(ii.line_total - (ii.quantity * p.cost)) / SUM(ii.line_total) * 100) ELSE 0 END as profit_margin'),
+                    DB::raw('SUM(poi.quantity) as total_quantity'),
+                    DB::raw('SUM(poi.line_total) as total_revenue'),
+                    DB::raw('SUM(poi.quantity * COALESCE(p.cost, 0)) as total_cost'),
+                    DB::raw('SUM(poi.line_total - (poi.quantity * COALESCE(p.cost, 0))) as total_profit'),
+                    DB::raw('CASE WHEN SUM(poi.line_total) > 0 THEN (SUM(poi.line_total - (poi.quantity * COALESCE(p.cost, 0))) / SUM(poi.line_total) * 100) ELSE 0 END as profit_margin'),
                 ])
                 ->groupBy('c.id', 'c.name')
                 ->orderByDesc('total_revenue')
                 ->get();
         } catch (\Exception $e) {
+            \Log::error('SalesAnalyticsService getSalesByCategory error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'title' => 'Sales by Category',
                 'data' => [],
-                'message' => 'Categories table not available or no category data',
+                'message' => 'Error retrieving category data: ' . $e->getMessage(),
             ];
         }
 
@@ -273,7 +297,7 @@ class SalesAnalyticsService
             ],
             'data' => $sales->map(fn($item) => [
                 'category_id' => $item->category_id,
-                'category_name' => $item->category_name,
+                'category_name' => $item->category_name ?? 'Uncategorized',
                 'product_count' => (int) $item->product_count,
                 'quantity_sold' => (int) $item->total_quantity,
                 'revenue' => round($item->total_revenue, 2),

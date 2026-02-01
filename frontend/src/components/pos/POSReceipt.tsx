@@ -56,40 +56,170 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
       }).format(date)
     }
 
+    // Common styles for print compatibility
+    const styles = {
+      container: {
+        backgroundColor: '#ffffff',
+        color: '#000000',
+        padding: '20px',
+        fontFamily: "'Courier New', Courier, monospace",
+        fontSize: '12px',
+        width: '320px',
+        margin: '0 auto',
+      },
+      header: {
+        textAlign: 'center' as const,
+        marginBottom: '16px',
+      },
+      title: {
+        fontSize: '20px',
+        fontWeight: 'bold',
+        letterSpacing: '2px',
+        margin: 0,
+      },
+      subtext: {
+        fontSize: '11px',
+        marginTop: '4px',
+        color: '#333',
+      },
+      divider: {
+        borderBottom: '2px dashed #999',
+        margin: '12px 0',
+      },
+      dividerThin: {
+        borderBottom: '1px dashed #999',
+        margin: '8px 0',
+      },
+      infoRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '11px',
+        marginBottom: '4px',
+      },
+      label: {
+        color: '#333',
+      },
+      value: {
+        fontWeight: 'bold',
+      },
+      customerBox: {
+        border: '1px solid #ccc',
+        borderRadius: '4px',
+        padding: '10px',
+        marginBottom: '12px',
+        fontSize: '11px',
+      },
+      customerLabel: {
+        fontWeight: 'bold',
+        marginBottom: '4px',
+      },
+      itemsHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '11px',
+        fontWeight: 'bold',
+        borderBottom: '1px solid #ccc',
+        paddingBottom: '6px',
+        marginBottom: '10px',
+      },
+      itemRow: {
+        marginBottom: '10px',
+      },
+      itemName: {
+        fontSize: '11px',
+        fontWeight: '500',
+        marginBottom: '2px',
+      },
+      itemDetails: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '11px',
+      },
+      totalRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '11px',
+        marginBottom: '4px',
+      },
+      grandTotal: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '16px',
+        fontWeight: 'bold',
+        borderTop: '1px solid #000',
+        paddingTop: '8px',
+        marginTop: '8px',
+      },
+      barcode: {
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '1px',
+        margin: '16px 0',
+      },
+      barcodeBar: {
+        backgroundColor: '#000',
+        height: '40px',
+      },
+      barcodeText: {
+        textAlign: 'center' as const,
+        fontSize: '10px',
+        marginTop: '6px',
+      },
+      footer: {
+        textAlign: 'center' as const,
+        marginTop: '16px',
+        paddingTop: '12px',
+        borderTop: '1px dashed #999',
+      },
+      thankYou: {
+        fontWeight: 'bold',
+        marginBottom: '6px',
+      },
+      powered: {
+        fontSize: '9px',
+        color: '#666',
+        marginTop: '10px',
+      },
+      loyaltyBox: {
+        backgroundColor: '#f3f4f6',
+        borderRadius: '4px',
+        padding: '10px',
+        textAlign: 'center' as const,
+        marginBottom: '12px',
+      },
+    }
+
     return (
-      <div 
-        ref={ref}
-        className="bg-white text-black p-6 font-mono text-sm w-[320px] mx-auto"
-        style={{ fontFamily: "'Courier New', Courier, monospace" }}
-      >
+      <div ref={ref} style={styles.container}>
         {/* Header */}
-        <div className="text-center mb-4">
-          <h1 className="text-xl font-bold tracking-wider">{businessName}</h1>
-          {businessAddress && <p className="text-xs mt-1">{businessAddress}</p>}
-          {businessPhone && <p className="text-xs">Tel: {businessPhone}</p>}
-          {businessEmail && <p className="text-xs">{businessEmail}</p>}
-          <div className="border-b-2 border-dashed border-gray-400 my-3" />
+        <div style={styles.header}>
+          <h1 style={styles.title}>{businessName}</h1>
+          {businessAddress && <p style={styles.subtext}>{businessAddress}</p>}
+          {businessPhone && <p style={styles.subtext}>Tel: {businessPhone}</p>}
+          {businessEmail && <p style={styles.subtext}>{businessEmail}</p>}
         </div>
+        
+        <div style={styles.divider} />
 
         {/* Order Info */}
-        <div className="mb-3 text-xs space-y-1">
-          <div className="flex justify-between">
-            <span>Receipt #:</span>
-            <span className="font-bold">{data.receiptNumber || data.orderNumber}</span>
+        <div style={{ marginBottom: '12px' }}>
+          <div style={styles.infoRow}>
+            <span style={styles.label}>Receipt #:</span>
+            <span style={styles.value}>{data.receiptNumber || data.orderNumber}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Date:</span>
+          <div style={styles.infoRow}>
+            <span style={styles.label}>Date:</span>
             <span>{formatDate(data.date)}</span>
           </div>
           {data.cashier && (
-            <div className="flex justify-between">
-              <span>Cashier:</span>
+            <div style={styles.infoRow}>
+              <span style={styles.label}>Cashier:</span>
               <span>{data.cashier}</span>
             </div>
           )}
           {data.terminal && (
-            <div className="flex justify-between">
-              <span>Terminal:</span>
+            <div style={styles.infoRow}>
+              <span style={styles.label}>Terminal:</span>
               <span>{data.terminal}</span>
             </div>
           )}
@@ -97,55 +227,57 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
 
         {/* Customer Info */}
         {data.customer && data.customer.name !== 'Walk-in Customer' && (
-          <div className="mb-3 text-xs border border-gray-300 rounded p-2">
-            <div className="font-bold mb-1">Customer:</div>
+          <div style={styles.customerBox}>
+            <div style={styles.customerLabel}>Customer:</div>
             <div>{data.customer.name}</div>
             {data.customer.phone && <div>Phone: {data.customer.phone}</div>}
             {data.customer.loyaltyPoints !== undefined && (
-              <div className="mt-1 text-xs">
+              <div style={{ marginTop: '4px' }}>
                 ★ Points Balance: {data.customer.loyaltyPoints}
               </div>
             )}
           </div>
         )}
 
-        <div className="border-b border-dashed border-gray-400 my-2" />
+        <div style={styles.dividerThin} />
+
+        {/* Items Header */}
+        <div style={styles.itemsHeader}>
+          <span style={{ flex: 1 }}>Item</span>
+          <span style={{ width: '40px', textAlign: 'center' }}>Qty</span>
+          <span style={{ width: '60px', textAlign: 'right' }}>Price</span>
+          <span style={{ width: '70px', textAlign: 'right' }}>Total</span>
+        </div>
 
         {/* Items */}
-        <div className="mb-3">
-          <div className="flex justify-between text-xs font-bold border-b border-gray-300 pb-1 mb-2">
-            <span className="flex-1">Item</span>
-            <span className="w-12 text-center">Qty</span>
-            <span className="w-16 text-right">Price</span>
-            <span className="w-20 text-right">Total</span>
-          </div>
+        <div style={{ marginBottom: '12px' }}>
           {data.items.map((item, index) => (
-            <div key={index} className="mb-2">
-              <div className="text-xs truncate font-medium">{item.name}</div>
-              <div className="flex justify-between text-xs">
-                <span className="flex-1" />
-                <span className="w-12 text-center">{item.quantity}</span>
-                <span className="w-16 text-right">{formatCurrency(item.price)}</span>
-                <span className="w-20 text-right">{formatCurrency(item.line_total)}</span>
+            <div key={index} style={styles.itemRow}>
+              <div style={styles.itemName}>{item.name}</div>
+              <div style={styles.itemDetails}>
+                <span style={{ flex: 1 }} />
+                <span style={{ width: '40px', textAlign: 'center' }}>{item.quantity}</span>
+                <span style={{ width: '60px', textAlign: 'right' }}>{formatCurrency(item.price)}</span>
+                <span style={{ width: '70px', textAlign: 'right' }}>{formatCurrency(item.line_total)}</span>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="border-b border-dashed border-gray-400 my-2" />
+        <div style={styles.dividerThin} />
 
         {/* Totals */}
-        <div className="space-y-1 text-xs mb-3">
-          <div className="flex justify-between">
+        <div style={{ marginBottom: '12px' }}>
+          <div style={styles.totalRow}>
             <span>Subtotal ({data.items.reduce((s, i) => s + i.quantity, 0)} items)</span>
             <span>{formatCurrency(data.subtotal)}</span>
           </div>
-          <div className="flex justify-between">
+          <div style={styles.totalRow}>
             <span>Tax</span>
             <span>{formatCurrency(data.taxAmount)}</span>
           </div>
           {data.discountAmount > 0 && (
-            <div className="flex justify-between">
+            <div style={styles.totalRow}>
               <span>
                 Discount 
                 {data.discountType === 'percent' && data.discountValue ? ` (${data.discountValue}%)` : ''}
@@ -153,29 +285,28 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
               <span>-{formatCurrency(data.discountAmount)}</span>
             </div>
           )}
-          <div className="border-t border-gray-400 pt-1 mt-1" />
-          <div className="flex justify-between font-bold text-base">
+          <div style={styles.grandTotal}>
             <span>TOTAL</span>
             <span>{formatCurrency(data.total)}</span>
           </div>
         </div>
 
-        <div className="border-b border-dashed border-gray-400 my-2" />
+        <div style={styles.dividerThin} />
 
         {/* Payment Info */}
-        <div className="space-y-1 text-xs mb-3">
-          <div className="flex justify-between">
+        <div style={{ marginBottom: '12px' }}>
+          <div style={styles.totalRow}>
             <span>Payment Method:</span>
-            <span className="uppercase font-bold">{data.paymentMethod}</span>
+            <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{data.paymentMethod}</span>
           </div>
           {data.amountPaid !== undefined && (
-            <div className="flex justify-between">
+            <div style={styles.totalRow}>
               <span>Amount Tendered:</span>
               <span>{formatCurrency(data.amountPaid)}</span>
             </div>
           )}
           {data.change !== undefined && data.change > 0 && (
-            <div className="flex justify-between font-bold">
+            <div style={{ ...styles.totalRow, fontWeight: 'bold' }}>
               <span>Change:</span>
               <span>{formatCurrency(data.change)}</span>
             </div>
@@ -184,42 +315,35 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
 
         {/* Loyalty Points */}
         {data.loyaltyPointsEarned !== undefined && data.loyaltyPointsEarned > 0 && (
-          <div className="bg-gray-100 rounded p-2 mb-3 text-center">
-            <div className="text-xs">★ LOYALTY POINTS EARNED ★</div>
-            <div className="text-lg font-bold">+{data.loyaltyPointsEarned} pts</div>
+          <div style={styles.loyaltyBox}>
+            <div style={{ fontSize: '11px' }}>★ LOYALTY POINTS EARNED ★</div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>+{data.loyaltyPointsEarned} pts</div>
           </div>
         )}
 
         {/* Barcode */}
         {showBarcode && (
-          <div className="text-center my-4">
-            <div className="inline-flex flex-col items-center">
-              {/* Simple barcode representation using CSS */}
-              <div className="flex gap-[1px]">
-                {(data.receiptNumber || data.orderNumber).split('').map((char, i) => {
-                  const width = (char.charCodeAt(0) % 3) + 1
-                  return (
-                    <div 
-                      key={i} 
-                      className="bg-black" 
-                      style={{ width: `${width}px`, height: '40px' }}
-                    />
-                  )
-                })}
-              </div>
-              <div className="text-xs mt-1">{data.receiptNumber || data.orderNumber}</div>
+          <div style={{ textAlign: 'center', margin: '16px 0' }}>
+            <div style={styles.barcode}>
+              {(data.receiptNumber || data.orderNumber).split('').map((char, i) => {
+                const width = (char.charCodeAt(0) % 3) + 1
+                return (
+                  <div 
+                    key={i} 
+                    style={{ ...styles.barcodeBar, width: `${width}px` }}
+                  />
+                )
+              })}
             </div>
+            <div style={styles.barcodeText}>{data.receiptNumber || data.orderNumber}</div>
           </div>
         )}
 
         {/* Footer */}
-        <div className="text-center mt-4 text-xs space-y-2">
-          <div className="border-t border-dashed border-gray-400 pt-3" />
-          <p className="font-bold">Thank you for your purchase!</p>
-          {footerMessage && <p className="text-gray-600">{footerMessage}</p>}
-          <p className="text-gray-500 text-[10px]">
-            Powered by NoovaERP
-          </p>
+        <div style={styles.footer}>
+          <p style={styles.thankYou}>Thank you for your purchase!</p>
+          {footerMessage && <p style={{ color: '#666', fontSize: '11px' }}>{footerMessage}</p>}
+          <p style={styles.powered}>Powered by NoovaERP</p>
         </div>
       </div>
     )

@@ -47,7 +47,32 @@ export const SalesDashboard: React.FC = () => {
 
   const currentFilters = getDateFilters();
 
-  // Fetch dashboard data
+  // Fetch all time period metrics for the summary cards
+  const { data: allMetrics } = useQuery({
+    queryKey: ['sales-metrics-all'],
+    queryFn: async () => {
+      const now = new Date();
+      const datePresets = reportApi.getDateRangePresets();
+      
+      // Fetch metrics for all time periods
+      const [todayData, weekData, monthData, yearData] = await Promise.all([
+        reportApi.getSalesByProduct(datePresets.today),
+        reportApi.getSalesByProduct(datePresets.thisWeek),
+        reportApi.getSalesByProduct(datePresets.thisMonth),
+        reportApi.getSalesByProduct(datePresets.thisYear),
+      ]);
+      
+      return {
+        today: (todayData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
+        week: (weekData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
+        month: (monthData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
+        year: (yearData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
+      };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Fetch dashboard data for selected period
   const { data, isLoading, error, refetch } = useQuery<SalesDashboardData>({
     queryKey: ['sales-dashboard', selectedPeriod, selectedMonth, selectedYear],
     queryFn: async () => {
@@ -59,7 +84,7 @@ export const SalesDashboard: React.FC = () => {
         reportApi.getSalesByCategory(currentFilters),
       ]);
 
-      // Calculate metrics
+      // Calculate metrics for selected period
       const totalSales = (salesByProduct?.products ?? []).reduce(
         (sum, p) => sum + (Number(p.total_sales) || 0),
         0
@@ -67,10 +92,11 @@ export const SalesDashboard: React.FC = () => {
 
       return {
         metrics: {
-          today: selectedPeriod === 'today' ? totalSales : 0,
-          week: selectedPeriod === 'week' ? totalSales : 0,
-          month: selectedPeriod === 'month' ? totalSales : 0,
-          year: selectedPeriod === 'year' ? totalSales : 0,
+          today: allMetrics?.today ?? 0,
+          week: allMetrics?.week ?? 0,
+          month: allMetrics?.month ?? 0,
+          year: allMetrics?.year ?? 0,
+          selected: totalSales,
         },
         sales_by_product: (salesByProduct?.products ?? []).map((p) => ({
           product: p.product_name || p.name || 'Unknown',

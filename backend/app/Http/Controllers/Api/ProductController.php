@@ -22,11 +22,12 @@ class ProductController extends Controller
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('secondary_name', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%")
-                    ->orWhere('barcode', 'like', "%{$search}%")
-                    ->orWhere('manufacturer_part_number', 'like', "%{$search}%");
+                // Use ILIKE for case-insensitive search in PostgreSQL
+                $q->whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(barcode) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', ['%' . strtolower($search) . '%']);
             });
         }
 

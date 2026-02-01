@@ -130,6 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customers - Enhanced with res.partner features
     Route::apiResource('customers', CustomerController::class);
     Route::get('/customers-search', [CustomerController::class, 'search']);
+    Route::get('/customers-statistics', [CustomerController::class, 'statistics']);
     Route::get('/customer-categories', [CustomerController::class, 'categories']);
     Route::post('/customer-categories', [CustomerController::class, 'storeCategory']);
     
@@ -146,6 +147,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customer Loyalty
     Route::get('/customers/{customer}/loyalty', [CustomerController::class, 'loyaltyHistory']);
     Route::post('/customers/{customer}/loyalty/adjust', [CustomerController::class, 'adjustLoyalty']);
+    
+    // Customer Activity & Statistics
+    Route::get('/customers/{customer}/activity', [CustomerController::class, 'activity']);
+    Route::get('/customers/{customer}/statistics', [CustomerController::class, 'customerStatistics']);
+    Route::post('/customers/{customer}/recalculate-stats', [CustomerController::class, 'recalculateStats']);
+    Route::post('/customers/{customer}/send-email', [CustomerController::class, 'sendEmail']);
 
     // Invoices
     Route::apiResource('invoices', InvoiceController::class);

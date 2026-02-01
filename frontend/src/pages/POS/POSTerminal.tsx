@@ -32,9 +32,7 @@ import {
 } from '@/components/ui/popover'
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
@@ -107,6 +105,7 @@ export function POSTerminal() {
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
   
   // Customer Search & Add States
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
@@ -115,6 +114,15 @@ export function POSTerminal() {
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' })
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   
+  // Generate unique order ID for idempotency (UUID v4 format)
+  const generateOrderId = useCallback(() => {
+    // Generate a proper UUID v4
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0
+      const v = c === 'x' ? r : (r & 0x3 | 0x8)
+      return v.toString(16)
+    })
+  }, [])
   // Receipt Dialog State
   const [showReceiptDialog, setShowReceiptDialog] = useState(false)
   const [lastOrder, setLastOrder] = useState<any>(null)
@@ -399,7 +407,8 @@ export function POSTerminal() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [barcodeInput, handleBarcodeScan])
   
-  const getOrderData = () => ({
+  const getOrderData = (externalId?: string) => ({
+    external_id: externalId,
     customer_id: customerId !== 'walk-in' ? parseInt(customerId) : null,
     session_id: activeTerminalId ? parseInt(activeTerminalId) : null,
     notes: customerId !== 'walk-in' 
@@ -421,19 +430,12 @@ export function POSTerminal() {
           return
       }
       try {
-          // Check if we are UPDATING an existing draft?
-          // Current logic in `PosOrderController` assumes `store` creates new or updates if we passed an ID?
-          // The controller uses `firstOrCreate(['external_id' => ...])`.
-          // We don't track `external_id` or `order_id` in the frontend session yet.
-          // For now, "Save Draft" creates a NEW draft.
-          // To update, we'd need to store `currentOrderId` in the store.
-          // Simplification for now: Always create new draft. (Or maybe we implement `currentOrderId` later).
-          // Ideally, loading a draft should set `currentOrderId` so we update it.
-          // But strict "Save as Draft" usually means "Park Order".
+          // Use existing order ID or generate new one
+          const orderId = currentOrderId || generateOrderId()
+          if (!currentOrderId) setCurrentOrderId(orderId)
           
-          await createOrderMutation.mutateAsync(getOrderData())
+          await createOrderMutation.mutateAsync(getOrderData(orderId))
           toast({ title: "Draft Saved", description: "Order saved as draft." })
-          clearSessionCart()
       } catch (error: any) {
           toast({ title: "Error", description: error.message, variant: "destructive" })
       }
@@ -451,8 +453,11 @@ export function POSTerminal() {
     }
 
     try {
+      // Use existing order ID or generate new one for idempotency
+      const orderId = currentOrderId || generateOrderId()
+      
       // Create order
-      const order = await createOrderMutation.mutateAsync(getOrderData())
+      const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
 
       // Process payment
       const paymentData = {
@@ -501,12 +506,14 @@ export function POSTerminal() {
       setShowCheckoutDialog(false)
       setShowReceiptDialog(true)
 
-      // Clear cart after showing receipt
+      // Clear cart and order tracking after showing receipt
       clearSessionCart()
       setSelectedCustomer(null)
+      setCurrentOrderId(null) // Reset order ID for next order
 
       // Refresh products to update stock
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
+      queryClient.invalidateQueries({ queryKey: ['customers-pos'] }) // Refresh customer data
     } catch (error: any) {
       toast({
         title: "Checkout Failed",
@@ -632,7 +639,7 @@ export function POSTerminal() {
           </div>
           
           {/* Customer & Warehouse Selection */}
-          <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className="flex gap-2 mt-3">
             {/* Customer Searchable Dropdown */}
             <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
               <PopoverTrigger asChild>
@@ -640,102 +647,119 @@ export function POSTerminal() {
                   variant="outline"
                   role="combobox"
                   aria-expanded={customerSearchOpen}
-                  className="h-9 justify-between text-sm"
+                  className="h-9 flex-1 justify-between text-sm"
                 >
-                  <span className="truncate">
-                    {selectedCustomer ? selectedCustomer.name : 
-                     customerId === 'walk-in' ? 'Walk-in Customer' : 'Select Customer'}
-                  </span>
-                  <Icon icon="solar:alt-arrow-down-linear" className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <div className="flex items-center gap-2 truncate">
+                    <Icon icon="solar:user-circle-bold" className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      {selectedCustomer ? selectedCustomer.name : 
+                       customerId === 'walk-in' ? 'Walk-in' : 'Select Customer'}
+                    </span>
+                  </div>
+                  <Icon icon="solar:alt-arrow-down-linear" className="ml-1 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[280px] p-0" align="start">
+              <PopoverContent className="w-[300px] p-0" align="start">
                 <Command shouldFilter={false}>
-                  <CommandInput 
-                    placeholder="Search customers..." 
-                    value={customerSearch}
-                    onValueChange={setCustomerSearch}
-                  />
-                  <CommandList>
-                    <CommandEmpty>
-                      {searchingCustomers ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin mr-2" />
-                          Searching...
-                        </div>
-                      ) : customerSearch.length >= 2 ? (
-                        <div className="py-4 text-center text-sm">
-                          No customer found.
-                          <Button 
-                            variant="link" 
-                            className="p-0 h-auto ml-1"
-                            onClick={() => {
-                              setNewCustomer({ ...newCustomer, name: customerSearch })
-                              setShowAddCustomerDialog(true)
+                  <div className="flex items-center border-b px-3">
+                    <Icon icon="solar:magnifer-linear" className="h-4 w-4 text-muted-foreground mr-2" />
+                    <input
+                      placeholder="Search customers by name or phone..."
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                  <CommandList className="max-h-[250px]">
+                    {searchingCustomers ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin mr-2 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Searching...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <CommandGroup heading="Quick Selection">
+                          <CommandItem
+                            value="walk-in"
+                            onSelect={() => {
+                              setCustomerId('walk-in')
+                              setSelectedCustomer(null)
                               setCustomerSearchOpen(false)
+                              setCustomerSearch('')
                             }}
+                            className="cursor-pointer"
                           >
-                            Add new?
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="py-4 text-center text-sm text-muted-foreground">
-                          Type at least 2 characters to search
-                        </div>
-                      )}
-                    </CommandEmpty>
-                    <CommandGroup>
-                      <CommandItem
-                        value="walk-in"
-                        onSelect={() => {
-                          setCustomerId('walk-in')
-                          setSelectedCustomer(null)
-                          setCustomerSearchOpen(false)
-                          setCustomerSearch('')
-                        }}
-                        className="cursor-pointer"
-                      >
-                        <Icon icon="solar:user-bold" className="mr-2 h-4 w-4" />
-                        Walk-in Customer
-                        {customerId === 'walk-in' && (
-                          <Icon icon="solar:check-circle-bold" className="ml-auto h-4 w-4" />
-                        )}
-                      </CommandItem>
-                      {(customerSearch.length >= 2 ? searchedCustomers : customers)?.map((customer) => (
-                        <CommandItem
-                          key={customer.id}
-                          value={customer.id.toString()}
-                          onSelect={() => {
-                            setCustomerId(customer.id.toString())
-                            setSelectedCustomer(customer)
-                            setCustomerSearchOpen(false)
-                            setCustomerSearch('')
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex flex-col flex-1">
-                            <span className="font-medium">{customer.name}</span>
-                            {customer.phone && (
-                              <span className="text-xs text-muted-foreground">{customer.phone}</span>
+                            <Icon icon="solar:user-bold" className="mr-2 h-4 w-4" />
+                            <span className="flex-1">Walk-in Customer</span>
+                            {customerId === 'walk-in' && (
+                              <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
                             )}
+                          </CommandItem>
+                        </CommandGroup>
+                        
+                        {(customerSearch.length >= 2 ? searchedCustomers : customers)?.length ? (
+                          <CommandGroup heading={customerSearch.length >= 2 ? "Search Results" : "Recent Customers"}>
+                            {(customerSearch.length >= 2 ? searchedCustomers : customers)?.slice(0, 10).map((customer) => (
+                              <CommandItem
+                                key={customer.id}
+                                value={customer.id.toString()}
+                                onSelect={() => {
+                                  setCustomerId(customer.id.toString())
+                                  setSelectedCustomer(customer)
+                                  setCustomerSearchOpen(false)
+                                  setCustomerSearch('')
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <Icon icon="solar:user-bold" className="h-4 w-4 text-primary" />
+                                  </div>
+                                  <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="font-medium truncate">{customer.name}</span>
+                                    {customer.phone && (
+                                      <span className="text-xs text-muted-foreground">{customer.phone}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {customer.loyalty_points !== undefined && customer.loyalty_points > 0 && (
+                                  <Badge variant="secondary" className="ml-2 text-xs shrink-0">
+                                    {customer.loyalty_points} pts
+                                  </Badge>
+                                )}
+                                {customerId === customer.id.toString() && (
+                                  <Icon icon="solar:check-circle-bold" className="ml-2 h-4 w-4 text-primary shrink-0" />
+                                )}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        ) : customerSearch.length >= 2 ? (
+                          <div className="py-6 text-center">
+                            <Icon icon="solar:user-cross-bold" className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+                            <p className="text-sm text-muted-foreground">No customer found</p>
+                            <Button 
+                              variant="link" 
+                              size="sm"
+                              className="mt-1"
+                              onClick={() => {
+                                setNewCustomer({ ...newCustomer, name: customerSearch })
+                                setShowAddCustomerDialog(true)
+                                setCustomerSearchOpen(false)
+                              }}
+                            >
+                              <Icon icon="solar:user-plus-bold" className="h-4 w-4 mr-1" />
+                              Create "{customerSearch}"
+                            </Button>
                           </div>
-                          {customer.loyalty_points !== undefined && customer.loyalty_points > 0 && (
-                            <Badge variant="secondary" className="ml-2 text-xs">
-                              {customer.loyalty_points} pts
-                            </Badge>
-                          )}
-                          {customerId === customer.id.toString() && (
-                            <Icon icon="solar:check-circle-bold" className="ml-2 h-4 w-4" />
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
+                        ) : null}
+                      </>
+                    )}
                   </CommandList>
                   <div className="border-t p-2">
                     <Button 
-                      variant="ghost" 
+                      variant="default" 
                       size="sm" 
-                      className="w-full justify-start"
+                      className="w-full"
                       onClick={() => {
                         setShowAddCustomerDialog(true)
                         setCustomerSearchOpen(false)
@@ -749,6 +773,7 @@ export function POSTerminal() {
               </PopoverContent>
             </Popover>
             
+            {/* Warehouse Selection */}
             <Select
               value={warehouseId}
               onValueChange={(v) => {
@@ -756,7 +781,7 @@ export function POSTerminal() {
                 setWarehouse(v === 'all' ? null : v)
               }}
             >
-              <SelectTrigger className="h-9">
+              <SelectTrigger className="h-9 w-[140px]">
                 <SelectValue placeholder="Warehouse" />
               </SelectTrigger>
               <SelectContent>
@@ -924,7 +949,10 @@ export function POSTerminal() {
             <Button
               variant="default"
               className="flex-1 bg-red-500 hover:bg-red-600"
-              onClick={() => clearSessionCart()}
+              onClick={() => {
+                clearSessionCart()
+                setCurrentOrderId(null) // Reset order ID when clearing cart
+              }}
               disabled={cart.length === 0}
               title="Clear Cart"
             >
@@ -1171,16 +1199,102 @@ export function POSTerminal() {
                   const printWindow = window.open('', '_blank')
                   if (printWindow) {
                     printWindow.document.write(`
+                      <!DOCTYPE html>
                       <html>
                         <head>
-                          <title>Receipt</title>
+                          <title>Receipt - ${lastOrder?.receiptNumber || lastOrder?.orderNumber}</title>
                           <style>
-                            body { margin: 0; padding: 20px; font-family: 'Courier New', Courier, monospace; }
-                            @media print { body { padding: 0; } }
+                            * { margin: 0; padding: 0; box-sizing: border-box; }
+                            body { 
+                              font-family: 'Courier New', Courier, monospace;
+                              font-size: 12px;
+                              line-height: 1.4;
+                              color: #000;
+                              background: #fff;
+                              padding: 10px;
+                              width: 80mm;
+                              max-width: 80mm;
+                            }
+                            .receipt-container {
+                              width: 100%;
+                              max-width: 300px;
+                              margin: 0 auto;
+                              padding: 15px;
+                            }
+                            .text-center { text-align: center; }
+                            .text-right { text-align: right; }
+                            .text-left { text-align: left; }
+                            .font-bold { font-weight: bold; }
+                            .text-xl { font-size: 18px; }
+                            .text-lg { font-size: 16px; }
+                            .text-sm { font-size: 11px; }
+                            .text-xs { font-size: 10px; }
+                            .mb-1 { margin-bottom: 4px; }
+                            .mb-2 { margin-bottom: 8px; }
+                            .mb-3 { margin-bottom: 12px; }
+                            .mb-4 { margin-bottom: 16px; }
+                            .mt-1 { margin-top: 4px; }
+                            .mt-2 { margin-top: 8px; }
+                            .mt-4 { margin-top: 16px; }
+                            .my-2 { margin: 8px 0; }
+                            .my-3 { margin: 12px 0; }
+                            .my-4 { margin: 16px 0; }
+                            .pt-1 { padding-top: 4px; }
+                            .pt-3 { padding-top: 12px; }
+                            .p-2 { padding: 8px; }
+                            .uppercase { text-transform: uppercase; }
+                            .border-dashed { 
+                              border-style: dashed; 
+                              border-color: #999;
+                            }
+                            .border-b { border-bottom-width: 1px; }
+                            .border-b-2 { border-bottom-width: 2px; }
+                            .border-t { border-top-width: 1px; }
+                            .border { border-width: 1px; border-style: solid; border-color: #ccc; }
+                            .rounded { border-radius: 4px; }
+                            .flex { display: flex; }
+                            .justify-between { justify-content: space-between; }
+                            .items-center { align-items: center; }
+                            .flex-1 { flex: 1; }
+                            .gap-1 { gap: 1px; }
+                            .inline-flex { display: inline-flex; }
+                            .flex-col { flex-direction: column; }
+                            .space-y-1 > * + * { margin-top: 4px; }
+                            .space-y-2 > * + * { margin-top: 8px; }
+                            .divider {
+                              border-bottom: 1px dashed #999;
+                              margin: 8px 0;
+                            }
+                            .header { text-align: center; margin-bottom: 15px; }
+                            .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; }
+                            .header p { font-size: 11px; margin-top: 3px; }
+                            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
+                            .customer-box { border: 1px solid #ccc; border-radius: 4px; padding: 8px; margin-bottom: 10px; font-size: 11px; }
+                            .items-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 8px; }
+                            .item-row { margin-bottom: 8px; }
+                            .item-name { font-size: 11px; font-weight: 500; }
+                            .item-details { display: flex; justify-content: space-between; font-size: 11px; }
+                            .totals-section { font-size: 11px; }
+                            .total-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+                            .grand-total { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; border-top: 1px solid #000; padding-top: 5px; margin-top: 5px; }
+                            .payment-section { font-size: 11px; }
+                            .barcode { display: flex; justify-content: center; gap: 1px; margin: 15px 0; }
+                            .barcode-bar { background: #000; height: 40px; }
+                            .barcode-text { font-size: 10px; text-align: center; margin-top: 5px; }
+                            .footer { text-align: center; font-size: 11px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #999; }
+                            .footer .thank-you { font-weight: bold; margin-bottom: 5px; }
+                            .footer .powered { font-size: 9px; color: #666; margin-top: 10px; }
+                            .bg-gray { background-color: #f3f4f6; padding: 8px; border-radius: 4px; text-align: center; margin-bottom: 10px; }
+                            @media print {
+                              body { padding: 0; width: 80mm; }
+                              @page { margin: 5mm; size: 80mm auto; }
+                            }
                           </style>
                         </head>
                         <body>
-                          ${receiptRef.current.innerHTML}
+                          <div class="receipt-container">
+                            ${receiptRef.current.innerHTML}
+                          </div>
                         </body>
                       </html>
                     `)

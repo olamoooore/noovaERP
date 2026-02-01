@@ -235,10 +235,12 @@ class Customer extends Model
      */
     public function updatePurchaseStats(): void
     {
-        $this->total_orders = $this->posOrders()->where('status', 'completed')->count() 
-                            + $this->invoices()->whereIn('status', ['sent', 'paid'])->count();
+        // POS orders use 'paid' status, not 'completed'
+        $posOrderCount = $this->posOrders()->where('status', 'paid')->where('is_return', false)->count();
+        $invoiceCount = $this->invoices()->whereIn('status', ['sent', 'paid'])->count();
+        $this->total_orders = $posOrderCount + $invoiceCount;
         
-        $posTotal = $this->posOrders()->where('status', 'completed')->sum('total');
+        $posTotal = $this->posOrders()->where('status', 'paid')->where('is_return', false)->sum('total');
         $invoiceTotal = $this->invoices()->whereIn('status', ['sent', 'paid'])->sum('total');
         $this->total_purchases = $posTotal + $invoiceTotal;
         
