@@ -86,8 +86,8 @@ class PosOrderController extends Controller
         $dailySales = PosOrder::where('status', 'paid')
             ->whereDate('paid_at', '>=', now()->subDays(30))
             ->selectRaw('DATE(paid_at) as date, SUM(total) as total, COUNT(*) as count')
-            ->groupBy('date')
-            ->orderBy('date')
+            ->groupByRaw('DATE(paid_at)')
+            ->orderByRaw('DATE(paid_at)')
             ->get();
 
         return response()->json([
@@ -120,15 +120,15 @@ class PosOrderController extends Controller
         if ($type === 'daily') {
             $data = $query
                 ->selectRaw('DATE(paid_at) as date, SUM(total) as total, SUM(tax_amount) as tax, COUNT(*) as orders')
-                ->groupBy('date')
-                ->orderBy('date')
+                ->groupByRaw('DATE(paid_at)')
+                ->orderByRaw('DATE(paid_at)')
                 ->get();
         } else {
             $data = $query
-                ->selectRaw('YEAR(paid_at) as year, MONTH(paid_at) as month, SUM(total) as total, SUM(tax_amount) as tax, COUNT(*) as orders')
-                ->groupBy('year', 'month')
-                ->orderBy('year')
-                ->orderBy('month')
+                ->selectRaw('EXTRACT(YEAR FROM paid_at) as year, EXTRACT(MONTH FROM paid_at) as month, SUM(total) as total, SUM(tax_amount) as tax, COUNT(*) as orders')
+                ->groupByRaw('EXTRACT(YEAR FROM paid_at), EXTRACT(MONTH FROM paid_at)')
+                ->orderByRaw('EXTRACT(YEAR FROM paid_at)')
+                ->orderByRaw('EXTRACT(MONTH FROM paid_at)')
                 ->get();
         }
 
