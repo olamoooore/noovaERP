@@ -1,7 +1,10 @@
 import axios from 'axios'
 
+// In production, API is at /noovaerp/api/v1, in development it's proxied to /api/v1
+const baseURL = import.meta.env.PROD ? '/noovaerp/api/v1' : '/api/v1'
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,7 +26,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      // Use basename-aware redirect
+      window.location.href = import.meta.env.PROD ? '/noovaerp/login' : '/login'
     }
     return Promise.reject(error)
   }
