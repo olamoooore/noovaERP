@@ -4,11 +4,12 @@
 .idea/
 .fleet/
 
-# Secrets
+# Secrets - Keep .env.production for CI/CD
 **/.env
-**/.env.*
+**/.env.local
 !**/.env.example
 !**/.env.sample
+!**/.env.production
 
 # Dependencies / build outputs
 **/node_modules/
@@ -16,24 +17,38 @@
 **/dist/
 **/.phpunit.result.cache
 
-# Laravel runtime artifacts
-backend/storage/
-backend/bootstrap/cache/
+# Laravel runtime artifacts - Keep storage structure
+backend/bootstrap/cache/*.php
 backend/database/*.sqlite
 backend/database/database.sqlite
+
+# Keep storage folder structure with .gitkeep files
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/data/.gitkeep
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitkeep
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitkeep
+backend/storage/framework/testing/*
+!backend/storage/framework/testing/.gitkeep
+
+# Keep logs folder but ignore log files
+backend/storage/logs/*.log
+
+# Keep app storage structure
+backend/storage/app/public/*
+!backend/storage/app/public/.gitkeep
 
 # Published/admin assets (generated)
 backend/public/css/filament/
 backend/public/js/filament/
 
-# Storage symlink/dir
+# Storage symlink (will be created on server)
 backend/public/storage
-backend/public/storage/
 
 # Logs
 **/npm-debug.log
 **/yarn-error.log
-**/storage/logs/
 
 # Do not push this folder
 test-sample/
