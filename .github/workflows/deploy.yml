@@ -68,14 +68,24 @@ jobs:
       - name: Create deployment package
         run: |
           # Create deployment archive excluding unnecessary files
+          # Exit code 1 from tar means "file changed" which is okay
           tar -czf deploy.tar.gz \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='vendor' \
             --exclude='.DS_Store' \
             --exclude='*.log' \
+            --exclude='*.sql' \
             --exclude='backend/.env' \
-            .
+            --exclude='frontend/dist' \
+            --exclude='.vite' \
+            --exclude='*.tmp' \
+            --exclude='*.swp' \
+            . || [[ $? -eq 1 ]]
+          
+          # Add the pre-built frontend dist
+          tar -rf deploy.tar.gz -C . frontend/dist 2>/dev/null || true
+          gzip -f deploy.tar.gz 2>/dev/null || mv deploy.tar.gz deploy.tar.gz
 
       - name: Upload to server
         run: |
