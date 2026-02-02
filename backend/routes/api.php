@@ -17,15 +17,25 @@ Route::get('/health', fn() => response()->json([
     'version' => config('app.version', '1.0.0'),
 ]));
 
-Route::middleware([\App\Http\Middleware\CorsMiddleware::class])->prefix('auth')->group(function () {
+// V1 Auth routes (central, non-tenant)
+Route::prefix('v1/auth')->group(function () {
     // Tenant signup & management
     Route::post('/signup', [TenantController::class, 'signup']);
     
-    // Temporary non-tenant login for development
+    // Central login (non-tenant)
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     
     // Health check
+    Route::get('/health', fn() => response()->json(['status' => 'ok']));
+});
+
+// Legacy auth routes (keep for backwards compatibility)
+Route::prefix('auth')->group(function () {
+    Route::post('/signup', [TenantController::class, 'signup']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+    Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::get('/health', fn() => response()->json(['status' => 'ok']));
 });

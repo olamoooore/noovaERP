@@ -22,7 +22,8 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const response = await api.post('/login', { email, password })
+      // Use the central auth endpoint (not tenant-scoped)
+      const response = await api.post('/auth/login', { email, password })
       setAuth(response.data.user, response.data.token)
       toast({
         title: 'Login successful',

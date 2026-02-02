@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-// In production, API is at /noovaerp/api/v1, in development it's proxied to /api/v1
-const baseURL = import.meta.env.PROD ? '/noovaerp/api/v1' : '/api/v1'
+// Use VITE_API_BASE_URL from .env.production, fallback to /api/v1 for development
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 const api = axios.create({
   baseURL,
@@ -27,7 +27,8 @@ api.interceptors.response.use(
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       // Use basename-aware redirect
-      window.location.href = import.meta.env.PROD ? '/noovaerp/login' : '/login'
+      const basePath = import.meta.env.VITE_BASE_PATH || ''
+      window.location.href = `${basePath}/login`
     }
     return Promise.reject(error)
   }

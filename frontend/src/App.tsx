@@ -77,7 +77,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <div data-currency={currencyCode}>
-        <BrowserRouter basename={import.meta.env.PROD ? '/noovaerp' : '/'}>
+        <BrowserRouter basename={import.meta.env.VITE_BASE_PATH || '/'}>
           <Suspense fallback={<PageLoader />}>
             <Routes>
             <Route path="/login" element={<LoginPage />} />
