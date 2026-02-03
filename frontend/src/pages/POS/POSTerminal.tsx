@@ -1543,13 +1543,42 @@ export function POSTerminal() {
             description: `Transaction ID: ${transactionId}`,
           })
           
-          // Show receipt dialog
-          setShowReceiptDialog(true)
-          
           // Close Stripe dialog first
           setShowStripeDialog(false)
           
-          // Clear cart after successful payment
+          // Set receipt data BEFORE clearing cart
+          setLastOrder({
+            orderNumber: stripePaymentData.orderId?.toString() || 'ONLINE',
+            receiptNumber: `ONLINE-${Date.now()}`,
+            date: new Date(),
+            customer: selectedCustomer ? {
+              name: selectedCustomer.name,
+              phone: selectedCustomer.phone,
+              email: selectedCustomer.email,
+            } : { name: 'Walk-in Customer' },
+            items: cart.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              line_total: item.line_total
+            })),
+            subtotal,
+            taxAmount,
+            discountAmount,
+            discountType: discount.type,
+            discountValue: discount.value,
+            total,
+            paymentMethod: 'Card (Stripe)',
+            amountPaid: total,
+            change: 0,
+            terminal: activeTerminalId,
+            transactionId,
+          })
+          
+          // Show receipt dialog
+          setShowReceiptDialog(true)
+          
+          // Clear cart after setting receipt data
           setTimeout(() => {
             clearSessionCart()
             setSelectedCustomer(null)
