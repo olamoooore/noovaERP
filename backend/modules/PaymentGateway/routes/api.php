@@ -1,8 +1,23 @@
 <?php
 
-// Manually load controllers (workaround for module autoloading)
-$controllersDir = __DIR__ . '/../src/Controllers';
-foreach (glob($controllersDir . '/*.php') as $file) {
+// Manually load all module files (workaround for module autoloading)
+$srcDir = __DIR__ . '/../src';
+
+// Load Models first
+foreach (glob($srcDir . '/Models/*.php') as $file) {
+    require_once $file;
+}
+
+// Load Services (interface first, then implementations)
+require_once $srcDir . '/Services/PaymentGatewayInterface.php';
+require_once $srcDir . '/Services/PaymentGatewayFactory.php';
+require_once $srcDir . '/Services/StripeGateway.php';
+require_once $srcDir . '/Services/PayPalGateway.php';
+require_once $srcDir . '/Services/HitPayGateway.php';
+require_once $srcDir . '/Services/PosPaymentService.php';
+
+// Load Controllers
+foreach (glob($srcDir . '/Controllers/*.php') as $file) {
     require_once $file;
 }
 
