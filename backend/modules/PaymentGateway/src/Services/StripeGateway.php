@@ -27,13 +27,13 @@ class StripeGateway implements PaymentGatewayInterface
     {
         try {
             // Generate idempotency key to prevent duplicate charges
-            // Include currency so key changes if currency changes
-            $idempotencyKey = $data['idempotency_key'] ?? md5(json_encode([
-                'invoice_id' => $data['metadata']['invoice_id'] ?? null,
-                'amount' => $data['amount'],
-                'currency' => $data['currency'] ?? 'myr',
-                'timestamp' => date('Y-m-d'),
-            ]));
+            // Each payment attempt should have a unique key
+            if (!empty($data['idempotency_key'])) {
+                $idempotencyKey = $data['idempotency_key'];
+            } else {
+                // Generate a unique key for each payment attempt
+                $idempotencyKey = md5(uniqid('stripe_', true) . microtime(true) . rand(1000, 9999));
+            }
 
             $paymentIntent = PaymentIntent::create([
                 'amount' => (int) ($data['amount'] * 100), // Convert to cents
