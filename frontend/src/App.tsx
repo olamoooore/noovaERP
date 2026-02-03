@@ -57,7 +57,6 @@ const WarehouseTransferCreatePage = lazy(() => import('@/pages/Inventory/Warehou
 const WarehousesPage = lazy(() => import('@/pages/Inventory/WarehousesPage').then(m => ({ default: m.WarehousesPage })))
 
 // Payment Gateway Pages
-const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const PaymentDashboard = lazy(() => import('@/pages/PaymentDashboard').then(m => ({ default: m.PaymentDashboard })))
 const PaymentCheckout = lazy(() => import('@/pages/Checkout/PaymentCheckout').then(m => ({ default: m.PaymentCheckout })))
 const PaymentTestPage = lazy(() => import('@/pages/PaymentTestPage').then(m => ({ default: m.PaymentTestPage })))
