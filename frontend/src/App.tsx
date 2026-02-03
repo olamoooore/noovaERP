@@ -56,6 +56,15 @@ const WarehouseTransfersPage = lazy(() => import('@/pages/Inventory/WarehouseTra
 const WarehouseTransferCreatePage = lazy(() => import('@/pages/Inventory/WarehouseTransferCreatePage').then(m => ({ default: m.WarehouseTransferCreatePage })))
 const WarehousesPage = lazy(() => import('@/pages/Inventory/WarehousesPage').then(m => ({ default: m.WarehousesPage })))
 
+// Payment Gateway Pages
+const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
+const PaymentDashboard = lazy(() => import('@/pages/PaymentDashboard').then(m => ({ default: m.PaymentDashboard })))
+const PaymentCheckout = lazy(() => import('@/pages/Checkout/PaymentCheckout').then(m => ({ default: m.PaymentCheckout })))
+const PaymentTestPage = lazy(() => import('@/pages/PaymentTestPage').then(m => ({ default: m.PaymentTestPage })))
+const PaymentSuccess = lazy(() => import('@/pages/PaymentSuccess').then(m => ({ default: m.default })))
+const PaymentGatewaySettings = lazy(() => import('@/pages/Settings/PaymentGatewaySettings').then(m => ({ default: m.PaymentGatewaySettings })))
+const OfflinePaymentMethods = lazy(() => import('@/pages/Settings/OfflinePaymentMethods').then(m => ({ default: m.OfflinePaymentMethodsPage })))
+
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen">
@@ -137,6 +146,15 @@ function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/iot-devices" element={<IoTDevicesPage />} />
                 <Route path="/iot-hub" element={<IoTHubPage />} />
+                
+                {/* Payment Gateway Routes */}
+                <Route path="/payments" element={<PaymentsPage />} />
+                <Route path="/payment-analytics" element={<PaymentDashboard />} />
+                <Route path="/checkout" element={<PaymentCheckout />} />
+                <Route path="/payment-test" element={<PaymentTestPage />} />
+                <Route path="/payment/success" element={<PaymentSuccess />} />
+                <Route path="/settings/payment-gateways" element={<PaymentGatewaySettings />} />
+                <Route path="/settings/offline-payments" element={<OfflinePaymentMethods />} />
               </Route>
 
               {/* POS Layout Routes - fullscreen without sidebar */}
