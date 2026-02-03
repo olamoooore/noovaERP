@@ -176,8 +176,12 @@ export function StripePaymentDialog({
           pos_order_id: posOrderId,
           amount: amount,
         }
+        
+        console.log('Creating payment with payload:', paymentPayload)
 
         const paymentResponse = await api.post('/payment-transactions/create', paymentPayload)
+        
+        console.log('Payment creation response:', paymentResponse.data)
 
         const { transaction, client_secret, publishable_key } = paymentResponse.data
 
@@ -194,10 +198,26 @@ export function StripePaymentDialog({
         setLoading(false)
       } catch (err: any) {
         console.error('Payment initialization error:', err)
-        const errorMsg = err.response?.data?.message || 
-                        err.response?.data?.error || 
-                        err.message || 
-                        'Failed to initialize payment'
+        console.error('Error response data:', err.response?.data)
+        console.error('Error response status:', err.response?.status)
+        console.error('Error response headers:', err.response?.headers)
+        
+        // Extract detailed validation errors if available
+        let errorMsg = 'Failed to initialize payment'
+        if (err.response?.data?.errors) {
+          // Laravel validation errors format
+          const errors = err.response.data.errors
+          errorMsg = Object.entries(errors)
+            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join('\n')
+        } else if (err.response?.data?.message) {
+          errorMsg = err.response.data.message
+        } else if (err.response?.data?.error) {
+          errorMsg = err.response.data.error
+        } else if (err.message) {
+          errorMsg = err.message
+        }
+        
         setError(errorMsg)
         setLoading(false)
       }
