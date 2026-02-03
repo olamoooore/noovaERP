@@ -497,9 +497,9 @@ class PaymentController extends Controller
     protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
     {
         DB::transaction(function () use ($transaction, $posOrder) {
-            // Update POS order status
+            // Update POS order status to 'paid' (consistent with PosOrderController)
             $posOrder->update([
-                'status' => 'completed',
+                'status' => 'paid',
                 'paid_at' => now(),
             ]);
 
@@ -510,6 +510,7 @@ class PaymentController extends Controller
                 'amount' => $transaction->amount,
                 'reference' => $transaction->transaction_id,
                 'notes' => "Online payment via {$transaction->gateway->gateway_name}",
+                'received_by' => auth()->id() ?? $posOrder->created_by,
             ]);
 
             // Create Invoice from POS Order

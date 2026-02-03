@@ -247,13 +247,14 @@ export function StripePaymentDialog({
   }
 
   const handleClose = () => {
-    if (!loading) {
+    // Don't allow closing during loading or success animation
+    if (!loading && !success) {
       onOpenChange(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleClose} modal={true}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Card Payment</DialogTitle>

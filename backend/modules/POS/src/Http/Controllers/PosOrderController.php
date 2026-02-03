@@ -200,6 +200,21 @@ class PosOrderController extends Controller
                 $order->discount_value = $validated['discount_value'] ?? 0;
             }
 
+            // Update customer_id if provided and order already exists
+            if (isset($validated['customer_id'])) {
+                $order->customer_id = $validated['customer_id'];
+            }
+
+            // Update notes if provided
+            if (isset($validated['notes'])) {
+                $order->notes = $validated['notes'];
+            }
+            
+            // Save any changes to discount, customer, or notes
+            if ($order->isDirty()) {
+                $order->save();
+            }
+
             if ($order->wasRecentlyCreated === false && $order->items()->count() > 0) {
                  // If it's an existing draft, we might want to update it. 
                  // For now, let's assume 'store' is mostly for new drafts or syncing.

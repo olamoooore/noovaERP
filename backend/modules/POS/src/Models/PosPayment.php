@@ -18,6 +18,7 @@ class PosPayment extends Model
         'reference',
         'surcharge',
         'received_by',
+        'notes',
     ];
 
     protected $casts = [
