@@ -232,10 +232,6 @@ export function POSPage() {
       })
       queryClient.invalidateQueries({ queryKey: ['pos-current-session'] })
       queryClient.invalidateQueries({ queryKey: ['pos-terminals'] })
-      toast({
-        title: 'Session opened',
-        description: `Session ${session.session_number} started successfully.`,
-      })
       setIsSessionDialogOpen(false)
       navigate('/pos/terminal')
     },
