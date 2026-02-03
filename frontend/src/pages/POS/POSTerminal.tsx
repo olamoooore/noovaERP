@@ -1163,6 +1163,14 @@ export function POSTerminal() {
                     throw new Error('Order creation failed - no order ID returned')
                   }
                   
+                  // Validate order has required fields
+                  if (!order?.id) {
+                    throw new Error('Order created but no ID returned')
+                  }
+                  if (!method?.gateway_id) {
+                    throw new Error('No gateway ID found for selected payment method')
+                  }
+                  
                   // Close checkout dialog first
                   setShowCheckoutDialog(false)
                   
