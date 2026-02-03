@@ -98,11 +98,13 @@ class PosSessionController extends Controller
     /**
      * Get session details
      */
-    public function show(PosSession $session): JsonResponse
+    public function show($sessionId): JsonResponse
     {
+        $session = PosSession::with(['terminal', 'user', 'orders', 'cashMovements'])->findOrFail($sessionId);
+        
         return response()->json([
             'session' => [
-                ...$session->load(['terminal', 'user', 'orders', 'cashMovements'])->toArray(),
+                ...$session->toArray(),
                 'summary' => $session->getSummary(),
             ],
         ]);
@@ -111,23 +113,35 @@ class PosSessionController extends Controller
     /**
      * Close session
      */
-    public function closeSession(Request $request, PosSession $session): JsonResponse
+    public function closeSession(Request $request, $sessionId): JsonResponse
     {
+        \Log::info('Close session called', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
+        
         $request->validate([
             'closing_balance' => 'required|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 
+        $session = PosSession::find($sessionId);
+        
+        if (!$session) {
+            \Log::error('Session not found', ['session_id' => $sessionId]);
+            return response()->json(['error' => 'Session not found'], 404);
+        }
+
         // Verify user owns this session or is admin
         if ($session->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+            \Log::warning('Unauthorized session close attempt', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
         if ($session->status !== 'open') {
+            \Log::warning('Session is not open', ['session_id' => $sessionId, 'status' => $session->status]);
             return response()->json(['error' => 'Session is not open'], 400);
         }
 
         $session->close($request->closing_balance, $request->notes);
+        \Log::info('Session closed successfully', ['session_id' => $sessionId]);
 
         return response()->json([
             'message' => 'Session closed successfully',
@@ -141,7 +155,7 @@ class PosSessionController extends Controller
     /**
      * Add cash movement
      */
-    public function cashMovement(Request $request, PosSession $session): JsonResponse
+    public function cashMovement(Request $request, $sessionId): JsonResponse
     {
         $request->validate([
             'type' => 'required|in:in,out',
@@ -149,6 +163,8 @@ class PosSessionController extends Controller
             'reason' => 'required|string|max:255',
             'notes' => 'nullable|string',
         ]);
+
+        $session = PosSession::findOrFail($sessionId);
 
         if ($session->status !== 'open') {
             return response()->json(['error' => 'Session is not open'], 400);

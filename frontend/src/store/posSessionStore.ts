@@ -1,12 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export interface PosTerminalProfile {
-  id: string;
-  name: string;
-  warehouseId?: string;
-}
-
 export interface CartItem {
   id: number;
   name: string;
@@ -18,6 +12,8 @@ export interface CartItem {
   line_total: number;
   tax_amount: number;
   tax_rate?: number;
+  effective_tax_rate?: number;  // Computed by backend: includes fallback to default system tax
+  effective_tax_is_inclusive?: boolean;  // Computed by backend: whether tax is included in price
   // Store original product data if needed for re-calculation
   product_data?: any;
 }
@@ -27,24 +23,55 @@ export interface Discount {
   value: number;
 }
 
+// Terminal data from database
+export interface PosTerminal {
+  id: string;
+  name: string;
+  code?: string;
+  warehouse_id?: string;
+  warehouse?: {
+    id: number;
+    name: string;
+  } | null;
+  is_active?: boolean;
+  has_open_session?: boolean;
+  current_session?: {
+    id: number;
+    session_number: string;
+    user_id: number;
+  } | null;
+}
+
+// Session data from database
+export interface PosSession {
+  id: number;
+  session_number: string;
+  terminal_id: number;
+  user_id: number;
+  status: 'open' | 'closed';
+  opening_balance: number;
+  opened_at: string;
+  terminal?: PosTerminal;
+}
+
 interface PosSessionState {
-  terminals: PosTerminalProfile[];
+  // Session State (persisted - only session data, not terminal list)
+  activeSessionId: number | null;
   activeTerminalId: string | null;
   warehouseId: string | null;
   staffId: string | null;
   openedAt: string | null;
 
-  // Cart State
+  // Cart State (persisted)
   cart: CartItem[];
   discount: Discount;
   customerId: string;
 
   // Actions
-  addTerminal: (name: string, warehouseId?: string) => PosTerminalProfile;
-  removeTerminal: (terminalId: string) => void;
-  setActiveTerminal: (terminalId: string | null) => void;
+  setActiveSession: (session: PosSession | null) => void;
   setWarehouse: (warehouseId: string | null) => void;
   startSession: (input: {
+    sessionId: number;
     terminalId: string;
     warehouseId: string | null;
     staffId: string | null;
@@ -61,61 +88,46 @@ interface PosSessionState {
   setCustomerId: (id: string) => void;
 }
 
-const makeId = () =>
-  `term_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`;
-
 export const usePosSessionStore = create<PosSessionState>()(
   persist(
     (set) => ({
-      terminals: [],
+      // Session State
+      activeSessionId: null,
       activeTerminalId: null,
       warehouseId: null,
       staffId: null,
       openedAt: null,
 
+      // Cart State
       cart: [],
       discount: { type: "fixed", value: 0 },
       customerId: "walk-in",
 
-      addTerminal: (name: string, warehouseId?: string) => {
-        const trimmed = name.trim();
-        const terminal: PosTerminalProfile = {
-          id: makeId(),
-          name: trimmed || "Terminal",
-          warehouseId,
-        };
-
-        set((state) => ({
-          terminals: [terminal, ...state.terminals],
-        }));
-
-        return terminal;
+      setActiveSession: (session) => {
+        if (session) {
+          set({
+            activeSessionId: session.id,
+            activeTerminalId: String(session.terminal_id),
+            warehouseId: session.terminal?.warehouse_id || null,
+            staffId: String(session.user_id),
+            openedAt: session.opened_at,
+          });
+        } else {
+          set({
+            activeSessionId: null,
+            activeTerminalId: null,
+            warehouseId: null,
+            staffId: null,
+            openedAt: null,
+          });
+        }
       },
-
-      removeTerminal: (terminalId: string) => {
-        set((state) => {
-          const nextTerminals = state.terminals.filter(
-            (t) => t.id !== terminalId
-          );
-          const activeTerminalId =
-            state.activeTerminalId === terminalId
-              ? null
-              : state.activeTerminalId;
-
-          return {
-            terminals: nextTerminals,
-            activeTerminalId,
-          };
-        });
-      },
-
-      setActiveTerminal: (terminalId: string | null) =>
-        set({ activeTerminalId: terminalId }),
 
       setWarehouse: (warehouseId: string | null) => set({ warehouseId }),
 
-      startSession: ({ terminalId, warehouseId, staffId }) => {
+      startSession: ({ sessionId, terminalId, warehouseId, staffId }) => {
         set({
+          activeSessionId: sessionId,
           activeTerminalId: terminalId,
           warehouseId,
           staffId,
@@ -128,6 +140,7 @@ export const usePosSessionStore = create<PosSessionState>()(
 
       clearSession: () => {
         set({
+          activeSessionId: null,
           activeTerminalId: null,
           warehouseId: null,
           staffId: null,
@@ -143,16 +156,8 @@ export const usePosSessionStore = create<PosSessionState>()(
 
       addToCart: (newItem) =>
         set((state) => {
-          // Logic to merge duplicates handled by caller or basic merge here
           const existing = state.cart.find((item) => item.id === newItem.id);
           if (existing) {
-            // If caller fully calculated line totals, we might just replace it or update qty
-            // But simpler to just replace if caller handles logic, or update qty if simple
-            // For now, assume caller passes a completely calculated item to ADD.
-            // But if it exists, we usually want to increment qty.
-            // To keep store simple, let's assume the caller will use updateQuantity for edits,
-            // and addToCart for new items. But if it exists, we replace it?
-            // Best pattern: Caller calculates everything.
             const nextCart = state.cart.map((i) =>
               i.id === newItem.id ? newItem : i
             );
@@ -170,11 +175,8 @@ export const usePosSessionStore = create<PosSessionState>()(
         set((state) => ({
           cart: state.cart.map((item) =>
             item.id === itemId
-              ? { ...item, quantity } // Note: Caller must recalculate totals if they only call this.
-              : // Warning: This implementation assumes caller will RE-CALCULATE totals and call setCart or we need to recalc here.
-                // Let's stick to: "Store holds state, Components handle business logic" for now to minimize refactor risk,
-                // OR update POSTerminal to use `setCart` for everything.
-                item
+              ? { ...item, quantity }
+              : item
           ),
         })),
 
@@ -190,7 +192,18 @@ export const usePosSessionStore = create<PosSessionState>()(
       setCustomerId: (customerId) => set({ customerId }),
     }),
     {
-      name: "pos-session-storage",
+      name: "pos-session-storage-v2",
+      // Only persist session and cart data, NOT terminal list
+      partialize: (state) => ({
+        activeSessionId: state.activeSessionId,
+        activeTerminalId: state.activeTerminalId,
+        warehouseId: state.warehouseId,
+        staffId: state.staffId,
+        openedAt: state.openedAt,
+        cart: state.cart,
+        discount: state.discount,
+        customerId: state.customerId,
+      }),
     }
   )
 );

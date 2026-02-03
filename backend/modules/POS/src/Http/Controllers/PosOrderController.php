@@ -178,15 +178,6 @@ class PosOrderController extends Controller
             ]);
 
             $taxEnabled = (bool) ($taxSetting['enabled'] ?? true);
-            $pricingMode = ($taxSetting['pricing_mode'] ?? 'exclusive') === 'inclusive' ? 'inclusive' : 'exclusive';
-
-            $defaultTaxRate = 0.0;
-            if ($taxEnabled && !empty($taxSetting['default_tax_id'])) {
-                $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
-                if ($defaultTax) {
-                    $defaultTaxRate = (float) $defaultTax->rate;
-                }
-            }
 
             $order = PosOrder::query()->firstOrCreate(
                 ['external_id' => $externalId],
@@ -240,14 +231,20 @@ class PosOrderController extends Controller
                     : (float) ($variant ? $variant->price : $product->price);
 
                 $lineSubtotal = $qty * $unitPrice;
-                $lineTaxRate = (float) ($variant ? $variant->tax_rate : $product->tax_rate);
+                
+                // Use effective_tax_rate which includes fallback to default system tax
+                $lineTaxRate = (float) ($variant 
+                    ? ($variant->tax_rate > 0 ? $variant->tax_rate : $product->effective_tax_rate)
+                    : $product->effective_tax_rate);
+                    
                 if (!$taxEnabled) {
                     $lineTaxRate = 0.0;
-                } elseif ($lineTaxRate <= 0 && $defaultTaxRate > 0) {
-                    $lineTaxRate = $defaultTaxRate;
                 }
 
-                if ($pricingMode === 'inclusive' && $lineTaxRate > 0) {
+                // Use product's effective_tax_is_inclusive to determine calculation mode
+                $isInclusive = $product->effective_tax_is_inclusive;
+
+                if ($isInclusive && $lineTaxRate > 0) {
                     $gross = round($lineSubtotal, 2);
                     $div = 1 + ($lineTaxRate / 100);
                     $net = $div > 0 ? round($gross / $div, 2) : $gross;

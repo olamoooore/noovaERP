@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import {
   Tabs,
   TabsContent,
@@ -37,7 +39,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { useSettingsStore, type PricingMode } from '@/store/settingsStore'
+import { useSettingsStore } from '@/store/settingsStore'
 
 type TaxType = 'gst' | 'vat' | 'sales' | 'service' | 'withholding' | 'other'
 
@@ -48,6 +50,7 @@ interface Tax {
   type: TaxType
   rate: number
   is_active: boolean
+  is_inclusive: boolean
 }
 
 const currencyOptions = [
@@ -79,7 +82,7 @@ export function SettingsPage() {
   const updateSettings = useSettingsStore((s) => s.updateSettings)
 
   const [selectedCurrency, setSelectedCurrency] = useState(currencyCode)
-  const [pricingMode, setPricingMode] = useState<PricingMode>(taxConfig.pricing_mode)
+  const [taxEnabled, setTaxEnabled] = useState<boolean>(taxConfig.enabled)
   const [defaultTaxId, setDefaultTaxId] = useState<string>(taxConfig.default_tax_id ? String(taxConfig.default_tax_id) : 'none')
 
   useEffect(() => {
@@ -87,9 +90,9 @@ export function SettingsPage() {
   }, [currencyCode])
 
   useEffect(() => {
-    setPricingMode(taxConfig.pricing_mode)
+    setTaxEnabled(taxConfig.enabled)
     setDefaultTaxId(taxConfig.default_tax_id ? String(taxConfig.default_tax_id) : 'none')
-  }, [taxConfig.default_tax_id, taxConfig.pricing_mode])
+  }, [taxConfig.default_tax_id, taxConfig.enabled])
 
   const { data: taxes = [] } = useQuery<Tax[]>({
     queryKey: ['taxes'],
@@ -117,7 +120,7 @@ export function SettingsPage() {
     mutationFn: async () => {
       await updateSettings({
         tax: {
-          pricing_mode: pricingMode,
+          enabled: taxEnabled,
           default_tax_id: defaultTaxId === 'none' ? null : Number(defaultTaxId),
         },
       })
@@ -134,6 +137,7 @@ export function SettingsPage() {
     type: 'gst' as TaxType,
     rate: '0',
     is_active: true,
+    is_inclusive: false,
   })
 
   const upsertTax = useMutation({
@@ -144,6 +148,7 @@ export function SettingsPage() {
         type: taxForm.type,
         rate: Number(taxForm.rate),
         is_active: taxForm.is_active,
+        is_inclusive: taxForm.is_inclusive,
       }
 
       if (editingTax) {
@@ -158,7 +163,7 @@ export function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ['taxes'] })
       setTaxDialogOpen(false)
       setEditingTax(null)
-      setTaxForm({ name: '', code: '', type: 'gst', rate: '0', is_active: true })
+      setTaxForm({ name: '', code: '', type: 'gst', rate: '0', is_active: true, is_inclusive: false })
       toast({ title: 'Saved', description: 'Tax saved' })
     },
     onError: () => toast({ title: 'Failed', variant: 'destructive', description: 'Could not save tax' }),
@@ -177,7 +182,7 @@ export function SettingsPage() {
 
   const openCreateTax = () => {
     setEditingTax(null)
-    setTaxForm({ name: '', code: '', type: 'gst', rate: '0', is_active: true })
+    setTaxForm({ name: '', code: '', type: 'gst', rate: '0', is_active: true, is_inclusive: false })
     setTaxDialogOpen(true)
   }
 
@@ -189,6 +194,7 @@ export function SettingsPage() {
       type: tax.type,
       rate: String(tax.rate),
       is_active: tax.is_active,
+      is_inclusive: tax.is_inclusive ?? false,
     })
     setTaxDialogOpen(true)
   }
@@ -250,28 +256,36 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle>Tax Settings</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Pricing Mode</div>
-                  <Select value={pricingMode} onValueChange={(v) => setPricingMode(v as PricingMode)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="exclusive">Tax exclusive (add tax on checkout)</SelectItem>
-                      <SelectItem value="inclusive">Tax inclusive (prices already include tax)</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <CardContent className="space-y-6">
+                {/* Tax Enabled Toggle */}
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="tax-enabled" className="text-base font-medium">Enable Tax</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Apply tax calculations to POS transactions and sales
+                    </p>
+                  </div>
+                  <Switch
+                    id="tax-enabled"
+                    checked={taxEnabled}
+                    onCheckedChange={setTaxEnabled}
+                  />
                 </div>
 
+                {/* Default Tax */}
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">Default Tax</div>
-                  <Select value={defaultTaxId} onValueChange={setDefaultTaxId}>
+                  <div>
+                    <Label className="text-base font-medium">Default Tax Rate</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Applied to products without a specific tax rate
+                    </p>
+                  </div>
+                  <Select value={defaultTaxId} onValueChange={setDefaultTaxId} disabled={!taxEnabled}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select default tax" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No default</SelectItem>
+                      <SelectItem value="none">No default tax</SelectItem>
                       {taxes.map((t) => (
                         <SelectItem key={t.id} value={String(t.id)}>
                           {t.name} ({t.rate}%)
@@ -280,20 +294,16 @@ export function SettingsPage() {
                     </SelectContent>
                   </Select>
                   {selectedDefaultTax && (
-                    <div className="text-xs text-muted-foreground">
-                      Default: {selectedDefaultTax.name} ({selectedDefaultTax.type.toUpperCase()} {selectedDefaultTax.rate}%)
+                    <div className="text-sm text-muted-foreground">
+                      ✓ Default: <span className="font-medium">{selectedDefaultTax.name}</span> ({selectedDefaultTax.type.toUpperCase()} {selectedDefaultTax.rate}%)
                     </div>
                   )}
                 </div>
 
-                <div>
+                <div className="pt-2">
                   <Button onClick={() => saveTaxSettings.mutate()} disabled={saveTaxSettings.isPending}>
                     Save Tax Settings
                   </Button>
-                </div>
-
-                <div className="text-xs text-muted-foreground">
-                  Product-level options: use default tax, no tax, custom rate, or select a specific tax.
                 </div>
               </CardContent>
             </Card>
@@ -312,6 +322,7 @@ export function SettingsPage() {
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Rate</TableHead>
+                      <TableHead>Mode</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -322,6 +333,11 @@ export function SettingsPage() {
                         <TableCell className="font-medium">{t.name}</TableCell>
                         <TableCell>{t.type.toUpperCase()}</TableCell>
                         <TableCell>{t.rate}%</TableCell>
+                        <TableCell>
+                          <Badge variant={t.is_inclusive ? 'default' : 'outline'}>
+                            {t.is_inclusive ? 'Inclusive' : 'Exclusive'}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <Badge variant={t.is_active ? 'secondary' : 'outline'}>
                             {t.is_active ? 'Active' : 'Inactive'}
@@ -346,7 +362,7 @@ export function SettingsPage() {
                     ))}
                     {taxes.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
                           No taxes created yet
                         </TableCell>
                       </TableRow>
@@ -418,6 +434,27 @@ export function SettingsPage() {
                   <SelectItem value="no">No</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Pricing Mode</div>
+              <Select
+                value={taxForm.is_inclusive ? 'inclusive' : 'exclusive'}
+                onValueChange={(v) => setTaxForm({ ...taxForm, is_inclusive: v === 'inclusive' })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exclusive">Tax Exclusive (added to price)</SelectItem>
+                  <SelectItem value="inclusive">Tax Inclusive (included in price)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {taxForm.is_inclusive
+                  ? 'Product prices already include this tax'
+                  : 'This tax will be added on top of product prices'}
+              </p>
             </div>
           </div>
 

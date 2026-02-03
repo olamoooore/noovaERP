@@ -48,7 +48,7 @@ class PosTerminal extends Model
      */
     public function currentSession()
     {
-        return $this->sessions()->where('status', 'open')->first();
+        return $this->sessions()->where('status', 'open')->latest()->first();
     }
 
     /**

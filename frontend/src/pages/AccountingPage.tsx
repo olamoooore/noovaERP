@@ -131,18 +131,25 @@ export function AccountingPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {journalEntries?.map((entry: any) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="font-medium">{entry.entry_number}</TableCell>
-                      <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
-                      <TableCell className="capitalize">{entry.type}</TableCell>
-                      <TableCell>{entry.reference || '-'}</TableCell>
-                      <TableCell>{entry.description}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(entry.lines?.reduce((sum: number, line: any) => sum + parseFloat(line.debit), 0) || 0)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {journalEntries?.map((entry: any) => {
+                    // For POS/sales entries, show the first debit amount (cash/payment received)
+                    // This represents the actual transaction value, not the total of all debits including COGS
+                    const firstDebitLine = entry.lines?.find((line: any) => parseFloat(line.debit) > 0);
+                    const displayAmount = firstDebitLine ? parseFloat(firstDebitLine.debit) : 0;
+                    
+                    return (
+                      <TableRow key={entry.id}>
+                        <TableCell className="font-medium">{entry.entry_number}</TableCell>
+                        <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
+                        <TableCell className="capitalize">{entry.type}</TableCell>
+                        <TableCell>{entry.reference || '-'}</TableCell>
+                        <TableCell>{entry.description}</TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(displayAmount)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

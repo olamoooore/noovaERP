@@ -18,9 +18,12 @@ class PosTerminalController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function ($terminal) {
+                // Refresh the model to get latest session data
+                $terminal->refresh();
                 return [
                     ...$terminal->toArray(),
                     'has_open_session' => $terminal->hasOpenSession(),
+                    'current_session' => $terminal->currentSession()?->only(['id', 'session_number', 'user_id']),
                 ];
             });
 

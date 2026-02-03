@@ -24,6 +24,7 @@ class TaxController extends Controller
             'rate' => 'required|numeric|min:0|max:100',
             'is_active' => 'boolean',
             'is_default' => 'boolean',
+            'is_inclusive' => 'boolean',
         ]);
 
         if (!isset($validated['type'])) {
@@ -47,6 +48,7 @@ class TaxController extends Controller
             'rate' => 'sometimes|numeric|min:0|max:100',
             'is_active' => 'sometimes|boolean',
             'is_default' => 'sometimes|boolean',
+            'is_inclusive' => 'sometimes|boolean',
         ]);
 
         if (!empty($validated['is_default'])) {

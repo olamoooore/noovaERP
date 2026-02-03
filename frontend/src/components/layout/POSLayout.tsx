@@ -2,29 +2,89 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { useMemo, useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 // import { Badge } from '@/components/ui/badge'
 import { usePosSessionStore } from '@/store/posSessionStore'
 import { POSOrderDrawer } from '@/components/pos/POSOrderDrawer'
+import { useToast } from '@/hooks/use-toast'
+import api from '@/lib/api'
 
 export function POSLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
 
-  const terminals = usePosSessionStore((s) => s.terminals)
   const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
+  const activeSessionId = usePosSessionStore((s) => s.activeSessionId)
   // const warehouseId = usePosSessionStore((s) => s.warehouseId) // Reserved for future use
   const openedAt = usePosSessionStore((s) => s.openedAt)
   const clearSession = usePosSessionStore((s) => s.clearSession)
   const [now, setNow] = useState(() => new Date())
 
+  // Fetch terminals from API
+  const { data: terminalsData } = useQuery({
+    queryKey: ['pos-terminals'],
+    queryFn: async () => {
+      const response = await api.get('/pos/terminals')
+      return response.data?.terminals || response.data || []
+    },
+  })
+
   const isTerminalScreen = location.pathname === '/pos/terminal'
 
-  const handleCloseSession = () => {
-    if (window.confirm('Are you sure you want to close this session?')) {
+  // Close Session Mutation
+  const closeSessionMutation = useMutation({
+    mutationFn: async ({ sessionId, closingBalance }: { sessionId: number; closingBalance: number }) => {
+      console.log('POSLayout: Closing session via API:', sessionId)
+      const response = await api.post(`/pos/sessions/${sessionId}/close`, {
+        closing_balance: closingBalance,
+        notes: 'Closed from POS header',
+      })
+      return response.data
+    },
+    onSuccess: async () => {
+      console.log('POSLayout: Session closed successfully')
+      // Clear local session state
       clearSession()
+      // Invalidate and refetch queries
+      await queryClient.invalidateQueries({ queryKey: ['pos-terminals'] })
+      await queryClient.refetchQueries({ queryKey: ['pos-terminals'] })
+      await queryClient.invalidateQueries({ queryKey: ['pos-current-session'] })
       navigate('/pos')
+      toast({
+        title: 'Session Closed',
+        description: 'Your POS session has been closed successfully.',
+      })
+    },
+    onError: (error: any) => {
+      console.error('POSLayout: Failed to close session:', error)
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to close session',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const handleCloseSession = () => {
+    console.log('POSLayout: Close Session button clicked!')
+    if (!activeSessionId) {
+      toast({
+        title: 'Error',
+        description: 'No active session to close',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (window.confirm('Are you sure you want to close this session?')) {
+      console.log('POSLayout: User confirmed, closing session via API...')
+      closeSessionMutation.mutate({
+        sessionId: activeSessionId,
+        closingBalance: 0, // Default closing balance from header
+      })
     }
   }
 
@@ -49,9 +109,11 @@ export function POSLayout() {
     }
   }
 
+  const terminals = terminalsData || []
+  
   const activeTerminal = useMemo(() => {
     if (!activeTerminalId) return null
-    return terminals.find((t) => t.id === activeTerminalId) ?? null
+    return terminals.find((t: any) => String(t.id) === String(activeTerminalId)) ?? null
   }, [terminals, activeTerminalId])
 
   const openedDurationLabel = useMemo(() => {

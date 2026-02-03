@@ -31,9 +31,9 @@ Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     Route::get('/pos/sessions', [PosSessionController::class, 'index']);
     Route::get('/pos/sessions/current', [PosSessionController::class, 'currentSession']);
     Route::post('/pos/sessions/open', [PosSessionController::class, 'openSession']);
-    Route::get('/pos/sessions/{session}', [PosSessionController::class, 'show']);
-    Route::post('/pos/sessions/{session}/close', [PosSessionController::class, 'closeSession']);
-    Route::post('/pos/sessions/{session}/cash-movement', [PosSessionController::class, 'cashMovement']);
+    Route::get('/pos/sessions/{sessionId}', [PosSessionController::class, 'show']);
+    Route::post('/pos/sessions/{sessionId}/close', [PosSessionController::class, 'closeSession']);
+    Route::post('/pos/sessions/{sessionId}/cash-movement', [PosSessionController::class, 'cashMovement']);
     
     // Held Orders (Park/Recall)
     Route::get('/pos/held-orders', [PosHeldOrderController::class, 'index']);

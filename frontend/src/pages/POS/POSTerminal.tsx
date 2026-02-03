@@ -52,6 +52,8 @@ interface Product {
   stock_quantity?: number
   image?: string
   tax_rate?: number
+  effective_tax_rate?: number  // Computed by backend: includes fallback to default system tax
+  effective_tax_is_inclusive?: boolean  // Computed by backend: whether tax is included in price
   category_id?: number
   category?: { id: number; name: string }
 }
@@ -83,6 +85,7 @@ export function POSTerminal() {
   const navigate = useNavigate()
 
   // Store State
+  const activeSessionId = usePosSessionStore((s) => s.activeSessionId)
   const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
   const sessionWarehouseId = usePosSessionStore((s) => s.warehouseId)
   const openedAt = usePosSessionStore((s) => s.openedAt)
@@ -95,8 +98,18 @@ export function POSTerminal() {
   const customerId = usePosSessionStore((s) => s.customerId)
   const setCustomerId = usePosSessionStore((s) => s.setCustomerId)
   const clearSessionCart = usePosSessionStore((s) => s.clearCart)
+  const clearSession = usePosSessionStore((s) => s.clearSession)
 
   const taxConfig = useSettingsStore((s) => s.tax)
+  const loadSettings = useSettingsStore((s) => s.loadSettings)
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded)
+  
+  // Load settings on mount
+  useEffect(() => {
+    if (!isSettingsLoaded) {
+      loadSettings()
+    }
+  }, [isSettingsLoaded, loadSettings])
   
   // Local State
   const [search, setSearch] = useState('')
@@ -114,6 +127,11 @@ export function POSTerminal() {
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' })
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   
+  // Session Close State
+  const [showCloseSessionDialog, setShowCloseSessionDialog] = useState(false)
+  const [closingBalance, setClosingBalance] = useState<string>('')
+  const [closingNotes, setClosingNotes] = useState<string>('')
+  
   // Generate unique order ID for idempotency (UUID v4 format)
   const generateOrderId = useCallback(() => {
     // Generate a proper UUID v4
@@ -129,10 +147,10 @@ export function POSTerminal() {
   const receiptRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!activeTerminalId || !openedAt) {
+    if (!activeSessionId || !activeTerminalId || !openedAt) {
       navigate('/pos', { replace: true })
     }
-  }, [activeTerminalId, openedAt, navigate])
+  }, [activeSessionId, activeTerminalId, openedAt, navigate])
 
   useEffect(() => {
     setWarehouseId(sessionWarehouseId ?? 'all')
@@ -240,14 +258,76 @@ export function POSTerminal() {
     },
   })
 
-  const taxEnabled = taxConfig.enabled
-  const pricingMode = taxConfig.pricing_mode
-  const defaultTaxRate = taxConfig.default_tax_rate ?? 0
+  // Close Session Mutation
+  const closeSessionMutation = useMutation({
+    mutationFn: async ({ sessionId, closingBalance, notes }: { sessionId: number; closingBalance: number; notes?: string }) => {
+      console.log('Closing session:', sessionId, closingBalance, notes)
+      const response = await api.post(`/pos/sessions/${sessionId}/close`, {
+        closing_balance: closingBalance,
+        notes,
+      })
+      console.log('Close session response:', response.data)
+      return response.data
+    },
+    onSuccess: async () => {
+      console.log('Session closed successfully')
+      // Clear session state first
+      clearSession()
+      
+      // Then invalidate and refetch queries
+      await queryClient.invalidateQueries({ queryKey: ['pos-terminals'] })
+      await queryClient.invalidateQueries({ queryKey: ['pos-current-session'] })
+      
+      // Force refetch to ensure data is fresh before navigation
+      await queryClient.refetchQueries({ queryKey: ['pos-terminals'] })
+      
+      toast({
+        title: 'Session Closed',
+        description: 'Your POS session has been closed successfully.',
+      })
+      
+      // Navigate after everything is done
+      navigate('/pos')
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to close session',
+        variant: 'destructive',
+      })
+    },
+  })
 
+  const taxEnabled = taxConfig.enabled
+
+  // Get effective tax rate from the product (computed by backend)
   const getEffectiveTaxRate = (item: Product | CartItem) => {
+    // If tax is disabled globally, return 0
     if (!taxEnabled) return 0
-    const rate = typeof item.tax_rate === 'number' ? item.tax_rate : 0
-    return rate > 0 ? rate : defaultTaxRate
+    
+    // Use the product's effective_tax_rate from backend (already handles fallback logic)
+    if ('effective_tax_rate' in item && typeof item.effective_tax_rate === 'number') {
+      return item.effective_tax_rate
+    }
+    
+    // Fallback to product's tax_rate if effective_tax_rate not available
+    if (typeof item.tax_rate === 'number' && item.tax_rate > 0) {
+      return item.tax_rate
+    }
+    
+    // No tax
+    return 0
+  }
+
+  // Get whether tax is inclusive from the product (computed by backend)
+  const getEffectiveTaxIsInclusive = (item: Product | CartItem) => {
+    // Use the product's effective_tax_is_inclusive from backend
+    if ('effective_tax_is_inclusive' in item && typeof item.effective_tax_is_inclusive === 'boolean') {
+      return item.effective_tax_is_inclusive
+    }
+    
+    // Default to exclusive (tax added on top)
+    return false
   }
 
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
@@ -255,8 +335,9 @@ export function POSTerminal() {
   const computeLine = (item: Product | CartItem, quantity: number) => {
     const gross = item.price * quantity
     const rate = getEffectiveTaxRate(item)
+    const isInclusive = getEffectiveTaxIsInclusive(item)
 
-    if (pricingMode === 'inclusive' && rate > 0) {
+    if (isInclusive && rate > 0) {
       const div = 1 + rate / 100
       const net = div > 0 ? gross / div : gross
       const tax = gross - net
@@ -323,11 +404,13 @@ export function POSTerminal() {
             image: product.image,
             quantity: 1,
             tax_rate: product.tax_rate,
+            effective_tax_rate: product.effective_tax_rate,  // Include effective tax rate from backend
+            effective_tax_is_inclusive: product.effective_tax_is_inclusive,  // Include tax inclusive flag from backend
             ...computeLine(product, 1),
         }
         setCart([...cart, newItem])
     }
-  }, [cart, setCart, toast, taxEnabled, pricingMode, defaultTaxRate])
+  }, [cart, setCart, toast, taxEnabled])
 
   // Update quantity
   const updateQuantity = (productId: number, delta: number) => {
@@ -378,6 +461,7 @@ export function POSTerminal() {
              item.image = response.data.product.image
              // Need to ensure item has property tax_rate if present in product
              item.tax_rate = item.tax_rate ?? response.data.product.tax_rate
+             item.effective_tax_rate = item.effective_tax_rate ?? response.data.product.effective_tax_rate
         }
         addToCart(item)
         toast({
@@ -410,7 +494,8 @@ export function POSTerminal() {
   const getOrderData = (externalId?: string) => ({
     external_id: externalId,
     customer_id: customerId !== 'walk-in' ? parseInt(customerId) : null,
-    session_id: activeTerminalId ? parseInt(activeTerminalId) : null,
+    session_id: activeSessionId || null,
+    terminal_id: activeTerminalId ? parseInt(activeTerminalId) : null,
     notes: customerId !== 'walk-in' 
       ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}` 
       : 'Walk-in customer',
@@ -635,12 +720,13 @@ export function POSTerminal() {
               <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5" />
               Current Order
             </CardTitle>
-            <Badge variant="secondary">{cart.length} items</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{cart.length} items</Badge>
+            </div>
           </div>
           
-          {/* Customer & Warehouse Selection */}
-          <div className="flex gap-2 mt-3">
-            {/* Customer Searchable Dropdown */}
+          {/* Customer Selection */}
+          <div className="mt-3">
             <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -772,25 +858,6 @@ export function POSTerminal() {
                 </Command>
               </PopoverContent>
             </Popover>
-            
-            {/* Warehouse Selection */}
-            <Select
-              value={warehouseId}
-              onValueChange={(v) => {
-                setWarehouseId(v)
-                setWarehouse(v === 'all' ? null : v)
-              }}
-            >
-              <SelectTrigger className="h-9 w-[140px]">
-                <SelectValue placeholder="Warehouse" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Warehouses</SelectItem>
-                {warehouses?.map((w) => (
-                  <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Selected Customer Info */}
@@ -1142,6 +1209,109 @@ export function POSTerminal() {
                 <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
               )}
               Add Customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Close Session Dialog */}
+      <Dialog open={showCloseSessionDialog} onOpenChange={setShowCloseSessionDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Icon icon="solar:logout-bold" className="h-5 w-5" />
+              Close Session
+            </DialogTitle>
+            <DialogDescription>
+              Enter the closing cash balance to close this session. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Closing Balance *
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={closingBalance}
+                onChange={(e) => setClosingBalance(e.target.value)}
+                placeholder="0.00"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Actual cash amount in the drawer
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Notes
+              </label>
+              <Input
+                value={closingNotes}
+                onChange={(e) => setClosingNotes(e.target.value)}
+                placeholder="Any discrepancies or notes..."
+              />
+            </div>
+
+            {cart.length > 0 && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                <div className="flex items-center gap-2">
+                  <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
+                  <span className="font-medium">Warning</span>
+                </div>
+                <p className="mt-1">
+                  You have {cart.length} item(s) in the cart. Closing the session will clear the cart.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloseSessionDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => {
+                console.log('Close button clicked!')
+                console.log('activeSessionId:', activeSessionId)
+                console.log('closingBalance:', closingBalance)
+                if (!activeSessionId) {
+                  console.error('No active session ID')
+                  toast({
+                    title: 'Error',
+                    description: 'No active session to close',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                const balance = parseFloat(closingBalance)
+                console.log('Parsed balance:', balance)
+                if (isNaN(balance) || balance < 0) {
+                  toast({
+                    title: 'Invalid Balance',
+                    description: 'Please enter a valid closing balance',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                console.log('Calling closeSessionMutation with:', { sessionId: activeSessionId, closingBalance: balance, notes: closingNotes })
+                closeSessionMutation.mutate({
+                  sessionId: activeSessionId,
+                  closingBalance: balance,
+                  notes: closingNotes,
+                })
+              }}
+              disabled={closeSessionMutation.isPending}
+            >
+              {closeSessionMutation.isPending && (
+                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Close Session
             </Button>
           </DialogFooter>
         </DialogContent>

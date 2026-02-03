@@ -189,7 +189,7 @@ class Product extends Model
         'localized_descriptions' => 'array',
     ];
 
-    protected $appends = ['stock'];
+    protected $appends = ['stock', 'effective_tax_rate', 'effective_tax_is_inclusive'];
 
     // ==================== RELATIONSHIPS ====================
 
@@ -357,6 +357,77 @@ class Product extends Model
     public function getStockAttribute(): int
     {
         return $this->stock_quantity ?? 0;
+    }
+
+    /**
+     * Get effective tax rate - uses product's tax_rate or falls back to default system tax
+     * This ensures POS always has access to the correct tax rate
+     */
+    public function getEffectiveTaxRateAttribute(): float
+    {
+        // If product has its own tax rate set, use it
+        if ($this->tax_rate !== null && (float) $this->tax_rate > 0) {
+            return (float) $this->tax_rate;
+        }
+
+        // If product is linked to a Tax model, use that rate
+        if ($this->tax_id) {
+            $productTax = $this->tax;
+            if ($productTax && $productTax->rate > 0) {
+                return (float) $productTax->rate;
+            }
+        }
+
+        // Fall back to default system tax from settings
+        $taxSetting = Setting::getValue('tax', [
+            'enabled' => true,
+            'default_tax_id' => null,
+        ]);
+
+        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+            $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
+            if ($defaultTax) {
+                return (float) $defaultTax->rate;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Get whether the effective tax is inclusive - uses product's tax or falls back to default system tax
+     * This ensures POS always knows whether to add tax on top or extract from price
+     */
+    public function getEffectiveTaxIsInclusiveAttribute(): bool
+    {
+        // If product uses custom tax mode, use the product's tax_included setting
+        if ($this->tax_mode === 'custom') {
+            return (bool) $this->tax_included;
+        }
+
+        // If product is linked to a Tax model, use that tax's is_inclusive
+        if ($this->tax_id) {
+            $productTax = $this->tax;
+            if ($productTax) {
+                return (bool) $productTax->is_inclusive;
+            }
+        }
+
+        // Fall back to default system tax from settings
+        $taxSetting = Setting::getValue('tax', [
+            'enabled' => true,
+            'default_tax_id' => null,
+        ]);
+
+        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+            $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
+            if ($defaultTax) {
+                return (bool) $defaultTax->is_inclusive;
+            }
+        }
+
+        // Default to exclusive (tax added on top)
+        return false;
     }
 
     public function getVolumeAttribute(): ?float

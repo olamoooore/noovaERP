@@ -48,6 +48,7 @@ interface Tax {
   name: string
   rate: number
   is_active: boolean
+  is_inclusive: boolean
 }
 
 interface ProductUnit {
@@ -447,6 +448,22 @@ export function ProductEditPage() {
     return 0
   }, [formData.tax_mode, formData.tax_rate_override, formData.tax_id, taxes, taxConfig.default_tax_rate, taxConfig.default_tax_id])
 
+  // Determine if the selected tax is inclusive based on the tax's own setting
+  const selectedTaxIsInclusive = useMemo(() => {
+    if (formData.tax_mode === 'none') return false
+    if (formData.tax_mode === 'custom') return formData.tax_included // For custom, use the form setting
+    if (formData.tax_mode === 'tax' && formData.tax_id) {
+      const match = taxes?.find((t) => t.id === Number(formData.tax_id))
+      return match?.is_inclusive ?? false
+    }
+    // Default mode - use the default tax's is_inclusive setting
+    if (taxConfig.default_tax_id) {
+      const match = taxes?.find((t) => t.id === taxConfig.default_tax_id)
+      return match?.is_inclusive ?? false
+    }
+    return false
+  }, [formData.tax_mode, formData.tax_id, formData.tax_included, taxes, taxConfig.default_tax_id])
+
   const pricingPreview = useMemo(() => {
     const price = parseFloat(formData.price || '0')
     const rate = selectedTaxRate
@@ -460,7 +477,7 @@ export function ProductEditPage() {
       }
     }
 
-    if (formData.tax_included) {
+    if (selectedTaxIsInclusive) {
       const net = price / (1 + r)
       const tax = price - net
       return { net, tax, gross: price }
@@ -468,7 +485,7 @@ export function ProductEditPage() {
 
     const tax = price * r
     return { net: price, tax, gross: price + tax }
-  }, [formData.price, formData.tax_included, selectedTaxRate])
+  }, [formData.price, selectedTaxIsInclusive, selectedTaxRate])
 
   const taxSelectValue = useMemo(() => {
     if (formData.tax_mode === 'tax' && formData.tax_id) return `tax:${formData.tax_id}`
@@ -1361,11 +1378,9 @@ export function ProductEditPage() {
 
                   <TabsContent value="tax" className="pt-4">
                     <div className="rounded-lg border p-3 space-y-3">
-                      <div className="font-medium">Tax</div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Tax</Label>
+                      <Label>Tax Option</Label>
                       <Select
                         value={taxSelectValue}
                         onValueChange={(v) => {
@@ -1394,8 +1409,7 @@ export function ProductEditPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="default">
-                            Default tax{taxConfig.default_tax_name ? ` (${taxConfig.default_tax_name})` : ''}
-                            {typeof taxConfig.default_tax_rate === 'number' ? ` — ${taxConfig.default_tax_rate}%` : ''}
+                            Default tax{typeof taxConfig.default_tax_rate === 'number' ? ` — ${taxConfig.default_tax_rate}%` : ''}
                           </SelectItem>
                           <SelectItem value="none">No tax</SelectItem>
                           <SelectItem value="custom">Custom tax rate</SelectItem>
@@ -1403,48 +1417,50 @@ export function ProductEditPage() {
                             .filter((t) => t.is_active)
                             .map((t) => (
                               <SelectItem key={t.id} value={`tax:${t.id}`}>
-                                {t.name} ({t.rate}%)
+                                {t.name} — {t.rate}%
                               </SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Tax Method</Label>
-                      <Select
-                        value={formData.tax_included ? 'inclusive' : 'exclusive'}
-                        onValueChange={(v) => setFormData({ ...formData, tax_included: v === 'inclusive' })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="exclusive">Tax exclusive (tax added on top)</SelectItem>
-                          <SelectItem value="inclusive">Tax inclusive (price includes tax)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                    {formData.tax_mode === 'custom' && (
+                      <div className="space-y-2">
+                        <Label>Tax Method</Label>
+                        <Select
+                          value={formData.tax_included ? 'inclusive' : 'exclusive'}
+                          onValueChange={(v) => setFormData({ ...formData, tax_included: v === 'inclusive' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="exclusive">Tax exclusive (tax added on top)</SelectItem>
+                            <SelectItem value="inclusive">Tax inclusive (price includes tax)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                  {formData.tax_mode === 'custom' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="tax_rate_override">Custom Tax Rate (%)</Label>
-                      <Input
-                        id="tax_rate_override"
-                        type="number"
-                        step="0.01"
-                        value={formData.tax_rate_override}
-                        onChange={(e) => setFormData({ ...formData, tax_rate_override: e.target.value })}
-                        placeholder="e.g. 9"
-                      />
-                    </div>
-                  )}
+                    {formData.tax_mode === 'custom' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="tax_rate_override">Custom Tax Rate (%)</Label>
+                        <Input
+                          id="tax_rate_override"
+                          type="number"
+                          step="0.01"
+                          value={formData.tax_rate_override}
+                          onChange={(e) => setFormData({ ...formData, tax_rate_override: e.target.value })}
+                          placeholder="e.g. 9"
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   <div className="rounded-md border p-3 text-sm">
                     <div className="flex items-center justify-between">
                       <div className="text-muted-foreground">Effective tax rate</div>
-                      <div className="font-medium">{selectedTaxRate}%</div>
+                      <div className="font-medium">{selectedTaxRate}% ({selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})</div>
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       <div>

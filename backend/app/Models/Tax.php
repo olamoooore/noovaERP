@@ -16,11 +16,13 @@ class Tax extends Model
         'rate',
         'is_active',
         'is_default',
+        'is_inclusive',
     ];
 
     protected $casts = [
         'rate' => 'decimal:2',
         'is_active' => 'bool',
         'is_default' => 'bool',
+        'is_inclusive' => 'bool',
     ];
 }

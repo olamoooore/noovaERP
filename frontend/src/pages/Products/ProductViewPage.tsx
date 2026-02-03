@@ -91,18 +91,14 @@ export function ProductViewPage() {
                   <div className="font-medium">{formatCurrency(product.price)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Tax method</div>
-                  <div className="font-medium">{product.tax_included ? 'Inclusive' : 'Exclusive'}</div>
-                </div>
-                <div>
                   <div className="text-xs text-muted-foreground">Tax</div>
                   <div className="font-medium">
                     {product.tax_mode === 'none'
                       ? 'No tax'
                       : product.tax_mode === 'custom'
-                        ? `Custom (${product.tax_rate_override ?? 0}%)`
+                        ? `Custom (${product.tax_rate_override ?? 0}%) - ${product.tax_included ? 'Inclusive' : 'Exclusive'}`
                         : product.tax?.name
-                          ? `${product.tax.name} (${product.tax.rate}%)`
+                          ? `${product.tax.name} (${product.tax.rate}%) - ${product.tax.is_inclusive ? 'Inclusive' : 'Exclusive'}`
                           : 'Default (from Settings)'}
                   </div>
                 </div>
