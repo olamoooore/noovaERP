@@ -67,6 +67,7 @@ Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     Route::get('/pos/orders/{posOrder}', [PosOrderController::class, 'show']);
     Route::post('/pos/orders/{posOrder}/pay', [PosOrderController::class, 'pay']);
     Route::post('/pos/orders/{posOrder}/return', [PosOrderController::class, 'createReturn']);
+    Route::get('/pos/orders/{posOrder}/receipt', [PosOrderController::class, 'receipt']);
     Route::delete('/pos/orders/{posOrder}', [PosOrderController::class, 'destroy']);
 
     // =====================================================

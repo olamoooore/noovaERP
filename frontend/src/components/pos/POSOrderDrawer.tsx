@@ -133,9 +133,36 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
       // Actual implementation would invoke window.print() on a receipt template or call backend
   }
 
-  const handleGenerateReceipt = (order: any) => {
+  const handleGenerateReceipt = async (order: any) => {
       toast({ title: "Generating PDF", description: `Downloading receipt for ${order.order_number}...` })
-      // Actual implementation would trigger PDF download
+      
+      try {
+        const response = await api.get(`/pos/orders/${order.id}/receipt`, {
+          responseType: 'blob'
+        })
+        
+        // Create a download link
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `receipt-${order.order_number}.pdf`)
+        document.body.appendChild(link)
+        link.click()
+        link.parentNode?.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        
+        toast({ 
+          title: "Success", 
+          description: `Receipt downloaded for ${order.order_number}` 
+        })
+      } catch (error) {
+        console.error('Failed to download receipt:', error)
+        toast({ 
+          title: "Error", 
+          description: "Failed to download receipt. Please try again.", 
+          variant: "destructive" 
+        })
+      }
   }
 
   const getStatusBadge = (status: string) => {

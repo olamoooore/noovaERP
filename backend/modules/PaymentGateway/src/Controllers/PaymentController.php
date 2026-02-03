@@ -560,18 +560,29 @@ class PaymentController extends Controller
     protected function createInvoiceFromPosOrder(PosOrder $posOrder, PaymentTransaction $transaction): ?Invoice
     {
         try {
-            // Skip invoice creation for walk-in customers (no customer_id)
-            // We still mark the order as paid, but don't create an invoice
-            if (!$posOrder->customer_id) {
-                \Log::info('Skipping invoice creation for walk-in customer', [
+            // Get or create walk-in customer for orders without customer_id
+            $customerId = $posOrder->customer_id;
+            if (!$customerId) {
+                $walkInCustomer = \App\Models\Customer::firstOrCreate(
+                    ['email' => 'walkin@system.local'],
+                    [
+                        'name' => 'Walk-in Customer',
+                        'phone' => null,
+                        'address' => null,
+                        'notes' => 'System customer for walk-in POS transactions',
+                    ]
+                );
+                $customerId = $walkInCustomer->id;
+                
+                \Log::info('Using walk-in customer for invoice', [
                     'pos_order_id' => $posOrder->id,
+                    'walk_in_customer_id' => $customerId,
                 ]);
-                return null;
             }
 
             // Create invoice
             $invoice = Invoice::create([
-                'customer_id' => $posOrder->customer_id,
+                'customer_id' => $customerId,
                 'invoice_date' => now(),
                 'due_date' => now(),
                 'status' => 'paid',

@@ -14,6 +14,7 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPostingService;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PosOrderController extends Controller
 {
@@ -419,6 +420,33 @@ class PosOrderController extends Controller
                 'original_order' => $posOrder->fresh()->load('items', 'returns'),
             ]);
         });
+    }
+
+    /**
+     * Generate PDF receipt for a POS order
+     */
+    public function receipt(PosOrder $posOrder)
+    {
+        $posOrder->load(['items.product', 'items.variant', 'payments', 'customer']);
+
+        // Get business settings
+        $businessSettings = [
+            'business_name' => Setting::getValue('business_name', 'NoovaERP Store'),
+            'business_address' => Setting::getValue('business_address', ''),
+            'business_phone' => Setting::getValue('business_phone', ''),
+        ];
+
+        $pdf = Pdf::loadView('pos::receipt', [
+            'order' => $posOrder,
+            'settings' => $businessSettings,
+        ]);
+
+        // Set paper size to receipt size (80mm thermal paper)
+        $pdf->setPaper([0, 0, 226.77, 600], 'portrait'); // 80mm = 226.77 points
+
+        $filename = 'receipt-' . $posOrder->order_number . '.pdf';
+
+        return $pdf->download($filename);
     }
 
     private function makeOrderNumber(): string
