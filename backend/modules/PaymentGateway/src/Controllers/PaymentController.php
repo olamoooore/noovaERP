@@ -497,20 +497,32 @@ class PaymentController extends Controller
     protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
     {
         DB::transaction(function () use ($transaction, $posOrder) {
+            \Log::info('Processing completed POS order payment', [
+                'transaction_id' => $transaction->transaction_id,
+                'pos_order_id' => $posOrder->id,
+                'pos_order_status' => $posOrder->status,
+            ]);
+
             // Update POS order status to 'paid' (consistent with PosOrderController)
             $posOrder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
             ]);
+            
+            \Log::info('POS order status updated to paid', [
+                'pos_order_id' => $posOrder->id,
+                'new_status' => $posOrder->fresh()->status,
+            ]);
 
             // Create POS payment record
+            $receivedBy = auth()->id() ?? $posOrder->created_by ?? 1; // Fallback to user ID 1 (admin)
             \Modules\POS\Models\PosPayment::create([
                 'pos_order_id' => $posOrder->id,
                 'method' => 'card', // Online card payment
                 'amount' => $transaction->amount,
                 'reference' => $transaction->transaction_id,
                 'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                'received_by' => auth()->id() ?? $posOrder->created_by,
+                'received_by' => $receivedBy,
             ]);
 
             // Create Invoice from POS Order

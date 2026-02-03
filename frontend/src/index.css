@@ -35,3 +35,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide Stripe Developer Tools floating button in test mode */
+[class*="__Easel"],
+[class*="__FloatingActionButton"] {
+  display: none !important;
+}
