@@ -169,6 +169,40 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
+    title: 'Accounting',
+    href: '/accounting',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'accounting',
+  },
+  {
+    title: 'OCR Documents',
+    href: '/ocr/documents',
+    icon: 'solar:document-add-bold-duotone',
+    featureKey: 'accounting',
+  },
+  {
+    title: 'Dashboards',
+    href: '/dashboards/executive',
+    icon: 'solar:chart-square-bold-duotone',
+    children: [
+      {
+        title: 'Executive',
+        href: '/dashboards/executive',
+        icon: 'solar:graph-new-bold-duotone',
+      },
+      {
+        title: 'Sales',
+        href: '/dashboards/sales',
+        icon: 'solar:cart-large-2-bold-duotone',
+      },
+      {
+        title: 'Inventory',
+        href: '/dashboards/inventory',
+        icon: 'solar:box-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',
