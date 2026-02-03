@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ interface POSOrderDrawerProps {
 
 export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   const { toast } = useToast()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   
@@ -131,6 +133,21 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   const handlePrint = (order: any) => {
       toast({ title: "Printing Receipt", description: `Printing for ${order.order_number}...` })
       // Actual implementation would invoke window.print() on a receipt template or call backend
+  }
+
+  const handleViewInvoice = async (order: any) => {
+      try {
+        const response = await api.get(`/pos/orders/${order.id}/invoice`)
+        const invoice = response.data.data
+        onOpenChange(false)
+        navigate(`/invoices/${invoice.id}`)
+      } catch (error: any) {
+        toast({ 
+          title: "No Invoice Found", 
+          description: "No invoice is associated with this order.", 
+          variant: "destructive" 
+        })
+      }
   }
 
   const handleGenerateReceipt = async (order: any) => {
@@ -278,7 +295,16 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
                             </Button>
                         </>
                     ) : (
-                        <div className="flex-1" />
+                        <>
+                            <Button 
+                                variant="default"
+                                className="flex-1 h-9"
+                                onClick={() => handleViewInvoice(order)}
+                            >
+                                <Icon icon="solar:document-bold" className="h-4 w-4 mr-2" />
+                                View Invoice
+                            </Button>
+                        </>
                     )}
                     
                     <Button 

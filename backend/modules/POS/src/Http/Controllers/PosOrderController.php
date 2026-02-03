@@ -5,6 +5,7 @@ namespace Modules\POS\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -447,6 +448,27 @@ class PosOrderController extends Controller
         $filename = 'receipt-' . $posOrder->order_number . '.pdf';
 
         return $pdf->download($filename);
+    }
+
+    /**
+     * Get invoice associated with a POS order
+     */
+    public function invoice(PosOrder $posOrder)
+    {
+        // Find invoice by searching notes for the order number
+        $invoice = Invoice::where('notes', 'like', "%POS Order: {$posOrder->order_number}%")
+            ->with(['customer', 'lines.product'])
+            ->first();
+
+        if (!$invoice) {
+            return response()->json([
+                'message' => 'No invoice found for this order',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => $invoice,
+        ]);
     }
 
     private function makeOrderNumber(): string
