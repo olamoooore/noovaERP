@@ -138,14 +138,13 @@ jobs:
             php artisan migrate --force
             php artisan tenants:migrate --force || true
             
-            # Clear all caches first to ensure fresh state
+            # Clear all caches to ensure fresh config from .env
             php artisan config:clear
             php artisan cache:clear
             php artisan route:clear
             php artisan view:clear
             
-            # Now optimize for production
-            php artisan config:cache
+            # Cache routes and views (but NOT config - it reads from .env at runtime)
             php artisan route:cache
             php artisan view:cache
             php artisan event:cache
