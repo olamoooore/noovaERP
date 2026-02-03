@@ -496,6 +496,7 @@ class PaymentController extends Controller
      */
     protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
     {
+        // First, update POS order status (critical - must succeed)
         DB::transaction(function () use ($transaction, $posOrder) {
             \Log::info('Processing completed POS order payment', [
                 'transaction_id' => $transaction->transaction_id,
@@ -525,27 +526,32 @@ class PaymentController extends Controller
                 'received_by' => $receivedBy,
             ]);
 
-            // Create Invoice from POS Order
+            // Mark transaction as processed
+            $transaction->update(['processed_at' => now()]);
+        });
+
+        // Then try to create invoice (optional - failure shouldn't affect order status)
+        try {
             $invoice = $this->createInvoiceFromPosOrder($posOrder, $transaction);
             
             if ($invoice) {
                 // Update transaction with invoice_id
                 $transaction->update(['invoice_id' => $invoice->id]);
-                
-                // Process as regular invoice payment
-                $this->processCompletedPayment($transaction);
             }
 
-            // Mark transaction as processed
-            $transaction->update(['processed_at' => now()]);
-
-            \Log::info('POS order payment processing completed with invoice', [
+            \Log::info('POS order payment processing completed', [
                 'transaction_id' => $transaction->transaction_id,
                 'pos_order_id' => $posOrder->id,
                 'invoice_id' => $invoice?->id,
                 'amount' => $transaction->amount,
             ]);
-        });
+        } catch (\Exception $e) {
+            \Log::warning('Invoice creation failed but order is marked as paid', [
+                'transaction_id' => $transaction->transaction_id,
+                'pos_order_id' => $posOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -554,6 +560,15 @@ class PaymentController extends Controller
     protected function createInvoiceFromPosOrder(PosOrder $posOrder, PaymentTransaction $transaction): ?Invoice
     {
         try {
+            // Skip invoice creation for walk-in customers (no customer_id)
+            // We still mark the order as paid, but don't create an invoice
+            if (!$posOrder->customer_id) {
+                \Log::info('Skipping invoice creation for walk-in customer', [
+                    'pos_order_id' => $posOrder->id,
+                ]);
+                return null;
+            }
+
             // Create invoice
             $invoice = Invoice::create([
                 'customer_id' => $posOrder->customer_id,
@@ -572,9 +587,10 @@ class PaymentController extends Controller
 
             // Create invoice lines from POS order items
             foreach ($posOrder->items as $item) {
+                $description = $item->product_name ?? $item->product?->name ?? 'Product';
                 $invoice->lines()->create([
                     'product_id' => $item->product_id,
-                    'description' => $item->product_name,
+                    'description' => $description,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'tax_rate' => 0, // POS items already include tax in tax_amount

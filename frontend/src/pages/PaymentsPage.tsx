@@ -61,7 +61,6 @@ export function PaymentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Transaction ID</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                   <TableHead>Gateway</TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Customer</TableHead>
@@ -69,6 +68,7 @@ export function PaymentsPage() {
                   <TableHead>Payment Method</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
