@@ -156,7 +156,14 @@ export function StripePaymentDialog({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!open || !posOrderId) return
+    if (!open) return
+    
+    // Wait for valid posOrderId
+    if (!posOrderId || posOrderId <= 0) {
+      setError('Order not ready. Please try again.')
+      setLoading(false)
+      return
+    }
 
     const initializePayment = async () => {
       setLoading(true)
@@ -187,7 +194,11 @@ export function StripePaymentDialog({
         setLoading(false)
       } catch (err: any) {
         console.error('Payment initialization error:', err)
-        setError(err.response?.data?.message || 'Failed to initialize payment')
+        const errorMsg = err.response?.data?.message || 
+                        err.response?.data?.error || 
+                        err.message || 
+                        'Failed to initialize payment'
+        setError(errorMsg)
         setLoading(false)
       }
     }

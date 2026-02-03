@@ -1151,14 +1151,38 @@ export function POSTerminal() {
               
               // Handle different payment types
               if (method.type === 'online') {
-                // For online payments (Stripe, PayPal, etc.), create order and open payment dialog
-                const order = await createOrderMutation.mutateAsync(getOrderData())
-                
-                // Close checkout dialog and open Stripe payment dialog
-                setShowCheckoutDialog(false)
-                setStripePaymentData({ orderId: order.id, gatewayId: method.gateway_id })
-                setShowStripeDialog(true)
-                return
+                try {
+                  // For online payments (Stripe, PayPal, etc.), create order first
+                  const orderData = getOrderData()
+                  console.log('Creating order for online payment:', orderData)
+                  
+                  const order = await createOrderMutation.mutateAsync(orderData)
+                  console.log('Order created:', order)
+                  
+                  if (!order || !order.id) {
+                    throw new Error('Order creation failed - no order ID returned')
+                  }
+                  
+                  // Close checkout dialog first
+                  setShowCheckoutDialog(false)
+                  
+                  // Set the payment data and open Stripe dialog
+                  setStripePaymentData({ orderId: order.id, gatewayId: method.gateway_id })
+                  
+                  // Small delay to ensure state is updated
+                  setTimeout(() => {
+                    setShowStripeDialog(true)
+                  }, 100)
+                  return
+                } catch (error: any) {
+                  console.error('Failed to create order for online payment:', error)
+                  toast({
+                    variant: 'destructive',
+                    title: 'Order creation failed',
+                    description: error.message || 'Could not create order for payment',
+                  })
+                  return
+                }
               }
               
               // For cash and offline payments, process normally
