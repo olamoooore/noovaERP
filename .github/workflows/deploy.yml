@@ -68,7 +68,8 @@ jobs:
       - name: Create deployment package
         run: |
           # Create deployment archive excluding unnecessary files
-          # Exit code 1 from tar means "file changed" which is okay
+          # Use set +e to handle tar exit code 1 (file changed warning)
+          set +e
           tar -czf deploy.tar.gz \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -77,15 +78,22 @@ jobs:
             --exclude='*.log' \
             --exclude='*.sql' \
             --exclude='backend/.env' \
-            --exclude='frontend/dist' \
             --exclude='.vite' \
             --exclude='*.tmp' \
             --exclude='*.swp' \
-            . || [[ $? -eq 1 ]]
+            --exclude='deploy.tar.gz' \
+            .
+          TAR_EXIT=$?
+          set -e
           
-          # Add the pre-built frontend dist
-          tar -rf deploy.tar.gz -C . frontend/dist 2>/dev/null || true
-          gzip -f deploy.tar.gz 2>/dev/null || mv deploy.tar.gz deploy.tar.gz
+          # Exit code 1 means "file changed" which is acceptable
+          if [ $TAR_EXIT -gt 1 ]; then
+            echo "tar failed with exit code $TAR_EXIT"
+            exit $TAR_EXIT
+          fi
+          
+          # Verify the archive was created
+          ls -lh deploy.tar.gz
 
       - name: Upload to server
         run: |
