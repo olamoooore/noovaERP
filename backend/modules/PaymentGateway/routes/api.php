@@ -1,5 +1,11 @@
 <?php
 
+// Manually load controllers (workaround for module autoloading)
+$controllersDir = __DIR__ . '/../src/Controllers';
+foreach (glob($controllersDir . '/*.php') as $file) {
+    require_once $file;
+}
+
 use Illuminate\Support\Facades\Route;
 use Modules\PaymentGateway\Controllers\PaymentGatewayController;
 use Modules\PaymentGateway\Controllers\PaymentController;

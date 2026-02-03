@@ -11,7 +11,22 @@ class PaymentGatewayServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // No config needed for now
+        // Register custom autoloader for PaymentGateway module
+        spl_autoload_register(function ($class) {
+            // Only handle Modules\PaymentGateway namespace
+            if (strpos($class, 'Modules\\PaymentGateway\\') !== 0) {
+                return;
+            }
+            
+            // Convert namespace to file path
+            $classPath = str_replace('Modules\\PaymentGateway\\', '', $class);
+            $classPath = str_replace('\\', '/', $classPath);
+            $file = __DIR__ . '/../../src/' . $classPath . '.php';
+            
+            if (file_exists($file)) {
+                require_once $file;
+            }
+        });
     }
 
     /**
