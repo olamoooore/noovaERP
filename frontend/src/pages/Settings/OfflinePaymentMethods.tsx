@@ -21,18 +21,32 @@ interface OfflinePaymentMethod {
   display_order: number
 }
 
+interface AccountDetailField {
+  key: string
+  label: string
+  value: string
+}
+
 export function OfflinePaymentMethodsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMethod, setEditingMethod] = useState<OfflinePaymentMethod | null>(null)
-  const [formData, setFormData] = useState({
-    method_name: '',
-    instructions: '',
-    account_details: '',
-    is_active: true,
-    display_order: 0,
-  })
+  
+  // Form state
+  const [methodName, setMethodName] = useState('')
+  const [instructions, setInstructions] = useState('')
+  const [isActive, setIsActive] = useState(true)
+  const [displayOrder, setDisplayOrder] = useState(0)
+  
+  // Account details fields
+  const [accountFields, setAccountFields] = useState<AccountDetailField[]>([
+    { key: 'bank_name', label: 'Bank Name', value: '' },
+    { key: 'account_name', label: 'Account Name', value: '' },
+    { key: 'account_number', label: 'Account Number', value: '' },
+    { key: 'branch', label: 'Branch (Optional)', value: '' },
+    { key: 'swift_code', label: 'SWIFT Code (Optional)', value: '' },
+  ])
 
   const { data: methods, isLoading } = useQuery({
     queryKey: ['offline-payment-methods'],
@@ -43,11 +57,8 @@ export function OfflinePaymentMethodsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const response = await api.post('/offline-payment-methods', {
-        ...data,
-        account_details: data.account_details ? JSON.parse(data.account_details) : null,
-      })
+    mutationFn: async (data: any) => {
+      const response = await api.post('/offline-payment-methods', data)
       return response.data
     },
     onSuccess: () => {
@@ -59,18 +70,15 @@ export function OfflinePaymentMethodsPage() {
     onError: (error: any) => {
       toast({
         title: 'Failed to create',
-        description: error.response?.data?.message,
+        description: error.response?.data?.message || error.message,
         variant: 'destructive',
       })
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
-      const response = await api.put(`/offline-payment-methods/${id}`, {
-        ...data,
-        account_details: data.account_details ? JSON.parse(data.account_details) : null,
-      })
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const response = await api.put(`/offline-payment-methods/${id}`, data)
       return response.data
     },
     onSuccess: () => {
@@ -83,7 +91,7 @@ export function OfflinePaymentMethodsPage() {
     onError: (error: any) => {
       toast({
         title: 'Failed to update',
-        description: error.response?.data?.message,
+        description: error.response?.data?.message || error.message,
         variant: 'destructive',
       })
     },
@@ -103,33 +111,78 @@ export function OfflinePaymentMethodsPage() {
   })
 
   const resetForm = () => {
-    setFormData({
-      method_name: '',
-      instructions: '',
-      account_details: '',
-      is_active: true,
-      display_order: 0,
-    })
+    setMethodName('')
+    setInstructions('')
+    setIsActive(true)
+    setDisplayOrder(0)
+    setAccountFields([
+      { key: 'bank_name', label: 'Bank Name', value: '' },
+      { key: 'account_name', label: 'Account Name', value: '' },
+      { key: 'account_number', label: 'Account Number', value: '' },
+      { key: 'branch', label: 'Branch (Optional)', value: '' },
+      { key: 'swift_code', label: 'SWIFT Code (Optional)', value: '' },
+    ])
   }
 
   const handleEdit = (method: OfflinePaymentMethod) => {
     setEditingMethod(method)
-    setFormData({
-      method_name: method.method_name,
-      instructions: method.instructions || '',
-      account_details: method.account_details ? JSON.stringify(method.account_details, null, 2) : '',
-      is_active: method.is_active,
-      display_order: method.display_order,
-    })
+    setMethodName(method.method_name)
+    setInstructions(method.instructions || '')
+    setIsActive(method.is_active)
+    setDisplayOrder(method.display_order)
+    
+    // Populate account fields from existing data
+    const details = method.account_details || {}
+    setAccountFields([
+      { key: 'bank_name', label: 'Bank Name', value: details.bank_name || '' },
+      { key: 'account_name', label: 'Account Name', value: details.account_name || '' },
+      { key: 'account_number', label: 'Account Number', value: details.account_number || '' },
+      { key: 'branch', label: 'Branch (Optional)', value: details.branch || '' },
+      { key: 'swift_code', label: 'SWIFT Code (Optional)', value: details.swift_code || '' },
+    ])
+    
     setDialogOpen(true)
   }
 
+  const updateAccountField = (index: number, value: string) => {
+    const updated = [...accountFields]
+    updated[index].value = value
+    setAccountFields(updated)
+  }
+
   const handleSubmit = () => {
-    if (editingMethod) {
-      updateMutation.mutate({ id: editingMethod.id, data: formData })
-    } else {
-      createMutation.mutate(formData)
+    if (!methodName.trim()) {
+      toast({ title: 'Method name is required', variant: 'destructive' })
+      return
     }
+
+    // Build account_details object from fields
+    const accountDetails: Record<string, string> = {}
+    accountFields.forEach(field => {
+      if (field.value.trim()) {
+        accountDetails[field.key] = field.value.trim()
+      }
+    })
+
+    const payload = {
+      method_name: methodName.trim(),
+      instructions: instructions.trim() || null,
+      account_details: Object.keys(accountDetails).length > 0 ? accountDetails : null,
+      is_active: isActive,
+      display_order: displayOrder,
+    }
+
+    if (editingMethod) {
+      updateMutation.mutate({ id: editingMethod.id, data: payload })
+    } else {
+      createMutation.mutate(payload)
+    }
+  }
+
+  const openAddDialog = () => {
+    resetForm()
+    setEditingMethod(null)
+    setDialogOpen(true)
   }
 
   if (isLoading) {
@@ -149,7 +202,7 @@ export function OfflinePaymentMethodsPage() {
             Configure bank transfers and other offline payment options for POS
           </p>
         </div>
-        <Button onClick={() => { resetForm(); setEditingMethod(null); setDialogOpen(true); }}>
+        <Button onClick={openAddDialog}>
           <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
           Add Method
         </Button>
@@ -185,10 +238,12 @@ export function OfflinePaymentMethodsPage() {
               )}
 
               {method.account_details && (
-                <div className="mt-4 bg-muted p-3 rounded-lg text-sm">
+                <div className="mt-4 bg-muted p-3 rounded-lg text-sm space-y-1">
                   {Object.entries(method.account_details).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
-                      <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
+                      <span className="text-muted-foreground capitalize">
+                        {key.replace(/_/g, ' ')}:
+                      </span>
                       <span className="font-medium">{value}</span>
                     </div>
                   ))}
@@ -213,64 +268,100 @@ export function OfflinePaymentMethodsPage() {
         ))}
       </div>
 
+      {methods?.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Icon icon="mdi:bank-outline" className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No offline payment methods</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Add bank transfer or other offline payment options for your customers.
+            </p>
+            <Button onClick={openAddDialog}>
+              <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
+              Add Your First Method
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingMethod ? 'Edit' : 'Add'} Payment Method</DialogTitle>
+            <DialogTitle>{editingMethod ? 'Edit' : 'Add'} Offline Payment Method</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Method Name *</Label>
+              <Label htmlFor="method-name">Method Name *</Label>
               <Input
+                id="method-name"
                 placeholder="e.g., Bank Transfer - Maybank"
-                value={formData.method_name}
-                onChange={(e) => setFormData({ ...formData, method_name: e.target.value })}
+                value={methodName}
+                onChange={(e) => setMethodName(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Instructions for Customer</Label>
+              <Label htmlFor="instructions">Instructions for Customer</Label>
               <Textarea
+                id="instructions"
                 placeholder="e.g., Please transfer to the following account and enter the reference number..."
-                value={formData.instructions}
-                onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Account Details (JSON)</Label>
-              <Textarea
-                placeholder='{"bank_name": "Maybank", "account_number": "1234567890", "account_name": "ABC Sdn Bhd"}'
-                value={formData.account_details}
-                onChange={(e) => setFormData({ ...formData, account_details: e.target.value })}
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                rows={3}
               />
               <p className="text-xs text-muted-foreground">
-                Enter account details as JSON. These will be shown to customers during payment.
+                These instructions will be shown to customers during checkout.
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label>Display Order</Label>
-              <Input
-                type="number"
-                value={formData.display_order}
-                onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
-              />
+            <div className="border rounded-lg p-4 space-y-4">
+              <h4 className="font-medium text-sm">Account Details</h4>
+              
+              {accountFields.map((field, index) => (
+                <div key={field.key} className="space-y-2">
+                  <Label htmlFor={`field-${field.key}`}>{field.label}</Label>
+                  <Input
+                    id={`field-${field.key}`}
+                    placeholder={field.label.includes('Optional') ? 'Optional' : `Enter ${field.label.toLowerCase()}`}
+                    value={field.value}
+                    onChange={(e) => updateAccountField(index, e.target.value)}
+                  />
+                </div>
+              ))}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-              />
-              <Label>Active</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="display-order">Display Order</Label>
+                <Input
+                  id="display-order"
+                  type="number"
+                  value={displayOrder}
+                  onChange={(e) => setDisplayOrder(parseInt(e.target.value) || 0)}
+                />
+              </div>
+              
+              <div className="flex items-center gap-2 pt-8">
+                <Switch
+                  id="is-active"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
+                <Label htmlFor="is-active">Active</Label>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!formData.method_name}>
+            <Button 
+              onClick={handleSubmit} 
+              disabled={!methodName.trim() || createMutation.isPending || updateMutation.isPending}
+            >
+              {createMutation.isPending || updateMutation.isPending ? (
+                <Icon icon="svg-spinners:180-ring-with-bg" className="h-4 w-4 mr-2" />
+              ) : null}
               {editingMethod ? 'Update' : 'Create'}
             </Button>
           </DialogFooter>
