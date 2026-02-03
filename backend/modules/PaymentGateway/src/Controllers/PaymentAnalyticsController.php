@@ -14,19 +14,31 @@ class PaymentAnalyticsController extends Controller
      */
     public function index(Request $request)
     {
-        $period = $request->get('period', '30days'); // 7days, 30days, 90days, 1year, all
-        $startDate = $this->getStartDate($period);
+        try {
+            $period = $request->get('period', '30days'); // 7days, 30days, 90days, 1year, all
+            $startDate = $this->getStartDate($period);
 
-        return response()->json([
-            'data' => [
-                'summary' => $this->getSummary($startDate),
-                'revenue_trend' => $this->getRevenueTrend($startDate, $period),
-                'success_rate' => $this->getSuccessRate($startDate),
-                'top_gateways' => $this->getTopGateways($startDate),
-                'payment_methods' => $this->getPaymentMethods($startDate),
-                'failed_payments' => $this->getFailedPayments($startDate),
-            ],
-        ]);
+            return response()->json([
+                'data' => [
+                    'summary' => $this->getSummary($startDate),
+                    'revenue_trend' => $this->getRevenueTrend($startDate, $period),
+                    'success_rate' => $this->getSuccessRate($startDate),
+                    'top_gateways' => $this->getTopGateways($startDate),
+                    'payment_methods' => $this->getPaymentMethods($startDate),
+                    'failed_payments' => $this->getFailedPayments($startDate),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Payment analytics error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to load analytics',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -34,21 +46,24 @@ class PaymentAnalyticsController extends Controller
      */
     protected function getSummary($startDate)
     {
-        $transactions = PaymentTransaction::when($startDate, function ($query) use ($startDate) {
+        $query = PaymentTransaction::when($startDate, function ($query) use ($startDate) {
             return $query->where('created_at', '>=', $startDate);
         });
 
-        $completed = clone $transactions;
-        $failed = clone $transactions;
-        $refunded = clone $transactions;
+        $totalRevenue = (clone $query)->where('status', 'completed')->sum('amount');
+        $totalTransactions = (clone $query)->count();
+        $successfulTransactions = (clone $query)->where('status', 'completed')->count();
+        $failedTransactions = (clone $query)->where('status', 'failed')->count();
+        $refundedAmount = (clone $query)->sum('refunded_amount');
+        $avgTransactionValue = (clone $query)->where('status', 'completed')->avg('amount') ?? 0;
 
         return [
-            'total_revenue' => $completed->where('status', 'completed')->sum('amount'),
-            'total_transactions' => $transactions->count(),
-            'successful_transactions' => $completed->where('status', 'completed')->count(),
-            'failed_transactions' => $failed->where('status', 'failed')->count(),
-            'refunded_amount' => $refunded->sum('refunded_amount'),
-            'average_transaction_value' => $completed->where('status', 'completed')->avg('amount') ?? 0,
+            'total_revenue' => round($totalRevenue, 2),
+            'total_transactions' => $totalTransactions,
+            'successful_transactions' => $successfulTransactions,
+            'failed_transactions' => $failedTransactions,
+            'refunded_amount' => round($refundedAmount, 2),
+            'average_transaction_value' => round($avgTransactionValue, 2),
         ];
     }
 
@@ -75,7 +90,7 @@ class PaymentAnalyticsController extends Controller
             ->when($startDate, function ($query) use ($startDate) {
                 return $query->where('created_at', '>=', $startDate);
             })
-            ->groupBy('period')
+            ->groupBy(DB::raw($groupBy))
             ->orderBy('period')
             ->get();
     }
@@ -85,19 +100,17 @@ class PaymentAnalyticsController extends Controller
      */
     protected function getSuccessRate($startDate)
     {
-        $total = PaymentTransaction::when($startDate, function ($query) use ($startDate) {
+        $query = PaymentTransaction::when($startDate, function ($query) use ($startDate) {
             return $query->where('created_at', '>=', $startDate);
-        })->count();
+        });
+
+        $total = $query->count();
 
         if ($total === 0) {
             return 0;
         }
 
-        $successful = PaymentTransaction::where('status', 'completed')
-            ->when($startDate, function ($query) use ($startDate) {
-                return $query->where('created_at', '>=', $startDate);
-            })
-            ->count();
+        $successful = (clone $query)->where('status', 'completed')->count();
 
         return round(($successful / $total) * 100, 2);
     }
@@ -107,14 +120,14 @@ class PaymentAnalyticsController extends Controller
      */
     protected function getTopGateways($startDate)
     {
-        return PaymentTransaction::select(
+        // Use a simpler query that works across different databases
+        $results = PaymentTransaction::select(
             'payment_gateway_id',
             DB::raw('COUNT(*) as transactions'),
             DB::raw("SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as revenue"),
-            DB::raw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful"),
-            DB::raw("ROUND((SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)::numeric / COUNT(*)) * 100, 2) as success_rate")
+            DB::raw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful")
         )
-            ->with('gateway:id,gateway_name')
+            ->with(['gateway:id,gateway_name'])
             ->when($startDate, function ($query) use ($startDate) {
                 return $query->where('created_at', '>=', $startDate);
             })
@@ -122,6 +135,22 @@ class PaymentAnalyticsController extends Controller
             ->orderByDesc('revenue')
             ->limit(5)
             ->get();
+
+        // Calculate success rate in PHP to avoid database-specific casting
+        return $results->map(function ($item) {
+            $successRate = $item->transactions > 0 
+                ? round(($item->successful / $item->transactions) * 100, 2) 
+                : 0;
+            
+            return [
+                'payment_gateway_id' => $item->payment_gateway_id,
+                'transactions' => $item->transactions,
+                'revenue' => $item->revenue,
+                'successful' => $item->successful,
+                'success_rate' => $successRate,
+                'gateway' => $item->gateway,
+            ];
+        });
     }
 
     /**
@@ -153,10 +182,10 @@ class PaymentAnalyticsController extends Controller
             ->when($startDate, function ($query) use ($startDate) {
                 return $query->where('created_at', '>=', $startDate);
             })
-            ->with(['invoice:id,invoice_number', 'gateway:id,gateway_name'])
+            ->with(['gateway:id,gateway_name'])
             ->orderByDesc('created_at')
             ->limit(10)
-            ->get(['id', 'transaction_id', 'amount', 'currency', 'error_message', 'invoice_id', 'payment_gateway_id', 'created_at']);
+            ->get(['id', 'transaction_id', 'amount', 'currency', 'error_message', 'payment_gateway_id', 'created_at']);
     }
 
     /**
