@@ -1538,9 +1538,12 @@ export function POSTerminal() {
           // Show receipt dialog
           setShowReceiptDialog(true)
           
+          // Close Stripe dialog first
+          setShowStripeDialog(false)
+          
           // Clear cart after successful payment
           setTimeout(() => {
-            clearCart()
+            clearSessionCart()
             setSelectedCustomer(null)
             setCurrentOrderId(null)
           }, 500)

@@ -154,9 +154,15 @@ export function StripePaymentDialog({
   const [currency, setCurrency] = useState<string>('MYR')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      // Reset state when dialog closes
+      setSuccess(false)
+      setError('')
+      return
+    }
     
     // Wait for valid posOrderId
     if (!posOrderId || posOrderId <= 0) {
@@ -227,8 +233,13 @@ export function StripePaymentDialog({
   }, [open, posOrderId, gatewayId, amount])
 
   const handleSuccess = (transactionId: string) => {
-    onSuccess(transactionId)
-    onOpenChange(false)
+    setSuccess(true)
+    // Delay closing to show success message
+    setTimeout(() => {
+      onSuccess(transactionId)
+      onOpenChange(false)
+      setSuccess(false) // Reset for next time
+    }, 1500)
   }
 
   const handleError = (errorMsg: string) => {
@@ -251,7 +262,15 @@ export function StripePaymentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
+        {success ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <Icon icon="material-symbols:check-circle" className="h-10 w-10 text-green-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-green-600 mb-2">Payment Successful!</h3>
+            <p className="text-muted-foreground">Processing your receipt...</p>
+          </div>
+        ) : loading ? (
           <div className="flex flex-col items-center justify-center py-8">
             <Icon icon="eos-icons:loading" className="h-8 w-8 text-primary mb-4" />
             <p className="text-sm text-muted-foreground">Initializing payment...</p>
