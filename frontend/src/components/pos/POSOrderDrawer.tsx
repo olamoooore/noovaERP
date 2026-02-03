@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -14,6 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   SlideOver,
   SlideOverContent,
@@ -29,11 +35,40 @@ interface POSOrderDrawerProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface Invoice {
+  id: number
+  invoice_number: string
+  invoice_date: string
+  due_date: string
+  status: string
+  subtotal: number
+  tax_amount: number
+  discount_amount: number
+  total: number
+  paid_amount: number
+  balance: number
+  notes?: string
+  customer?: {
+    name: string
+    email?: string
+    phone?: string
+  }
+  lines?: {
+    id: number
+    description: string
+    quantity: number
+    unit_price: number
+    line_total: number
+  }[]
+}
+
 export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   const { toast } = useToast()
-  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [loadingInvoice, setLoadingInvoice] = useState(false)
   
   // Store actions
   const setCart = usePosSessionStore((s) => s.setCart)
@@ -136,15 +171,49 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   }
 
   const handleViewInvoice = async (order: any) => {
+      setLoadingInvoice(true)
       try {
         const response = await api.get(`/pos/orders/${order.id}/invoice`)
         const invoice = response.data.data
-        onOpenChange(false)
-        navigate(`/invoices/${invoice.id}`)
+        setSelectedInvoice(invoice)
+        setInvoiceModalOpen(true)
       } catch (error: any) {
         toast({ 
           title: "No Invoice Found", 
           description: "No invoice is associated with this order.", 
+          variant: "destructive" 
+        })
+      } finally {
+        setLoadingInvoice(false)
+      }
+  }
+
+  const handleDownloadInvoice = async () => {
+      if (!selectedInvoice) return
+      
+      try {
+        const response = await api.get(`/invoices/${selectedInvoice.id}/pdf`, {
+          responseType: 'blob'
+        })
+        
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `invoice-${selectedInvoice.invoice_number}.pdf`)
+        document.body.appendChild(link)
+        link.click()
+        link.parentNode?.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        
+        toast({ 
+          title: "Success", 
+          description: `Invoice downloaded` 
+        })
+      } catch (error) {
+        console.error('Failed to download invoice:', error)
+        toast({ 
+          title: "Error", 
+          description: "Failed to download invoice.", 
           variant: "destructive" 
         })
       }
@@ -332,6 +401,125 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
           )}
         </ScrollArea>
       </SlideOverContent>
+
+      {/* Invoice Modal */}
+      <Dialog open={invoiceModalOpen} onOpenChange={setInvoiceModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{selectedInvoice?.invoice_number}</span>
+              <Badge className={selectedInvoice?.status === 'paid' ? 'bg-green-500' : ''}>
+                {selectedInvoice?.status}
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedInvoice && (
+            <div className="space-y-4">
+              {/* Customer Info */}
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="font-medium">{selectedInvoice.customer?.name || 'Walk-in Customer'}</p>
+                {selectedInvoice.customer?.email && (
+                  <p className="text-sm text-muted-foreground">{selectedInvoice.customer.email}</p>
+                )}
+              </div>
+
+              {/* Invoice Details */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Invoice Date:</span>
+                  <p className="font-medium">{new Date(selectedInvoice.invoice_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Due Date:</span>
+                  <p className="font-medium">{new Date(selectedInvoice.due_date).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Line Items */}
+              <div>
+                <h4 className="font-medium mb-2">Items</h4>
+                <ScrollArea className="max-h-40">
+                  <div className="space-y-2">
+                    {selectedInvoice.lines?.map((line) => (
+                      <div key={line.id} className="flex justify-between text-sm p-2 rounded bg-muted/50">
+                        <div>
+                          <p className="font-medium">{line.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {line.quantity} x {formatCurrency(line.unit_price)}
+                          </p>
+                        </div>
+                        <span className="font-medium">{formatCurrency(line.line_total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              <Separator />
+
+              {/* Totals */}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{formatCurrency(selectedInvoice.subtotal)}</span>
+                </div>
+                {selectedInvoice.tax_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span>{formatCurrency(selectedInvoice.tax_amount)}</span>
+                  </div>
+                )}
+                {selectedInvoice.discount_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span>-{formatCurrency(selectedInvoice.discount_amount)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>{formatCurrency(selectedInvoice.total)}</span>
+                </div>
+                <div className="flex justify-between text-green-600">
+                  <span>Paid</span>
+                  <span>{formatCurrency(selectedInvoice.paid_amount)}</span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {selectedInvoice.notes && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="font-medium mb-1 text-sm">Notes</h4>
+                    <p className="text-xs text-muted-foreground">{selectedInvoice.notes}</p>
+                  </div>
+                </>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  className="flex-1"
+                  onClick={handleDownloadInvoice}
+                >
+                  <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
+                  Download PDF
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setInvoiceModalOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </SlideOver>
   )
 }

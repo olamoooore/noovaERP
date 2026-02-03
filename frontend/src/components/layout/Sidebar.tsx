@@ -157,30 +157,6 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
-    title: 'Invoices',
-    href: '/invoices',
-    icon: 'solar:document-text-bold-duotone',
-    featureKey: 'accounting',
-  },
-  {
-    title: 'Payments',
-    href: '/payments',
-    icon: 'solar:wallet-money-bold-duotone',
-    featureKey: 'accounting',
-    children: [
-      {
-        title: 'Transactions',
-        href: '/payments',
-        icon: 'solar:wallet-money-bold-duotone',
-      },
-      {
-        title: 'Analytics',
-        href: '/payment-analytics',
-        icon: 'solar:chart-2-bold-duotone',
-      },
-    ],
-  },
-  {
     title: 'Accounting',
     href: '/accounting',
     icon: 'solar:chart-2-bold-duotone',

@@ -64,6 +64,7 @@ interface PosPayment {
   method: string
   amount: number
   reference?: string
+  notes?: string
   created_at: string
 }
 
@@ -349,15 +350,23 @@ export function POSOrdersPage() {
                   <div>
                     <h4 className="font-medium mb-2">Payments</h4>
                     <div className="space-y-2">
-                      {selectedOrder.payments.map((payment) => (
-                        <div key={payment.id} className="flex items-center justify-between text-sm p-2 rounded bg-green-50 dark:bg-green-950">
-                          <div className="flex items-center gap-2">
-                            <Icon icon={getPaymentMethodIcon(payment.method)} className="h-5 w-5" />
-                            <span className="capitalize">{payment.method.replace('_', ' ')}</span>
+                      {selectedOrder.payments.map((payment) => {
+                        // Extract gateway name from notes (e.g., "Online payment via Stripe")
+                        const gatewayMatch = payment.notes?.match(/via\s+(.+)$/i)
+                        const displayMethod = gatewayMatch 
+                          ? gatewayMatch[1] 
+                          : payment.method.replace('_', ' ')
+                        
+                        return (
+                          <div key={payment.id} className="flex items-center justify-between text-sm p-2 rounded bg-green-50 dark:bg-green-950">
+                            <div className="flex items-center gap-2">
+                              <Icon icon={getPaymentMethodIcon(payment.method)} className="h-5 w-5" />
+                              <span className="capitalize">{displayMethod}</span>
+                            </div>
+                            <span className="font-medium">{formatCurrency(Number(payment.amount))}</span>
                           </div>
-                          <span className="font-medium">{formatCurrency(Number(payment.amount))}</span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </>

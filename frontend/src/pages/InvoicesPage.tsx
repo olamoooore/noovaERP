@@ -88,16 +88,26 @@ export function InvoicesPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {invoice.status === 'draft' && (
+                    <div className="flex gap-1">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => sendInvoiceMutation.mutate(invoice.id)}
+                        onClick={() => navigate(`/invoices/${invoice.id}`)}
+                        title="View Invoice"
                       >
-                        <Icon icon="solar:paper-plane-bold" className="mr-1 h-3 w-3" />
-                        Send
+                        <Icon icon="solar:eye-bold" className="h-3 w-3" />
                       </Button>
-                    )}
+                      {invoice.status === 'draft' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => sendInvoiceMutation.mutate(invoice.id)}
+                          title="Send Invoice"
+                        >
+                          <Icon icon="solar:paper-plane-bold" className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

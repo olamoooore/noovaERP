@@ -180,9 +180,16 @@
 
     <div class="payment-info">
         @foreach($order->payments as $payment)
+        @php
+            // Extract gateway name from notes (e.g., "Online payment via Stripe")
+            $displayMethod = $payment->method;
+            if ($payment->notes && preg_match('/via\s+(.+)$/i', $payment->notes, $matches)) {
+                $displayMethod = $matches[1];
+            }
+        @endphp
         <div class="total-row">
             <span>Payment Method:</span>
-            <span>{{ strtoupper($payment->method) }}</span>
+            <span>{{ strtoupper($displayMethod) }}</span>
         </div>
         <div class="total-row">
             <span>Amount Tendered:</span>
