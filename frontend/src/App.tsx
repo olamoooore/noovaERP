@@ -27,6 +27,8 @@ const POSOrdersPage = lazy(() => import('@/pages/POS').then(m => ({ default: m.P
 const POSBarcodePage = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSBarcodePage })))
 const POSReportsPage = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSReportsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
+const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
 const OCRDocumentsPage = lazy(() => import('@/pages/OCRDocumentsPage').then(m => ({ default: m.OCRDocumentsPage })))
 const OCRDocumentReviewPage = lazy(() => import('@/pages/OCRDocumentReviewPage').then(m => ({ default: m.OCRDocumentReviewPage })))
 
@@ -133,6 +135,8 @@ function App() {
                 <Route path="/dashboards/inventory" element={<InventoryDashboard />} />
                 <Route path="/dashboards/financial" element={<FinancialDashboard />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/iot-devices" element={<IoTDevicesPage />} />
+                <Route path="/iot-hub" element={<IoTHubPage />} />
               </Route>
 
               {/* POS Layout Routes - fullscreen without sidebar */}

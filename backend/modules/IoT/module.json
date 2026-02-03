@@ -1,6 +1,7 @@
 {
   "key": "iot",
-  "name": "IoT",
+  "name": "NoovaERP IoT Hub",
+  "description": "Connect and manage IoT devices including printers, payment terminals, scanners, and kiosks",
   "type": "addon",
   "providers": [
     "Modules\\IoT\\Providers\\IoTServiceProvider"

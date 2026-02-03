@@ -203,6 +203,12 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
+    title: 'IoT Hub',
+    href: '/iot-hub',
+    icon: 'solar:cpu-bolt-bold-duotone',
+    // featureKey: 'iot', // Temporarily disabled for testing
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',
