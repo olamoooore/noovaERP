@@ -23,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'feature' => \App\Http\Middleware\EnsureFeatureEnabled::class,
+            'auth.agent' => \App\Http\Middleware\AuthenticateAgent::class,
+            'auth.agent_or_user' => \App\Http\Middleware\AuthenticateAgentOrUser::class,
         ]);
 
         // This project is API-first (SPA + Sanctum). For API routes, we should
