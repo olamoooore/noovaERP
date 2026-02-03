@@ -123,7 +123,7 @@ export function ProductsPage() {
         <h1 className="text-3xl font-bold">Products</h1>
         <div className="flex items-center gap-2">
           <Button variant="secondary" asChild>
-            <Link to="/products/new#import">
+            <Link to="/products/import">
               <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
               Import
             </Link>

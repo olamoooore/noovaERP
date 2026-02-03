@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 // Lazy load heavy pages for better initial load performance
 const ProductsPage = lazy(() => import('@/pages/ProductsPage').then(m => ({ default: m.ProductsPage })))
 const ProductCreatePage = lazy(() => import('@/pages/Products/ProductCreatePage').then(m => ({ default: m.ProductCreatePage })))
+const ProductImportPage = lazy(() => import('@/pages/Products/ProductImportPage').then(m => ({ default: m.ProductImportPage })))
 const ProductViewPage = lazy(() => import('@/pages/Products/ProductViewPage').then(m => ({ default: m.ProductViewPage })))
 const ProductEditPage = lazy(() => import('@/pages/Products/ProductEditPage').then(m => ({ default: m.ProductEditPage })))
 const ProductSettingsPage = lazy(() => import('@/pages/Products/ProductSettingsPage').then(m => ({ default: m.ProductSettingsPage })))
@@ -99,6 +100,7 @@ function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/products/new" element={<ProductCreatePage />} />
+                <Route path="/products/import" element={<ProductImportPage />} />
                 <Route path="/products/:id" element={<ProductViewPage />} />
                 <Route path="/products/:id/edit" element={<ProductEditPage />} />
                 <Route path="/products/settings" element={<ProductSettingsPage />} />
