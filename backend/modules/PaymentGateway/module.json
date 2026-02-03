@@ -1,0 +1,10 @@
+{
+  "key": "payment_gateway",
+  "name": "Payment Gateway",
+  "type": "addon",
+  "description": "Multi-gateway payment processing (Stripe, HitPay)",
+  "version": "1.0.0",
+  "providers": [
+    "Modules\\PaymentGateway\\Providers\\PaymentGatewayServiceProvider"
+  ]
+}
