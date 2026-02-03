@@ -66,7 +66,11 @@ export function PaymentGatewaySettings() {
   const [offlineFormData, setOfflineFormData] = useState({
     method_name: '',
     instructions: '',
-    account_details: '',
+    bank_name: '',
+    account_name: '',
+    account_number: '',
+    branch: '',
+    swift_code: '',
     is_active: true,
     display_order: 0,
   })
@@ -139,9 +143,20 @@ export function PaymentGatewaySettings() {
 
   const handleAddOfflineMethod = async () => {
     try {
+      // Build account_details object from individual fields
+      const accountDetails: Record<string, string> = {}
+      if (offlineFormData.bank_name) accountDetails.bank_name = offlineFormData.bank_name
+      if (offlineFormData.account_name) accountDetails.account_name = offlineFormData.account_name
+      if (offlineFormData.account_number) accountDetails.account_number = offlineFormData.account_number
+      if (offlineFormData.branch) accountDetails.branch = offlineFormData.branch
+      if (offlineFormData.swift_code) accountDetails.swift_code = offlineFormData.swift_code
+
       const payload = {
-        ...offlineFormData,
-        account_details: offlineFormData.account_details ? JSON.parse(offlineFormData.account_details) : null,
+        method_name: offlineFormData.method_name,
+        instructions: offlineFormData.instructions,
+        account_details: Object.keys(accountDetails).length > 0 ? accountDetails : null,
+        is_active: offlineFormData.is_active,
+        display_order: offlineFormData.display_order,
       }
 
       if (editingOfflineMethod) {
@@ -185,7 +200,11 @@ export function PaymentGatewaySettings() {
     setOfflineFormData({
       method_name: '',
       instructions: '',
-      account_details: '',
+      bank_name: '',
+      account_name: '',
+      account_number: '',
+      branch: '',
+      swift_code: '',
       is_active: true,
       display_order: 0,
     })
@@ -196,7 +215,11 @@ export function PaymentGatewaySettings() {
     setOfflineFormData({
       method_name: method.method_name,
       instructions: method.instructions || '',
-      account_details: method.account_details ? JSON.stringify(method.account_details, null, 2) : '',
+      bank_name: method.account_details?.bank_name || '',
+      account_name: method.account_details?.account_name || '',
+      account_number: method.account_details?.account_number || '',
+      branch: method.account_details?.branch || '',
+      swift_code: method.account_details?.swift_code || '',
       is_active: method.is_active,
       display_order: method.display_order,
     })
@@ -509,18 +532,55 @@ export function PaymentGatewaySettings() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Account Details (JSON format)</Label>
-                  <Textarea
-                    placeholder={`{\n  "bank_name": "Maybank",\n  "account_number": "1234567890",\n  "account_name": "ABC Sdn Bhd"\n}`}
-                    value={offlineFormData.account_details}
-                    onChange={(e) => setOfflineFormData({ ...offlineFormData, account_details: e.target.value })}
-                    rows={5}
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter account details as JSON. These will be displayed to customers.
-                  </p>
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/50">
+                  <Label className="font-semibold">Account Details</Label>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Bank Name</Label>
+                      <Input
+                        placeholder="e.g., Maybank"
+                        value={offlineFormData.bank_name}
+                        onChange={(e) => setOfflineFormData({ ...offlineFormData, bank_name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">Account Name</Label>
+                      <Input
+                        placeholder="e.g., ABC Sdn Bhd"
+                        value={offlineFormData.account_name}
+                        onChange={(e) => setOfflineFormData({ ...offlineFormData, account_name: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Account Number</Label>
+                    <Input
+                      placeholder="e.g., 1234567890"
+                      value={offlineFormData.account_number}
+                      onChange={(e) => setOfflineFormData({ ...offlineFormData, account_number: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Branch (Optional)</Label>
+                      <Input
+                        placeholder="e.g., Kuala Lumpur Main"
+                        value={offlineFormData.branch}
+                        onChange={(e) => setOfflineFormData({ ...offlineFormData, branch: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">SWIFT Code (Optional)</Label>
+                      <Input
+                        placeholder="e.g., MBBEMYKL"
+                        value={offlineFormData.swift_code}
+                        onChange={(e) => setOfflineFormData({ ...offlineFormData, swift_code: e.target.value })}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

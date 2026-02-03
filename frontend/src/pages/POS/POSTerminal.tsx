@@ -41,6 +41,7 @@ import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { POSReceipt } from '@/components/pos/POSReceipt'
+import { PaymentMethodSelector } from '@/components/pos/PaymentMethodSelector'
 
 interface Product {
   id: number
@@ -608,6 +609,91 @@ export function POSTerminal() {
     }
   }
 
+  // Handle checkout with selected payment method
+  const handleCheckoutWithMethod = async (method: any, reference?: string) => {
+    if (cart.length === 0) {
+      toast({
+        title: "Empty Cart",
+        description: "Add products to cart before checkout",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Use existing order ID or generate new one for idempotency
+      const orderId = currentOrderId || generateOrderId()
+      
+      // Create order
+      const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
+
+      // Process payment with selected method
+      const paymentData = {
+        method: method.code,
+        amount: round2(total),
+        reference: reference || `POS-${Date.now()}`,
+        payment_type: method.type,
+        gateway_id: method.gateway_id,
+        offline_method_id: method.id?.startsWith('offline_') ? parseInt(method.id.replace('offline_', '')) : null,
+      }
+
+      await payOrderMutation.mutateAsync({ orderId: order.id, paymentData })
+
+      // Store order data for receipt
+      setLastOrder({
+        orderNumber: order.order_number,
+        receiptNumber: order.receipt_number || order.order_number,
+        date: new Date(),
+        customer: selectedCustomer ? {
+          name: selectedCustomer.name,
+          phone: selectedCustomer.phone,
+          email: selectedCustomer.email,
+          loyaltyPoints: selectedCustomer.loyalty_points
+        } : { name: 'Walk-in Customer' },
+        items: cart.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          line_total: item.line_total
+        })),
+        subtotal,
+        taxAmount,
+        discountAmount,
+        discountType: discount.type,
+        discountValue: discount.value,
+        total,
+        paymentMethod: method.name,
+        amountPaid: total,
+        change: 0,
+        terminal: activeTerminalId,
+      })
+
+      toast({
+        title: "Payment Successful",
+        description: `Order #${order.order_number} completed`,
+      })
+
+      // Close checkout dialog and show receipt
+      setShowCheckoutDialog(false)
+      setShowReceiptDialog(true)
+
+      // Clear cart and order tracking after showing receipt
+      clearSessionCart()
+      setSelectedCustomer(null)
+      setCurrentOrderId(null)
+
+      // Refresh products to update stock
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] })
+      queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
+    } catch (error: any) {
+      toast({
+        title: "Checkout Failed",
+        description: error.response?.data?.message || "An error occurred",
+        variant: "destructive",
+      })
+    }
+  }
+
   const products = productsData || []
 
   return (
@@ -1049,110 +1135,36 @@ export function POSTerminal() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            {/* Customer Info */}
-            {selectedCustomer && (
-              <div className="rounded-lg border p-3 bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <Icon icon="solar:user-circle-bold" className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium text-sm">{selectedCustomer.name}</p>
-                    {selectedCustomer.phone && (
-                      <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
-                    )}
-                  </div>
-                  {selectedCustomer.loyalty_points !== undefined && (
-                    <Badge variant="secondary" className="ml-auto">
-                      {selectedCustomer.loyalty_points} points
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Payment Method</label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">
-                    <div className="flex items-center gap-2">
-                      <Icon icon="solar:money-bag-bold" className="h-4 w-4" />
-                      Cash
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="card">
-                    <div className="flex items-center gap-2">
-                      <Icon icon="solar:card-bold" className="h-4 w-4" />
-                      Card
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="bank_transfer">
-                    <div className="flex items-center gap-2">
-                      <Icon icon="mdi:bank" className="h-4 w-4" />
-                      Bank Transfer
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="mobile_money">
-                    <div className="flex items-center gap-2">
-                      <Icon icon="solar:smartphone-bold" className="h-4 w-4" />
-                      Mobile Money
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="other">
-                    <div className="flex items-center gap-2">
-                      <Icon icon="solar:wallet-bold" className="h-4 w-4" />
-                      Other
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Order Summary */}
-            <div className="rounded-lg border p-3 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Items</span>
-                <span>{cart.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tax</span>
-                <span>{formatCurrency(taxAmount)}</span>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-destructive">
-                  <span>Discount</span>
-                  <span>-{formatCurrency(discountAmount)}</span>
-                </div>
-              )}
-              <Separator />
-              <div className="flex justify-between font-bold">
-                <span>Total</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCheckoutDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCheckout}
-              disabled={createOrderMutation.isPending || payOrderMutation.isPending}
-            >
-              {(createOrderMutation.isPending || payOrderMutation.isPending) && (
-                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Complete Payment
-            </Button>
-          </DialogFooter>
+          <PaymentMethodSelector
+            amount={total}
+            onSelect={async (method, reference) => {
+              // Store selected payment method details
+              setPaymentMethod(method.code)
+              
+              // Handle different payment types
+              if (method.type === 'online') {
+                // For online payments (Stripe, PayPal, etc.), redirect to payment page
+                const order = await createOrderMutation.mutateAsync(getOrderData())
+                
+                // Store pending payment in session
+                sessionStorage.setItem('pendingPosPayment', JSON.stringify({
+                  orderId: order.id,
+                  amount: total,
+                  gatewayId: method.gateway_id,
+                  methodName: method.name,
+                }))
+                
+                // Close dialog and redirect to checkout with pos_order
+                setShowCheckoutDialog(false)
+                navigate('/checkout?pos_order=' + order.id + '&amount=' + total + '&gateway=' + method.gateway_id)
+                return
+              }
+              
+              // For cash and offline payments, process normally
+              await handleCheckoutWithMethod(method, reference)
+            }}
+            onCancel={() => setShowCheckoutDialog(false)}
+          />
         </DialogContent>
       </Dialog>
 

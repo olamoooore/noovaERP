@@ -161,39 +161,56 @@ export function PaymentCheckout() {
   const [error, setError] = useState<string>('')
 
   const invoiceId = searchParams.get('invoice')
+  const posOrderId = searchParams.get('pos_order')
   const amount = searchParams.get('amount')
+  const gatewayId = searchParams.get('gateway')
 
   useEffect(() => {
     const initializePayment = async () => {
-      if (!invoiceId) {
-        setError('Invoice ID is required')
+      if (!invoiceId && !posOrderId) {
+        setError('Invoice ID or POS Order ID is required')
         setLoading(false)
         return
       }
 
       try {
-        // Get active payment gateway
-        const gatewaysResponse = await api.get('/payment-gateways')
-        const activeGateway = gatewaysResponse.data.find((g: any) => g.is_active)
+        let selectedGatewayId = gatewayId ? parseInt(gatewayId) : null
         
-        if (!activeGateway) {
-          setError('No active payment gateway found. Please contact support.')
-          setLoading(false)
-          return
+        // If no gateway specified, get the active one
+        if (!selectedGatewayId) {
+          const gatewaysResponse = await api.get('/payment-gateways')
+          const activeGateway = gatewaysResponse.data.find((g: any) => g.is_active)
+          
+          if (!activeGateway) {
+            setError('No active payment gateway found. Please contact support.')
+            setLoading(false)
+            return
+          }
+          selectedGatewayId = activeGateway.id
         }
 
-        // Create payment
-        const paymentResponse = await api.post('/payment-transactions/create', {
-          gateway_id: activeGateway.id,
-          invoice_id: parseInt(invoiceId),
+        // Create payment with either invoice_id or pos_order_id
+        const paymentPayload: any = {
+          gateway_id: selectedGatewayId,
           amount: amount ? parseFloat(amount) : undefined,
-          // Don't send currency - let backend use invoice currency
-        })
+        }
+        
+        if (invoiceId) {
+          paymentPayload.invoice_id = parseInt(invoiceId)
+        } else if (posOrderId) {
+          paymentPayload.pos_order_id = parseInt(posOrderId)
+        }
 
-        const { transaction, client_secret, publishable_key, invoice, payment_url } = paymentResponse.data
+        const paymentResponse = await api.post('/payment-transactions/create', paymentPayload)
+
+        const { transaction, client_secret, publishable_key, invoice, pos_order, payment_url } = paymentResponse.data
+        
+        // Get gateway info for the selected gateway
+        const gatewaysResponse = await api.get('/payment-gateways')
+        const gatewayInfo = gatewaysResponse.data.find((g: any) => g.id === selectedGatewayId)
 
         // If HitPay or PayPal, redirect to payment URL
-        if (activeGateway.gateway_name === 'hitpay' || activeGateway.gateway_name === 'paypal') {
+        if (gatewayInfo?.gateway_name === 'hitpay' || gatewayInfo?.gateway_name === 'paypal') {
           if (payment_url) {
             window.location.href = payment_url
             return
@@ -205,7 +222,7 @@ export function PaymentCheckout() {
         }
 
         // Stripe flow - only execute if gateway is Stripe
-        if (activeGateway.gateway_name === 'stripe') {
+        if (gatewayInfo?.gateway_name === 'stripe') {
           if (!publishable_key) {
             setError('Stripe publishable key not configured. Please add it in payment gateway settings.')
             setLoading(false)
@@ -217,14 +234,14 @@ export function PaymentCheckout() {
             publishableKey: publishable_key,
             amount: transaction.amount,
             currency: transaction.currency,
-            invoiceNumber: invoice.invoice_number,
+            invoiceNumber: invoice?.invoice_number || pos_order?.order_number || 'N/A',
           })
 
           // Load Stripe with publishable key
           setStripePromise(loadStripe(publishable_key))
           setLoading(false)
         } else {
-          setError(`Unsupported payment gateway: ${activeGateway.gateway_name}`)
+          setError(`Unsupported payment gateway: ${gatewayInfo?.gateway_name || 'unknown'}`)
           setLoading(false)
           return
         }
@@ -243,7 +260,7 @@ export function PaymentCheckout() {
     }
 
     initializePayment()
-  }, [invoiceId, amount, toast])
+  }, [invoiceId, posOrderId, amount, gatewayId, toast])
 
   if (loading) {
     return (

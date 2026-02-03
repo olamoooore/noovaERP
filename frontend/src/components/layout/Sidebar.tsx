@@ -167,6 +167,18 @@ const baseNavItems: NavItem[] = [
     href: '/payments',
     icon: 'solar:wallet-money-bold-duotone',
     featureKey: 'accounting',
+    children: [
+      {
+        title: 'Transactions',
+        href: '/payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Analytics',
+        href: '/payment-analytics',
+        icon: 'solar:chart-2-bold-duotone',
+      },
+    ],
   },
   {
     title: 'Accounting',

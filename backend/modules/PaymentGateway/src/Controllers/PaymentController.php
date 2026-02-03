@@ -7,10 +7,12 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
 use App\Services\AccountingService;
+use Modules\POS\Models\PosOrder;
 
 class PaymentController extends Controller
 {
@@ -21,15 +23,41 @@ class PaymentController extends Controller
     {
         $validated = $request->validate([
             'gateway_id' => 'required|exists:payment_gateways,id',
-            'invoice_id' => 'required|exists:invoices,id',
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'pos_order_id' => 'nullable|exists:pos_orders,id',
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'sometimes|string|size:3',
             'email' => 'sometimes|email',
             'redirect_url' => 'sometimes|url',
         ]);
 
+        // Must have either invoice_id or pos_order_id
+        if (empty($validated['invoice_id']) && empty($validated['pos_order_id'])) {
+            return response()->json([
+                'message' => 'Either invoice_id or pos_order_id is required',
+            ], 422);
+        }
+
         $gateway = PaymentGateway::findOrFail($validated['gateway_id']);
-        $invoice = Invoice::findOrFail($validated['invoice_id']);
+        
+        // Get payment source (invoice or POS order)
+        $invoice = null;
+        $posOrder = null;
+        $customerEmail = null;
+        $description = '';
+        $reference = '';
+        
+        if (!empty($validated['invoice_id'])) {
+            $invoice = Invoice::findOrFail($validated['invoice_id']);
+            $customerEmail = $invoice->customer->email ?? null;
+            $description = "Payment for Invoice {$invoice->invoice_number}";
+            $reference = $invoice->invoice_number;
+        } else {
+            $posOrder = PosOrder::findOrFail($validated['pos_order_id']);
+            $customerEmail = $posOrder->customer_email ?? null;
+            $description = "Payment for POS Order {$posOrder->order_number}";
+            $reference = $posOrder->order_number;
+        }
 
         if (!$gateway->is_active) {
             return response()->json([
@@ -40,8 +68,8 @@ class PaymentController extends Controller
         try {
             $service = PaymentGatewayFactory::create($gateway);
 
-            // Determine currency: priority is validated > invoice > gateway defaults
-            $currency = $validated['currency'] ?? $invoice->currency ?? null;
+            // Determine currency: priority is validated > invoice > POS order > gateway defaults
+            $currency = $validated['currency'] ?? $invoice?->currency ?? $posOrder?->currency ?? null;
             if (!$currency) {
                 // Default currencies by gateway
                 $currency = match ($gateway->gateway_name) {
@@ -56,19 +84,20 @@ class PaymentController extends Controller
             $paymentData = [
                 'amount' => $validated['amount'],
                 'currency' => $currency,
-                'email' => $validated['email'] ?? $invoice->customer->email,
-                'description' => "Payment for Invoice {$invoice->invoice_number}",
-                'reference' => $invoice->invoice_number,
+                'email' => $validated['email'] ?? $customerEmail,
+                'description' => $description,
+                'reference' => $reference,
                 'redirect_url' => $frontendUrl . '/payment/success',
                 'metadata' => [
-                    'invoice_id' => $invoice->id,
-                    'customer_id' => $invoice->customer_id,
+                    'invoice_id' => $invoice?->id,
+                    'pos_order_id' => $posOrder?->id,
+                    'customer_id' => $invoice?->customer_id ?? $posOrder?->customer_id,
                 ],
             ];
 
             \Log::info('Creating payment with currency', [
-                'invoice_id' => $invoice->id,
-                'invoice_currency' => $invoice->currency,
+                'invoice_id' => $invoice?->id,
+                'pos_order_id' => $posOrder?->id,
                 'payment_currency' => $currency,
                 'gateway' => $gateway->gateway_name,
             ]);
@@ -76,11 +105,16 @@ class PaymentController extends Controller
             $result = $service->createPayment($paymentData);
 
             if ($result['success']) {
-                // Clean up old pending transactions for this invoice (older than 30 minutes)
-                PaymentTransaction::where('invoice_id', $invoice->id)
-                    ->where('status', 'pending')
-                    ->where('created_at', '<', now()->subMinutes(30))
-                    ->delete();
+                // Clean up old pending transactions for this invoice/order (older than 30 minutes)
+                $query = PaymentTransaction::where('status', 'pending')
+                    ->where('created_at', '<', now()->subMinutes(30));
+                
+                if ($invoice) {
+                    $query->where('invoice_id', $invoice->id);
+                } elseif ($posOrder) {
+                    $query->whereJsonContains('metadata->pos_order_id', $posOrder->id);
+                }
+                $query->delete();
 
                 // Merge metadata from gateway response (e.g., approve_link for PayPal)
                 $transactionMetadata = array_merge(
@@ -93,8 +127,8 @@ class PaymentController extends Controller
                     ['transaction_id' => $result['transaction_id']], // Find by this
                     [ // Create with these values if not found
                         'payment_gateway_id' => $gateway->id,
-                        'invoice_id' => $invoice->id,
-                        'customer_id' => $invoice->customer_id,
+                        'invoice_id' => $invoice?->id,
+                        'customer_id' => $invoice?->customer_id ?? $posOrder?->customer_id,
                         'amount' => $validated['amount'],
                         'currency' => $currency,
                         'status' => 'pending',
@@ -105,24 +139,33 @@ class PaymentController extends Controller
                 if ($transaction->wasRecentlyCreated) {
                     \Log::info('Created new payment transaction', [
                         'transaction_id' => $transaction->transaction_id,
-                        'invoice_id' => $invoice->id,
+                        'invoice_id' => $invoice?->id,
+                        'pos_order_id' => $posOrder?->id,
                         'metadata' => $transactionMetadata,
                     ]);
                 } else {
                     \Log::info('Returning existing payment transaction (idempotency)', [
                         'transaction_id' => $transaction->transaction_id,
-                        'invoice_id' => $invoice->id,
+                        'invoice_id' => $invoice?->id,
+                        'pos_order_id' => $posOrder?->id,
                     ]);
                 }
 
-                return response()->json([
+                $response = [
                     'message' => 'Payment initiated successfully',
                     'transaction' => $transaction,
                     'payment_url' => $result['payment_url'] ?? null,
                     'client_secret' => $result['client_secret'] ?? null,
                     'publishable_key' => $gateway->publishable_key ?? null,
-                    'invoice' => $invoice->load('customer'),
-                ], 201);
+                ];
+                
+                if ($invoice) {
+                    $response['invoice'] = $invoice->load('customer');
+                } elseif ($posOrder) {
+                    $response['pos_order'] = $posOrder;
+                }
+                
+                return response()->json($response, 201);
             }
 
             return response()->json([
@@ -131,7 +174,8 @@ class PaymentController extends Controller
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Payment creation failed', [
-                'invoice_id' => $validated['invoice_id'],
+                'invoice_id' => $validated['invoice_id'] ?? null,
+                'pos_order_id' => $validated['pos_order_id'] ?? null,
                 'gateway_id' => $validated['gateway_id'],
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -330,6 +374,24 @@ class PaymentController extends Controller
     {
         DB::transaction(function () use ($transaction) {
             $invoice = $transaction->invoice;
+            
+            // Handle POS order payments
+            if (!$invoice && !empty($transaction->metadata['pos_order_id'])) {
+                $posOrder = PosOrder::find($transaction->metadata['pos_order_id']);
+                if ($posOrder) {
+                    $this->processCompletedPosOrderPayment($transaction, $posOrder);
+                    return;
+                }
+            }
+            
+            if (!$invoice) {
+                \Log::error('No invoice or POS order found for transaction', [
+                    'transaction_id' => $transaction->transaction_id,
+                    'metadata' => $transaction->metadata,
+                ]);
+                return;
+            }
+            
             $invoice->refresh();
 
             // Check if payment already processed for this transaction
@@ -424,6 +486,53 @@ class PaymentController extends Controller
             'status' => $invoice->status,
             'paid_amount' => $invoice->paid_amount,
             'balance' => $invoice->balance,
+        ]);
+    }
+
+    /**
+     * Process completed payment for POS order (internal helper)
+     */
+    protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
+    {
+        // Update POS order status
+        $posOrder->update([
+            'status' => 'completed',
+            'paid_at' => now(),
+        ]);
+
+        // Create POS payment record
+        \Modules\POS\Models\PosPayment::create([
+            'pos_order_id' => $posOrder->id,
+            'method' => 'card', // Online card payment
+            'amount' => $transaction->amount,
+            'reference' => $transaction->transaction_id,
+            'notes' => "Online payment via {$transaction->gateway->gateway_name}",
+        ]);
+
+        // Post accounting entries using PosPostingService
+        try {
+            $postingService = new \Modules\POS\Services\PosPostingService();
+            $postingService->postPaidOrder($posOrder, $transaction->amount, 'card');
+            
+            \Log::info('POS order accounting entries posted', [
+                'pos_order_id' => $posOrder->id,
+                'transaction_id' => $transaction->transaction_id,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to post POS order accounting entries', [
+                'pos_order_id' => $posOrder->id,
+                'transaction_id' => $transaction->transaction_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Mark transaction as processed
+        $transaction->update(['processed_at' => now()]);
+
+        \Log::info('POS order payment processing completed', [
+            'transaction_id' => $transaction->transaction_id,
+            'pos_order_id' => $posOrder->id,
+            'amount' => $transaction->amount,
         ]);
     }
 

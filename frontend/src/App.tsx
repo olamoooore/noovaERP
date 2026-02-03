@@ -125,7 +125,6 @@ function App() {
                 <Route path="/customers/:id" element={<CustomerDetailsPage />} />
                 
                 <Route path="/invoices" element={<InvoicesPage />} />
-                <Route path="/payments" element={<PaymentsPage />} />
                 <Route path="/accounting" element={<AccountingPage />} />
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/pos" element={<POSPage />} />

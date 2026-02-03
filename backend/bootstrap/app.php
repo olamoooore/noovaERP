@@ -16,8 +16,13 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function () {
+            // Tenant routes (with tenancy middleware)
             Route::middleware('api')
                 ->group(base_path('routes/tenant.php'));
+            
+            // Webhook routes (NO tenancy - works on any domain including ngrok)
+            Route::middleware('api')
+                ->group(base_path('routes/webhooks.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
