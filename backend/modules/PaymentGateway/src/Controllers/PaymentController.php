@@ -4,6 +4,7 @@ namespace Modules\PaymentGateway\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -308,7 +309,8 @@ class PaymentController extends Controller
                 return response()->json([
                     'message' => 'Payment status updated',
                     'transaction' => $transaction->fresh(),
-                    'invoice' => $transaction->invoice->fresh(),
+                    'invoice' => $transaction->invoice?->fresh(),
+                    'pos_order' => !empty($transaction->metadata['pos_order_id']) ? \Modules\POS\Models\PosOrder::find($transaction->metadata['pos_order_id']) : null,
                 ]);
             }
 
@@ -494,46 +496,95 @@ class PaymentController extends Controller
      */
     protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
     {
-        // Update POS order status
-        $posOrder->update([
-            'status' => 'completed',
-            'paid_at' => now(),
-        ]);
-
-        // Create POS payment record
-        \Modules\POS\Models\PosPayment::create([
-            'pos_order_id' => $posOrder->id,
-            'method' => 'card', // Online card payment
-            'amount' => $transaction->amount,
-            'reference' => $transaction->transaction_id,
-            'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-        ]);
-
-        // Post accounting entries using PosPostingService
-        try {
-            $postingService = new \Modules\POS\Services\PosPostingService();
-            $postingService->postPaidOrder($posOrder, $transaction->amount, 'card');
-            
-            \Log::info('POS order accounting entries posted', [
-                'pos_order_id' => $posOrder->id,
-                'transaction_id' => $transaction->transaction_id,
+        DB::transaction(function () use ($transaction, $posOrder) {
+            // Update POS order status
+            $posOrder->update([
+                'status' => 'completed',
+                'paid_at' => now(),
             ]);
-        } catch (\Exception $e) {
-            \Log::error('Failed to post POS order accounting entries', [
+
+            // Create POS payment record
+            \Modules\POS\Models\PosPayment::create([
                 'pos_order_id' => $posOrder->id,
+                'method' => 'card', // Online card payment
+                'amount' => $transaction->amount,
+                'reference' => $transaction->transaction_id,
+                'notes' => "Online payment via {$transaction->gateway->gateway_name}",
+            ]);
+
+            // Create Invoice from POS Order
+            $invoice = $this->createInvoiceFromPosOrder($posOrder, $transaction);
+            
+            if ($invoice) {
+                // Update transaction with invoice_id
+                $transaction->update(['invoice_id' => $invoice->id]);
+                
+                // Process as regular invoice payment
+                $this->processCompletedPayment($transaction);
+            }
+
+            // Mark transaction as processed
+            $transaction->update(['processed_at' => now()]);
+
+            \Log::info('POS order payment processing completed with invoice', [
                 'transaction_id' => $transaction->transaction_id,
+                'pos_order_id' => $posOrder->id,
+                'invoice_id' => $invoice?->id,
+                'amount' => $transaction->amount,
+            ]);
+        });
+    }
+
+    /**
+     * Create Invoice from POS Order
+     */
+    protected function createInvoiceFromPosOrder(PosOrder $posOrder, PaymentTransaction $transaction): ?Invoice
+    {
+        try {
+            // Create invoice
+            $invoice = Invoice::create([
+                'customer_id' => $posOrder->customer_id,
+                'invoice_date' => now(),
+                'due_date' => now(),
+                'status' => 'paid',
+                'subtotal' => $posOrder->subtotal,
+                'tax_amount' => $posOrder->tax_amount,
+                'discount_amount' => $posOrder->discount_amount ?? 0,
+                'total' => $posOrder->total,
+                'paid_amount' => $posOrder->total,
+                'balance' => 0,
+                'notes' => "Generated from POS Order: {$posOrder->order_number}",
+                'created_by' => $posOrder->created_by,
+            ]);
+
+            // Create invoice lines from POS order items
+            foreach ($posOrder->items as $item) {
+                $invoice->lines()->create([
+                    'product_id' => $item->product_id,
+                    'description' => $item->product_name,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'tax_rate' => 0, // POS items already include tax in tax_amount
+                    'tax_amount' => $item->tax_amount / $item->quantity, // per unit
+                    'discount_amount' => 0,
+                    'line_total' => $item->total_price,
+                ]);
+            }
+
+            \Log::info('Invoice created from POS order', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'pos_order_id' => $posOrder->id,
+            ]);
+
+            return $invoice;
+        } catch (\Exception $e) {
+            \Log::error('Failed to create invoice from POS order', [
+                'pos_order_id' => $posOrder->id,
                 'error' => $e->getMessage(),
             ]);
+            return null;
         }
-
-        // Mark transaction as processed
-        $transaction->update(['processed_at' => now()]);
-
-        \Log::info('POS order payment processing completed', [
-            'transaction_id' => $transaction->transaction_id,
-            'pos_order_id' => $posOrder->id,
-            'amount' => $transaction->amount,
-        ]);
     }
 
     /**

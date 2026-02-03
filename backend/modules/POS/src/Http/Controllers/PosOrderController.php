@@ -350,9 +350,6 @@ class PosOrderController extends Controller
                 'receipt_number' => PosOrder::generateReceiptNumber(),
             ]);
 
-            // Process loyalty points if customer is linked
-            $posOrder->processLoyaltyPoints();
-
             return response()->json($posOrder->fresh()->load('items', 'payments', 'journalEntry', 'customer'), 200);
         });
     }
@@ -399,20 +396,6 @@ class PosOrderController extends Controller
                 } elseif ($item->product && $item->product->track_inventory) {
                     $item->product->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
                 }
-            }
-
-            // Reverse loyalty points if applicable
-            if ($posOrder->customer_id && $posOrder->loyalty_points_earned > 0) {
-                $customer = $posOrder->customer;
-                $returnRatio = abs($returnOrder->total) / $posOrder->total;
-                $pointsToRemove = (int) ceil($posOrder->loyalty_points_earned * $returnRatio);
-                
-                $customer->redeemLoyaltyPoints(
-                    $pointsToRemove,
-                    'pos_return',
-                    $returnOrder->id,
-                    'Points reversed due to return'
-                );
             }
 
             return response()->json([

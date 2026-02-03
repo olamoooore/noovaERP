@@ -42,6 +42,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { POSReceipt } from '@/components/pos/POSReceipt'
 import { PaymentMethodSelector } from '@/components/pos/PaymentMethodSelector'
+import { StripePaymentDialog } from '@/components/StripePaymentDialog'
 
 interface Product {
   id: number
@@ -120,6 +121,13 @@ export function POSTerminal() {
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
+  
+  // Stripe Payment Dialog State
+  const [showStripeDialog, setShowStripeDialog] = useState(false)
+  const [stripePaymentData, setStripePaymentData] = useState<{
+    orderId: number | null
+    gatewayId: number | null
+  }>({ orderId: null, gatewayId: null })
   
   // Customer Search & Add States
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
@@ -1143,20 +1151,13 @@ export function POSTerminal() {
               
               // Handle different payment types
               if (method.type === 'online') {
-                // For online payments (Stripe, PayPal, etc.), redirect to payment page
+                // For online payments (Stripe, PayPal, etc.), create order and open payment dialog
                 const order = await createOrderMutation.mutateAsync(getOrderData())
                 
-                // Store pending payment in session
-                sessionStorage.setItem('pendingPosPayment', JSON.stringify({
-                  orderId: order.id,
-                  amount: total,
-                  gatewayId: method.gateway_id,
-                  methodName: method.name,
-                }))
-                
-                // Close dialog and redirect to checkout with pos_order
+                // Close checkout dialog and open Stripe payment dialog
                 setShowCheckoutDialog(false)
-                navigate('/checkout?pos_order=' + order.id + '&amount=' + total + '&gateway=' + method.gateway_id)
+                setStripePaymentData({ orderId: order.id, gatewayId: method.gateway_id })
+                setShowStripeDialog(true)
                 return
               }
               
@@ -1496,6 +1497,38 @@ export function POSTerminal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Stripe Payment Dialog */}
+      <StripePaymentDialog
+        open={showStripeDialog}
+        onOpenChange={setShowStripeDialog}
+        amount={total}
+        posOrderId={stripePaymentData.orderId}
+        gatewayId={stripePaymentData.gatewayId || 0}
+        onSuccess={async (transactionId) => {
+          toast({
+            title: 'Payment successful!',
+            description: `Transaction ID: ${transactionId}`,
+          })
+          
+          // Show receipt dialog
+          setShowReceiptDialog(true)
+          
+          // Clear cart after successful payment
+          setTimeout(() => {
+            clearCart()
+            setSelectedCustomer(null)
+            setCurrentOrderId(null)
+          }, 500)
+        }}
+        onError={(error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Payment failed',
+            description: error,
+          })
+        }}
+      />
     </div>
   </div>
   )

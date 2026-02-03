@@ -668,7 +668,6 @@ export function CustomersPage() {
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                <TabsTrigger value="loyalty">Loyalty</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-6 mt-4">
@@ -857,39 +856,6 @@ export function CustomersPage() {
                     </CardContent>
                   </Card>
                 </div>
-              </TabsContent>
-
-              <TabsContent value="loyalty" className="mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Icon icon="solar:star-bold" className="h-5 w-5 text-yellow-500" />
-                      Loyalty Points
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center py-6">
-                      <div className="text-5xl font-bold text-primary">{customerDetail.loyalty_points || 0}</div>
-                      <p className="text-muted-foreground mt-2">Available Points</p>
-                    </div>
-                    {customerDetail.loyalty_balances?.map((balance: any) => (
-                      <div key={balance.id} className="border-t pt-4 mt-4">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Program</span>
-                          <span>{balance.program?.name}</span>
-                        </div>
-                        <div className="flex justify-between text-sm mt-2">
-                          <span className="text-muted-foreground">Total Earned</span>
-                          <span className="text-green-600">+{balance.points_earned_total}</span>
-                        </div>
-                        <div className="flex justify-between text-sm mt-2">
-                          <span className="text-muted-foreground">Total Redeemed</span>
-                          <span className="text-orange-600">-{balance.points_redeemed_total}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
               </TabsContent>
             </Tabs>
           ) : editMode ? (
