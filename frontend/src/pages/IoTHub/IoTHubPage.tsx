@@ -1,180 +1,152 @@
 /**
  * NoovaERP IoT Hub Page
  * 
- * Universal Dashboard for viewing and controlling remote IoT devices.
- * Fetches devices from UMP and renders dynamic controls based on capabilities.
- * 
- * Sections:
- * 1. Connection Panel - Link/manage agent connection
- * 2. Device Grid - Display all devices with capability-based controls
+ * Main entry point for IoT device management.
+ * Displays agent status, device configurations, and discovery panel.
+ * Supports multi-protocol devices (Agent, HTTP, MQTT, Webhook).
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { UniversalDeviceCard } from '@/components/iot/UniversalDeviceCard'
-import { LinkAccountModal } from '@/components/iot/LinkAccountModal'
-import universalIoTService, { UMPDevice, AgentStatus } from '@/services/UniversalIoTService'
+import iotApi, { DeviceConfiguration } from '@/lib/iotApi'
+import { DeviceConfigDialog } from '@/components/iot/DeviceConfigDialog'
+import { DiscoveredDevicesPanel } from '@/components/iot/DiscoveredDevicesPanel'
+import { AgentConfigDialog } from '@/components/iot/AgentConfigDialog'
+import { ScannerControl } from '@/components/iot/ScannerControl'
+import { PrinterControl } from '@/components/iot/PrinterControl'
+import { getConnectionIcon, getConnectionLabel } from '@/lib/iot-helpers'
+
+// Hardcoded agent ID for now - will be dynamic later
+const DEFAULT_AGENT_ID = 'agent-676da24f-97d3-4d74-bcd2-c235a30dbac7'
 
 export function IoTHubPage() {
+  const [selectedTab, setSelectedTab] = useState('configured')
+  const [configDialogOpen, setConfigDialogOpen] = useState(false)
+  const [agentConfigDialogOpen, setAgentConfigDialogOpen] = useState(false)
+  const [selectedDevice, setSelectedDevice] = useState<DeviceConfiguration | null>(null)
   const { toast } = useToast()
-  
-  // Connection state
-  const [linkedAgentId, setLinkedAgentId] = useState<string | null>(null)
-  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
-  
-  // Devices state
-  const [devices, setDevices] = useState<UMPDevice[]>([])
-  const [isLoadingDevices, setIsLoadingDevices] = useState(false)
-  
-  // API Key state
-  const [hasApiKey, setHasApiKey] = useState(false)
-  const [showLinkModal, setShowLinkModal] = useState(false)
-  const [authError, setAuthError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
-  // Load saved API key on mount and auto-connect if available
-  useEffect(() => {
-    const savedApiKey = localStorage.getItem('ump_api_key')
-    
-    if (savedApiKey) {
-      setHasApiKey(true)
-      universalIoTService.setApiKey(savedApiKey)
-      // Auto-connect when API key exists - UMP auto-discovers agents
-      setLinkedAgentId('UMP-AUTO')  // Placeholder - actual agent ID comes from devices
-    }
-  }, [])
+  // Fetch agent health
+  const { data: agentHealth, isLoading: healthLoading, error: healthError } = useQuery({
+    queryKey: ['agent-health', DEFAULT_AGENT_ID],
+    queryFn: () => iotApi.checkAgentHealth(DEFAULT_AGENT_ID),
+    refetchInterval: 30000, // Poll every 30 seconds
+    retry: 1,
+  })
 
-  // Fetch devices when we have an API key (agent is auto-discovered by UMP)
-  const fetchDevices = useCallback(async () => {
-    // Check if we have an API key
-    const currentApiKey = localStorage.getItem('ump_api_key')
-    if (!currentApiKey) {
-      setHasApiKey(false)
-      return
-    }
-    
-    setIsLoadingDevices(true)
-    setAuthError(null)
-    try {
-      const deviceList = await universalIoTService.fetchDevices()
-      setDevices(deviceList)
-      setHasApiKey(true)
-      
-      // If we got devices, we're connected
-      if (deviceList.length > 0) {
-        setLinkedAgentId('UMP-CONNECTED')
+  // Fetch device configurations
+  const { data: deviceConfigsData, isLoading: configsLoading } = useQuery({
+    queryKey: ['device-configs', DEFAULT_AGENT_ID],
+    queryFn: () => iotApi.getDeviceConfigs(DEFAULT_AGENT_ID),
+  })
+
+  // Fetch discovered devices - only when agent is online
+  const { data: discoveredData, isLoading: discoveredLoading } = useQuery({
+    queryKey: ['discovered-devices', DEFAULT_AGENT_ID],
+    queryFn: () => iotApi.getDiscoveredDevices({ agentId: DEFAULT_AGENT_ID }),
+    enabled: agentHealth?.status === 'online', // Only fetch when agent is online
+  })
+
+  // Trigger discovery scan
+  const scanMutation = useMutation({
+    mutationFn: () => {
+      // Check if agent is online before scanning
+      if (agentHealth?.status !== 'online') {
+        throw new Error('Agent is not connected. Please ensure the Local Agent is running.')
       }
-    } catch (error: unknown) {
-      console.error('Failed to fetch devices:', error)
-      const axiosError = error as { response?: { status?: number; data?: { error?: string } } }
-      
-      // If 401, the API key doesn't have device access permissions
-      if (axiosError.response?.status === 401) {
-        // Keep hasApiKey true since the key validated, but show permission error
-        setHasApiKey(true)
-        setAuthError(`401 Unauthorized: ${axiosError.response?.data?.error || 'Token lacks device permissions'}`)
-        toast({
-          title: 'Device Access Denied',
-          description: 'Your API key validated but lacks device permissions. Check UMP backend configuration.',
-          variant: 'destructive',
-        })
-      } else if (axiosError.response?.status === 403) {
-        setHasApiKey(false)
-        setAuthError('403 Forbidden: API key invalid')
-        toast({
-          title: 'Authentication Required',
-          description: 'Please link your UMP account to access devices.',
-          variant: 'destructive',
-        })
-      } else {
-        setAuthError(`Error: ${axiosError.response?.data?.error || 'Connection failed'}`)
-        toast({
-          title: 'Failed to Load Devices',
-          description: 'Could not fetch devices from UMP. Check your connection.',
-          variant: 'destructive',
-        })
-      }
-    } finally {
-      setIsLoadingDevices(false)
-    }
-  }, [toast])
+      return iotApi.triggerDiscoveryScan(DEFAULT_AGENT_ID)
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'Discovery scan triggered',
+        description: `Found ${data.discovered?.length || 0} devices`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['discovered-devices'] })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Scan failed',
+        description: error.message || error.response?.data?.message || 'Failed to trigger device discovery',
+        variant: 'destructive',
+      })
+    },
+  })
 
-  // Check agent status (simplified - just check if UMP is reachable)
-  const checkAgentStatus = useCallback(async () => {
-    const status = await universalIoTService.checkAgentStatus('UMP')
-    setAgentStatus(status)
-  }, [])
+  // Reload device
+  const reloadDeviceMutation = useMutation({
+    mutationFn: (deviceId: string) => iotApi.reloadDevice(DEFAULT_AGENT_ID, deviceId),
+    onSuccess: () => {
+      toast({
+        title: 'Device reloaded',
+        description: 'Device configuration has been reloaded',
+      })
+    },
+    onError: () => {
+      toast({
+        title: 'Reload failed',
+        description: 'Failed to reload device',
+        variant: 'destructive',
+      })
+    },
+  })
 
-  // Fetch devices and status when we have an API key
-  useEffect(() => {
-    const savedApiKey = localStorage.getItem('ump_api_key')
-    if (savedApiKey) {
-      fetchDevices()
-      checkAgentStatus()
-      
-      // Poll for status every 30 seconds
-      const interval = setInterval(() => {
-        checkAgentStatus()
-      }, 30000)
-      
-      return () => clearInterval(interval)
-    }
-  }, [fetchDevices, checkAgentStatus])
+  // Reload all devices
+  const reloadAllMutation = useMutation({
+    mutationFn: () => iotApi.reloadAllDevices(DEFAULT_AGENT_ID),
+    onSuccess: (data) => {
+      toast({
+        title: 'All devices reloaded',
+        description: `Reloaded ${data.reloaded || 0} devices successfully`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['device-configs'] })
+    },
+    onError: () => {
+      toast({
+        title: 'Reload failed',
+        description: 'Failed to reload devices',
+        variant: 'destructive',
+      })
+    },
+  })
 
-  // Disconnect from UMP
-  const handleDisconnect = () => {
-    localStorage.removeItem('ump_api_key')
-    universalIoTService.clearApiKey()
-    setLinkedAgentId(null)
-    setAgentStatus(null)
-    setDevices([])
-    setHasApiKey(false)
-    
-    toast({
-      title: 'Disconnected',
-      description: 'You have been disconnected from UMP',
-    })
-  }
-
-  // Refresh devices
-  const handleRefresh = () => {
-    fetchDevices()
-    checkAgentStatus()
-    toast({
-      title: 'Refreshing',
-      description: 'Fetching latest device status...',
-    })
-  }
-
-  // Handle successful account linking
-  const handleLinkSuccess = () => {
-    setHasApiKey(true)
-    setShowLinkModal(false)
-    fetchDevices()
-    toast({
-      title: 'Account Linked',
-      description: 'Your UMP account has been linked successfully.',
-    })
-  }
-
-  // Device status change handler
-  const handleDeviceStatusChange = (deviceId: string, status: UMPDevice['status']) => {
-    setDevices(prev => prev.map(d => 
-      d.id === deviceId ? { ...d, status } : d
-    ))
-  }
+  const deviceConfigs = deviceConfigsData?.data || []
+  const discoveredDevices = discoveredData?.data || []
 
   // Group devices by type
-  const devicesByType = devices.reduce((acc, device) => {
-    const type = device.type || 'other'
+  const devicesByType = deviceConfigs.reduce((acc, device) => {
+    const type = device.device_type || 'other'
     if (!acc[type]) acc[type] = []
     acc[type].push(device)
     return acc
-  }, {} as Record<string, UMPDevice[]>)
+  }, {} as Record<string, DeviceConfiguration[]>)
+
+  const handleEditDevice = (device: DeviceConfiguration) => {
+    setSelectedDevice(device)
+    setConfigDialogOpen(true)
+  }
+
+  const handleAddDevice = () => {
+    setSelectedDevice(null)
+    setConfigDialogOpen(true)
+  }
+
+  const handleConfigDialogClose = () => {
+    setConfigDialogOpen(false)
+    setSelectedDevice(null)
+    queryClient.invalidateQueries({ queryKey: ['device-configs'] })
+  }
+
+  const handleAgentConfigClose = () => {
+    setAgentConfigDialogOpen(false)
+    queryClient.invalidateQueries({ queryKey: ['agent-health'] })
+  }
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -186,216 +158,146 @@ export function IoTHubPage() {
             NoovaERP IoT Hub
           </h1>
           <p className="text-muted-foreground">
-            Universal dashboard for your IoT devices
+            Manage your IoT devices with multi-protocol support
           </p>
         </div>
-        {linkedAgentId && (
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoadingDevices}>
-            <Icon 
-              icon="solar:refresh-bold" 
-              className={`h-4 w-4 mr-2 ${isLoadingDevices ? 'animate-spin' : ''}`} 
-            />
-            Refresh
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setAgentConfigDialogOpen(true)}>
+            <Icon icon="solar:settings-bold" className="h-4 w-4 mr-2" />
+            Agent Config
           </Button>
-        )}
+          <Button onClick={handleAddDevice}>
+            <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
+            Add Device
+          </Button>
+        </div>
       </div>
 
-      {/* Section 1: Connection Panel */}
+      {/* Agent Status Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <Icon icon="solar:link-bold-duotone" className="h-6 w-6 text-primary" />
+                <Icon icon="solar:server-bold-duotone" className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <CardTitle>UMP Connection</CardTitle>
+                <CardTitle>Local Agent Status</CardTitle>
                 <CardDescription>
-                  Connect to your UMP Local Agent to access devices
+                  Connection to POS machine agent
                 </CardDescription>
               </div>
             </div>
-            {linkedAgentId && (
-              <Badge 
-                variant={!hasApiKey ? 'outline' : agentStatus?.connected ? 'default' : 'destructive'} 
-                className={`gap-2 ${!hasApiKey ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : ''}`}
-              >
-                <div className={`h-2 w-2 rounded-full ${
-                  !hasApiKey ? 'bg-yellow-500' : 
-                  agentStatus?.connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-                }`} />
-                {!hasApiKey ? 'Account Not Linked' : agentStatus?.connected ? 'Connected' : 'Disconnected'}
+            {healthLoading ? (
+              <Badge variant="outline">
+                <Icon icon="solar:refresh-bold" className="h-3 w-3 mr-1 animate-spin" />
+                Checking...
+              </Badge>
+            ) : healthError ? (
+              <Badge variant="destructive" className="gap-2">
+                <div className="h-2 w-2 rounded-full bg-red-500" />
+                Offline
+              </Badge>
+            ) : agentHealth?.status === 'online' ? (
+              <Badge variant="default" className="gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                Online
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="gap-2">
+                <div className="h-2 w-2 rounded-full bg-red-500" />
+                Offline
               </Badge>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          {linkedAgentId ? (
-            // Connected State
-            <div className="space-y-4">
-              {/* Agent Connected but No API Key */}
-              {!hasApiKey ? (
-                <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Icon icon="solar:key-bold" className="h-6 w-6 text-yellow-600" />
-                    <div>
-                      <p className="font-medium text-yellow-900 dark:text-yellow-100">
-                        UMP Reachable - Account Not Linked
-                      </p>
-                      <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                        Link your UMP account to access devices
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => setShowLinkModal(true)}
-                      className="bg-yellow-600 hover:bg-yellow-700"
-                    >
-                      <Icon icon="solar:key-bold" className="mr-2 h-4 w-4" />
-                      Link UMP Account
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleDisconnect}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Icon icon="solar:link-broken-bold" className="h-4 w-4" />
-                    </Button>
-                  </div>
+          {healthError ? (
+            <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start gap-3">
+                <Icon icon="solar:danger-bold" className="h-5 w-5 text-red-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-red-900 dark:text-red-100 mb-1">
+                    Agent Connection Failed
+                  </p>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    Cannot connect to the local agent. Please ensure the agent is running on your POS machine.
+                  </p>
                 </div>
-              ) : (
-                // Fully Connected State
-                <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Icon icon="solar:check-circle-bold" className="h-6 w-6 text-green-600" />
-                    <div>
-                      <p className="font-medium text-green-900 dark:text-green-100">
-                        Connected to UMP
-                      </p>
-                      <p className="text-sm text-green-700 dark:text-green-300">
-                        {devices.length} device{devices.length !== 1 ? 's' : ''} available
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDisconnect}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Icon icon="solar:link-broken-bold" className="mr-2 h-4 w-4" />
-                    Disconnect
-                  </Button>
-                </div>
-              )}
-
-              {/* Agent Stats */}
-              {agentStatus?.connected && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-2xl font-bold">{devices.length}</p>
-                    <p className="text-xs text-muted-foreground">Devices</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-2xl font-bold">
-                      {devices.filter(d => d.status === 'online').length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Online</p>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-2xl font-bold">{agentStatus.version || '-'}</p>
-                    <p className="text-xs text-muted-foreground">Version</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Auth Error Debug Info */}
-              {authError && (
-                <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <Icon icon="solar:bug-bold" className="h-5 w-5 text-red-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-medium text-red-900 dark:text-red-100 mb-1">
-                        UMP Authentication Issue
-                      </p>
-                      <p className="text-sm text-red-700 dark:text-red-300 font-mono mb-2">
-                        {authError}
-                      </p>
-                      <p className="text-xs text-red-600 dark:text-red-400">
-                        The API key validates at /auth/validate but device endpoints require different permissions.
-                        Check UMP backend middleware configuration.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
+            </div>
+          ) : agentHealth?.status === 'online' ? (
+            <div className="grid grid-cols-4 gap-4">
+              <div className="p-3 bg-muted/50 rounded-lg text-center">
+                <p className="text-2xl font-bold">{deviceConfigs.length}</p>
+                <p className="text-xs text-muted-foreground">Devices</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-green-600">
+                  {deviceConfigs.filter(d => d.status === 'active').length}
+                </p>
+                <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg text-center">
+                <p className="text-2xl font-bold">{agentHealth.last_heartbeat ? 'Now' : '-'}</p>
+                <p className="text-xs text-muted-foreground">Last Seen</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => reloadAllMutation.mutate()}
+                  disabled={reloadAllMutation.isPending}
+                  className="w-full"
+                >
+                  <Icon 
+                    icon="solar:refresh-bold" 
+                    className={`h-4 w-4 mr-1 ${reloadAllMutation.isPending ? 'animate-spin' : ''}`} 
+                  />
+                  Reload All
+                </Button>
+              </div>
             </div>
           ) : (
-            // Not Connected State - Just need API key, no agent ID
-            <div className="space-y-4">
-              <div className="text-center py-4">
-                <Icon icon="solar:key-bold-duotone" className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <h3 className="font-medium mb-1">Connect to UMP</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Link your UMP account to access your IoT devices
-                </p>
-              </div>
-
-              <Button
-                onClick={() => setShowLinkModal(true)}
-                className="w-full"
-              >
-                <Icon icon="solar:key-bold" className="mr-2 h-4 w-4" />
-                Link UMP Account
-              </Button>
-
-              <p className="text-xs text-muted-foreground text-center">
-                You'll need your UMP API key (starts with <code className="bg-muted px-1 rounded">ump_</code>)
-              </p>
+            <div className="text-center py-4 text-muted-foreground">
+              <Icon icon="solar:server-bold-duotone" className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>Agent status unknown</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Link Account Modal */}
-      <LinkAccountModal
-        isOpen={showLinkModal}
-        onClose={() => setShowLinkModal(false)}
-        onSuccess={handleLinkSuccess}
-      />
+      {/* Tabs: Configured Devices vs Discovery */}
+      <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="configured">
+            Configured Devices ({deviceConfigs.length})
+          </TabsTrigger>
+          <TabsTrigger value="discovery">
+            Device Discovery ({discoveredDevices.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Section 2: Device Grid */}
-      {linkedAgentId && (
-        <div className="space-y-6">
-          {isLoadingDevices ? (
-            // Loading skeleton
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-6 w-32" />
-                    <Skeleton className="h-4 w-24" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-20 w-full" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : devices.length === 0 ? (
-            // No devices
+        {/* Configured Devices Tab */}
+        <TabsContent value="configured" className="space-y-6">
+          {configsLoading ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Icon icon="solar:refresh-bold" className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-spin" />
+                <p className="text-muted-foreground">Loading devices...</p>
+              </CardContent>
+            </Card>
+          ) : deviceConfigs.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <Icon icon="solar:box-bold-duotone" className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Devices Found</h3>
+                <h3 className="text-lg font-medium mb-2">No Devices Configured</h3>
                 <p className="text-muted-foreground mb-4">
-                  No devices are registered with this agent yet.
+                  Add your first device to get started
                 </p>
-                <Button variant="outline" onClick={handleRefresh}>
-                  <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4" />
-                  Refresh
+                <Button onClick={handleAddDevice}>
+                  <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+                  Add Device
                 </Button>
               </CardContent>
             </Card>
@@ -408,30 +310,133 @@ export function IoTHubPage() {
                     icon={
                       type === 'printer' ? 'solar:printer-bold-duotone' :
                       type === 'scanner' ? 'solar:scanner-bold-duotone' :
-                      type === 'terminal' ? 'solar:card-bold-duotone' :
+                      type === 'payment_terminal' ? 'solar:card-bold-duotone' :
+                      type === 'biometric' ? 'solar:user-id-bold-duotone' :
                       type === 'scale' ? 'solar:scale-bold-duotone' :
                       type === 'display' ? 'solar:monitor-bold-duotone' :
                       'solar:cpu-bolt-bold-duotone'
                     } 
                     className="h-5 w-5" 
                   />
-                  {type}s ({typeDevices.length})
+                  {type.replace('_', ' ')}s ({typeDevices.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {typeDevices.map((device) => (
-                    <UniversalDeviceCard
-                      key={device.id}
-                      device={device}
-                      agentId={linkedAgentId}
-                      onStatusChange={handleDeviceStatusChange}
-                    />
+                    <Card key={device.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-base flex items-center gap-2">
+                              {device.name}
+                              <Badge variant={device.status === 'active' ? 'default' : 'secondary'}>
+                                {device.status}
+                              </Badge>
+                            </CardTitle>
+                            <CardDescription className="flex items-center gap-1 mt-1">
+                              <Icon icon={getConnectionIcon(device.connection_type || 'agent')} className="h-3 w-3" />
+                              {getConnectionLabel(device.connection_type || 'agent')}
+                            </CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {/* Device-specific controls */}
+                        {device.device_type === 'scanner' && (
+                          <ScannerControl device={device} agentId={DEFAULT_AGENT_ID} agentOnline={agentHealth?.status === 'online'} />
+                        )}
+                        {device.device_type === 'printer' && (
+                          <PrinterControl device={device} agentId={DEFAULT_AGENT_ID} agentOnline={agentHealth?.status === 'online'} />
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditDevice(device)}
+                            className="flex-1"
+                          >
+                            <Icon icon="solar:settings-bold" className="h-4 w-4 mr-1" />
+                            Configure
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => reloadDeviceMutation.mutate(device.id)}
+                            disabled={reloadDeviceMutation.isPending}
+                          >
+                            <Icon 
+                              icon="solar:refresh-bold" 
+                              className={`h-4 w-4 ${reloadDeviceMutation.isPending ? 'animate-spin' : ''}`} 
+                            />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               </div>
             ))
           )}
-        </div>
-      )}
+        </TabsContent>
+
+        {/* Discovery Tab */}
+        <TabsContent value="discovery">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Device Discovery</CardTitle>
+                  <CardDescription>
+                    Scan for new devices on your network
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={() => scanMutation.mutate()}
+                  disabled={scanMutation.isPending || agentHealth?.status !== 'online'}
+                >
+                  <Icon 
+                    icon="solar:magnifer-bold" 
+                    className={`h-4 w-4 mr-2 ${scanMutation.isPending ? 'animate-spin' : ''}`} 
+                  />
+                  Scan for Devices
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <DiscoveredDevicesPanel
+                agentId={DEFAULT_AGENT_ID}
+                devices={discoveredDevices}
+                isLoading={discoveredLoading}
+                agentOnline={agentHealth?.status === 'online'}
+                onRefresh={() => {
+                  queryClient.invalidateQueries({ queryKey: ['discovered-devices'] })
+                }}
+                onConfigureDevice={(device) => {
+                  // Handle device configuration from discovery
+                  queryClient.invalidateQueries({ queryKey: ['device-configs'] })
+                  queryClient.invalidateQueries({ queryKey: ['discovered-devices'] })
+                }}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Device Config Dialog */}
+      <DeviceConfigDialog
+        open={configDialogOpen}
+        onOpenChange={(open) => !open && handleConfigDialogClose()}
+        device={selectedDevice}
+        agentId={DEFAULT_AGENT_ID}
+        onSuccess={handleConfigDialogClose}
+      />
+
+      {/* Agent Config Dialog */}
+      <AgentConfigDialog
+        open={agentConfigDialogOpen}
+        onOpenChange={(open) => !open && handleAgentConfigClose()}
+      />
     </div>
   )
 }

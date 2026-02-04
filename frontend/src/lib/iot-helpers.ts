@@ -9,8 +9,8 @@ import type {
   DeviceType, 
   DeviceStatus,
   ConnectionTypeInfo,
-  CONNECTION_TYPES,
 } from '@/types/iot'
+import { CONNECTION_TYPES } from '@/types/iot'
 
 /**
  * Get connection type icon
@@ -79,6 +79,8 @@ export function getDeviceTypeIcon(type: DeviceType): string {
     printer: 'solar:printer-bold-duotone',
     scanner: 'solar:scanner-bold-duotone',
     terminal: 'solar:card-bold-duotone',
+    kiosk: 'solar:tablet-bold-duotone',
+    biometric: 'solar:hand-shake-bold-duotone',
     scale: 'solar:scale-bold-duotone',
     display: 'solar:monitor-bold-duotone',
     sensor: 'solar:cpu-bolt-bold-duotone',
@@ -94,6 +96,8 @@ export function getDeviceTypeLabel(type: DeviceType): string {
     printer: 'Printer',
     scanner: 'Scanner',
     terminal: 'Payment Terminal',
+    kiosk: 'Kiosk',
+    biometric: 'Biometric Device',
     scale: 'Scale',
     display: 'Display',
     sensor: 'Sensor',

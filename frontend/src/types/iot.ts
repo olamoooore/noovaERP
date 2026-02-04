@@ -12,6 +12,9 @@ export type DeviceType =
   | 'terminal'          // Payment terminals
   | 'kiosk'             // Self-service kiosks
   | 'biometric'         // Fingerprint, face recognition, palm-vein
+  | 'scale'             // Weighing scales
+  | 'display'           // Customer/Kitchen displays
+  | 'sensor'            // IoT sensors
 
 export type DeviceStatus = 'online' | 'offline' | 'busy' | 'error' | 'ready'
 
@@ -183,6 +186,9 @@ export const DEVICE_TYPE_ICONS: Record<DeviceType, string> = {
   terminal: 'solar:card-bold-duotone',
   kiosk: 'solar:tablet-bold-duotone',
   biometric: 'solar:hand-shake-bold-duotone',
+  scale: 'solar:scale-bold-duotone',
+  display: 'solar:monitor-bold-duotone',
+  sensor: 'solar:cpu-bolt-bold-duotone',
 }
 
 /**

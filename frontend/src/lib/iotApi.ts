@@ -5,24 +5,39 @@ import type { ConnectionType, DeviceConnectionInfo } from '@/types/iot'
 export interface DeviceConfiguration {
   id: string
   agentId: string
-  deviceType: 'printer' | 'scanner' | 'terminal'
-  driverType: string
+  // Support both camelCase and snake_case from API responses
+  deviceType?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display'
+  device_type?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display'
+  driverType?: string
+  driver_type?: string
   name: string
-  enabled: boolean
-  connectionType?: ConnectionType  // New: connection type
-  connectionInfo: DeviceConnectionInfo | {  // Updated: support both new and old formats
+  enabled?: boolean
+  connectionType?: ConnectionType  // New: connection type (camelCase)
+  connection_type?: ConnectionType  // New: connection type (snake_case)
+  connectionInfo?: DeviceConnectionInfo | {  // Updated: support both new and old formats
     vendorId?: string
     productId?: string
     port?: string
     printerName?: string
   }
-  driverConfig: Record<string, any>
-  capabilities: string[]
+  connection_info?: DeviceConnectionInfo | {
+    vendorId?: string
+    productId?: string
+    port?: string
+    printerName?: string
+  }
+  driverConfig?: Record<string, any>
+  driver_config?: Record<string, any>
+  capabilities?: string[]
   metadata?: Record<string, any>
-  currentStatus: string
+  currentStatus?: string
+  status?: string  // snake_case status from backend
   lastSeenAt?: string
-  createdAt: string
-  updatedAt: string
+  last_seen_at?: string
+  createdAt?: string
+  created_at?: string
+  updatedAt?: string
+  updated_at?: string
 }
 
 export interface DiscoveredDevice {
@@ -108,6 +123,7 @@ export interface BarcodeScannedEvent {
 export interface AgentHealth {
   success: boolean
   status: 'online' | 'offline'
+  last_heartbeat?: string
   data?: {
     agentId: string
     version: string
