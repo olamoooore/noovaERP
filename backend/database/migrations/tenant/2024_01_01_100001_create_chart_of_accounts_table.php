@@ -46,34 +46,36 @@ return new class extends Migration
     {
         $accounts = [
             // Assets
-            ['code' => '1000', 'name' => 'Assets', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => true],
-            ['code' => '1010', 'name' => 'Cash', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => true],
-            ['code' => '1020', 'name' => 'Bank', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => true],
-            ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => true],
-            ['code' => '1200', 'name' => 'Inventory', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => true],
-            ['code' => '1500', 'name' => 'Fixed Assets', 'type' => 'asset', 'subtype' => 'fixed_asset', 'is_system' => true],
+            ['code' => '1000', 'name' => 'Assets', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => DB::raw('true')],
+            ['code' => '1010', 'name' => 'Cash', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => DB::raw('true')],
+            ['code' => '1020', 'name' => 'Bank', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => DB::raw('true')],
+            ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => DB::raw('true')],
+            ['code' => '1200', 'name' => 'Inventory', 'type' => 'asset', 'subtype' => 'current_asset', 'is_system' => DB::raw('true')],
+            ['code' => '1500', 'name' => 'Fixed Assets', 'type' => 'asset', 'subtype' => 'fixed_asset', 'is_system' => DB::raw('true')],
 
             // Liabilities
-            ['code' => '2000', 'name' => 'Liabilities', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => true],
-            ['code' => '2100', 'name' => 'Accounts Payable', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => true],
-            ['code' => '2200', 'name' => 'Sales Tax Payable', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => true],
+            ['code' => '2000', 'name' => 'Liabilities', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => DB::raw('true')],
+            ['code' => '2100', 'name' => 'Accounts Payable', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => DB::raw('true')],
+            ['code' => '2200', 'name' => 'Sales Tax Payable', 'type' => 'liability', 'subtype' => 'current_liability', 'is_system' => DB::raw('true')],
 
             // Equity
-            ['code' => '3000', 'name' => 'Equity', 'type' => 'equity', 'subtype' => 'equity', 'is_system' => true],
-            ['code' => '3100', 'name' => 'Retained Earnings', 'type' => 'equity', 'subtype' => 'equity', 'is_system' => true],
+            ['code' => '3000', 'name' => 'Equity', 'type' => 'equity', 'subtype' => 'equity', 'is_system' => DB::raw('true')],
+            ['code' => '3100', 'name' => 'Retained Earnings', 'type' => 'equity', 'subtype' => 'equity', 'is_system' => DB::raw('true')],
 
             // Revenue
-            ['code' => '4000', 'name' => 'Revenue', 'type' => 'revenue', 'subtype' => 'operating_revenue', 'is_system' => true],
-            ['code' => '4100', 'name' => 'Sales Revenue', 'type' => 'revenue', 'subtype' => 'operating_revenue', 'is_system' => true],
+            ['code' => '4000', 'name' => 'Revenue', 'type' => 'revenue', 'subtype' => 'operating_revenue', 'is_system' => DB::raw('true')],
+            ['code' => '4100', 'name' => 'Sales Revenue', 'type' => 'revenue', 'subtype' => 'operating_revenue', 'is_system' => DB::raw('true')],
 
             // Expenses
-            ['code' => '5000', 'name' => 'Expenses', 'type' => 'expense', 'subtype' => 'operating_expense', 'is_system' => true],
-            ['code' => '5100', 'name' => 'Cost of Goods Sold', 'type' => 'expense', 'subtype' => 'cost_of_goods_sold', 'is_system' => true],
-            ['code' => '5200', 'name' => 'Operating Expenses', 'type' => 'expense', 'subtype' => 'operating_expense', 'is_system' => true],
+            ['code' => '5000', 'name' => 'Expenses', 'type' => 'expense', 'subtype' => 'operating_expense', 'is_system' => DB::raw('true')],
+            ['code' => '5100', 'name' => 'Cost of Goods Sold', 'type' => 'expense', 'subtype' => 'cost_of_goods_sold', 'is_system' => DB::raw('true')],
+            ['code' => '5200', 'name' => 'Operating Expenses', 'type' => 'expense', 'subtype' => 'operating_expense', 'is_system' => DB::raw('true')],
         ];
 
         foreach ($accounts as $account) {
             DB::table('chart_of_accounts')->insert(array_merge($account, [
+                'is_system' => DB::raw('true'),
+                'is_active' => DB::raw('true'),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]));

@@ -17,41 +17,47 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        // For development: automatically switch to demo tenant
-        $tenant = \App\Models\Tenant::where('email', $request->email)->first();
+        // Look up user in public schema (central user management)
+        // Ensure we're querying the public schema
+        \DB::statement('SET search_path TO public');
         
-        if (!$tenant) {
-            // Try to find tenant by user email in tenant database
-            $tenant = \App\Models\Tenant::first(); // Use first tenant for development
-            
-            if (!$tenant) {
-                throw ValidationException::withMessages([
-                    'email' => ['No tenant configured. Please run seeders.'],
-                ]);
-            }
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => ['The provided credentials are incorrect.'],
+            ]);
         }
 
-        // Run the login logic in tenant context
-        return $tenant->run(function () use ($request) {
-            $user = User::where('email', $request->email)->first();
+        // Get the user's default tenant from company access
+        $defaultCompany = \DB::table('user_company_access')
+            ->where('user_id', $user->id)
+            ->where('is_default', true)
+            ->first();
 
-            if (!$user || !Hash::check($request->password, $user->password)) {
-                throw ValidationException::withMessages([
-                    'email' => ['The provided credentials are incorrect.'],
-                ]);
-            }
-
-            $token = $user->createToken('auth-token')->plainTextToken;
-
-            return response()->json([
-                'user' => $user,
-                'token' => $token,
-                'tenant' => [
-                    'id' => tenant('id'),
-                    'name' => tenant('name'),
-                ],
+        if (!$defaultCompany) {
+            // Fall back to first tenant for development
+            $tenant = \App\Models\Tenant::first();
+        } else {
+            $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+        }
+        
+        if (!$tenant) {
+            throw ValidationException::withMessages([
+                'email' => ['No tenant configured for this user.'],
             ]);
-        });
+        }
+
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user,
+            'token' => $token,
+            'tenant' => [
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+            ],
+        ]);
     }
 
     public function logout(Request $request)

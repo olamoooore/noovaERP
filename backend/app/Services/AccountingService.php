@@ -145,7 +145,7 @@ class AccountingService
      */
     public function getTrialBalance(): array
     {
-        $accounts = ChartOfAccount::where('is_active', true)
+        $accounts = ChartOfAccount::where('is_active', DB::raw('true'))
             ->orderBy('code')
             ->get();
 

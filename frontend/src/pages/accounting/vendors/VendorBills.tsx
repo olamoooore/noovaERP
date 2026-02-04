@@ -1,0 +1,412 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Icon } from '@iconify/react';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { DocumentUpload } from '@/components/ocr/DocumentUpload';
+import { ImportButton } from '@/components/ImportButton';
+import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
+import api, { accountingApi } from '@/lib/api';
+
+export const VendorBills: React.FC = () => {
+  const [showUpload, setShowUpload] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // Fetch vendor bills from both OCR documents and regular bills API
+  const { data: bills, isLoading, refetch } = useQuery({
+    queryKey: ['vendor-bills', statusFilter, searchQuery],
+    queryFn: async () => {
+      // Fetch OCR documents
+      const ocrParams = new URLSearchParams();
+      ocrParams.append('document_type', 'vendor_bill');
+      if (statusFilter !== 'all') ocrParams.append('status', statusFilter);
+      if (searchQuery) ocrParams.append('search', searchQuery);
+      
+      const ocrResponse = await api.get(`/ocr/documents?${ocrParams.toString()}`);
+      const ocrBills = ocrResponse.data.data || [];
+      
+      // Parse extracted_data if it's a string
+      const parsedOcrBills = ocrBills.map((bill: any) => ({
+        ...bill,
+        source: 'ocr',
+        extracted_data: typeof bill.extracted_data === 'string' 
+          ? JSON.parse(bill.extracted_data) 
+          : bill.extracted_data
+      }));
+
+      // Fetch regular bills from accounting API
+      let regularBills = [];
+      try {
+        const billsResponse = await accountingApi.get('/accounting/vendor-bills?per_page=1000');
+        const billsData = billsResponse.data.data || [];
+        
+        // Transform regular bills to match OCR bill structure
+        regularBills = billsData.map((bill: any) => ({
+          uuid: bill.id,
+          source: 'regular',
+          status: bill.status || 'posted',
+          document_date: bill.bill_date,
+          vendor_name: bill.vendor?.name || 'Unknown Vendor',
+          total_amount: bill.total,
+          extracted_data: {
+            invoice_number: bill.bill_number,
+            vendor_name: bill.vendor?.name || 'Unknown Vendor',
+            invoice_date: bill.bill_date,
+            due_date: bill.due_date,
+            total_amount: bill.total,
+            total: bill.total,
+            amount: bill.total,
+          },
+          confidence_score: 1.0,
+        }));
+      } catch (error) {
+        console.error('Failed to fetch regular bills:', error);
+      }
+
+      return [...parsedOcrBills, ...regularBills];
+    },
+  });
+
+  const postBillMutation = useMutation({
+    mutationFn: async (uuid: string) => {
+      const response = await api.post(`/ocr/documents/${uuid}/post`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-bills'] });
+      toast({ title: 'Vendor bill posted successfully' });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to post bill',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const handleUploadComplete = () => {
+    setShowUpload(false);
+    refetch();
+    toast({
+      title: 'Upload complete',
+      description: 'Vendor bills uploaded and OCR processing started',
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { variant: any; label: string }> = {
+      pending: { variant: 'secondary', label: 'Pending OCR' },
+      extracted: { variant: 'default', label: 'Extracted' },
+      review: { variant: 'default', label: 'Review' },
+      posted: { variant: 'default', label: 'Posted' },
+      paid: { variant: 'default', label: 'Paid' },
+      failed: { variant: 'destructive', label: 'Failed' },
+    };
+
+    const config = statusConfig[status] || { variant: 'secondary', label: status };
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount || 0);
+  };
+
+  const formatDate = (date: string) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Vendor Bills</h1>
+          <p className="text-muted-foreground mt-1">Manage bills from vendors/suppliers</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowUpload(true)}>
+            <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+            Upload Bill (OCR)
+          </Button>
+          <ImportButton 
+            importType="vendor-bills"
+            onImportComplete={() => refetch()}
+            variant="outline"
+          />
+          <Button onClick={() => navigate('/accounting/vendors/bills/create')}>
+            <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+            New Bill
+          </Button>
+        </div>
+      </div>
+
+      {showUpload && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Upload Vendor Bills</span>
+              <Button variant="ghost" size="sm" onClick={() => setShowUpload(false)}>
+                <Icon icon="solar:close-circle-bold" className="h-5 w-5" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DocumentUpload
+              onComplete={handleUploadComplete}
+              onCancel={() => setShowUpload(false)}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending OCR</option>
+              <option value="extracted">Extracted</option>
+              <option value="review">Review</option>
+              <option value="posted">Posted</option>
+              <option value="paid">Paid</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Search by vendor, bill number..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <Button variant="outline">
+              <Icon icon="solar:filter-bold-duotone" className="h-4 w-4 mr-2" />
+              More Filters
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Vendor Bills</span>
+            {bills && bills.length > 0 && (
+              <span className="text-sm font-normal text-muted-foreground">
+                {bills.length} bill(s)
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <p className="text-muted-foreground mt-4">Loading bills...</p>
+            </div>
+          ) : !bills || bills.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Icon icon="solar:bill-list-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">No vendor bills yet</p>
+              <p className="text-sm mb-4">Upload a bill via OCR or create one manually</p>
+              <div className="flex gap-2 justify-center">
+                <Button variant="outline" onClick={() => setShowUpload(true)}>
+                  <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+                  Upload Bill
+                </Button>
+                <Button onClick={() => navigate('/accounting/vendors/bills/create')}>
+                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                  Create Bill
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bill #</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Bill Date</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>OCR Confidence</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bills.map((bill: any) => (
+                    <TableRow key={bill.uuid} className="hover:bg-accent/50 cursor-pointer">
+                      <TableCell
+                        className="font-medium"
+                        onClick={() => {
+                          if (bill.source === 'regular') {
+                            navigate(`/accounting/vendors/bills/${bill.uuid}`);
+                          } else {
+                            navigate(`/ocr/documents/${bill.uuid}`);
+                          }
+                        }}
+                      >
+                        {bill.extracted_data?.invoice_number || bill.uuid.toString().slice(0, 8)}
+                      </TableCell>
+                      <TableCell>
+                        {bill.extracted_data?.vendor_name || bill.vendor_name || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(bill.extracted_data?.invoice_date || bill.document_date)}
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(bill.extracted_data?.due_date)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(
+                          bill.extracted_data?.total_amount || 
+                          bill.total_amount ||
+                          bill.extracted_data?.total || 
+                          bill.total ||
+                          bill.extracted_data?.amount || 
+                          bill.amount ||
+                          0
+                        )}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(bill.status)}</TableCell>
+                      <TableCell>
+                        {bill.confidence_score ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${
+                                  bill.confidence_score >= 0.8
+                                    ? 'bg-green-500'
+                                    : bill.confidence_score >= 0.6
+                                    ? 'bg-yellow-500'
+                                    : 'bg-red-500'
+                                }`}
+                                style={{ width: `${bill.confidence_score * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {Math.round(bill.confidence_score * 100)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          {bill.status === 'review' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                postBillMutation.mutate(bill.uuid);
+                              }}
+                            >
+                              <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                              Post
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (bill.source === 'regular') {
+                                navigate(`/accounting/vendors/bills/${bill.uuid}`);
+                              } else {
+                                navigate(`/ocr/documents/${bill.uuid}`);
+                              }
+                            }}
+                          >
+                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {bills && bills.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Bills</p>
+                  <p className="text-2xl font-bold">{bills.length}</p>
+                </div>
+                <Icon icon="solar:bill-list-bold-duotone" className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Review</p>
+                  <p className="text-2xl font-bold">
+                    {bills.filter((bill: any) => bill.status === 'review' || bill.status === 'extracted').length}
+                  </p>
+                </div>
+                <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Unpaid</p>
+                  <p className="text-2xl font-bold">
+                    {bills.filter((bill: any) => bill.status === 'posted').length}
+                  </p>
+                </div>
+                <Icon icon="solar:clock-circle-bold-duotone" className="h-8 w-8 text-red-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Paid</p>
+                  <p className="text-2xl font-bold">
+                    {bills.filter((bill: any) => bill.status === 'paid').length}
+                  </p>
+                </div>
+                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default VendorBills;

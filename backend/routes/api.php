@@ -18,7 +18,7 @@ Route::get('/health', fn() => response()->json([
 ]));
 
 // V1 Auth routes (central, non-tenant)
-Route::prefix('v1/auth')->group(function () {
+Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
     // Tenant signup & management
     Route::post('/signup', [TenantController::class, 'signup']);
     

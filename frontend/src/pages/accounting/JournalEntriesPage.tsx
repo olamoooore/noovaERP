@@ -1,0 +1,607 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Icon } from '@iconify/react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ImportButton } from '@/components/ImportButton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import journalEntriesApi, {
+  type JournalEntry,
+  type JournalEntryLine,
+  type CreateJournalEntryRequest,
+} from '@/lib/journalEntriesApi';
+import journalsApi from '@/lib/journalsApi';
+import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
+
+export default function JournalEntriesPage() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'posted'>('all');
+  const [formOpen, setFormOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [formData, setFormData] = useState<CreateJournalEntryRequest>({
+    journal_id: undefined,
+    entry_date: new Date().toISOString().split('T')[0],
+    reference: '',
+    description: '',
+    lines: [
+      { account_id: 0, debit: 0, credit: 0, description: '' },
+      { account_id: 0, debit: 0, credit: 0, description: '' },
+    ],
+  });
+
+  // Fetch journal entries
+  const { data: entriesData, isLoading } = useQuery({
+    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab, search: searchTerm }],
+    queryFn: () =>
+      journalEntriesApi.getJournalEntries({
+        status: activeTab === 'all' ? undefined : activeTab,
+        search: searchTerm,
+        per_page: 50,
+      }),
+  });
+
+  // Fetch journals for dropdown
+  const { data: journals = [] } = useQuery({
+    queryKey: ['journals'],
+    queryFn: () => journalsApi.getJournals(),
+  });
+
+  // Fetch accounts for dropdown
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['chart-of-accounts'],
+    queryFn: () => chartOfAccountsApi.getAccounts(),
+  });
+
+  // Create entry mutation
+  const createMutation = useMutation({
+    mutationFn: journalEntriesApi.createJournalEntry,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({ title: 'Success', description: 'Journal entry created successfully' });
+      setFormOpen(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to create entry',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Post entry mutation
+  const postMutation = useMutation({
+    mutationFn: (id: number) => journalEntriesApi.postJournalEntry(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({ title: 'Success', description: 'Journal entry posted successfully' });
+      setViewOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to post entry',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Reverse entry mutation
+  const reverseMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      journalEntriesApi.reverseJournalEntry(id, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({ title: 'Success', description: 'Journal entry reversed successfully' });
+      setViewOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to reverse entry',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete entry mutation
+  const deleteMutation = useMutation({
+    mutationFn: journalEntriesApi.deleteJournalEntry,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({ title: 'Success', description: 'Journal entry deleted successfully' });
+      setViewOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to delete entry',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const resetForm = () => {
+    setFormData({
+      journal_id: undefined,
+      entry_date: new Date().toISOString().split('T')[0],
+      reference: '',
+      description: '',
+      lines: [
+        { account_id: 0, debit: 0, credit: 0, description: '' },
+        { account_id: 0, debit: 0, credit: 0, description: '' },
+      ],
+    });
+  };
+
+  const addLine = () => {
+    setFormData({
+      ...formData,
+      lines: [...formData.lines, { account_id: 0, debit: 0, credit: 0, description: '' }],
+    });
+  };
+
+  const removeLine = (index: number) => {
+    if (formData.lines.length > 2) {
+      setFormData({
+        ...formData,
+        lines: formData.lines.filter((_, i) => i !== index),
+      });
+    }
+  };
+
+  const updateLine = (index: number, field: keyof JournalEntryLine, value: any) => {
+    const newLines = [...formData.lines];
+    newLines[index] = { ...newLines[index], [field]: value };
+    setFormData({ ...formData, lines: newLines });
+  };
+
+  const calculateTotals = () => {
+    const totalDebit = formData.lines.reduce((sum, line) => sum + (parseFloat(String(line.debit)) || 0), 0);
+    const totalCredit = formData.lines.reduce((sum, line) => sum + (parseFloat(String(line.credit)) || 0), 0);
+    const difference = totalDebit - totalCredit;
+    return { totalDebit, totalCredit, difference, isBalanced: Math.abs(difference) < 0.01 };
+  };
+
+  const handleSubmit = () => {
+    const totals = calculateTotals();
+    if (!totals.isBalanced) {
+      toast({
+        title: 'Error',
+        description: 'Entry must balance (total debit must equal total credit)',
+        variant: 'destructive',
+      });
+      return;
+    }
+    createMutation.mutate(formData);
+  };
+
+  const handleViewEntry = async (id: number) => {
+    const entry = await journalEntriesApi.getJournalEntry(id);
+    setSelectedEntry(entry);
+    setViewOpen(true);
+  };
+
+  const handlePost = (id: number) => {
+    if (confirm('Are you sure you want to post this entry? Posted entries cannot be edited.')) {
+      postMutation.mutate(id);
+    }
+  };
+
+  const handleReverse = (id: number) => {
+    const reason = prompt('Enter reason for reversal (optional):');
+    if (reason !== null) {
+      reverseMutation.mutate({ id, reason: reason || undefined });
+    }
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm('Are you sure you want to delete this entry?')) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const entries = entriesData?.data || [];
+  const totals = calculateTotals();
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Journal Entries</h1>
+          <p className="text-muted-foreground mt-1">
+            Create and manage manual journal entries
+          </p>
+        </div>
+        <Button onClick={() => navigate('/accounting')}>
+          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+          Back to Accounting
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="all">All Entries</TabsTrigger>
+            <TabsTrigger value="draft">Draft</TabsTrigger>
+            <TabsTrigger value="posted">Posted</TabsTrigger>
+          </TabsList>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search entries..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-64"
+            />
+            <ImportButton 
+              importType="journal-entries"
+              onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['journal-entries'] })}
+              variant="outline"
+            />
+            <Button onClick={() => setFormOpen(true)}>
+              <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+              New Entry
+            </Button>
+          </div>
+        </div>
+
+        <TabsContent value={activeTab} className="space-y-4">
+          <Card className="p-6">
+            {isLoading ? (
+              <div className="text-center py-12">
+                <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
+                <p className="text-muted-foreground mt-2">Loading entries...</p>
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Icon icon="solar:document-text-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>No journal entries found</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Entry Number</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Journal</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entries.map((entry) => (
+                    <TableRow key={entry.id} className="cursor-pointer" onClick={() => handleViewEntry(entry.id)}>
+                      <TableCell className="font-mono">{entry.entry_number}</TableCell>
+                      <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-sm">{entry.journal?.name || '-'}</TableCell>
+                      <TableCell>{entry.description}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{entry.reference || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={entry.status === 'posted' ? 'default' : 'secondary'}>
+                          {entry.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          {entry.status === 'draft' && (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => handlePost(entry.id)}>
+                                <Icon icon="solar:check-circle-linear" className="w-4 h-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => handleDelete(entry.id)}>
+                                <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                          {entry.status === 'posted' && !entry.is_reversal && (
+                            <Button size="sm" variant="ghost" onClick={() => handleReverse(entry.id)}>
+                              <Icon icon="solar:refresh-linear" className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Create Entry Dialog */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Journal Entry</DialogTitle>
+            <DialogDescription>Create a new manual journal entry</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="journal">Journal</Label>
+                <Select
+                  value={formData.journal_id?.toString() || 'none'}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, journal_id: value === 'none' ? undefined : parseInt(value) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select journal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Journal</SelectItem>
+                    {journals.map((journal) => (
+                      <SelectItem key={journal.id} value={journal.id.toString()}>
+                        {journal.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="entry_date">Entry Date *</Label>
+                <Input
+                  id="entry_date"
+                  type="date"
+                  value={formData.entry_date}
+                  onChange={(e) => setFormData({ ...formData, entry_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reference">Reference</Label>
+                <Input
+                  id="reference"
+                  placeholder="REF-001"
+                  value={formData.reference}
+                  onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description *</Label>
+              <Input
+                id="description"
+                placeholder="Entry description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+
+            {/* Lines */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Entry Lines</Label>
+                <Button size="sm" variant="outline" onClick={addLine}>
+                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                  Add Line
+                </Button>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[300px]">Account</TableHead>
+                      <TableHead className="w-[200px]">Description</TableHead>
+                      <TableHead className="w-[120px] text-right">Debit</TableHead>
+                      <TableHead className="w-[120px] text-right">Credit</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {formData.lines.map((line, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Select
+                            value={line.account_id?.toString() || 'select'}
+                            onValueChange={(value) => value !== 'select' && updateLine(index, 'account_id', parseInt(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="select" disabled>Select account</SelectItem>
+                              {accounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id.toString()}>
+                                  {account.code} - {account.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            placeholder="Line description"
+                            value={line.description || ''}
+                            onChange={(e) => updateLine(index, 'description', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={line.debit || ''}
+                            onChange={(e) => {
+                              updateLine(index, 'debit', parseFloat(e.target.value) || 0);
+                              updateLine(index, 'credit', 0);
+                            }}
+                            className="text-right"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={line.credit || ''}
+                            onChange={(e) => {
+                              updateLine(index, 'credit', parseFloat(e.target.value) || 0);
+                              updateLine(index, 'debit', 0);
+                            }}
+                            className="text-right"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {formData.lines.length > 2 && (
+                            <Button size="sm" variant="ghost" onClick={() => removeLine(index)}>
+                              <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="font-semibold bg-muted/50">
+                      <TableCell colSpan={2} className="text-right">
+                        Total:
+                      </TableCell>
+                      <TableCell className="text-right">${totals.totalDebit.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">${totals.totalCredit.toFixed(2)}</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                    {!totals.isBalanced && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-red-600">
+                          <Icon icon="solar:danger-triangle-linear" className="w-4 h-4 inline mr-2" />
+                          Entry is not balanced. Difference: ${Math.abs(totals.difference).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || !totals.isBalanced}>
+              {createMutation.isPending ? (
+                <>
+                  <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
+                  Creating...
+                </>
+              ) : (
+                'Create Entry'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Entry Dialog */}
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Journal Entry Details</DialogTitle>
+            <DialogDescription>Entry #{selectedEntry?.entry_number}</DialogDescription>
+          </DialogHeader>
+          {selectedEntry && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Date</Label>
+                  <p>{new Date(selectedEntry.entry_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <p>
+                    <Badge variant={selectedEntry.status === 'posted' ? 'default' : 'secondary'}>
+                      {selectedEntry.status}
+                    </Badge>
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Journal</Label>
+                  <p>{selectedEntry.journal?.name || '-'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Reference</Label>
+                  <p>{selectedEntry.reference || '-'}</p>
+                </div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Description</Label>
+                <p>{selectedEntry.description}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Lines</Label>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Account</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Debit</TableHead>
+                      <TableHead className="text-right">Credit</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedEntry.lines.map((line) => (
+                      <TableRow key={line.id}>
+                        <TableCell>
+                          {line.account?.code} - {line.account?.name}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {line.description || '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {line.debit > 0 ? `$${parseFloat(String(line.debit)).toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {line.credit > 0 ? `$${parseFloat(String(line.credit)).toFixed(2)}` : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

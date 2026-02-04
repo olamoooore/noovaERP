@@ -14,13 +14,14 @@ export function AccountingPage() {
     },
   })
 
-  const { data: chartOfAccounts } = useQuery({
+  const { data: chartOfAccountsData } = useQuery({
     queryKey: ['chart-of-accounts'],
     queryFn: async () => {
       const response = await api.get('/accounting/chart-of-accounts')
       return response.data
     },
   })
+  const chartOfAccounts = chartOfAccountsData?.data || []
 
   const { data: journalEntries } = useQuery({
     queryKey: ['journal-entries'],

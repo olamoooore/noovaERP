@@ -7,8 +7,13 @@ use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withProviders([
+        \App\Providers\DatabaseQueryServiceProvider::class,
         \App\Providers\ModuleServiceProvider::class,
+        \App\Providers\TenantDatabaseServiceProvider::class,
         \App\Providers\Filament\AdminPanelProvider::class,
+    ])
+    ->withEvents(discover: [
+        __DIR__.'/../app/Listeners',
     ])
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
@@ -30,7 +35,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'feature' => \App\Http\Middleware\EnsureFeatureEnabled::class,
             'auth.agent' => \App\Http\Middleware\AuthenticateAgent::class,
             'auth.agent_or_user' => \App\Http\Middleware\AuthenticateAgentOrUser::class,
+            'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
         ]);
+
+        // Add CORS to the very beginning of global middleware stack
+        $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
 
         // This project is API-first (SPA + Sanctum). For API routes, we should
         // return a 401 instead of trying to redirect to a named 'login' route.

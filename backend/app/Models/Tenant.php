@@ -51,4 +51,14 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     {
         return $this->subscription_ends_at && $this->subscription_ends_at->isFuture();
     }
+
+    /**
+     * Get the schema name for this tenant
+     * Schema name is stored as a custom attribute
+     */
+    public function getSchemaName(): string
+    {
+        // Stancl/Tenancy stores custom data as direct attributes
+        return $this->schema_name ?? $this->getTenantKey();
+    }
 }

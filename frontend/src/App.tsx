@@ -46,6 +46,41 @@ const SalesDashboard = lazy(() => import('@/pages/dashboards/SalesDashboard').th
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
+// Lazy load new accounting module pages
+const AccountingDashboard = lazy(() => import('@/pages/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })))
+const CustomerBills = lazy(() => import('@/pages/accounting/customers/CustomerBills').then(m => ({ default: m.CustomerBills })))
+const CustomerInvoiceDetail = lazy(() => import('@/pages/accounting/customers/CustomerInvoiceDetail').then(m => ({ default: m.CustomerInvoiceDetail })))
+const CustomerPayments = lazy(() => import('@/pages/accounting/customers/CustomerPayments').then(m => ({ default: m.CustomerPayments })))
+const CustomerFollowupReports = lazy(() => import('@/pages/accounting/customers/CustomerFollowupReports').then(m => ({ default: m.CustomerFollowupReports })))
+const CustomerStatements = lazy(() => import('@/pages/accounting/customers/CustomerStatements').then(m => ({ default: m.CustomerStatements })))
+const VendorBills = lazy(() => import('@/pages/accounting/vendors/VendorBills').then(m => ({ default: m.VendorBills })))
+const VendorBillDetail = lazy(() => import('@/pages/accounting/vendors/VendorBillDetail').then(m => ({ default: m.VendorBillDetail })))
+const VendorPayments = lazy(() => import('@/pages/accounting/vendors/VendorPayments').then(m => ({ default: m.VendorPayments })))
+const AgedReceivablesPage = lazy(() => import('@/pages/accounting/reports/AgedReceivablesPage').then(m => ({ default: m.AgedReceivablesPage })))
+const AgedPayablesPage = lazy(() => import('@/pages/accounting/reports/AgedPayablesPage').then(m => ({ default: m.AgedPayablesPage })))
+const BankReconciliationPage = lazy(() => import('@/pages/accounting/BankReconciliationPage').then(m => ({ default: m.BankReconciliationPage })))
+const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
+const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
+const MultiCurrencyPage = lazy(() => import('@/pages/accounting/MultiCurrencyPage'))
+const AnalyticAccountsPage = lazy(() => import('@/pages/accounting/AnalyticAccountsPage'))
+const CompanySettingsPage = lazy(() => import('@/pages/accounting/CompanySettingsPage'))
+const PaymentTermsPage = lazy(() => import('@/pages/accounting/PaymentTermsPage'))
+const ChartOfAccountsPage = lazy(() => import('@/pages/accounting/ChartOfAccountsPage'))
+const JournalEntriesPage = lazy(() => import('@/pages/accounting/JournalEntriesPage'))
+const JournalsPage = lazy(() => import('@/pages/accounting/JournalsPage'))
+const TaxConfigurationPage = lazy(() => import('@/pages/accounting/TaxConfigurationPage'))
+const BankAccountsPage = lazy(() => import('@/pages/accounting/BankAccountsPage'))
+const CustomerCreditNotesPage = lazy(() => import('@/pages/accounting/CustomerCreditNotesPage'))
+const VendorCreditNotesPage = lazy(() => import('@/pages/accounting/VendorCreditNotesPage'))
+const ARTransactionsPage = lazy(() => import('@/pages/accounting/ARTransactionsPage'))
+const APTransactionsPage = lazy(() => import('@/pages/accounting/APTransactionsPage'))
+const BalanceSheetPage = lazy(() => import('@/pages/accounting/reports/BalanceSheetPage'))
+const ProfitLossPage = lazy(() => import('@/pages/accounting/reports/ProfitLossPage'))
+const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'))
+const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
+const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
+const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
+
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
 const InventoryDashboardPage = lazy(() => import('@/pages/Inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
@@ -130,6 +165,52 @@ function App() {
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/accounting" element={<AccountingPage />} />
+                
+                {/* New Accounting Module Routes */}
+                <Route path="/accounting/dashboard" element={<AccountingDashboard />} />
+                
+                {/* Customer Section */}
+                <Route path="/accounting/customers/bills" element={<CustomerBills />} />
+                <Route path="/accounting/customers/bills/:id" element={<CustomerInvoiceDetail />} />
+                <Route path="/accounting/customers/payments" element={<CustomerPayments />} />
+                <Route path="/accounting/customers/credit-notes" element={<CustomerCreditNotesPage />} />
+                <Route path="/accounting/customers/transactions" element={<ARTransactionsPage />} />
+                <Route path="/accounting/customers/followup-reports" element={<CustomerFollowupReports />} />
+                <Route path="/accounting/customers/statements" element={<CustomerStatements />} />
+                
+                {/* Vendor Section */}
+                <Route path="/accounting/vendors/bills" element={<VendorBills />} />
+                <Route path="/accounting/vendors/bills/:id" element={<VendorBillDetail />} />
+                <Route path="/accounting/vendors/payments" element={<VendorPayments />} />
+                <Route path="/accounting/vendors/credit-notes" element={<VendorCreditNotesPage />} />
+                <Route path="/accounting/vendors/transactions" element={<APTransactionsPage />} />
+                
+                {/* Accounting Core Section */}
+                <Route path="/accounting/core/chart-of-accounts" element={<ChartOfAccountsPage />} />
+                <Route path="/accounting/core/journal-entries" element={<JournalEntriesPage />} />
+                <Route path="/accounting/core/journals" element={<JournalsPage />} />
+                <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
+                <Route path="/accounting/core/assets" element={<AssetsManagementPage />} />
+                <Route path="/accounting/core/lock-dates" element={<LockDatesPage />} />
+                <Route path="/accounting/core/multi-currency" element={<MultiCurrencyPage />} />
+                <Route path="/accounting/core/analytic-accounts" element={<AnalyticAccountsPage />} />
+                
+                {/* Reporting Section */}
+                <Route path="/accounting/reporting/balance-sheet" element={<BalanceSheetPage />} />
+                <Route path="/accounting/reporting/profit-loss" element={<ProfitLossPage />} />
+                <Route path="/accounting/reporting/cash-flow" element={<CashFlowPage />} />
+                <Route path="/accounting/reporting/general-ledger" element={<GeneralLedgerPage />} />
+                <Route path="/accounting/reporting/trial-balance" element={<TrialBalancePage />} />
+                <Route path="/accounting/reporting/aged-receivables" element={<AgedReceivablesPage />} />
+                <Route path="/accounting/reporting/aged-payables" element={<AgedPayablesPage />} />
+                
+                {/* Configuration Section */}
+                <Route path="/accounting/configuration/company" element={<CompanySettingsPage />} />
+                <Route path="/accounting/configuration/policies" element={<AccountingPoliciesPage />} />
+                <Route path="/accounting/configuration/payment-terms" element={<PaymentTermsPage />} />
+                <Route path="/accounting/configuration/taxes" element={<TaxConfigurationPage />} />
+                <Route path="/accounting/configuration/bank-accounts" element={<BankAccountsPage />} />
+                
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/pos" element={<POSPage />} />
                 <Route path="/pos/orders" element={<POSOrdersPage />} />

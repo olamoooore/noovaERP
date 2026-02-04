@@ -25,6 +25,13 @@ import type {
   SalesDashboardData,
   InventoryDashboardData,
   FinancialDashboardData,
+  AgedReceivablesData,
+  AgedPayablesData,
+  BankAccountsData,
+  ReconciliationTransactionsData,
+  ReconciliationCompleteRequest,
+  AddTransactionRequest,
+  ReconciliationTransaction,
   ExportRequest,
   ExportResponse,
   ApiResponse,
@@ -46,6 +53,8 @@ class ReportApiClient {
         '/reports/financial/profit-loss',
         { params: filters }
       );
+      console.log('P&L API Response:', response.data);
+      console.log('P&L Data:', response.data.data);
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Profit & Loss report');
@@ -58,21 +67,40 @@ class ReportApiClient {
    */
   async getBalanceSheet(filters: ReportFilters): Promise<BalanceSheetData> {
     try {
-      // Balance Sheet requires as_of_date instead of start_date/end_date
-      const params = {
+      // Balance Sheet requires as_of_date
+      // If as_of_date is provided directly, use it
+      // Otherwise, use end_date or start_date as fallback
+      const params: any = {
         ...filters,
-        as_of_date: filters.end_date || filters.start_date,
       };
+      
+      // Ensure as_of_date is set
+      if (!params.as_of_date) {
+        params.as_of_date = params.end_date || params.start_date;
+      }
+      
       // Remove start_date and end_date as they're not used for Balance Sheet
       delete params.start_date;
       delete params.end_date;
+      
+      console.log('Balance Sheet API Request:', {
+        url: '/reports/financial/balance-sheet',
+        params,
+      });
       
       const response = await api.get<ApiResponse<BalanceSheetData>>(
         '/reports/financial/balance-sheet',
         { params }
       );
+      
+      console.log('Balance Sheet API Response:', {
+        status: response.status,
+        data: response.data,
+      });
+      
       return response.data.data;
     } catch (error) {
+      console.error('Balance Sheet API Error:', error);
       this.handleError(error, 'Failed to fetch Balance Sheet report');
       throw error;
     }
@@ -99,21 +127,40 @@ class ReportApiClient {
    */
   async getTrialBalance(filters: ReportFilters): Promise<TrialBalanceData> {
     try {
-      // Trial Balance requires as_of_date instead of start_date/end_date
-      const params = {
+      // Trial Balance requires as_of_date
+      // If as_of_date is provided directly, use it
+      // Otherwise, use end_date or start_date as fallback
+      const params: any = {
         ...filters,
-        as_of_date: filters.end_date || filters.start_date,
       };
+      
+      // Ensure as_of_date is set
+      if (!params.as_of_date) {
+        params.as_of_date = params.end_date || params.start_date;
+      }
+      
       // Remove start_date and end_date as they're not used for Trial Balance
       delete params.start_date;
       delete params.end_date;
+      
+      console.log('Trial Balance API Request:', {
+        url: '/reports/financial/trial-balance',
+        params,
+      });
       
       const response = await api.get<ApiResponse<TrialBalanceData>>(
         '/reports/financial/trial-balance',
         { params }
       );
+      
+      console.log('Trial Balance API Response:', {
+        status: response.status,
+        data: response.data,
+      });
+      
       return response.data.data;
     } catch (error) {
+      console.error('Trial Balance API Error:', error);
       this.handleError(error, 'Failed to fetch Trial Balance report');
       throw error;
     }
@@ -150,6 +197,111 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Account Statement');
+      throw error;
+    }
+  }
+
+  /**
+   * Get Aged Receivables Report
+   */
+  async getAgedReceivables(filters?: ReportFilters): Promise<AgedReceivablesData> {
+    try {
+      const response = await api.get<ApiResponse<AgedReceivablesData>>(
+        '/accounting/reports/aged-receivables',
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Aged Receivables report');
+      throw error;
+    }
+  }
+
+  /**
+   * Get Aged Payables Report
+   */
+  async getAgedPayables(filters?: ReportFilters): Promise<AgedPayablesData> {
+    try {
+      const response = await api.get<ApiResponse<AgedPayablesData>>(
+        '/accounting/reports/aged-payables',
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Aged Payables report');
+      throw error;
+    }
+  }
+
+  // ==================== Bank Reconciliation ====================
+
+  /**
+   * Get Bank Accounts for Reconciliation
+   */
+  async getBankAccounts(): Promise<BankAccountsData> {
+    try {
+      const response = await api.get<{ data: any[] }>(
+        '/accounting/reconciliation/bank-accounts'
+      );
+      // Backend returns { data: [...] }, wrap it in BankAccountsData format
+      return { data: response.data.data || [] };
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch bank accounts');
+      throw error;
+    }
+  }
+
+  /**
+   * Get Unreconciled Transactions for a Bank Account
+   */
+  async getReconciliationTransactions(
+    accountId: number,
+    filters?: { status?: string; search?: string }
+  ): Promise<ReconciliationTransactionsData> {
+    try {
+      const response = await api.get<ApiResponse<ReconciliationTransactionsData>>(
+        `/accounting/reconciliation/transactions/${accountId}`,
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch reconciliation transactions');
+      throw error;
+    }
+  }
+
+  /**
+   * Complete Bank Reconciliation
+   */
+  async completeReconciliation(
+    request: ReconciliationCompleteRequest
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await api.post<ApiResponse<{ success: boolean; message: string }>>(
+        '/accounting/reconciliation/complete',
+        request
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to complete reconciliation');
+      throw error;
+    }
+  }
+
+  /**
+   * Add Adjusting Entry Transaction
+   */
+  async addAdjustingEntry(
+    request: AddTransactionRequest
+  ): Promise<ReconciliationTransaction> {
+    try {
+      const response = await api.post<ApiResponse<ReconciliationTransaction>>(
+        '/accounting/reconciliation/add-transaction',
+        request
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to add adjusting entry');
       throw error;
     }
   }

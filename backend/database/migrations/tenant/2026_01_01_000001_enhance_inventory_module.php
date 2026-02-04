@@ -198,26 +198,26 @@ return new class extends Migration
 
         // Seed default adjustment reasons
         \DB::table('stock_adjustment_reasons')->insert([
-            ['name' => 'Damaged Goods', 'code' => 'DAMAGED', 'type' => 'decrease', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Expired Stock', 'code' => 'EXPIRED', 'type' => 'decrease', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Stock Count Correction', 'code' => 'COUNT', 'type' => 'both', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Theft/Loss', 'code' => 'LOSS', 'type' => 'decrease', 'requires_approval' => true, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Found Stock', 'code' => 'FOUND', 'type' => 'increase', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Return to Stock', 'code' => 'RETURN', 'type' => 'increase', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Opening Balance', 'code' => 'OPENING', 'type' => 'both', 'requires_approval' => false, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Damaged Goods', 'code' => 'DAMAGED', 'type' => 'decrease', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Expired Stock', 'code' => 'EXPIRED', 'type' => 'decrease', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Stock Count Correction', 'code' => 'COUNT', 'type' => 'both', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Theft/Loss', 'code' => 'LOSS', 'type' => 'decrease', 'requires_approval' => DB::raw('true'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Found Stock', 'code' => 'FOUND', 'type' => 'increase', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Return to Stock', 'code' => 'RETURN', 'type' => 'increase', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Opening Balance', 'code' => 'OPENING', 'type' => 'both', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         // Seed default inventory settings
         \DB::table('inventory_settings')->insert([
-            'allow_negative_stock' => false,
-            'auto_generate_sku' => true,
+            'allow_negative_stock' => DB::raw('false'),
+            'auto_generate_sku' => DB::raw('true'),
             'sku_prefix' => 'SKU',
             'sku_length' => 8,
-            'track_batch_numbers' => false,
-            'track_expiry_dates' => false,
-            'require_adjustment_approval' => false,
+            'track_batch_numbers' => DB::raw('false'),
+            'track_expiry_dates' => DB::raw('false'),
+            'require_adjustment_approval' => DB::raw('false'),
             'low_stock_threshold_days' => 7,
-            'enable_barcode_scanning' => true,
+            'enable_barcode_scanning' => DB::raw('true'),
             'created_at' => now(),
             'updated_at' => now(),
         ]);

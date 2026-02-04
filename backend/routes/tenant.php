@@ -14,10 +14,13 @@ use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 | Schema isolation ensures data security
 */
 
+// For API routes, use SetTenantFromUserPreference to identify tenant from user's default company
 Route::middleware([
     'api',
-    InitializeTenancyByDomain::class,
+    'auth:sanctum',
+    \App\Http\Middleware\SetTenantFromUserPreference::class,
     PreventAccessFromCentralDomains::class,
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
 ])->prefix('api/v1')->group(function () {
     $modules = app(\App\Modules\ModuleManager::class);
 
