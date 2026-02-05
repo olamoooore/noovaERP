@@ -163,6 +163,39 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
+    title: 'Loyalty',
+    href: '/loyalty',
+    icon: 'solar:gift-bold-duotone',
+    featureKey: 'loyalty',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/loyalty',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Customers',
+        href: '/loyalty/customers',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
+        title: 'Rewards',
+        href: '/loyalty/rewards',
+        icon: 'solar:gift-bold-duotone',
+      },
+      {
+        title: 'Redemptions',
+        href: '/loyalty/redemptions',
+        icon: 'solar:ticket-bold-duotone',
+      },
+      {
+        title: 'Settings',
+        href: '/loyalty/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'OCR Documents',
     href: '/ocr/documents',
     icon: 'solar:document-add-bold-duotone',
@@ -258,6 +291,7 @@ export function Sidebar() {
     enabledFeatures.add('inventory')
     enabledFeatures.add('sales')
     enabledFeatures.add('accounting')
+    enabledFeatures.add('loyalty')
   }
 
   const navItems = baseNavItems.filter(item => {

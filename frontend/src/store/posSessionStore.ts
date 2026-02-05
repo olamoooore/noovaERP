@@ -19,8 +19,10 @@ export interface CartItem {
 }
 
 export interface Discount {
-  type: "fixed" | "percent";
+  type: "fixed" | "percent" | "loyalty";
   value: number;
+  loyaltyPointsUsed?: number;
+  loyaltyDiscountValue?: number;
 }
 
 // Terminal data from database
@@ -183,7 +185,7 @@ export const usePosSessionStore = create<PosSessionState>()(
       clearCart: () =>
         set({
           cart: [],
-          discount: { type: "fixed", value: 0 },
+          discount: { type: "fixed", value: 0, loyaltyPointsUsed: 0, loyaltyDiscountValue: 0 },
           customerId: "walk-in",
         }),
 

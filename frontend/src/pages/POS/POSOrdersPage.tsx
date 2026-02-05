@@ -38,6 +38,13 @@ interface PosOrder {
   status: 'draft' | 'paid' | 'cancelled'
   subtotal: number
   tax_amount: number
+  discount_amount?: number
+  discount_type?: 'fixed' | 'percent'
+  discount_value?: number
+  coupon_code?: string
+  coupon_discount?: number
+  loyalty_points_redeemed?: number
+  loyalty_discount?: number
   total: number
   currency: string
   notes?: string
@@ -336,6 +343,24 @@ export function POSOrdersPage() {
                   <span className="text-muted-foreground">Tax</span>
                   <span>{formatCurrency(Number(selectedOrder.tax_amount))}</span>
                 </div>
+                {selectedOrder.discount_amount > 0 && (
+                  <div className="flex justify-between text-destructive">
+                    <span>Discount {selectedOrder.discount_type === 'percent' ? `(${selectedOrder.discount_value}%)` : '(Fixed)'}</span>
+                    <span>-{formatCurrency(Number(selectedOrder.discount_amount))}</span>
+                  </div>
+                )}
+                {selectedOrder.coupon_code && selectedOrder.coupon_discount > 0 && (
+                  <div className="flex justify-between text-amber-600">
+                    <span>Coupon: {selectedOrder.coupon_code}</span>
+                    <span>-{formatCurrency(Number(selectedOrder.coupon_discount))}</span>
+                  </div>
+                )}
+                {selectedOrder.loyalty_discount > 0 && (
+                  <div className="flex justify-between text-primary">
+                    <span>Loyalty {selectedOrder.loyalty_points_redeemed ? `(${selectedOrder.loyalty_points_redeemed} pts)` : ''}</span>
+                    <span>-{formatCurrency(Number(selectedOrder.loyalty_discount))}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>

@@ -24,10 +24,10 @@ const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ defa
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
 const POSPage = lazy(() => import('@/pages/POSPage').then(m => ({ default: m.POSPage })))
-const POSTerminal = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSTerminal })))
-const POSOrdersPage = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSOrdersPage })))
-const POSBarcodePage = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSBarcodePage })))
-const POSReportsPage = lazy(() => import('@/pages/POS').then(m => ({ default: m.POSReportsPage })))
+const POSTerminal = lazy(() => import('@/pages/POS/POSTerminal').then(m => ({ default: m.POSTerminal })))
+const POSOrdersPage = lazy(() => import('@/pages/POS/POSOrdersPage').then(m => ({ default: m.POSOrdersPage })))
+const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m => ({ default: m.POSBarcodePage })))
+const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
@@ -80,6 +80,14 @@ const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'
 const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
 const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
 const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
+
+// Loyalty Module Pages
+const LoyaltyDashboardPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyDashboardPage })))
+const LoyaltyCustomersPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyCustomersPage })))
+const LoyaltyCustomerDetailPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyCustomerDetailPage })))
+const LoyaltyRewardsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyRewardsPage })))
+const LoyaltyRedemptionsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyRedemptionsPage })))
+const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltySettingsPage })))
 
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
@@ -238,6 +246,14 @@ function App() {
                 <Route path="/payment/success" element={<PaymentSuccess />} />
                 <Route path="/settings/payment-gateways" element={<PaymentGatewaySettings />} />
                 <Route path="/settings/offline-payments" element={<OfflinePaymentMethods />} />
+                
+                {/* Loyalty Module Routes */}
+                <Route path="/loyalty" element={<LoyaltyDashboardPage />} />
+                <Route path="/loyalty/customers" element={<LoyaltyCustomersPage />} />
+                <Route path="/loyalty/customers/:customerId" element={<LoyaltyCustomerDetailPage />} />
+                <Route path="/loyalty/rewards" element={<LoyaltyRewardsPage />} />
+                <Route path="/loyalty/redemptions" element={<LoyaltyRedemptionsPage />} />
+                <Route path="/loyalty/settings" element={<LoyaltySettingsPage />} />
               </Route>
 
               {/* POS Layout Routes - fullscreen without sidebar */}

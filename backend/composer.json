@@ -35,6 +35,7 @@
             "Modules\\POS\\": "modules/POS/src/",
             "Modules\\FinancialReporting\\": "modules/FinancialReporting/src/",
             "Modules\\OCRBookkeeping\\": "modules/OCRBookkeeping/src/",
+            "Modules\\Loyalty\\": "modules/Loyalty/src/",
             "Modules\\": "modules/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"

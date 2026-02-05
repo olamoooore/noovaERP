@@ -15,6 +15,8 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPostingService;
+use Modules\Loyalty\Services\RedemptionService;
+use Modules\Loyalty\Services\PointsEarningService;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class PosOrderController extends Controller
@@ -159,6 +161,8 @@ class PosOrderController extends Controller
             'notes' => 'nullable|string',
             'discount_type' => 'nullable|in:fixed,percent',
             'discount_value' => 'nullable|numeric|min:0',
+            'loyalty_points_redeemed' => 'nullable|integer|min:0',
+            'loyalty_discount' => 'nullable|numeric|min:0',
             'customer_id' => 'nullable|exists:customers,id',
             'session_id' => 'nullable|exists:pos_sessions,id',
             'terminal_id' => 'nullable|exists:pos_terminals,id',
@@ -301,14 +305,20 @@ class PosOrderController extends Controller
             }
             $discountAmount = round($discountAmount, 2);
 
+            // Loyalty discount
+            $loyaltyDiscount = (float) ($validated['loyalty_discount'] ?? 0);
+            $loyaltyPointsRedeemed = (int) ($validated['loyalty_points_redeemed'] ?? 0);
+
             // Final Total
-            $finalTotal = max(0, $totalAmount - $discountAmount);
+            $finalTotal = max(0, $totalAmount - $discountAmount - $loyaltyDiscount);
 
             $order->update([
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => round($taxAmount, 2),
                 'total' => round($finalTotal, 2),
                 'discount_amount' => $discountAmount,
+                'loyalty_points_redeemed' => $loyaltyPointsRedeemed,
+                'loyalty_discount' => $loyaltyDiscount,
             ]);
 
             return response()->json($order->load('items', 'payments'), 201);
@@ -336,6 +346,27 @@ class PosOrderController extends Controller
             $amount = (float) $validated['amount'];
             if (abs($amount - (float) $posOrder->total) > 0.01) {
                 abort(422, 'Payment amount must equal order total for now.');
+            }
+
+            // Process loyalty points redemption if applicable
+            $loyaltyRedemptionResult = null;
+            if ($posOrder->loyalty_points_redeemed > 0 && $posOrder->customer_id) {
+                try {
+                    $redemptionService = app(RedemptionService::class);
+                    $loyaltyRedemptionResult = $redemptionService->redeemForDiscount(
+                        $posOrder->customer_id,
+                        $posOrder->loyalty_points_redeemed,
+                        null // No invoice ID for POS orders yet
+                    );
+                } catch (\Exception $e) {
+                    // Log error but don't fail the order
+                    \Log::warning('Loyalty redemption failed for POS order', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'points' => $posOrder->loyalty_points_redeemed,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             PosPayment::create([
@@ -367,7 +398,44 @@ class PosOrderController extends Controller
                 'receipt_number' => PosOrder::generateReceiptNumber(),
             ]);
 
-            return response()->json($posOrder->fresh()->load('items', 'payments', 'journalEntry', 'customer'), 200);
+            // Award loyalty points for the purchase (after payment)
+            $loyaltyEarningResult = null;
+            if ($posOrder->customer_id) {
+                try {
+                    $earningService = app(PointsEarningService::class);
+                    $loyaltyEarningResult = $earningService->awardPoints(
+                        $posOrder->customer_id,
+                        $posOrder->subtotal, // Award points on subtotal (before discounts)
+                        'pos_order',
+                        $posOrder->id,
+                        "Points earned from POS purchase #{$posOrder->order_number}"
+                    );
+                } catch (\Exception $e) {
+                    // Log error but don't fail the order
+                    \Log::warning('Loyalty points earning failed for POS order', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $response = $posOrder->fresh()->load('items', 'payments', 'journalEntry', 'customer');
+            
+            return response()->json([
+                'data' => $response,
+                'loyalty' => [
+                    'redeemed' => $loyaltyRedemptionResult ? [
+                        'points' => $loyaltyRedemptionResult['points_redeemed'],
+                        'discount' => $loyaltyRedemptionResult['discount_amount'],
+                    ] : null,
+                    'earned' => $loyaltyEarningResult ? [
+                        'points' => $loyaltyEarningResult['points_earned'],
+                        'new_balance' => $loyaltyEarningResult['new_balance'],
+                        'tier_upgraded' => $loyaltyEarningResult['tier_upgraded'],
+                    ] : null,
+                ],
+            ], 200);
         });
     }
 

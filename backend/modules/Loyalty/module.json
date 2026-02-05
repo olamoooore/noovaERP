@@ -3,6 +3,7 @@
   "name": "Loyalty",
   "type": "addon",
   "providers": [
-    "Modules\\Loyalty\\Providers\\LoyaltyServiceProvider"
+    "Modules\\Loyalty\\Providers\\LoyaltyServiceProvider",
+    "Modules\\Loyalty\\Providers\\LoyaltyEventServiceProvider"
   ]
 }

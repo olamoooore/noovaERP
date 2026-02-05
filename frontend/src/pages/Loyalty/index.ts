@@ -1,0 +1,6 @@
+export { LoyaltyDashboardPage } from './LoyaltyDashboardPage'
+export { LoyaltyCustomersPage } from './LoyaltyCustomersPage'
+export { LoyaltyRewardsPage } from './LoyaltyRewardsPage'
+export { LoyaltyCustomerDetailPage } from './LoyaltyCustomerDetailPage'
+export { LoyaltySettingsPage } from './LoyaltySettingsPage'
+export { LoyaltyRedemptionsPage } from './LoyaltyRedemptionsPage'

@@ -36,6 +36,12 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -43,6 +49,7 @@ import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { POSReceipt } from '@/components/pos/POSReceipt'
 import { PaymentMethodSelector } from '@/components/pos/PaymentMethodSelector'
 import { StripePaymentDialog } from '@/components/StripePaymentDialog'
+import loyaltyApi from '@/lib/loyaltyApi'
 
 interface Product {
   id: number
@@ -73,7 +80,22 @@ interface Customer {
   phone?: string
   code?: string
   loyalty_points?: number
+  current_points?: number
+  loyalty_tier_name?: string
+  is_enrolled?: boolean
   type?: 'individual' | 'company'
+}
+
+interface LoyaltyRedemptionInfo {
+  enrolled: boolean
+  available_points: number
+  tier_name: string
+  tier_multiplier: number
+  currency_per_point: number
+  min_redemption_points: number
+  max_redemption_percent: number
+  max_redeemable_points: number
+  max_discount_amount: number
 }
 
 interface Warehouse {
@@ -135,11 +157,22 @@ export function POSTerminal() {
   const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false)
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' })
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   
   // Session Close State
   const [showCloseSessionDialog, setShowCloseSessionDialog] = useState(false)
   const [closingBalance, setClosingBalance] = useState<string>('')
   const [closingNotes, setClosingNotes] = useState<string>('')
+  
+  // Discount/Loyalty/Coupon Tab State
+  const [activeDiscountTab, setActiveDiscountTab] = useState<'discount' | 'loyalty' | 'coupon'>('discount')
+  const [couponCode, setCouponCode] = useState('')
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string
+    discount_type: 'fixed' | 'percent'
+    discount_value: number
+    description?: string
+  } | null>(null)
   
   // Generate unique order ID for idempotency (UUID v4 format)
   const generateOrderId = useCallback(() => {
@@ -202,17 +235,56 @@ export function POSTerminal() {
     },
   })
 
-  // Customer Search Query
+  // Customer Search Query with debounce
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(customerSearch)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [customerSearch])
+  
+  // Refetch customers when dialog opens
+  useEffect(() => {
+    if (showCustomerDialog) {
+      refetchCustomers()
+    }
+  }, [showCustomerDialog])
+  
+  // Ref to access current itemsTotal in queries
+  const itemsTotalRef = useRef(0)
+  
   const { data: searchedCustomers, isLoading: searchingCustomers } = useQuery<Customer[]>({
-    queryKey: ['customers-search', customerSearch],
+    queryKey: ['customers-search', debouncedSearch],
     queryFn: async () => {
-      if (!customerSearch || customerSearch.length < 2) return []
+      if (!debouncedSearch || debouncedSearch.length < 2) return []
       const response = await api.get('/customers', { 
-        params: { search: customerSearch, per_page: 20 } 
+        params: { search: debouncedSearch, per_page: 20 } 
       })
       return Array.isArray(response.data) ? response.data : (response.data.data || [])
     },
-    enabled: customerSearch.length >= 2,
+    enabled: debouncedSearch.length >= 2,
+  })
+
+  // Loyalty Redemption State
+  const [loyaltyRedemption, setLoyaltyRedemption] = useState<{
+    pointsToRedeem: number
+    discountAmount: number
+    redemptionId?: number
+  }>({ pointsToRedeem: 0, discountAmount: 0 })
+
+  // Fetch Loyalty Info for selected customer
+  const [loyaltyQueryKey, setLoyaltyQueryKey] = useState(['loyalty-pos-info', null, 0])
+  
+  const { data: loyaltyInfo, refetch: refetchLoyaltyInfo } = useQuery<LoyaltyRedemptionInfo>({
+    queryKey: loyaltyQueryKey,
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return null
+      const response = await loyaltyApi.getPosRedemptionInfo(selectedCustomer.id, itemsTotalRef.current)
+      return response
+    },
+    enabled: !!selectedCustomer?.id,
   })
 
   // Create Customer Mutation
@@ -371,16 +443,43 @@ export function POSTerminal() {
   const taxAmount = round2(cart.reduce((sum, item) => sum + item.tax_amount, 0))
   const itemsTotal = round2(cart.reduce((sum, item) => sum + item.line_total, 0)) // gross total of items
   
-  // Calculate Discount Amount
-  let discountAmount = 0
+  // Calculate Discount Amount (regular + coupon + loyalty)
+  let regularDiscountAmount = 0
   if (discount.type === 'fixed') {
-      discountAmount = discount.value
-  } else {
-      discountAmount = itemsTotal * (discount.value / 100)
+      regularDiscountAmount = discount.value
+  } else if (discount.type === 'percent') {
+      regularDiscountAmount = itemsTotal * (discount.value / 100)
   }
-  discountAmount = round2(discountAmount)
+  regularDiscountAmount = round2(regularDiscountAmount)
   
-  const total = round2(Math.max(0, itemsTotal - discountAmount))
+  // Coupon discount
+  let couponDiscountAmount = 0
+  if (appliedCoupon) {
+    if (appliedCoupon.discount_type === 'fixed') {
+      couponDiscountAmount = appliedCoupon.discount_value
+    } else if (appliedCoupon.discount_type === 'percent') {
+      couponDiscountAmount = itemsTotal * (appliedCoupon.discount_value / 100)
+    }
+    couponDiscountAmount = round2(couponDiscountAmount)
+  }
+  
+  // Loyalty discount amount
+  const loyaltyDiscountAmount = loyaltyRedemption.discountAmount || 0
+  
+  // Total discount cannot exceed item total
+  const totalDiscountAmount = round2(Math.min(regularDiscountAmount + couponDiscountAmount + loyaltyDiscountAmount, itemsTotal))
+  
+  const total = round2(Math.max(0, itemsTotal - totalDiscountAmount))
+
+  // Update ref for loyalty queries
+  useEffect(() => {
+    itemsTotalRef.current = itemsTotal
+  }, [itemsTotal])
+
+  // Update loyalty query key when customer or cart changes
+  useEffect(() => {
+    setLoyaltyQueryKey(['loyalty-pos-info', selectedCustomer?.id ?? null, itemsTotal])
+  }, [selectedCustomer?.id, itemsTotal])
 
   // Add to cart
   const addToCart = useCallback((product: Product) => {
@@ -506,16 +605,82 @@ export function POSTerminal() {
     session_id: activeSessionId || null,
     terminal_id: activeTerminalId ? parseInt(activeTerminalId) : null,
     notes: customerId !== 'walk-in' 
-      ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}` 
-      : 'Walk-in customer',
+      ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}${appliedCoupon ? ` | Coupon: ${appliedCoupon.code}` : ''}` 
+      : `Walk-in customer${appliedCoupon ? ` | Coupon: ${appliedCoupon.code}` : ''}`,
     discount_type: discount.type,
     discount_value: discount.value,
+    coupon_code: appliedCoupon?.code || null,
+    coupon_discount: couponDiscountAmount > 0 ? couponDiscountAmount : null,
+    loyalty_points_redeemed: loyaltyRedemption.pointsToRedeem > 0 ? loyaltyRedemption.pointsToRedeem : null,
+    loyalty_discount: loyaltyRedemption.discountAmount > 0 ? loyaltyRedemption.discountAmount : null,
     items: cart.map(item => ({
       product_id: item.id,
       quantity: item.quantity,
       unit_price: item.price,
     })),
   })
+
+  // Apply loyalty redemption
+  const applyLoyaltyRedemption = (points: number) => {
+    if (!loyaltyInfo?.enrolled) return
+    
+    const discountAmount = round2(points * loyaltyInfo.currency_per_point)
+    setLoyaltyRedemption({ pointsToRedeem: points, discountAmount })
+    
+    toast({
+      title: 'Loyalty Points Applied',
+      description: `${points} points = ${formatCurrency(discountAmount)} discount`,
+    })
+  }
+
+  // Clear loyalty redemption
+  const clearLoyaltyRedemption = () => {
+    setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+    toast({
+      title: 'Loyalty Points Removed',
+      description: 'Points redemption has been cancelled',
+    })
+  }
+
+  // Apply coupon
+  const applyCoupon = async () => {
+    if (!couponCode.trim()) return
+    
+    try {
+      // For now, simulate coupon validation - in production this would call the API
+      // const response = await api.post('/coupons/validate', { code: couponCode, amount: itemsTotal })
+      
+      // Mock coupon for demonstration
+      const mockCoupons: Record<string, any> = {
+        'SAVE10': { code: 'SAVE10', discount_type: 'percent', discount_value: 10, description: '10% off your order' },
+        'SAVE20': { code: 'SAVE20', discount_type: 'percent', discount_value: 20, description: '20% off your order' },
+        'FLAT50': { code: 'FLAT50', discount_type: 'fixed', discount_value: 50, description: '$50 off your order' },
+      }
+      
+      const coupon = mockCoupons[couponCode.toUpperCase()]
+      
+      if (coupon) {
+        setAppliedCoupon(coupon)
+        toast({
+          title: 'Coupon Applied',
+          description: `${coupon.code}: ${coupon.description}`,
+        })
+        setCouponCode('')
+      } else {
+        toast({
+          title: 'Invalid Coupon',
+          description: 'The coupon code you entered is not valid',
+          variant: 'destructive',
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to apply coupon',
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Handle Save Draft
   const handleSaveDraft = async () => {
@@ -581,9 +746,17 @@ export function POSTerminal() {
         })),
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: regularDiscountAmount,
         discountType: discount.type,
         discountValue: discount.value,
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          discountAmount: couponDiscountAmount,
+          discountType: appliedCoupon.discount_type,
+          discountValue: appliedCoupon.discount_value,
+        } : null,
+        loyaltyDiscountAmount,
+        loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
         total,
         paymentMethod,
         amountPaid: total,
@@ -604,6 +777,7 @@ export function POSTerminal() {
       clearSessionCart()
       setSelectedCustomer(null)
       setCurrentOrderId(null) // Reset order ID for next order
+      setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
 
       // Refresh products to update stock
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
@@ -666,9 +840,17 @@ export function POSTerminal() {
         })),
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: regularDiscountAmount,
         discountType: discount.type,
         discountValue: discount.value,
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          discountAmount: couponDiscountAmount,
+          discountType: appliedCoupon.discount_type,
+          discountValue: appliedCoupon.discount_value,
+        } : null,
+        loyaltyDiscountAmount,
+        loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
         total,
         paymentMethod: method.name,
         amountPaid: total,
@@ -689,6 +871,7 @@ export function POSTerminal() {
       clearSessionCart()
       setSelectedCustomer(null)
       setCurrentOrderId(null)
+      setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
 
       // Refresh products to update stock
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
@@ -808,180 +991,81 @@ export function POSTerminal() {
 
       {/* Right: Cart */}
       <Card className="flex w-96 flex-col">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 space-y-3">
+          {/* Top Row: Title, Items Badge, Customer Button */}
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
               <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5" />
               Current Order
             </CardTitle>
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{cart.length} items</Badge>
+              
+              {/* Customer Selector Button */}
+              <Button
+                variant={selectedCustomer ? "default" : "outline"}
+                size="sm"
+                className="h-8 gap-2 min-w-[110px]"
+                onClick={() => setShowCustomerDialog(true)}
+              >
+                <Icon 
+                  icon={selectedCustomer ? "solar:user-check-bold" : "solar:user-circle-bold"} 
+                  className="h-4 w-4" 
+                />
+                <span className="truncate">
+                  {selectedCustomer ? 'Customer' : 'Walk-in'}
+                </span>
+                {selectedCustomer && (
+                  <span className="ml-1 w-2 h-2 rounded-full bg-white/80" />
+                )}
+              </Button>
             </div>
           </div>
-          
-          {/* Customer Selection */}
-          <div className="mt-3">
-            <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={customerSearchOpen}
-                  className="h-9 flex-1 justify-between text-sm"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <Icon icon="solar:user-circle-bold" className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">
-                      {selectedCustomer ? selectedCustomer.name : 
-                       customerId === 'walk-in' ? 'Walk-in' : 'Select Customer'}
-                    </span>
-                  </div>
-                  <Icon icon="solar:alt-arrow-down-linear" className="ml-1 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0" align="start">
-                <Command shouldFilter={false}>
-                  <div className="flex items-center border-b px-3">
-                    <Icon icon="solar:magnifer-linear" className="h-4 w-4 text-muted-foreground mr-2" />
-                    <input
-                      placeholder="Search customers by name or phone..."
-                      value={customerSearch}
-                      onChange={(e) => setCustomerSearch(e.target.value)}
-                      className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                    />
-                  </div>
-                  <CommandList className="max-h-[250px]">
-                    {searchingCustomers ? (
-                      <div className="flex items-center justify-center py-6">
-                        <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin mr-2 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Searching...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <CommandGroup heading="Quick Selection">
-                          <CommandItem
-                            value="walk-in"
-                            onSelect={() => {
-                              setCustomerId('walk-in')
-                              setSelectedCustomer(null)
-                              setCustomerSearchOpen(false)
-                              setCustomerSearch('')
-                            }}
-                            className="cursor-pointer"
-                          >
-                            <Icon icon="solar:user-bold" className="mr-2 h-4 w-4" />
-                            <span className="flex-1">Walk-in Customer</span>
-                            {customerId === 'walk-in' && (
-                              <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
-                            )}
-                          </CommandItem>
-                        </CommandGroup>
-                        
-                        {(customerSearch.length >= 2 ? searchedCustomers : customers)?.length ? (
-                          <CommandGroup heading={customerSearch.length >= 2 ? "Search Results" : "Recent Customers"}>
-                            {(customerSearch.length >= 2 ? searchedCustomers : customers)?.slice(0, 10).map((customer) => (
-                              <CommandItem
-                                key={customer.id}
-                                value={customer.id.toString()}
-                                onSelect={() => {
-                                  setCustomerId(customer.id.toString())
-                                  setSelectedCustomer(customer)
-                                  setCustomerSearchOpen(false)
-                                  setCustomerSearch('')
-                                }}
-                                className="cursor-pointer"
-                              >
-                                <div className="flex items-center gap-3 flex-1">
-                                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                    <Icon icon="solar:user-bold" className="h-4 w-4 text-primary" />
-                                  </div>
-                                  <div className="flex flex-col flex-1 min-w-0">
-                                    <span className="font-medium truncate">{customer.name}</span>
-                                    {customer.phone && (
-                                      <span className="text-xs text-muted-foreground">{customer.phone}</span>
-                                    )}
-                                  </div>
-                                </div>
-                                {customer.loyalty_points !== undefined && customer.loyalty_points > 0 && (
-                                  <Badge variant="secondary" className="ml-2 text-xs shrink-0">
-                                    {customer.loyalty_points} pts
-                                  </Badge>
-                                )}
-                                {customerId === customer.id.toString() && (
-                                  <Icon icon="solar:check-circle-bold" className="ml-2 h-4 w-4 text-primary shrink-0" />
-                                )}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        ) : customerSearch.length >= 2 ? (
-                          <div className="py-6 text-center">
-                            <Icon icon="solar:user-cross-bold" className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                            <p className="text-sm text-muted-foreground">No customer found</p>
-                            <Button 
-                              variant="link" 
-                              size="sm"
-                              className="mt-1"
-                              onClick={() => {
-                                setNewCustomer({ ...newCustomer, name: customerSearch })
-                                setShowAddCustomerDialog(true)
-                                setCustomerSearchOpen(false)
-                              }}
-                            >
-                              <Icon icon="solar:user-plus-bold" className="h-4 w-4 mr-1" />
-                              Create "{customerSearch}"
-                            </Button>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </CommandList>
-                  <div className="border-t p-2">
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      className="w-full"
-                      onClick={() => {
-                        setShowAddCustomerDialog(true)
-                        setCustomerSearchOpen(false)
-                      }}
-                    >
-                      <Icon icon="solar:user-plus-bold" className="mr-2 h-4 w-4" />
-                      Add New Customer
-                    </Button>
-                  </div>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
 
-          {/* Selected Customer Info */}
+          {/* Selected Customer Info Card */}
           {selectedCustomer && (
-            <div className="mt-3 p-2 rounded-lg border bg-primary/5 flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Icon icon="solar:user-circle-bold" className="h-5 w-5 text-primary" />
+            <div className="p-3 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <Icon icon="solar:user-circle-bold" className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{selectedCustomer.name}</p>
+                  {selectedCustomer.phone && (
+                    <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                  )}
+                  
+                  {/* Loyalty Info */}
+                  {loyaltyInfo?.enrolled ? (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200"
+                      >
+                        <Icon icon="solar:crown-bold" className="h-3 w-3 mr-1" />
+                        {loyaltyInfo.tier_name}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {loyaltyInfo.available_points.toLocaleString()} pts
+                      </Badge>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">Not enrolled in loyalty</p>
+                  )}
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-7 w-7 shrink-0 -mt-1 -mr-1" 
+                  onClick={() => {
+                    setSelectedCustomer(null)
+                    setCustomerId('walk-in')
+                    setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+                  }}
+                >
+                  <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{selectedCustomer.name}</p>
-                {selectedCustomer.phone && (
-                  <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
-                )}
-              </div>
-              {selectedCustomer.loyalty_points !== undefined && selectedCustomer.loyalty_points > 0 && (
-                <Badge variant="secondary" className="shrink-0">
-                  ★ {selectedCustomer.loyalty_points}
-                </Badge>
-              )}
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 shrink-0" 
-                onClick={() => {
-                  setSelectedCustomer(null)
-                  setCustomerId('walk-in')
-                }}
-              >
-                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
-              </Button>
             </div>
           )}
         </CardHeader>
@@ -1045,34 +1129,237 @@ export function POSTerminal() {
 
         {/* Totals & Actions */}
         <div className="p-4 border-t bg-muted/20 space-y-4">
-          {/* Discount Input */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground w-16">Discount:</span>
-            <Select 
-                value={discount.type} 
-                onValueChange={(val: any) => setDiscount({ ...discount, type: val })}
-            >
-                <SelectTrigger className="w-24 h-8 text-xs">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="fixed">Fixed</SelectItem>
-                    <SelectItem value="percent">%</SelectItem>
-                </SelectContent>
-            </Select>
-            <div className="relative flex-1">
-              {discount.type === 'fixed' && (
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{getCurrencySymbol()}</span>
-              )}
-              <Input
-                type="number"
-                className={cn("h-8", discount.type === 'fixed' ? "pl-7" : "pl-3")}
-                value={discount.value || ''}
-                onChange={(e) => setDiscount({ ...discount, value: userDiscountInput(e.target.value) })}
-                placeholder="0"
-              />
+          
+          {/* Discount/Loyalty/Coupon Tabs */}
+          {(cart.length > 0 || appliedCoupon || loyaltyRedemption.pointsToRedeem > 0) && (
+            <div className="rounded-lg border bg-white overflow-hidden">
+              <Tabs value={activeDiscountTab} onValueChange={(v) => setActiveDiscountTab(v as any)} className="w-full">
+                <TabsList className="w-full grid grid-cols-3 rounded-none border-b bg-muted/30">
+                  <TabsTrigger value="discount" className="text-xs gap-1">
+                    <Icon icon="solar:tag-bold" className="h-3.5 w-3.5" />
+                    Discount
+                    {regularDiscountAmount > 0 && (
+                      <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="loyalty" 
+                    className="text-xs gap-1"
+                    disabled={!selectedCustomer || !loyaltyInfo?.enrolled}
+                  >
+                    <Icon icon="solar:gift-bold" className="h-3.5 w-3.5" />
+                    Loyalty
+                    {loyaltyRedemption.pointsToRedeem > 0 && (
+                      <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="coupon" className="text-xs gap-1">
+                    <Icon icon="solar:ticket-bold" className="h-3.5 w-3.5" />
+                    Coupon
+                    {appliedCoupon && (
+                      <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+                
+                {/* Discount Tab */}
+                <TabsContent value="discount" className="p-3 space-y-3 mt-0">
+                  <div className="flex items-center gap-2">
+                    <Select 
+                      value={discount.type} 
+                      onValueChange={(val: any) => setDiscount({ ...discount, type: val })}
+                    >
+                      <SelectTrigger className="w-28 h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">Fixed Amount</SelectItem>
+                        <SelectItem value="percent">Percentage</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="relative flex-1">
+                      {discount.type === 'fixed' && (
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{getCurrencySymbol()}</span>
+                      )}
+                      <Input
+                        type="number"
+                        className={cn("h-9", discount.type === 'fixed' ? "pl-8" : "pl-3")}
+                        value={discount.value || ''}
+                        onChange={(e) => setDiscount({ ...discount, value: userDiscountInput(e.target.value) })}
+                        placeholder="Enter discount..."
+                      />
+                      {discount.type === 'percent' && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                      )}
+                    </div>
+                  </div>
+                  {regularDiscountAmount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Discount applied:</span>
+                      <span className="font-medium text-destructive">-{formatCurrency(regularDiscountAmount)}</span>
+                    </div>
+                  )}
+                </TabsContent>
+                
+                {/* Loyalty Tab */}
+                <TabsContent value="loyalty" className="p-3 space-y-3 mt-0">
+                  {!selectedCustomer ? (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <Icon icon="solar:user-circle-bold" className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Select a customer to use loyalty points</p>
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="mt-1"
+                        onClick={() => setShowCustomerDialog(true)}
+                      >
+                        Select Customer
+                      </Button>
+                    </div>
+                  ) : !loyaltyInfo?.enrolled ? (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <Icon icon="solar:info-circle-bold" className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Customer not enrolled in loyalty program</p>
+                    </div>
+                  ) : loyaltyRedemption.pointsToRedeem > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-primary/5 rounded-lg p-3">
+                        <div>
+                          <p className="font-medium">{loyaltyRedemption.pointsToRedeem.toLocaleString()} points</p>
+                          <p className="text-sm text-muted-foreground">= {formatCurrency(loyaltyRedemption.discountAmount)} off</p>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-destructive"
+                          onClick={clearLoyaltyRedemption}
+                        >
+                          <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="secondary">{loyaltyInfo.tier_name}</Badge>
+                        <span>{loyaltyInfo.available_points.toLocaleString()} pts available</span>
+                      </div>
+                    </div>
+                  ) : loyaltyInfo.max_redeemable_points > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={loyaltyInfo.min_redemption_points}
+                          max={loyaltyInfo.max_redeemable_points}
+                          placeholder={`Min ${loyaltyInfo.min_redemption_points} pts`}
+                          className="flex-1 h-9"
+                          id="loyalty-points-input"
+                        />
+                        <Button 
+                          size="sm"
+                          className="h-9"
+                          onClick={() => {
+                            const input = document.getElementById('loyalty-points-input') as HTMLInputElement
+                            const points = parseInt(input?.value || '0')
+                            if (points >= loyaltyInfo.min_redemption_points && points <= loyaltyInfo.max_redeemable_points) {
+                              applyLoyaltyRedemption(points)
+                            } else {
+                              toast({
+                                title: 'Invalid Points',
+                                description: `Enter between ${loyaltyInfo.min_redemption_points} and ${loyaltyInfo.max_redeemable_points} points`,
+                                variant: 'destructive',
+                              })
+                            }
+                          }}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Max: {loyaltyInfo.max_redeemable_points.toLocaleString()} pts</span>
+                        <span>({formatCurrency(loyaltyInfo.max_discount_amount)} max)</span>
+                      </div>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => applyLoyaltyRedemption(loyaltyInfo.max_redeemable_points)}
+                      >
+                        Use maximum ({loyaltyInfo.max_redeemable_points.toLocaleString()} pts)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-xs text-muted-foreground">
+                      {loyaltyInfo.available_points < loyaltyInfo.min_redemption_points ? (
+                        <p>Need {loyaltyInfo.min_redemption_points - loyaltyInfo.available_points} more points to redeem</p>
+                      ) : itemsTotal === 0 ? (
+                        <p>Add items to cart to redeem points</p>
+                      ) : (
+                        <p>Cannot redeem: max {loyaltyInfo.max_redemption_percent}% of order</p>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+                
+                {/* Coupon Tab */}
+                <TabsContent value="coupon" className="p-3 space-y-3 mt-0">
+                  {appliedCoupon ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <Icon icon="solar:ticket-bold" className="h-5 w-5 text-amber-600" />
+                          <div>
+                            <p className="font-medium text-amber-900">{appliedCoupon.code}</p>
+                            <p className="text-xs text-amber-700">
+                              {appliedCoupon.discount_type === 'percent' 
+                                ? `${appliedCoupon.discount_value}% off` 
+                                : `${formatCurrency(appliedCoupon.discount_value)} off`}
+                            </p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => {
+                            setAppliedCoupon(null)
+                            toast({ title: 'Coupon removed' })
+                          }}
+                        >
+                          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {appliedCoupon.description && (
+                        <p className="text-xs text-muted-foreground">{appliedCoupon.description}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Enter coupon code..."
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          className="flex-1 h-9 uppercase"
+                          onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
+                        />
+                        <Button 
+                          size="sm"
+                          className="h-9"
+                          onClick={applyCoupon}
+                          disabled={!couponCode.trim()}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enter a valid coupon code to get discount
+                      </p>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -1083,10 +1370,22 @@ export function POSTerminal() {
               <span className="text-muted-foreground">Tax</span>
               <span>{formatCurrency(taxAmount)}</span>
             </div>
-            {discountAmount > 0 && (
+            {regularDiscountAmount > 0 && (
               <div className="flex justify-between text-destructive">
                 <span>Discount ({discount.type === 'percent' ? `${discount.value}%` : 'Fixed'})</span>
-                <span>-{formatCurrency(discountAmount)}</span>
+                <span>-{formatCurrency(regularDiscountAmount)}</span>
+              </div>
+            )}
+            {couponDiscountAmount > 0 && appliedCoupon && (
+              <div className="flex justify-between text-amber-600">
+                <span>Coupon ({appliedCoupon.code})</span>
+                <span>-{formatCurrency(couponDiscountAmount)}</span>
+              </div>
+            )}
+            {loyaltyDiscountAmount > 0 && (
+              <div className="flex justify-between text-primary">
+                <span>Loyalty ({loyaltyRedemption.pointsToRedeem.toLocaleString()} pts)</span>
+                <span>-{formatCurrency(loyaltyDiscountAmount)}</span>
               </div>
             )}
             <Separator />
@@ -1113,6 +1412,7 @@ export function POSTerminal() {
               onClick={() => {
                 clearSessionCart()
                 setCurrentOrderId(null) // Reset order ID when clearing cart
+                setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
               }}
               disabled={cart.length === 0}
               title="Clear Cart"
@@ -1259,6 +1559,157 @@ export function POSTerminal() {
         </DialogContent>
       </Dialog>
 
+      {/* Customer Selection Dialog */}
+      <Dialog 
+        open={showCustomerDialog} 
+        onOpenChange={(open) => {
+          setShowCustomerDialog(open)
+          if (!open) {
+            // Clear search when dialog closes
+            setCustomerSearch('')
+            setDebouncedSearch('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:users-group-rounded-bold" className="h-5 w-5" />
+              Select Customer
+            </DialogTitle>
+            <DialogDescription>
+              Choose a customer for this order or add a new one
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Search */}
+          <div className="flex items-center gap-2 my-4">
+            <div className="relative flex-1">
+              <Icon icon="solar:magnifer-linear" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, phone, or email..."
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                className="pl-9"
+                autoFocus
+              />
+            </div>
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => {
+                setShowAddCustomerDialog(true)
+                setShowCustomerDialog(false)
+              }}
+            >
+              <Icon icon="solar:user-plus-bold" className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Quick Selection - Walk-in */}
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-muted-foreground">Quick Selection</h4>
+            <Button
+              variant={customerId === 'walk-in' ? "default" : "outline"}
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={() => {
+                setCustomerId('walk-in')
+                setSelectedCustomer(null)
+                setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+                setShowCustomerDialog(false)
+                setCustomerSearch('')
+              }}
+            >
+              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                <Icon icon="solar:user-bold" className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Walk-in Customer</p>
+                <p className="text-xs text-muted-foreground">No loyalty points</p>
+              </div>
+              {customerId === 'walk-in' && (
+                <Icon icon="solar:check-circle-bold" className="h-5 w-5 ml-auto" />
+              )}
+            </Button>
+          </div>
+
+          {/* Customer List */}
+          <div className="flex-1 overflow-y-auto mt-4 space-y-2 min-h-[200px]">
+            <h4 className="text-sm font-medium text-muted-foreground sticky top-0 bg-background py-2">
+              {debouncedSearch.length >= 2 ? 'Search Results' : 'Recent Customers'}
+            </h4>
+            
+            {searchingCustomers ? (
+              <div className="flex items-center justify-center py-8">
+                <Icon icon="solar:refresh-bold" className="h-6 w-6 animate-spin mr-2 text-muted-foreground" />
+                <span className="text-muted-foreground">Searching...</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(debouncedSearch.length >= 2 ? searchedCustomers : customers)?.length ? (
+                  (debouncedSearch.length >= 2 ? searchedCustomers : customers)?.slice(0, 20).map((customer) => (
+                    <Button
+                      key={customer.id}
+                      variant={customerId === customer.id.toString() ? "default" : "outline"}
+                      className="w-full justify-start gap-3 h-auto py-3 px-3"
+                      onClick={() => {
+                        setCustomerId(customer.id.toString())
+                        setSelectedCustomer(customer)
+                        setShowCustomerDialog(false)
+                        setCustomerSearch('')
+                      }}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Icon icon="solar:user-bold" className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="text-left flex-1 min-w-0">
+                        <p className="font-medium truncate">{customer.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {customer.phone && <span>{customer.phone}</span>}
+                          {customer.loyalty_tier_name ? (
+                            <span className="flex items-center gap-1 text-amber-600">
+                              <Icon icon="solar:medal-star-bold" className="h-3 w-3" />
+                              {customer.loyalty_tier_name}
+                            </span>
+                          ) : (
+                            <span>Not enrolled</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {customer.current_points !== undefined && customer.current_points > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {customer.current_points.toLocaleString()} pts
+                          </Badge>
+                        )}
+                        {customerId === customer.id.toString() && (
+                          <Icon icon="solar:check-circle-bold" className="h-5 w-5" />
+                        )}
+                      </div>
+                    </Button>
+                  ))
+                ) : debouncedSearch.length >= 2 ? (
+                  <div className="text-center py-8">
+                    <Icon icon="solar:user-cross-bold" className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                    <p className="text-muted-foreground">No customers found</p>
+                    <Button 
+                      variant="link" 
+                      onClick={() => {
+                        setNewCustomer({ ...newCustomer, name: debouncedSearch })
+                        setShowAddCustomerDialog(true)
+                        setShowCustomerDialog(false)
+                      }}
+                    >
+                      Create "{debouncedSearch}"
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Close Session Dialog */}
       <Dialog open={showCloseSessionDialog} onOpenChange={setShowCloseSessionDialog}>
         <DialogContent className="sm:max-w-md">
@@ -1385,14 +1836,35 @@ export function POSTerminal() {
             </div>
           )}
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex-col gap-2">
             <Button 
-              variant="outline" 
-              onClick={() => setShowReceiptDialog(false)}
-              className="flex-1"
+              variant="default"
+              className="w-full"
+              onClick={() => {
+                // Close receipt and start new order
+                setShowReceiptDialog(false)
+                // Ensure cart is cleared and reset everything
+                clearSessionCart()
+                setSelectedCustomer(null)
+                setCurrentOrderId(null)
+                setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+                setAppliedCoupon(null)
+                setDiscount({ type: 'fixed', value: 0 })
+                setActiveDiscountTab('discount')
+                toast({ title: 'New Order', description: 'Ready for next customer' })
+              }}
             >
-              Close
+              <Icon icon="solar:plus-circle-bold" className="h-4 w-4 mr-2" />
+              New Order
             </Button>
+            <div className="flex gap-2 w-full">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowReceiptDialog(false)}
+                className="flex-1"
+              >
+                Close
+              </Button>
             <Button 
               variant="outline"
               className="flex-1"
@@ -1526,6 +1998,7 @@ export function POSTerminal() {
               <Icon icon="solar:printer-bold" className="h-4 w-4 mr-2" />
               Print
             </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1564,9 +2037,17 @@ export function POSTerminal() {
             })),
             subtotal,
             taxAmount,
-            discountAmount,
+            discountAmount: regularDiscountAmount,
             discountType: discount.type,
             discountValue: discount.value,
+            coupon: appliedCoupon ? {
+              code: appliedCoupon.code,
+              discountAmount: couponDiscountAmount,
+              discountType: appliedCoupon.discount_type,
+              discountValue: appliedCoupon.discount_value,
+            } : null,
+            loyaltyDiscountAmount,
+            loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
             total,
             paymentMethod: 'Card (Stripe)',
             amountPaid: total,
@@ -1583,6 +2064,9 @@ export function POSTerminal() {
             clearSessionCart()
             setSelectedCustomer(null)
             setCurrentOrderId(null)
+            setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+            setAppliedCoupon(null)
+            setDiscount({ type: 'fixed', value: 0 })
           }, 500)
         }}
         onError={(error) => {

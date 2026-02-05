@@ -15,8 +15,15 @@ class CustomerController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::withCount(['invoices', 'posOrders'])
-            ->with(['categories', 'priceList', 'salesperson']);
+        $query = Customer::withCount(['invoices'])
+            ->with([
+                'categories', 
+                'priceList', 
+                'salesperson',
+                'loyaltyBalances.program',
+                'customerLoyalty.tier',
+                'customerLoyalty.program'
+            ]);
 
         // Filters
         if ($request->search) {
@@ -54,6 +61,15 @@ class CustomerController extends Controller
         $query->orderBy($sortBy, $sortDir);
 
         $customers = $query->paginate($request->per_page ?? 20);
+
+        // Transform data to include loyalty info for POS
+        $customers->getCollection()->transform(function ($customer) {
+            $loyalty = $customer->customerLoyalty;
+            $customer->current_points = $loyalty?->current_points ?? 0;
+            $customer->loyalty_tier_name = $loyalty?->tier?->name;
+            $customer->is_enrolled = $loyalty !== null;
+            return $customer;
+        });
 
         return response()->json($customers);
     }

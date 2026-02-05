@@ -25,11 +25,19 @@ interface ReceiptData {
   discountAmount: number
   discountType?: 'fixed' | 'percent'
   discountValue?: number
+  coupon?: {
+    code: string
+    discountAmount: number
+    discountType: 'fixed' | 'percent'
+    discountValue: number
+  }
   total: number
   paymentMethod: string
   amountPaid?: number
   change?: number
   loyaltyPointsEarned?: number
+  loyaltyPointsUsed?: number
+  loyaltyDiscountAmount?: number
   terminal?: string
   warehouse?: string
 }
@@ -283,6 +291,23 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
                 {data.discountType === 'percent' && data.discountValue ? ` (${data.discountValue}%)` : ''}
               </span>
               <span>-{formatCurrency(data.discountAmount)}</span>
+            </div>
+          )}
+          {data.coupon && data.coupon.discountAmount > 0 && (
+            <div style={styles.totalRow}>
+              <span>
+                Coupon: {data.coupon.code}
+                {data.coupon.discountType === 'percent' ? ` (${data.coupon.discountValue}%)` : ''}
+              </span>
+              <span>-{formatCurrency(data.coupon.discountAmount)}</span>
+            </div>
+          )}
+          {data.loyaltyDiscountAmount && data.loyaltyDiscountAmount > 0 && (
+            <div style={styles.totalRow}>
+              <span>
+                Loyalty Points {data.loyaltyPointsUsed ? `(${data.loyaltyPointsUsed} pts)` : ''}
+              </span>
+              <span>-{formatCurrency(data.loyaltyDiscountAmount)}</span>
             </div>
           )}
           <div style={styles.grandTotal}>

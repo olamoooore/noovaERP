@@ -169,6 +169,14 @@ class Customer extends Model
     }
 
     /**
+     * Loyalty module enrollment (hasOne relationship)
+     */
+    public function customerLoyalty(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\Modules\Loyalty\Models\CustomerLoyalty::class, 'customer_id');
+    }
+
+    /**
      * Invoices
      */
     public function invoices(): HasMany
