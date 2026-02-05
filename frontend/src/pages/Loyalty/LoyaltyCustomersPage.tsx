@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -152,9 +153,9 @@ export function LoyaltyCustomersPage() {
                     <TableCell className="text-center">
                       {customer.is_enrolled ? (
                         <Button variant="ghost" size="sm" asChild>
-                          <a href={`/loyalty/customers/${customer.customer_id}`}>
+                          <Link to={`/loyalty/customers/${customer.customer_id}`}>
                             <Icon icon="solar:eye-bold" className="h-4 w-4" />
-                          </a>
+                          </Link>
                         </Button>
                       ) : (
                         <Button 
