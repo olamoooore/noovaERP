@@ -29,7 +29,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'description', required: false, description: 'Product description' },
   { name: 'secondary_name', required: false, description: 'Alternative name (e.g., local language)' },
   { name: 'type', required: false, description: 'product or service (default: product)' },
-  { name: 'category_id', required: false, description: 'Category ID for grouping' },
+  { name: 'category_id', required: false, description: 'Category ID (number) or Category Name (text) - new categories will be auto-created' },
   { name: 'cost', required: true, description: 'Purchase/cost price (required)' },
   { name: 'price', required: true, description: 'Selling price (required)' },
   { name: 'stock_quantity', required: false, description: 'Initial stock quantity' },

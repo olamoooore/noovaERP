@@ -644,6 +644,7 @@ class ProductController extends Controller
 
         $created = 0;
         $errors = [];
+        $categoriesCache = []; // Cache for category name -> ID lookups
 
         DB::beginTransaction();
         try {
@@ -667,6 +668,9 @@ class ProductController extends Controller
                     $sku = $base . '-' . Str::upper(Str::random(6));
                 }
 
+                // Resolve category_id - handle both numeric IDs and category names
+                $categoryId = $this->resolveCategoryId($row['category_id'] ?? null, $categoriesCache);
+
                 try {
                     Product::create([
                         'name' => $name,
@@ -674,7 +678,7 @@ class ProductController extends Controller
                         'sku' => $sku,
                         'barcode' => $row['barcode'] ? trim((string) $row['barcode']) : null,
                         'description' => $row['description'] ? trim((string) $row['description']) : null,
-                        'category_id' => $row['category_id'] ? (int) $row['category_id'] : null,
+                        'category_id' => $categoryId,
                         'type' => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
                         'cost' => (float) $cost,
                         'price' => (float) $price,
@@ -701,5 +705,61 @@ class ProductController extends Controller
             'created' => $created,
             'errors' => $errors,
         ]);
+    }
+
+    /**
+     * Resolve category ID from input value (numeric ID or category name)
+     * Creates the category if it doesn't exist (when given a name)
+     *
+     * @param mixed $categoryValue The category_id from CSV (can be ID, name, or empty)
+     * @param array &$cache Reference to cache array for performance
+     * @return int|null The resolved category ID or null
+     */
+    private function resolveCategoryId($categoryValue, array &$cache): ?int
+    {
+        // Empty value - return null (product will have no category)
+        if ($categoryValue === null || $categoryValue === '') {
+            return null;
+        }
+
+        $categoryValue = trim((string) $categoryValue);
+
+        if ($categoryValue === '') {
+            return null;
+        }
+
+        // Check if it's a pure numeric ID
+        if (is_numeric($categoryValue) && intval($categoryValue) > 0) {
+            $id = (int) $categoryValue;
+            // Verify the ID exists in database
+            if (!isset($cache['id_' . $id])) {
+                $exists = \App\Models\ProductCategory::where('id', $id)->exists();
+                $cache['id_' . $id] = $exists ? $id : null;
+            }
+            return $cache['id_' . $id];
+        }
+
+        // It's a category name - check cache first
+        $cacheKey = 'name_' . strtolower($categoryValue);
+        if (array_key_exists($cacheKey, $cache)) {
+            return $cache[$cacheKey];
+        }
+
+        // Try to find existing category by name (case-insensitive)
+        $category = \App\Models\ProductCategory::whereRaw('LOWER(name) = ?', [strtolower($categoryValue)])->first();
+
+        if ($category) {
+            $cache[$cacheKey] = $category->id;
+            return $category->id;
+        }
+
+        // Category doesn't exist - create it automatically
+        $newCategory = \App\Models\ProductCategory::create([
+            'name' => $categoryValue,
+            'is_active' => true,
+        ]);
+
+        $cache[$cacheKey] = $newCategory->id;
+        return $newCategory->id;
     }
 }
