@@ -278,8 +278,7 @@ const ECOMMERCE_SCRIPT = `
     navigateToCheckout: function() {
       if (this.cart.length === 0) { this.showNotification('Your cart is empty', 'error'); return; }
       if (window.location.protocol === 'blob:') { this.showNotification('Checkout Total: $' + this.getCartTotal().toFixed(2), 'info'); return; }
-      var basePath = this.getBasePath();
-      window.location.href = basePath + '/checkout';
+      window.location.href = '/web-shop/checkout';
     },
     
     navigateToShop: function() {

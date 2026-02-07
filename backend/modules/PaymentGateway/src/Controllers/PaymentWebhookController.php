@@ -225,6 +225,12 @@ class PaymentWebhookController extends Controller
         // Send payment receipt email
         $this->sendPaymentReceipt($transaction);
 
+        // Fire PaymentSuccessful event for loyalty points and other integrations
+        event(new \Modules\PaymentGateway\Events\PaymentSuccessful(
+            $transaction,
+            $transaction->metadata ?? []
+        ));
+
         Log::info('Payment processed successfully via webhook', [
             'transaction_id' => $webhookData['transaction_id'],
             'invoice_id' => $transaction->invoice_id,

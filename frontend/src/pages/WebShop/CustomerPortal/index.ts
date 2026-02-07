@@ -1,0 +1,7 @@
+export { PortalLayout } from './PortalLayout'
+export { DashboardPage } from './DashboardPage'
+export { OrdersListPage } from './Orders/OrdersListPage'
+export { OrderDetailPage } from './Orders/OrderDetailPage'
+export { ProfilePage } from './Profile/ProfilePage'
+export { AddressesPage } from './Addresses/AddressesPage'
+export { LoyaltyPage } from './Loyalty/LoyaltyPage'

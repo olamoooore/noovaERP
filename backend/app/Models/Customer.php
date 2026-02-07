@@ -20,6 +20,7 @@ class Customer extends Model
         'code',
         'name',
         'email',
+        'password',
         'phone',
         'mobile',
         'company',
@@ -72,6 +73,10 @@ class Customer extends Model
         'date_of_birth' => 'date',
         'customer_since' => 'date',
         'last_interaction_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'password',
     ];
 
     protected $appends = ['display_name', 'loyalty_points'];

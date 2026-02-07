@@ -3,6 +3,7 @@
   "name": "Website",
   "type": "addon",
   "providers": [
-    "Modules\\Ecommerce\\Providers\\EcommerceServiceProvider"
+    "Modules\\Ecommerce\\Providers\\EcommerceServiceProvider",
+    "Modules\\Ecommerce\\Providers\\EventServiceProvider"
   ]
 }

@@ -89,6 +89,20 @@ const LoyaltyRewardsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ def
 const LoyaltyRedemptionsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyRedemptionsPage })))
 const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltySettingsPage })))
 
+// Web Shop Pages
+const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
+const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.OrderSuccessPage })))
+
+// Web Shop Customer Portal
+const PortalLayout = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.PortalLayout })))
+const DashboardPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.DashboardPage })))
+const OrdersListPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrdersListPage })))
+const OrderDetailPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrderDetailPage })))
+const ProfilePage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.ProfilePage })))
+const AddressesPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.AddressesPage })))
+const WebShopLoginPage = lazy(() => import('@/pages/WebShop/Auth/LoginPage').then(m => ({ default: m.LoginPage })))
+const WebShopRegisterPage = lazy(() => import('@/pages/WebShop/Auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
+
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
 const InventoryDashboardPage = lazy(() => import('@/pages/Inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
@@ -254,6 +268,24 @@ function App() {
                 <Route path="/loyalty/rewards" element={<LoyaltyRewardsPage />} />
                 <Route path="/loyalty/redemptions" element={<LoyaltyRedemptionsPage />} />
                 <Route path="/loyalty/settings" element={<LoyaltySettingsPage />} />
+                
+                {/* Web Shop Routes */}
+                <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
+                <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
+              </Route>
+
+              {/* Web Shop Auth - No layout */}
+              <Route path="/web-shop/login" element={<WebShopLoginPage />} />
+              <Route path="/web-shop/register" element={<WebShopRegisterPage />} />
+
+              {/* Web Shop Customer Portal */}
+              <Route path="/web-shop/account" element={<PortalLayout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="orders" element={<OrdersListPage />} />
+                <Route path="orders/:id" element={<OrderDetailPage />} />
+                <Route path="profile" element={<ProfilePage />} />
+                <Route path="addresses" element={<AddressesPage />} />
+                <Route path="loyalty" element={<LoyaltyPage />} />
               </Route>
 
               {/* POS Layout Routes - fullscreen without sidebar */}
