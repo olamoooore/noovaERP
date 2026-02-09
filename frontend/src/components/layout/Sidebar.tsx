@@ -211,6 +211,11 @@ const baseNavItems: NavItem[] = [
         href: '/website-builder',
         icon: 'solar:buildings-bold-duotone',
       },
+      {
+        title: 'Online Shop',
+        href: '/shop',
+        icon: 'solar:bag-4-bold-duotone',
+      },
     ],
   },
   {
