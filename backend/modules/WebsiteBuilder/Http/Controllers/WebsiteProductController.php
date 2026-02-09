@@ -124,16 +124,18 @@ class WebsiteProductController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        // Check if any products have show_on_website enabled
-        $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
-        
         $query = Product::query()
             ->where('is_active', true)
             ->with(['category', 'brand', 'variants']);
         
-        // Only filter by show_on_website if some products have it enabled
-        if ($hasWebsiteProducts) {
-            $query->where('show_on_website', true);
+        // Only filter by show_on_website if the column exists and some products have it enabled
+        try {
+            $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
+            if ($hasWebsiteProducts) {
+                $query->where('show_on_website', true);
+            }
+        } catch (\Exception $e) {
+            // Column may not exist yet - skip the filter
         }
         
         $product = $query->findOrFail($id);

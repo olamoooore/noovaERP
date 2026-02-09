@@ -12,7 +12,7 @@ import { faqPresets } from '../faqPresets'
 import { ctaPresets } from '../ctaPresets'
 import { tabPresets } from '../tabPresets'
 import { bannerPresets } from '../bannerPresets'
-import { shopPresets } from '../shopPresets'
+// Shop presets removed - using React EcommerceStorefront at /shop instead
 import { initLucideIcons } from '../utils/lucide'
 import { Preset } from '../types'
 
@@ -146,13 +146,6 @@ const CATEGORY_ICONS = {
     marquee: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="0" y="8" width="24" height="8" fill="#ffc300"/><text x="12" y="14" text-anchor="middle" font-size="6" font-weight="bold" fill="#000">ABC</text></svg>',
     shapes: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="3" y="3" width="18" height="18" rx="2" fill="#0f172a"/><circle cx="8" cy="8" r="4" fill="#3b82f6" opacity="0.6"/><circle cx="16" cy="16" r="5" fill="#ec4899" opacity="0.6"/></svg>',
   },
-  shop: {
-    default: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
-    grid: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>',
-    card: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><circle cx="12" cy="15" r="3"/></svg>',
-    filter: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>',
-    tags: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>',
-  },
 }
 
 function getIconForPreset(presetId: string, category: 'header' | 'footer' | 'hero' | 'pricing' | 'cards'): string {
@@ -280,14 +273,7 @@ function getBannerIcon(presetId: string): string {
   return icons.default
 }
 
-function getShopIcon(presetId: string): string {
-  const icons = CATEGORY_ICONS.shop
-  if (presetId.includes('grid') || presetId.includes('full')) return icons.grid
-  if (presetId.includes('card') || presetId.includes('product')) return icons.card
-  if (presetId.includes('filter') || presetId.includes('sidebar')) return icons.filter
-  if (presetId.includes('active') || presetId.includes('tags')) return icons.tags
-  return icons.default
-}
+
 
 export function addPresetsPanel(editor: Editor) {
   const panelManager = editor.Panels
@@ -340,7 +326,7 @@ export function addPresetsPanel(editor: Editor) {
   })
   
   // Define categories - ordered logically: Headers first, Footers last
-  const categories = ['Headers', 'Hero', 'Sections', 'Banners', 'CTAs', 'Tabs', 'FAQs', 'Testimonials', 'Cards', 'Pricing', 'Themes', 'Shop', 'Footers']
+  const categories = ['Headers', 'Hero', 'Sections', 'Banners', 'CTAs', 'Tabs', 'FAQs', 'Testimonials', 'Cards', 'Pricing', 'Themes', 'Footers']
   
   categories.forEach((category) => {
     const categoryEl = document.createElement('div')
@@ -534,21 +520,6 @@ export function addPresetsPanel(editor: Editor) {
       
       heroPresets.forEach(preset => {
         const itemEl = createPresetItem(preset, 'hero', editor, initCanvasLucide)
-        contentEl.appendChild(itemEl)
-      })
-    } else if (category === 'Shop') {
-      contentEl.innerHTML = ''
-      contentEl.style.cssText = `
-        display: none;
-        flex-wrap: wrap;
-        padding: 10px;
-      `
-      
-      shopPresets.forEach(preset => {
-        const itemEl = createPresetItem(preset, 'header', editor, initCanvasLucide)
-        // Adjust the icon for Shop
-        const mediaEl = itemEl.querySelector('.gjs-block__media')
-        if (mediaEl) mediaEl.innerHTML = getShopIcon(preset.id)
         contentEl.appendChild(itemEl)
       })
     } else {
