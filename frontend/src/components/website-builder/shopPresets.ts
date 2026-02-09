@@ -587,16 +587,7 @@ const ECOMMERCE_SCRIPT = `
       if (!container) return;
       
       this.fetchCategories().then(function(categories) {
-        // Use fetched categories or fallback to demo categories
-        var cats = (categories && categories.length > 0) ? categories : [
-          { id: 1, name: 'Electronics' },
-          { id: 2, name: 'Accessories' },
-          { id: 3, name: 'Clothing' },
-          { id: 4, name: 'Footwear' },
-          { id: 5, name: 'Home' },
-          { id: 6, name: 'Fitness' },
-          { id: 7, name: 'Bags' }
-        ];
+        var cats = (categories && categories.length > 0) ? categories : [];
         var allActive = self.filters.category === null;
         container.innerHTML = '<button onclick="EcommerceStore.setFilter(\\'category\\',null)" style="text-align: left; padding: 12px 16px; border: none; background:' + (allActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (allActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>' +
@@ -607,25 +598,8 @@ const ECOMMERCE_SCRIPT = `
             return '<button onclick="EcommerceStore.setFilter(\\'category\\',' + cat.id + ')" style="text-align: left; padding: 12px 16px; border: none; background:' + (isActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (isActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;">' + cat.name + '</button>';
           }).join('');
       }).catch(function() {
-        // On error, use demo categories
-        var demoCategories = [
-          { id: 1, name: 'Electronics' },
-          { id: 2, name: 'Accessories' },
-          { id: 3, name: 'Clothing' },
-          { id: 4, name: 'Footwear' },
-          { id: 5, name: 'Home' },
-          { id: 6, name: 'Fitness' },
-          { id: 7, name: 'Bags' }
-        ];
-        var allActive = self.filters.category === null;
-        container.innerHTML = '<button onclick="EcommerceStore.setFilter(\\'category\\',null)" style="text-align: left; padding: 12px 16px; border: none; background:' + (allActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (allActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">' +
-          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>' +
-          'All Categories' +
-        '</button>' +
-          demoCategories.map(function(cat) {
-            var isActive = self.filters.category === cat.id;
-            return '<button onclick="EcommerceStore.setFilter(\\'category\\',' + cat.id + ')" style="text-align: left; padding: 12px 16px; border: none; background:' + (isActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (isActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;">' + cat.name + '</button>';
-          }).join('');
+        // On error, show empty categories
+        container.innerHTML = '<div style="padding:12px 16px;color:' + t.textGray + ';font-size:0.85rem;">No categories available</div>';
       });
     },
 

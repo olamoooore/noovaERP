@@ -95,8 +95,8 @@ class PublicWebsiteRenderController extends Controller
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
         
-        // API base URL for e-commerce
-        $apiBaseUrl = $request->getSchemeAndHttpHost() . '/api/v1/website-public';
+        // API base URL for e-commerce (relative so it works through any proxy/port)
+        $apiBaseUrl = '/api/v1/website-public';
 
         // Generate navigation for multi-page sites
         $pages = $website->pages()->orderBy('sort_order')->get();
@@ -207,6 +207,42 @@ class PublicWebsiteRenderController extends Controller
   </script>
   
   {$bodyJs}
+  
+  <!-- Override any stale demoProducts embedded in old page versions -->
+  <script>
+  (function() {
+    var apiBase = window.__API_BASE_URL__ || '/api/v1/website-public';
+    var grid = document.querySelector('[data-product-grid]');
+    if (!grid) return;
+    
+    // Show loading spinner immediately, replacing any demo product cards
+    grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#666;grid-column:1/-1;">' +
+      '<div style="width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#00b207;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 15px;"></div>' +
+      'Loading products...</div>';
+    
+    // Fetch real products from API
+    fetch(apiBase + '/products?per_page=100')
+      .then(function(r) { return r.json(); })
+      .then(function(resp) {
+        var products = resp.data || resp || [];
+        var store = window.EcommerceStore || window.shopStore;
+        if (products.length > 0 && store) {
+          store.allProducts = products;
+          store.renderProductGrid();
+          // Also refresh categories
+          if (document.querySelector('[data-category-filter]')) {
+            store.renderCategoryFilter();
+          }
+        } else if (products.length === 0) {
+          grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#666;grid-column:1/-1;">No products available.</div>';
+        }
+      })
+      .catch(function(err) {
+        console.error('Failed to load products:', err);
+        grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;grid-column:1/-1;">Unable to load products. Please try again later.</div>';
+      });
+  })();
+  </script>
 </body>
 </html>
 HTML;

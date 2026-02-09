@@ -12,19 +12,10 @@ use Modules\WebsiteBuilder\Http\Controllers\EditorApiController;
 use Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController;
 use Modules\WebsiteBuilder\Http\Controllers\PublicSiteController;
 
-// Public API routes for published websites (no auth required)
-// These routes are accessible at /api/v1/website-public/* (v1 prefix added by tenant.php)
-Route::prefix('website-public')->group(function () {
-    // Public website viewer
-    Route::get('/sites/{websiteSlug}', [PublicSiteController::class, 'getPage']);
-    Route::get('/sites/{websiteSlug}/pages/{pageSlug}', [PublicSiteController::class, 'getPage']);
-    
-    // Products API for e-commerce
-    Route::get('/products', [WebsiteProductController::class, 'index']);
-    Route::get('/products/{id}', [WebsiteProductController::class, 'show']);
-    Route::get('/categories', [WebsiteProductController::class, 'categories']);
-    Route::get('/tags', [WebsiteProductController::class, 'tags']);
-});
+// NOTE: Public API routes (website-public/*) are registered in routes/tenant.php
+// inside the PUBLIC middleware group (no auth). Do NOT duplicate them here,
+// as this file is loaded inside the AUTHENTICATED middleware group which
+// would override the public routes and require auth:sanctum.
 
 Route::middleware(['auth:sanctum', 'feature:website-builder'])->prefix('website-builder')->group(function () {
     // Health check

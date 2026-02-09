@@ -18,19 +18,10 @@ class WebsiteProductController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        // Check if any products have show_on_website enabled
-        $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
-        
         $query = Product::query()
             ->where('is_active', true)
             ->with(['category', 'brand'])
             ->orderBy('name');
-        
-        // Only filter by show_on_website if some products have it enabled
-        // This allows the shop to work even before products are marked for website
-        if ($hasWebsiteProducts) {
-            $query->where('show_on_website', true);
-        }
 
         // Filter by category
         if ($request->filled('category_id')) {
@@ -201,27 +192,13 @@ class WebsiteProductController extends Controller
      */
     public function categories(): JsonResponse
     {
-        // Check if any products have show_on_website enabled
-        $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
-        
-        $query = \App\Models\ProductCategory::query();
-        
-        if ($hasWebsiteProducts) {
-            $query->whereHas('products', function ($q) {
-                $q->where('show_on_website', true)->where('is_active', true);
-            })
-            ->withCount(['products' => function ($q) {
-                $q->where('show_on_website', true)->where('is_active', true);
-            }]);
-        } else {
-            // Fallback: show all categories with active products
-            $query->whereHas('products', function ($q) {
+        $query = \App\Models\ProductCategory::query()
+            ->whereHas('products', function ($q) {
                 $q->where('is_active', true);
             })
             ->withCount(['products' => function ($q) {
                 $q->where('is_active', true);
             }]);
-        }
         
         $categories = $query->orderBy('name')
             ->get()
@@ -243,17 +220,10 @@ class WebsiteProductController extends Controller
      */
     public function tags(Request $request): JsonResponse
     {
-        // Check if any products have show_on_website enabled
-        $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
-        
         $query = Product::query()
             ->where('is_active', true)
             ->whereNotNull('meta_keywords')
             ->where('meta_keywords', '!=', '');
-        
-        if ($hasWebsiteProducts) {
-            $query->where('show_on_website', true);
-        }
         
         $products = $query->pluck('meta_keywords');
         
