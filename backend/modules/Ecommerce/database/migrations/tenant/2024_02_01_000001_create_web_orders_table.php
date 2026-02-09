@@ -37,7 +37,7 @@ return new class extends Migration
             
             // References
             $table->foreignId('invoice_id')->nullable()->constrained('invoices')->nullOnDelete();
-            $table->unsignedBigInteger('payment_transaction_id')->nullable();
+            $table->string('payment_transaction_id')->nullable();
             
             // Loyalty
             $table->integer('loyalty_points_earned')->default(0);

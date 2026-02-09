@@ -100,18 +100,17 @@ class WebCheckoutController extends Controller
 
                 if (!$systemCustomer) {
                     // Create new customer record (like Odoo res.partner)
-                    $systemCustomer = Customer::create([
-                        'type' => 'individual',
+                    $shippingAddr = is_array($validated['shipping_address']) ? json_encode($validated['shipping_address']) : $validated['shipping_address'];
+                    $customerData = [
                         'name' => $fullName,
                         'email' => $email,
                         'phone' => $phone,
-                        'mobile' => $phone,
-                        'shipping_address' => $validated['shipping_address'],
-                        'billing_address' => $validated['shipping_address'],
+                        'shipping_address' => $shippingAddr,
+                        'billing_address' => $shippingAddr,
                         'is_active' => true,
-                        'customer_since' => now(),
                         'notes' => 'Created from web shop checkout',
-                    ]);
+                    ];
+                    $systemCustomer = Customer::create($customerData);
 
                     Log::info('Created new customer from web checkout', [
                         'customer_id' => $systemCustomer->id,
@@ -121,8 +120,7 @@ class WebCheckoutController extends Controller
                     // Update existing customer with latest shipping info
                     $systemCustomer->update([
                         'phone' => $phone ?: $systemCustomer->phone,
-                        'shipping_address' => $validated['shipping_address'],
-                        'last_interaction_at' => now(),
+                        'shipping_address' => is_array($validated['shipping_address']) ? json_encode($validated['shipping_address']) : $validated['shipping_address'],
                     ]);
                 }
             }
@@ -281,7 +279,15 @@ class WebCheckoutController extends Controller
                 ]);
 
                 // Mark payment as failed but keep the order
-                $order->update(['payment_status' => 'failed']);
+                // Wrap in try/catch since PostgreSQL aborts entire transaction on error
+                try {
+                    $order->update(['payment_status' => 'failed']);
+                } catch (\Exception $updateEx) {
+                    Log::warning('Could not update order payment status after failure', [
+                        'order_id' => $order->id,
+                        'error' => $updateEx->getMessage(),
+                    ]);
+                }
 
                 return response()->json([
                     'error' => 'Payment initialization failed',

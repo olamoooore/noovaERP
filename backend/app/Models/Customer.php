@@ -391,8 +391,15 @@ class Customer extends Model
             if (empty($customer->code)) {
                 $customer->code = static::generateCode();
             }
-            if (empty($customer->customer_since)) {
-                $customer->customer_since = now()->toDateString();
+            // Only set customer_since if the column exists on the current DB
+            try {
+                if (\Schema::connection($customer->getConnectionName())->hasColumn('customers', 'customer_since')) {
+                    if (empty($customer->customer_since)) {
+                        $customer->customer_since = now()->toDateString();
+                    }
+                }
+            } catch (\Exception $e) {
+                // Column doesn't exist, skip
             }
         });
     }
