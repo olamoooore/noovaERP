@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
 
@@ -37,6 +38,8 @@ export function ProductsPage() {
   const [categoryId, setCategoryId] = useState<string>('all')
   const [sortBy, setSortBy] = useState<SortBy>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [page, setPage] = useState(1)
 
   const clearFilters = () => {
     setSearch('')
@@ -45,6 +48,7 @@ export function ProductsPage() {
     setCategoryId('all')
     setSortBy('name')
     setSortDir('asc')
+    setPage(1)
   }
 
   const { data: categories } = useQuery<Category[]>({
@@ -55,11 +59,12 @@ export function ProductsPage() {
     },
   })
 
-  const { data: products } = useQuery({
-    queryKey: ['products', search, type, status, categoryId, sortBy, sortDir],
+  const { data: productsResponse } = useQuery({
+    queryKey: ['products', search, type, status, categoryId, sortBy, sortDir, page],
     queryFn: async () => {
       const params: Record<string, any> = {
         per_page: 50,
+        page,
         sort_by: sortBy,
         sort_dir: sortDir,
       }
@@ -75,10 +80,13 @@ export function ProductsPage() {
       if (categoryId !== 'all') params.category_id = parseInt(categoryId)
 
       const response = await api.get('/products', { params })
-      // Handle both paginated and non-paginated responses
-      return response.data?.data || response.data || []
+      return response.data
     },
   })
+
+  const products = productsResponse?.data || []
+  const totalPages = productsResponse?.last_page || 1
+  const totalProducts = productsResponse?.total || 0
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -95,7 +103,47 @@ export function ProductsPage() {
     if (!ok) return
     await deleteMutation.mutateAsync(product.id)
   }
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await api.post('/products/bulk-delete', { ids })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      setSelectedIds(new Set())
+    },
+  })
 
+  const handleBulkDelete = async () => {
+    const count = selectedIds.size
+    if (count === 0) return
+    const ok = confirm(`Delete ${count} selected product(s)? This cannot be undone.`)
+    if (!ok) return
+    await bulkDeleteMutation.mutateAsync(Array.from(selectedIds))
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (!products || products.length === 0) return
+    const allIds = products.map((p: any) => p.id)
+    const allSelected = allIds.every((id: number) => selectedIds.has(id))
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allIds))
+    }
+  }
+
+  const allSelected = products && products.length > 0 && products.every((p: any) => selectedIds.has(p.id))
+  const someSelected = selectedIds.size > 0
   const sortedCategories = useMemo(() => {
     const list = [...(categories || [])]
     list.sort((a, b) => {
@@ -259,15 +307,51 @@ export function ProductsPage() {
         </CardContent>
       </Card>
 
+      {someSelected && (
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-3">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={toggleSelectAll}
+          />
+          <span className="text-sm font-medium">
+            {selectedIds.size} product(s) selected
+          </span>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
+            {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.size} Selected`}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear Selection
+          </Button>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>All Products</CardTitle>
+          <CardTitle>All Products {totalProducts > 0 && <span className="text-muted-foreground font-normal text-base">({totalProducts})</span>}</CardTitle>
         </CardHeader>
         <CardContent>
           {viewMode === 'list' ? (
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Category</TableHead>
@@ -281,7 +365,13 @@ export function ProductsPage() {
               </TableHeader>
               <TableBody>
                 {products?.map((product: any) => (
-                  <TableRow key={product.id}>
+                  <TableRow key={product.id} className={selectedIds.has(product.id) ? 'bg-muted/50' : ''}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(product.id)}
+                        onCheckedChange={() => toggleSelect(product.id)}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-md border bg-muted overflow-hidden flex items-center justify-center">
@@ -365,7 +455,7 @@ export function ProductsPage() {
                 ))}
                 {(!products || products.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                       No products found
                     </TableCell>
                   </TableRow>
@@ -375,7 +465,14 @@ export function ProductsPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {products?.map((product: any) => (
-                <Card key={product.id} className="overflow-hidden relative group">
+                <Card key={product.id} className={`overflow-hidden relative group ${selectedIds.has(product.id) ? 'ring-2 ring-primary' : ''}`}>
+                  <div className="absolute top-2 left-2 z-10">
+                    <Checkbox
+                      checked={selectedIds.has(product.id)}
+                      onCheckedChange={() => toggleSelect(product.id)}
+                      className="bg-white/80 backdrop-blur-sm"
+                    />
+                  </div>
                   <div className="h-40 w-full bg-muted border-b overflow-hidden relative">
                     {product.image ? (
                       <img
@@ -389,7 +486,7 @@ export function ProductsPage() {
                       </div>
                     )}
 
-                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                    <div className="absolute top-2 left-8 flex flex-col gap-1">
                       {product.is_new_arrival && (
                         <span className="inline-flex items-center rounded-full bg-blue-500 px-2 py-0.5 text-xs font-medium text-white shadow-sm">
                           New
@@ -469,6 +566,40 @@ export function ProductsPage() {
                   No products found
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t mt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, totalProducts)} of {totalProducts} products
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <Icon icon="solar:arrow-left-linear" className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                  <Icon icon="solar:arrow-right-linear" className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

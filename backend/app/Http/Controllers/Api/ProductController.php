@@ -708,6 +708,59 @@ class ProductController extends Controller
     }
 
     /**
+     * Bulk delete products
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:products,id',
+        ]);
+
+        $ids = $request->input('ids');
+        $deleted = Product::whereIn('id', $ids)->delete();
+
+        return response()->json([
+            'message' => "{$deleted} product(s) deleted successfully",
+            'deleted' => $deleted,
+        ]);
+    }
+
+    /**
+     * Delete all products
+     */
+    public function destroyAll(): JsonResponse
+    {
+        $count = Product::count();
+        
+        DB::beginTransaction();
+        try {
+            // Clear FK references first
+            $fkTables = [
+                'product_suppliers', 'product_uoms', 'product_bundles',
+                'stock_movements', 'product_variants', 'product_relationships',
+                'product_feature_values', 'product_custom_field_values', 'stock_levels',
+                'product_price_tiers', 'product_batches', 'product_serials',
+                'product_audit_logs', 'product_documents',
+            ];
+            foreach ($fkTables as $table) {
+                try { DB::table($table)->delete(); } catch (\Throwable $e) {}
+            }
+            
+            Product::query()->forceDelete();
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to delete all products: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'message' => "{$count} product(s) deleted successfully",
+            'deleted' => $count,
+        ]);
+    }
+
+    /**
      * Resolve category ID from input value (numeric ID or category name)
      * Creates the category if it doesn't exist (when given a name)
      *

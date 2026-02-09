@@ -125,8 +125,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Products
     Route::post('/uploads', [UploadController::class, 'store']);
 
-    Route::apiResource('products', ProductController::class);
     Route::post('/products/import', [ProductController::class, 'import']);
+    Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy']);
+    Route::delete('/products/delete-all', [ProductController::class, 'destroyAll']);
+    Route::apiResource('products', ProductController::class);
 
     // Product categories
     Route::get('/product-categories', [ProductCategoryController::class, 'index']);
