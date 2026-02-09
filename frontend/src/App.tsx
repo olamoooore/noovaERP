@@ -91,6 +91,7 @@ const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ de
 
 // Web Shop Pages
 const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
+const WebShopCartPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCartPage })))
 const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.OrderSuccessPage })))
 
 // Web Shop Customer Portal
@@ -300,7 +301,8 @@ function App() {
 
             {/* ─── PUBLIC ROUTES (no admin auth required) ─────────────── */}
 
-            {/* Web Shop Checkout - public, accessible from storefront */}
+            {/* Web Shop Cart & Checkout - public, accessible from storefront */}
+            <Route path="/web-shop/cart" element={<WebShopCartPage />} />
             <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
             <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
 

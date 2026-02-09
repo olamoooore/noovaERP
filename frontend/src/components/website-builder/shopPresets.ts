@@ -265,9 +265,11 @@ const ECOMMERCE_SCRIPT = `
     
     navigateToCart: function() {
       if (window.location.protocol === 'blob:') { this.showNotification('Cart: ' + this.getCartCount() + ' items, Total: $' + this.getCartTotal().toFixed(2), 'info'); return; }
-      var basePath = this.getBasePath();
-      // Try navigating within the iframe first for published sites
-      window.location.href = basePath + '/cart';
+      // Navigate to the React cart page - break out of iframe if needed
+      try {
+        if (window.top && window.top !== window) { window.top.location.href = '/web-shop/cart'; }
+        else { window.location.href = '/web-shop/cart'; }
+      } catch(e) { window.location.href = '/web-shop/cart'; }
     },
     
     navigateToWishlist: function() {
@@ -279,19 +281,11 @@ const ECOMMERCE_SCRIPT = `
     navigateToCheckout: function() {
       if (this.cart.length === 0) { this.showNotification('Your cart is empty', 'error'); return; }
       if (window.location.protocol === 'blob:') { this.showNotification('Checkout Total: $' + this.getCartTotal().toFixed(2), 'info'); return; }
-      // Navigate to checkout - break out of iframe if needed
+      // Navigate to the React checkout page - break out of iframe if needed
       try {
-        if (window.top && window.top !== window) {
-          window.top.location.href = '/web-shop/checkout';
-        } else if (window.parent && window.parent !== window) {
-          window.parent.location.href = '/web-shop/checkout';
-        } else {
-          window.location.href = '/web-shop/checkout';
-        }
-      } catch(e) {
-        // Cross-origin iframe - use postMessage or direct navigation  
-        window.location.href = '/web-shop/checkout';
-      }
+        if (window.top && window.top !== window) { window.top.location.href = '/web-shop/checkout'; }
+        else { window.location.href = '/web-shop/checkout'; }
+      } catch(e) { window.location.href = '/web-shop/checkout'; }
     },
     
     navigateToShop: function() {
@@ -776,16 +770,24 @@ const ECOMMERCE_SCRIPT = `
       window.addEventListener('cart-updated', function() { self.updateCartUI(); });
       window.addEventListener('wishlist-updated', function() { self.updateWishlistUI(); });
 
-      // Bind checkout page "Place Order" buttons that may not have onclick handlers
-      // (handles pages saved before the onclick was added to the preset)
-      var checkoutSection = document.querySelector('#shop-checkout-section');
-      if (checkoutSection) {
-        var buttons = checkoutSection.querySelectorAll('button');
-        buttons.forEach(function(btn) {
-          if (btn.textContent.trim().toLowerCase().includes('place order') && !btn.getAttribute('onclick')) {
-            btn.onclick = function() { EcommerceStore.navigateToCheckout(); };
-          }
-        });
+      // Auto-redirect checkout/cart pages to React pages (not in editor)
+      // This ensures published GrapesJS checkout/cart pages go to the real React pages
+      var path = window.location.pathname;
+      var isCheckoutPage = document.querySelector('#shop-checkout-section') || path.match(/\/checkout\/?$/);
+      var isCartPage = path.match(/\/cart\/?$/) && !document.querySelector('[data-product-grid]');
+      if (isCheckoutPage) {
+        try {
+          if (window.top && window.top !== window) { window.top.location.href = '/web-shop/checkout'; }
+          else { window.location.href = '/web-shop/checkout'; }
+        } catch(e) { window.location.href = '/web-shop/checkout'; }
+        return; // stop init
+      }
+      if (isCartPage) {
+        try {
+          if (window.top && window.top !== window) { window.top.location.href = '/web-shop/cart'; }
+          else { window.location.href = '/web-shop/cart'; }
+        } catch(e) { window.location.href = '/web-shop/cart'; }
+        return; // stop init
       }
     }
   };
