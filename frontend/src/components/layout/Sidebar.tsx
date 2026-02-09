@@ -202,6 +202,18 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
   },
   {
+    title: 'Website',
+    href: '/website-builder',
+    icon: 'solar:global-bold-duotone',
+    children: [
+      {
+        title: 'My Websites',
+        href: '/website-builder',
+        icon: 'solar:buildings-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Dashboards',
     href: '/dashboards/executive',
     icon: 'solar:chart-square-bold-duotone',
@@ -282,17 +294,8 @@ export function Sidebar() {
   })
 
   const enabledFeatures = new Set(
-    features?.filter((f: any) => f.enabled).map((f: any) => f.key)
+    features?.filter((f: any) => f.enabled || f.is_core).map((f: any) => f.key)
   )
-  
-  // Force enable core modules for testing if features list is empty or fails
-  if (!features || features.length === 0) {
-    enabledFeatures.add('pos')
-    enabledFeatures.add('inventory')
-    enabledFeatures.add('sales')
-    enabledFeatures.add('accounting')
-    enabledFeatures.add('loyalty')
-  }
 
   const navItems = baseNavItems.filter(item => {
     if (!item.featureKey) return true

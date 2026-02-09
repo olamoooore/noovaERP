@@ -157,6 +157,7 @@ export function WebsiteEditor() {
       return response.data
     },
     enabled: !!selectedPageId,
+    staleTime: 5 * 60 * 1000, // Keep cached for 5 min to avoid GrapesJS remount
   })
 
   // Sync JS content
@@ -498,6 +499,20 @@ export function WebsiteEditor() {
   const handlePreview = () => {
     if (!editorInstance) return
     
+    // First, save current content so the backend has the latest version
+    triggerSave()
+    
+    // Use the persistent /w/ URL that serves complete HTML from the backend
+    // This URL is bookmarkable and works on refresh (unlike blob URLs)
+    if (website?.slug) {
+      const previewUrl = pageData?.is_home 
+        ? `/w/${website.slug}` 
+        : `/w/${website.slug}/${pageData?.slug || ''}`
+      window.open(previewUrl, '_blank')
+      return
+    }
+    
+    // Fallback to blob URL if no slug available
     const html = editorInstance.getHtml()
     const css = editorInstance.getCss() || ''
     
@@ -837,7 +852,7 @@ export function WebsiteEditor() {
 
       {/* Editor */}
       <div className="flex-1 overflow-hidden">
-        {isPageLoading ? (
+        {(isPageLoading || !pageData || !selectedPageId) ? (
           <div className="flex items-center justify-center h-full">
             <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-zinc-400" />
           </div>

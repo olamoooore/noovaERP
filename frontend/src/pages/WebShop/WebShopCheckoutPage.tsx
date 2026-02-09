@@ -88,7 +88,7 @@ function PaymentForm({
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/web-shop/order-success`,
+          return_url: `${window.location.origin}/web-shop/order/success`,
         },
         redirect: 'if_required',
       })
@@ -281,15 +281,25 @@ export function WebShopCheckoutPage() {
   const [loyaltyRedemption, setLoyaltyRedemption] = useState({ points: 0, discount: 0 })
 
   useEffect(() => {
-    // Load cart from localStorage
-    const cart = localStorage.getItem('ace_cart')
-    if (cart) {
+    // Load cart from localStorage - support both ecommerce_cart (shop pages) and ace_cart (legacy)
+    const ecommerceCart = localStorage.getItem('ecommerce_cart')
+    const aceCart = localStorage.getItem('ace_cart')
+    const cartRaw = ecommerceCart || aceCart
+    
+    if (cartRaw) {
       try {
-        const parsed = JSON.parse(cart)
+        const parsed = JSON.parse(cartRaw)
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setCartItems(parsed)
+          // Normalize cart items - ecommerce_cart uses productId, ace_cart uses product_id
+          const normalized = parsed.map((item: any) => ({
+            product_id: item.product_id || item.productId,
+            name: item.name,
+            price: Number(item.price),
+            quantity: Number(item.quantity),
+            image: item.image || undefined,
+          }))
+          setCartItems(normalized)
         } else {
-          // Empty cart - redirect to home
           toast({
             variant: 'destructive',
             title: 'Empty Cart',
@@ -399,10 +409,19 @@ export function WebShopCheckoutPage() {
         loyalty_points_to_redeem: loyaltyRedemption.points > 0 ? loyaltyRedemption.points : undefined,
       })
 
-      const { client_secret, publishable_key, order_number, total, guest_token } = response.data
+      const data = response.data
+
+      // Extract payment data - handle nested payment_intent structure from backend
+      const client_secret = data.payment_intent?.client_secret || data.client_secret
+      const publishable_key = data.payment_intent?.publishable_key || data.publishable_key
+      const order_number = data.order_number
+      const total = data.total
+      const guest_token = data.guest_token
 
       // Store guest token for success page
-      localStorage.setItem('ace_guest_token', guest_token)
+      if (guest_token) {
+        localStorage.setItem('ace_guest_token', guest_token)
+      }
 
       setPaymentData({
         client_secret,
@@ -426,15 +445,16 @@ export function WebShopCheckoutPage() {
   }
 
   const handlePaymentSuccess = () => {
-    // Clear cart
+    // Clear both cart keys
     localStorage.removeItem('ace_cart')
+    localStorage.removeItem('ecommerce_cart')
     
     // Get guest token and redirect to success page
     const guestToken = localStorage.getItem('ace_guest_token')
     if (guestToken) {
-      navigate(`/web-shop/order-success?token=${guestToken}`)
+      navigate(`/web-shop/order/success?token=${guestToken}`)
     } else {
-      navigate('/web-shop/order-success')
+      navigate('/web-shop/order/success')
     }
   }
 

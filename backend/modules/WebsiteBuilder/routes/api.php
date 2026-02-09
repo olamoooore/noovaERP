@@ -23,6 +23,7 @@ Route::prefix('website-public')->group(function () {
     Route::get('/products', [WebsiteProductController::class, 'index']);
     Route::get('/products/{id}', [WebsiteProductController::class, 'show']);
     Route::get('/categories', [WebsiteProductController::class, 'categories']);
+    Route::get('/tags', [WebsiteProductController::class, 'tags']);
 });
 
 Route::middleware(['auth:sanctum', 'feature:website-builder'])->prefix('website-builder')->group(function () {

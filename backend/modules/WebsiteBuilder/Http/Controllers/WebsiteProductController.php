@@ -61,8 +61,15 @@ class WebsiteProductController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('secondary_name', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('meta_keywords', 'like', "%{$search}%");
             });
+        }
+
+        // Filter by tag (meta_keywords)
+        if ($request->filled('tag')) {
+            $tag = (string) $request->input('tag');
+            $query->where('meta_keywords', 'like', "%{$tag}%");
         }
 
         // Sorting
@@ -107,6 +114,9 @@ class WebsiteProductController extends Controller
                     'id' => $product->brand->id,
                     'name' => $product->brand->name,
                 ] : null,
+                'tags' => $product->meta_keywords 
+                    ? array_map('trim', explode(',', $product->meta_keywords))
+                    : [],
                 'is_new_arrival' => (bool) $product->is_new_arrival,
                 'is_preorder' => (bool) $product->is_preorder,
                 'in_stock' => $product->stock_quantity > 0,
@@ -164,6 +174,9 @@ class WebsiteProductController extends Controller
                 'id' => $product->brand->id,
                 'name' => $product->brand->name,
             ] : null,
+            'tags' => $product->meta_keywords 
+                ? array_map('trim', explode(',', $product->meta_keywords))
+                : [],
             'is_new_arrival' => (bool) $product->is_new_arrival,
             'is_preorder' => (bool) $product->is_preorder,
             'in_stock' => $product->stock_quantity > 0,
@@ -224,6 +237,50 @@ class WebsiteProductController extends Controller
         return response()->json($categories);
     }
     
+    /**
+     * Get product tags (derived from meta_keywords).
+     * Returns unique tags across all website-visible products.
+     */
+    public function tags(Request $request): JsonResponse
+    {
+        // Check if any products have show_on_website enabled
+        $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
+        
+        $query = Product::query()
+            ->where('is_active', true)
+            ->whereNotNull('meta_keywords')
+            ->where('meta_keywords', '!=', '');
+        
+        if ($hasWebsiteProducts) {
+            $query->where('show_on_website', true);
+        }
+        
+        $products = $query->pluck('meta_keywords');
+        
+        // Extract unique tags from comma-separated meta_keywords
+        $tags = collect();
+        foreach ($products as $keywords) {
+            if (!$keywords) continue;
+            $keywordArray = array_map('trim', explode(',', $keywords));
+            foreach ($keywordArray as $keyword) {
+                if (!empty($keyword)) {
+                    $tags->push($keyword);
+                }
+            }
+        }
+        
+        // Count occurrences and format
+        $tagCounts = $tags->countBy()->map(function ($count, $name) {
+            return [
+                'name' => $name,
+                'slug' => \Str::slug($name),
+                'product_count' => $count,
+            ];
+        })->values()->sortByDesc('product_count')->values();
+        
+        return response()->json($tagCounts);
+    }
+
     /**
      * Convert a relative image path to an absolute URL.
      * Uses the Origin header to generate URLs that work in preview context.

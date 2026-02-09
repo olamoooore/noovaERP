@@ -95,13 +95,25 @@ const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ defau
 
 // Web Shop Customer Portal
 const PortalLayout = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.PortalLayout })))
-const DashboardPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.DashboardPage })))
+const CustomerPortalDashboardPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.DashboardPage })))
 const OrdersListPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrdersListPage })))
 const OrderDetailPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrderDetailPage })))
 const ProfilePage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.ProfilePage })))
 const AddressesPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.AddressesPage })))
+const LoyaltyPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.LoyaltyPage })))
 const WebShopLoginPage = lazy(() => import('@/pages/WebShop/Auth/LoginPage').then(m => ({ default: m.LoginPage })))
 const WebShopRegisterPage = lazy(() => import('@/pages/WebShop/Auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
+
+// Website Builder Pages
+const WebsitesIndex = lazy(() => import('@/pages/WebsiteBuilder/WebsitesIndex').then(m => ({ default: m.WebsitesIndex })))
+const WebsiteEditor = lazy(() => import('@/pages/WebsiteBuilder/WebsiteEditor').then(m => ({ default: m.WebsiteEditor })))
+const PageManagement = lazy(() => import('@/pages/WebsiteBuilder/PageManagement').then(m => ({ default: m.PageManagement })))
+
+// Public Site Viewer
+const PublicSiteViewer = lazy(() => import('@/pages/PublicSite').then(m => ({ default: m.PublicSiteViewer })))
+
+// Ecommerce Shop Pages (public-facing)
+const EcommerceShopPage = lazy(() => import('@/pages/WebShop/EcommerceStorefront').then(m => ({ default: m.EcommerceStorefront })))
 
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
@@ -272,15 +284,22 @@ function App() {
                 {/* Web Shop Routes */}
                 <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
                 <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
+                
+                {/* Website Builder Index - With sidebar */}
+                <Route path="/website-builder" element={<WebsitesIndex />} />
               </Route>
 
               {/* Web Shop Auth - No layout */}
               <Route path="/web-shop/login" element={<WebShopLoginPage />} />
               <Route path="/web-shop/register" element={<WebShopRegisterPage />} />
 
+              {/* Website Builder Routes - Full page, no sidebar */}
+              <Route path="/website-builder/:id" element={<WebsiteEditor />} />
+              <Route path="/website-builder/:id/pages" element={<PageManagement />} />
+
               {/* Web Shop Customer Portal */}
               <Route path="/web-shop/account" element={<PortalLayout />}>
-                <Route index element={<DashboardPage />} />
+                <Route index element={<CustomerPortalDashboardPage />} />
                 <Route path="orders" element={<OrdersListPage />} />
                 <Route path="orders/:id" element={<OrderDetailPage />} />
                 <Route path="profile" element={<ProfilePage />} />
@@ -293,6 +312,14 @@ function App() {
                 <Route path="/pos/terminal" element={<POSTerminal />} />
               </Route>
             </Route>
+
+            {/* Public Website Viewer Routes - No auth required */}
+            <Route path="/sites/:websiteSlug" element={<PublicSiteViewer />} />
+            <Route path="/sites/:websiteSlug/:pageSlug" element={<PublicSiteViewer />} />
+            
+            {/* Public E-commerce Storefront */}
+            <Route path="/shop" element={<EcommerceShopPage />} />
+            <Route path="/shop/:pageType" element={<EcommerceShopPage />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

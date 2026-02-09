@@ -27,6 +27,16 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Proxy published website routes to backend (serves complete HTML)
+      '/w': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            proxyReq.setHeader('Host', 'demo.localhost');
+          });
+        },
+      },
     },
   },
 })

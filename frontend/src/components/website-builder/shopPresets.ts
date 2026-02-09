@@ -266,6 +266,7 @@ const ECOMMERCE_SCRIPT = `
     navigateToCart: function() {
       if (window.location.protocol === 'blob:') { this.showNotification('Cart: ' + this.getCartCount() + ' items, Total: $' + this.getCartTotal().toFixed(2), 'info'); return; }
       var basePath = this.getBasePath();
+      // Try navigating within the iframe first for published sites
       window.location.href = basePath + '/cart';
     },
     
@@ -278,7 +279,19 @@ const ECOMMERCE_SCRIPT = `
     navigateToCheckout: function() {
       if (this.cart.length === 0) { this.showNotification('Your cart is empty', 'error'); return; }
       if (window.location.protocol === 'blob:') { this.showNotification('Checkout Total: $' + this.getCartTotal().toFixed(2), 'info'); return; }
-      window.location.href = '/web-shop/checkout';
+      // Navigate to checkout - break out of iframe if needed
+      try {
+        if (window.top && window.top !== window) {
+          window.top.location.href = '/web-shop/checkout';
+        } else if (window.parent && window.parent !== window) {
+          window.parent.location.href = '/web-shop/checkout';
+        } else {
+          window.location.href = '/web-shop/checkout';
+        }
+      } catch(e) {
+        // Cross-origin iframe - use postMessage or direct navigation  
+        window.location.href = '/web-shop/checkout';
+      }
     },
     
     navigateToShop: function() {
@@ -574,12 +587,42 @@ const ECOMMERCE_SCRIPT = `
       if (!container) return;
       
       this.fetchCategories().then(function(categories) {
+        // Use fetched categories or fallback to demo categories
+        var cats = (categories && categories.length > 0) ? categories : [
+          { id: 1, name: 'Electronics' },
+          { id: 2, name: 'Accessories' },
+          { id: 3, name: 'Clothing' },
+          { id: 4, name: 'Footwear' },
+          { id: 5, name: 'Home' },
+          { id: 6, name: 'Fitness' },
+          { id: 7, name: 'Bags' }
+        ];
         var allActive = self.filters.category === null;
         container.innerHTML = '<button onclick="EcommerceStore.setFilter(\\'category\\',null)" style="text-align: left; padding: 12px 16px; border: none; background:' + (allActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (allActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>' +
           'All Categories' +
         '</button>' +
-          categories.map(function(cat) {
+          cats.map(function(cat) {
+            var isActive = self.filters.category === cat.id;
+            return '<button onclick="EcommerceStore.setFilter(\\'category\\',' + cat.id + ')" style="text-align: left; padding: 12px 16px; border: none; background:' + (isActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (isActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;">' + cat.name + '</button>';
+          }).join('');
+      }).catch(function() {
+        // On error, use demo categories
+        var demoCategories = [
+          { id: 1, name: 'Electronics' },
+          { id: 2, name: 'Accessories' },
+          { id: 3, name: 'Clothing' },
+          { id: 4, name: 'Footwear' },
+          { id: 5, name: 'Home' },
+          { id: 6, name: 'Fitness' },
+          { id: 7, name: 'Bags' }
+        ];
+        var allActive = self.filters.category === null;
+        container.innerHTML = '<button onclick="EcommerceStore.setFilter(\\'category\\',null)" style="text-align: left; padding: 12px 16px; border: none; background:' + (allActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (allActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>' +
+          'All Categories' +
+        '</button>' +
+          demoCategories.map(function(cat) {
             var isActive = self.filters.category === cat.id;
             return '<button onclick="EcommerceStore.setFilter(\\'category\\',' + cat.id + ')" style="text-align: left; padding: 12px 16px; border: none; background:' + (isActive ? 'linear-gradient(135deg, ' + t.primary + ' 0%, ' + t.primaryHover + ' 100%)' : t.bgBody) + '; color:' + (isActive ? 'white' : t.textDark) + '; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;">' + cat.name + '</button>';
           }).join('');
@@ -690,12 +733,32 @@ const ECOMMERCE_SCRIPT = `
       var self = this;
       this.updateAllUI();
       
+      
       // Auto-load products if grid exists
       var grid = document.querySelector('[data-product-grid]');
       if (grid) {
-        this.fetchProducts({ per_page: 100 }).then(function() { 
-          self.allProducts = self.products.slice();
+        // Show loading spinner while fetching products
+        grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:' + self.theme.textGray + ';grid-column:1/-1;"><div style="display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:' + self.theme.primary + ';border-radius:50%;animation:spin 0.8s linear infinite;"></div><p style="margin-top:16px;font-size:14px;">Loading products...</p></div>';
+        // Add spin animation if not already present
+        if (!document.querySelector('#ecs-spin-style')) {
+          var spinStyle = document.createElement('style');
+          spinStyle.id = 'ecs-spin-style';
+          spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+          document.head.appendChild(spinStyle);
+        }
+        
+        // Fetch real products from the API
+        this.fetchProducts({ per_page: 100 }).then(function(fetchedProducts) { 
+          if (fetchedProducts && fetchedProducts.length > 0) {
+            self.allProducts = fetchedProducts.slice();
+          } else {
+            self.allProducts = [];
+          }
           self.renderProductGrid(); 
+        }).catch(function(err) {
+          console.log('Could not fetch products:', err);
+          self.allProducts = [];
+          self.renderProductGrid();
         });
       }
       
@@ -992,7 +1055,7 @@ export const shopPresets: Preset[] = [
             <!-- Main Content -->
             <div style="flex: 1;">
               <div data-product-grid style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px;">
-                <div style="text-align: center; padding: 60px 20px; color: ${SHOP_THEME.textGray}; grid-column: 1/-1;">
+                <div style="text-align: center; padding: 60px 20px; color: ${SHOP_THEME.textGray}; grid-column: 1/-1;" data-loading-msg>
                   <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 15px; animation: spin 1s linear infinite;"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
                   <p>Loading products...</p>
                 </div>
@@ -1042,7 +1105,7 @@ export const shopPresets: Preset[] = [
           </div>
           
           <div data-product-grid style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 25px;">
-            <div style="text-align: center; padding: 60px 20px; color: ${SHOP_THEME.textGray}; grid-column: 1/-1;">Loading products...</div>
+            <div style="text-align: center; padding: 60px 20px; color: ${SHOP_THEME.textGray}; grid-column: 1/-1;" data-loading-msg>Loading products...</div>
           </div>
           
           <div style="text-align: center; margin-top: 40px;">

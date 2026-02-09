@@ -14,7 +14,34 @@ use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 | Schema isolation ensures data security
 */
 
-// For API routes, use SetTenantFromUserPreference to identify tenant from user's default company
+// -------------------------------------------------------------------------
+// PUBLIC API routes — no authentication required
+// Tenant resolved from Host header / domain, with fallback to first tenant
+// Used by published websites, storefront, and e-commerce scripts
+// -------------------------------------------------------------------------
+Route::middleware([
+    'api',
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    \App\Http\Middleware\InitializeTenantForPublicAccess::class,
+])->prefix('api/v1')->group(function () {
+    // Website public routes
+    Route::prefix('website-public')->group(function () {
+        Route::get('/sites/{websiteSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicSiteController::class, 'getPage']);
+        Route::get('/sites/{websiteSlug}/pages/{pageSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicSiteController::class, 'getPage']);
+        Route::get('/products', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'index']);
+        Route::get('/products/{id}', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'show']);
+        Route::get('/categories', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'categories']);
+        Route::get('/tags', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'tags']);
+    });
+
+    // Guest checkout (no login required for buying)
+    Route::post('/web-shop/checkout/guest', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'guestCheckout']);
+});
+
+// -------------------------------------------------------------------------
+// AUTHENTICATED API routes — requires auth:sanctum
+// Tenant resolved from authenticated user's default company
+// -------------------------------------------------------------------------
 Route::middleware([
     'api',
     'auth:sanctum',

@@ -149,13 +149,35 @@ export function WebsitesIndex() {
                       <h3 className="font-semibold truncate">{website.name}</h3>
                       {getStatusBadge(website.status)}
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">/{website.slug}</p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      <a 
+                        href={`/w/${website.slug}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="hover:text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        /w/{website.slug}
+                      </a>
+                    </p>
                     
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">
                         {new Date(website.created_at).toLocaleDateString()}
                       </span>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="View Live Site"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.open(`/w/${website.slug}`, '_blank')
+                          }}
+                        >
+                          <Icon icon="solar:eye-bold" className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

@@ -1,0 +1,264 @@
+<?php
+
+namespace Modules\WebsiteBuilder\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Modules\WebsiteBuilder\Models\Website;
+use Modules\WebsiteBuilder\Models\Page;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Serves published websites as complete HTML pages.
+ * This provides persistent, bookmarkable URLs for published sites
+ * (similar to Odoo's website module).
+ * 
+ * URLs: /w/{websiteSlug}, /w/{websiteSlug}/{pageSlug}
+ */
+class PublicWebsiteRenderController extends Controller
+{
+    /**
+     * Serve a published website page as a complete HTML document.
+     */
+    public function render(Request $request, string $websiteSlug, ?string $pageSlug = null): Response
+    {
+        // Find website by slug in current tenant
+        $website = Website::where('slug', $websiteSlug)->first();
+        
+        // If not found in current tenant, search across all tenants (dev-friendly fallback)
+        if (!$website) {
+            $foundTenant = null;
+            foreach (\App\Models\Tenant::all() as $tenant) {
+                if ($tenant->id === tenant()?->id) {
+                    continue; // Already checked current tenant
+                }
+                try {
+                    tenancy()->initialize($tenant);
+                    $website = Website::where('slug', $websiteSlug)->first();
+                    if ($website) {
+                        $foundTenant = $tenant;
+                        Log::info('PublicWebsiteRender: Found website in different tenant', [
+                            'slug' => $websiteSlug,
+                            'tenant_id' => $tenant->id,
+                        ]);
+                        break;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('PublicWebsiteRender: Error searching tenant', [
+                        'tenant_id' => $tenant->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+            
+            if (!$website) {
+                return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
+            }
+        }
+
+        // Find the page
+        if ($pageSlug === null || $pageSlug === '') {
+            $page = $website->pages()
+                ->where('is_home', true)
+                ->with('currentVersion')
+                ->first();
+            
+            if (!$page) {
+                $page = $website->pages()
+                    ->orderBy('sort_order')
+                    ->with('currentVersion')
+                    ->first();
+            }
+        } else {
+            $page = $website->pages()
+                ->where('slug', $pageSlug)
+                ->with('currentVersion')
+                ->first();
+        }
+
+        if (!$page) {
+            return response($this->generateErrorPage('Page Not Found', "The page you're looking for doesn't exist."), 404);
+        }
+
+        // Get content from current version
+        $content = $page->currentVersion?->content ?? [
+            'html' => '',
+            'css' => '',
+        ];
+
+        $html = $content['html'] ?? '';
+        $css = $content['css'] ?? '';
+        $headerJs = $content['header_js'] ?? '';
+        $bodyJs = $content['body_js'] ?? '';
+
+        // Get shop settings from website
+        $shopSettings = $website->settings['shop'] ?? null;
+        
+        // API base URL for e-commerce
+        $apiBaseUrl = $request->getSchemeAndHttpHost() . '/api/v1/website-public';
+
+        // Generate navigation for multi-page sites
+        $pages = $website->pages()->orderBy('sort_order')->get();
+        $navHtml = $this->generateNavigation($website, $pages, $pageSlug);
+
+        // Build the complete HTML document
+        $fullHtml = $this->generateFullHtml([
+            'title' => $page->seo_title ?: $page->title ?: $website->name,
+            'description' => $page->seo_description ?: '',
+            'html' => $html,
+            'css' => $css,
+            'headerJs' => $headerJs,
+            'bodyJs' => $bodyJs,
+            'apiBaseUrl' => $apiBaseUrl,
+            'shopSettings' => $shopSettings,
+            'websiteSlug' => $websiteSlug,
+            'pageSlug' => $pageSlug,
+            'navigation' => $navHtml,
+        ]);
+
+        return response($fullHtml, 200)
+            ->header('Content-Type', 'text/html; charset=UTF-8')
+            ->header('Cache-Control', 'public, max-age=300');
+    }
+
+    /**
+     * Generate full HTML document with all required assets.
+     */
+    private function generateFullHtml(array $options): string
+    {
+        $title = $options['title'] ?? 'Page';
+        $description = $options['description'] ?? '';
+        $html = $options['html'] ?? '';
+        $css = $options['css'] ?? '';
+        $headerJs = $options['headerJs'] ?? '';
+        $bodyJs = $options['bodyJs'] ?? '';
+        $apiBaseUrl = $options['apiBaseUrl'] ?? '';
+        $shopSettings = $options['shopSettings'] ?? null;
+        $websiteSlug = $options['websiteSlug'] ?? '';
+
+        $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
+        $escapedDescription = htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{$title}</title>
+  <meta name="description" content="{$escapedDescription}">
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Custom Styles -->
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    img { max-width: 100%; height: auto; }
+    
+    /* E-commerce animations */
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    @keyframes addToCartPop { 0% { transform: scale(1); } 30% { transform: scale(0.95); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    @keyframes cartBadgePop { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); }  }
+    
+    .product-card { transition: all 0.3s ease; }
+    .product-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+    .add-to-cart-btn { transition: all 0.2s ease; position: relative; overflow: hidden; }
+    .add-to-cart-btn:hover:not(:disabled) { transform: scale(1.05); }
+    .add-to-cart-btn:active:not(:disabled) { transform: scale(0.95); }
+    .add-to-cart-btn.adding { animation: addToCartPop 0.4s ease; pointer-events: none; }
+    .cart-badge.pop { animation: cartBadgePop 0.3s ease; }
+    .heart-icon { transition: all 0.2s ease; }
+    .heart-icon:hover { transform: scale(1.1); }
+    [data-category-filter] button { transition: all 0.2s ease; }
+    [data-category-filter] button:hover { transform: translateX(4px); }
+    input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: #e6e6e6; }
+    
+    {$css}
+  </style>
+  
+  <!-- API Configuration -->
+  <script>
+    window.__API_BASE_URL__ = '{$apiBaseUrl}';
+    window.__SHOP_SETTINGS__ = {$shopSettingsJson};
+    window.__WEBSITE_SLUG__ = '{$websiteSlug}';
+  </script>
+  
+  {$headerJs}
+</head>
+<body>
+  {$html}
+  
+  <!-- External Scripts -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+  </script>
+  
+  {$bodyJs}
+</body>
+</html>
+HTML;
+    }
+
+    /**
+     * Generate navigation HTML for multi-page websites.
+     */
+    private function generateNavigation(Website $website, $pages, ?string $currentSlug): string
+    {
+        if ($pages->count() <= 1) return '';
+
+        $baseUrl = '/w/' . $website->slug;
+        $links = $pages->map(function ($page) use ($baseUrl, $currentSlug) {
+            $url = $page->is_home ? $baseUrl : $baseUrl . '/' . $page->slug;
+            $active = ($page->slug === $currentSlug) || ($currentSlug === null && $page->is_home);
+            $activeClass = $active ? 'font-bold' : '';
+            return "<a href=\"{$url}\" class=\"{$activeClass}\" style=\"text-decoration:none;color:inherit;\">{$page->title}</a>";
+        })->join("\n");
+
+        return $links;
+    }
+
+    /**
+     * Generate a styled error page.
+     */
+    private function generateErrorPage(string $title, string $message): string
+    {
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{$title}</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f9f9f9; color: #333; }
+    .container { text-align: center; padding: 40px; }
+    h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 10px; }
+    p { font-size: 1.1rem; color: #666; margin-bottom: 30px; }
+    a { color: #00b207; text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>{$title}</h1>
+    <p>{$message}</p>
+    <a href="/">Go to Homepage</a>
+  </div>
+</body>
+</html>
+HTML;
+    }
+}
