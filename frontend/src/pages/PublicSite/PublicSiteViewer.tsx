@@ -176,7 +176,7 @@ export function PublicSiteViewer() {
       srcDoc={fullHtml}
       className="public-site-iframe"
       title={pageData.title}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation"
     />
   )
 }

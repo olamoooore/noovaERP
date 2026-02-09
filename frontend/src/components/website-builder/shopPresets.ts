@@ -775,6 +775,18 @@ const ECOMMERCE_SCRIPT = `
       // Listen for custom events
       window.addEventListener('cart-updated', function() { self.updateCartUI(); });
       window.addEventListener('wishlist-updated', function() { self.updateWishlistUI(); });
+
+      // Bind checkout page "Place Order" buttons that may not have onclick handlers
+      // (handles pages saved before the onclick was added to the preset)
+      var checkoutSection = document.querySelector('#shop-checkout-section');
+      if (checkoutSection) {
+        var buttons = checkoutSection.querySelectorAll('button');
+        buttons.forEach(function(btn) {
+          if (btn.textContent.trim().toLowerCase().includes('place order') && !btn.getAttribute('onclick')) {
+            btn.onclick = function() { EcommerceStore.navigateToCheckout(); };
+          }
+        });
+      }
     }
   };
   
@@ -1282,7 +1294,7 @@ export const shopPresets: Preset[] = [
                 <span style="font-weight: 700; font-size: 1.4rem; color: ${SHOP_THEME.primary};" data-cart-total-final>$0.00</span>
               </div>
               
-              <button style="width: 100%; background-color: ${SHOP_THEME.primary}; color: white; border: none; padding: 18px; border-radius: 50px; font-weight: 600; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+              <button onclick="EcommerceStore.navigateToCheckout()" style="width: 100%; background-color: ${SHOP_THEME.primary}; color: white; border: none; padding: 18px; border-radius: 50px; font-weight: 600; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 Place Order
               </button>

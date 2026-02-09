@@ -87,10 +87,14 @@ function saveCart(cart: CartItem[]) {
 function StripePaymentForm({
   orderNumber,
   total,
+  orderId,
+  guestToken,
   onSuccess,
 }: {
   orderNumber: string
   total: number
+  orderId: number
+  guestToken: string
   onSuccess: () => void
 }) {
   const stripe = useStripe()
@@ -118,6 +122,17 @@ function StripePaymentForm({
       if (error) {
         setErrorMessage(error.message || 'Payment failed')
       } else if (paymentIntent?.status === 'succeeded') {
+        // Confirm payment on backend (updates order, creates invoice, awards loyalty points)
+        try {
+          await api.post('/web-shop/checkout/confirm-payment', {
+            order_id: orderId,
+            payment_intent_id: paymentIntent.id,
+            guest_token: guestToken,
+          })
+        } catch (confirmErr) {
+          console.warn('Payment confirmation sync failed (payment was successful):', confirmErr)
+        }
+
         toast({ title: 'Payment successful!', description: `Order ${orderNumber} placed.` })
         onSuccess()
       }
@@ -783,6 +798,7 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
     client_secret: string
     publishable_key: string
     order_number: string
+    order_id: number
     total: number
     guest_token: string
   } | null>(null)
@@ -857,6 +873,7 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
         client_secret: data.payment_intent?.client_secret || data.client_secret,
         publishable_key: data.payment_intent?.publishable_key || data.publishable_key,
         order_number: data.order_number,
+        order_id: data.order_id,
         total: data.total,
         guest_token: data.guest_token,
       })
@@ -1081,6 +1098,8 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
                     <StripePaymentForm
                       orderNumber={paymentData.order_number}
                       total={paymentData.total}
+                      orderId={paymentData.order_id}
+                      guestToken={paymentData.guest_token}
                       onSuccess={handlePaymentSuccess}
                     />
                   </Elements>
