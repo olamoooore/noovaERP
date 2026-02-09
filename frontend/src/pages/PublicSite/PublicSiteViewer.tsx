@@ -167,7 +167,7 @@ export function PublicSiteViewer() {
     css: pageData.content.css || '',
     headerJs: pageData.content.header_js || '',
     bodyJs: pageData.content.body_js || '',
-    apiBaseUrl: `${window.location.origin}/api/v1/website-public`,
+    apiBaseUrl: `${window.location.origin}${import.meta.env.VITE_BASE_PATH || ''}/api/v1/website-public`,
     shopSettings: shopSettings?.enabled ? shopSettings : undefined,
   })
 

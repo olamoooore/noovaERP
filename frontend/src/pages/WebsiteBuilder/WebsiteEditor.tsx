@@ -505,9 +505,10 @@ export function WebsiteEditor() {
     // Use the persistent /w/ URL that serves complete HTML from the backend
     // This URL is bookmarkable and works on refresh (unlike blob URLs)
     if (website?.slug) {
+      const basePath = import.meta.env.VITE_BASE_PATH || ''
       const previewUrl = pageData?.is_home 
-        ? `/w/${website.slug}` 
-        : `/w/${website.slug}/${pageData?.slug || ''}`
+        ? `${basePath}/w/${website.slug}` 
+        : `${basePath}/w/${website.slug}/${pageData?.slug || ''}`
       window.open(previewUrl, '_blank')
       return
     }
@@ -523,7 +524,7 @@ export function WebsiteEditor() {
       css,
       headerJs,
       bodyJs,
-      apiBaseUrl: `${window.location.origin}/api/v1/website-public`,
+      apiBaseUrl: `${window.location.origin}${import.meta.env.VITE_BASE_PATH || ''}/api/v1/website-public`,
       shopSettings: shopSettings.enabled ? shopSettings : undefined,
     })
     
