@@ -281,36 +281,41 @@ function App() {
                 <Route path="/loyalty/redemptions" element={<LoyaltyRedemptionsPage />} />
                 <Route path="/loyalty/settings" element={<LoyaltySettingsPage />} />
                 
-                {/* Web Shop Routes */}
-                <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
-                <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
+                {/* Web Shop Routes - inside MainLayout for admin access too */}
+                {/* NOTE: Checkout accessible publicly below, outside ProtectedRoute */}
                 
                 {/* Website Builder Index - With sidebar */}
                 <Route path="/website-builder" element={<WebsitesIndex />} />
               </Route>
 
-              {/* Web Shop Auth - No layout */}
-              <Route path="/web-shop/login" element={<WebShopLoginPage />} />
-              <Route path="/web-shop/register" element={<WebShopRegisterPage />} />
-
-              {/* Website Builder Routes - Full page, no sidebar */}
+              {/* Website Builder Routes - Full page, no sidebar (still admin-protected) */}
               <Route path="/website-builder/:id" element={<WebsiteEditor />} />
               <Route path="/website-builder/:id/pages" element={<PageManagement />} />
-
-              {/* Web Shop Customer Portal */}
-              <Route path="/web-shop/account" element={<PortalLayout />}>
-                <Route index element={<CustomerPortalDashboardPage />} />
-                <Route path="orders" element={<OrdersListPage />} />
-                <Route path="orders/:id" element={<OrderDetailPage />} />
-                <Route path="profile" element={<ProfilePage />} />
-                <Route path="addresses" element={<AddressesPage />} />
-                <Route path="loyalty" element={<LoyaltyPage />} />
-              </Route>
 
               {/* POS Layout Routes - fullscreen without sidebar */}
               <Route element={<POSLayout />}>
                 <Route path="/pos/terminal" element={<POSTerminal />} />
               </Route>
+            </Route>
+
+            {/* ─── PUBLIC ROUTES (no admin auth required) ─────────────── */}
+
+            {/* Web Shop Checkout - public, accessible from storefront */}
+            <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
+            <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
+
+            {/* Web Shop Auth - No layout, no admin auth required */}
+            <Route path="/web-shop/login" element={<WebShopLoginPage />} />
+            <Route path="/web-shop/register" element={<WebShopRegisterPage />} />
+
+            {/* Web Shop Customer Portal - uses its own WebCustomerAuth, NOT admin auth */}
+            <Route path="/web-shop/account" element={<PortalLayout />}>
+              <Route index element={<CustomerPortalDashboardPage />} />
+              <Route path="orders" element={<OrdersListPage />} />
+              <Route path="orders/:id" element={<OrderDetailPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="addresses" element={<AddressesPage />} />
+              <Route path="loyalty" element={<LoyaltyPage />} />
             </Route>
 
             {/* Public Website Viewer Routes - No auth required */}

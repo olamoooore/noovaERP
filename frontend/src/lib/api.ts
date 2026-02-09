@@ -59,6 +59,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Don't redirect web-shop API calls to admin login
+      const requestUrl = error.config?.url || ''
+      if (requestUrl.includes('web-shop')) {
+        // Let the web shop auth hook handle this
+        return Promise.reject(error)
+      }
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       // Use basename-aware redirect

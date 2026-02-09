@@ -36,6 +36,34 @@ Route::middleware([
 
     // Guest checkout (no login required for buying)
     Route::post('/web-shop/checkout/guest', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'guestCheckout']);
+
+    // Payment confirmation (called after Stripe success)
+    Route::post('/web-shop/checkout/confirm-payment', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'confirmPayment']);
+
+    // Available payment gateways
+    Route::get('/web-shop/payment-gateways', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'getPaymentGateways']);
+
+    // Guest order lookup by token
+    Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
+
+    // Web shop auth (public - no login required)
+    Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register']);
+    Route::post('/web-shop/auth/login', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'login']);
+
+    // Web shop customer-authenticated routes (uses WebCustomerAuth, NOT auth:sanctum)
+    Route::middleware([\Modules\Ecommerce\Http\Middleware\WebCustomerAuth::class])->prefix('web-shop')->group(function () {
+        Route::post('/auth/logout', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'logout']);
+        Route::get('/customer/profile', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'profile']);
+        Route::put('/customer/profile', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'updateProfile']);
+        Route::get('/customer', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'show']);
+        Route::get('/customer/addresses', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'addresses']);
+        Route::post('/customer/addresses', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'addAddress']);
+        Route::put('/customer/addresses/{id}', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'updateAddress']);
+        Route::delete('/customer/addresses/{id}', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'deleteAddress']);
+        Route::post('/customer/addresses/{id}/default', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'setDefaultAddress']);
+        Route::get('/orders', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'index']);
+        Route::get('/orders/{id}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'show']);
+    });
 });
 
 // -------------------------------------------------------------------------

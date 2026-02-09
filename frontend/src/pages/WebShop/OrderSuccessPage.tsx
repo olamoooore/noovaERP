@@ -14,10 +14,11 @@ import api from '@/lib/api'
 interface OrderItem {
   id: number
   product_name: string
+  product_image?: string
   quantity: number
   unit_price: number
-  total_price: number
-  image?: string
+  line_total: number
+  tax_amount: number
 }
 
 interface ShippingAddress {
@@ -33,9 +34,13 @@ interface ShippingAddress {
 interface OrderData {
   order_number: string
   status: string
-  total_amount: number
+  payment_status: string
+  total: number
   tax_amount: number
   subtotal: number
+  shipping_cost: number
+  discount_amount: number
+  loyalty_discount: number
   currency: string
   created_at: string
   shipping_address: ShippingAddress
@@ -44,6 +49,7 @@ interface OrderData {
   phone?: string
   notes?: string
   loyalty_points_earned?: number
+  loyalty_points_redeemed?: number
 }
 
 export function OrderSuccessPage() {
@@ -73,7 +79,8 @@ export function OrderSuccessPage() {
 
       try {
         const response = await api.get(`/web-shop/orders/guest/${guestToken}`)
-        setOrder(response.data)
+        const orderData = response.data.order || response.data
+        setOrder(orderData)
         setLoading(false)
       } catch (err: any) {
         console.error('Failed to fetch order:', err)
@@ -244,9 +251,9 @@ export function OrderSuccessPage() {
                 <h3 className="font-medium">Items Ordered</h3>
                 {order.items.map((item) => (
                   <div key={item.id} className="flex gap-4 p-3 bg-muted/50 rounded-lg">
-                    {item.image ? (
+                    {item.product_image ? (
                       <img 
-                        src={item.image} 
+                        src={item.product_image} 
                         alt={item.product_name}
                         className="w-20 h-20 object-cover rounded-md"
                       />
@@ -260,7 +267,7 @@ export function OrderSuccessPage() {
                       <p className="text-sm text-muted-foreground">
                         Qty: {item.quantity} × ${Number(item.unit_price).toFixed(2)}
                       </p>
-                      <p className="font-medium mt-1">${Number(item.total_price).toFixed(2)}</p>
+                      <p className="font-medium mt-1">${Number(item.line_total).toFixed(2)}</p>
                     </div>
                   </div>
                 ))}
@@ -361,13 +368,19 @@ export function OrderSuccessPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="text-green-600">Free</span>
+                  <span className="text-green-600">{(order.shipping_cost || 0) === 0 ? 'Free' : `$${Number(order.shipping_cost).toFixed(2)}`}</span>
                 </div>
+                {order.loyalty_discount && order.loyalty_discount > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Loyalty Discount</span>
+                    <span className="text-green-600">-${Number(order.loyalty_discount).toFixed(2)}</span>
+                  </div>
+                ) : null}
                 <Separator />
                 <div className="flex justify-between font-medium text-lg">
                   <span>Total</span>
                   <span>
-                    {order.currency} {Number(order.total_amount).toFixed(2)}
+                    {order.currency} ${Number(order.total).toFixed(2)}
                   </span>
                 </div>
               </div>

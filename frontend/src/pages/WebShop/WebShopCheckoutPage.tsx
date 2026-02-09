@@ -43,7 +43,9 @@ interface PaymentIntentData {
   client_secret: string
   publishable_key: string
   order_number: string
+  order_id: number
   total: number
+  guest_token: string
 }
 
 const defaultFormData: CheckoutFormData = {
@@ -101,6 +103,17 @@ function PaymentForm({
           description: error.message,
         })
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        // Confirm payment on backend (updates order, creates invoice, awards loyalty points)
+        try {
+          await api.post('/web-shop/checkout/confirm-payment', {
+            order_id: paymentData.order_id,
+            payment_intent_id: paymentIntent.id,
+            guest_token: paymentData.guest_token,
+          })
+        } catch (confirmErr) {
+          console.warn('Payment confirmation sync failed (payment was successful):', confirmErr)
+        }
+
         toast({
           title: 'Payment successful!',
           description: `Your order ${paymentData.order_number} has been placed.`,
@@ -427,7 +440,9 @@ export function WebShopCheckoutPage() {
         client_secret,
         publishable_key,
         order_number,
+        order_id: data.order_id,
         total,
+        guest_token: guest_token || '',
       })
 
       // Initialize Stripe
