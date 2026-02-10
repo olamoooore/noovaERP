@@ -795,8 +795,10 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
   const [step, setStep] = useState<'shipping' | 'payment'>('shipping')
   const [isLoading, setIsLoading] = useState(false)
   const [paymentData, setPaymentData] = useState<{
-    client_secret: string
-    publishable_key: string
+    client_secret?: string
+    publishable_key?: string
+    payment_url?: string
+    gateway_name: string
     order_number: string
     order_id: number
     total: number
@@ -804,6 +806,23 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
   } | null>(null)
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [selectedGatewayId, setSelectedGatewayId] = useState<number | null>(null)
+
+  // Fetch available gateways
+  const { data: gatewaysData } = useQuery({
+    queryKey: ['web-shop-payment-gateways'],
+    queryFn: async () => {
+      const response = await api.get('/web-shop/payment-gateways')
+      return response.data.gateways as { id: number; name: string; display_name: string; is_test_mode: boolean }[]
+    },
+  })
+
+  // Auto-select first gateway
+  useEffect(() => {
+    if (gatewaysData?.length && !selectedGatewayId) {
+      setSelectedGatewayId(gatewaysData[0].id)
+    }
+  }, [gatewaysData, selectedGatewayId])
 
   const [formData, setFormData] = useState({
     email: '',
@@ -866,12 +885,36 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
           country: formData.country,
         },
         notes: formData.notes || undefined,
+        gateway_id: selectedGatewayId,
       })
 
       const data = response.data
+      const gatewayName = data.gateway_name || 'stripe'
+
+      // Handle redirect-based gateways (HitPay, PayPal)
+      if (gatewayName === 'hitpay' || gatewayName === 'paypal') {
+        const paymentUrl = data.payment_intent?.payment_url
+        if (paymentUrl) {
+          // Store order info before redirect
+          localStorage.setItem('ace_pending_order', JSON.stringify({
+            order_id: data.order_id,
+            order_number: data.order_number,
+            guest_token: data.guest_token,
+          }))
+          if (data.guest_token) {
+            localStorage.setItem('ace_guest_token', data.guest_token)
+          }
+          // Redirect to payment page
+          window.location.href = paymentUrl
+          return
+        }
+      }
+
+      // Stripe inline flow
       setPaymentData({
         client_secret: data.payment_intent?.client_secret || data.client_secret,
         publishable_key: data.payment_intent?.publishable_key || data.publishable_key,
+        gateway_name: gatewayName,
         order_number: data.order_number,
         order_id: data.order_id,
         total: data.total,
@@ -1058,6 +1101,49 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
                       rows={3}
                     />
                   </div>
+
+                  {/* Payment Method Selection */}
+                  {gatewaysData && gatewaysData.length > 1 && (
+                    <div className="space-y-3">
+                      <Separator />
+                      <Label className="text-base font-semibold">Payment Method</Label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {gatewaysData.map((gw) => {
+                          const icons: Record<string, string> = {
+                            stripe: 'logos:stripe',
+                            hitpay: 'solar:wallet-money-bold-duotone',
+                            paypal: 'logos:paypal',
+                          }
+                          return (
+                            <div
+                              key={gw.id}
+                              className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                                selectedGatewayId === gw.id
+                                  ? 'border-primary bg-primary/5'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                              onClick={() => setSelectedGatewayId(gw.id)}
+                            >
+                              <Icon icon={icons[gw.name] || 'solar:card-bold'} className="h-6 w-6" />
+                              <div className="flex-1">
+                                <p className="font-medium">{gw.display_name}</p>
+                                {gw.is_test_mode && (
+                                  <span className="text-xs text-amber-500">Test Mode</span>
+                                )}
+                              </div>
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                selectedGatewayId === gw.id ? 'border-primary' : 'border-gray-300'
+                              }`}>
+                                {selectedGatewayId === gw.id && (
+                                  <div className="w-3 h-3 rounded-full bg-primary" />
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <Button
                     className="w-full"

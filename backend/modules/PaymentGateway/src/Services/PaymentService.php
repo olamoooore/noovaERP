@@ -21,10 +21,22 @@ class PaymentService
      */
     public function createIntent(array $data): array
     {
-        // Find the first active payment gateway
-        $gateway = PaymentGateway::where('is_active', true)
-            ->orderByRaw("CASE WHEN gateway_name = 'stripe' THEN 0 ELSE 1 END") // Prefer Stripe
-            ->first();
+        // Use specific gateway if provided, otherwise find first active
+        if (!empty($data['gateway_id'])) {
+            $gateway = PaymentGateway::where('is_active', true)
+                ->where('id', $data['gateway_id'])
+                ->first();
+            
+            if (!$gateway) {
+                throw new \Exception('Selected payment gateway is not available.');
+            }
+        } else {
+            // Find the first active payment gateway (exclude offline gateways)
+            $gateway = PaymentGateway::where('is_active', true)
+                ->whereIn('gateway_name', ['stripe', 'hitpay', 'paypal'])
+                ->orderByRaw("CASE WHEN gateway_name = 'stripe' THEN 0 ELSE 1 END") // Prefer Stripe
+                ->first();
+        }
 
         if (!$gateway) {
             throw new \Exception('No active payment gateway configured. Please configure a payment gateway in Settings.');
@@ -57,6 +69,7 @@ class PaymentService
         return [
             'client_secret' => $result['client_secret'] ?? null,
             'publishable_key' => $gateway->publishable_key,
+            'payment_url' => $result['payment_url'] ?? null,
             'transaction_id' => $result['transaction_id'],
             'gateway_name' => $gateway->gateway_name,
             'gateway_id' => $gateway->id,
@@ -103,6 +116,7 @@ class PaymentService
     public function getAvailableGateways(): array
     {
         return PaymentGateway::where('is_active', true)
+            ->whereIn('gateway_name', ['stripe', 'hitpay', 'paypal'])
             ->get()
             ->map(fn($gw) => [
                 'id' => $gw->id,

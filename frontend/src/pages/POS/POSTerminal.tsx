@@ -49,6 +49,7 @@ import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { POSReceipt } from '@/components/pos/POSReceipt'
 import { PaymentMethodSelector } from '@/components/pos/PaymentMethodSelector'
 import { StripePaymentDialog } from '@/components/StripePaymentDialog'
+import { HitPayPaymentDialog } from '@/components/pos/HitPayPaymentDialog'
 import loyaltyApi from '@/lib/loyaltyApi'
 
 interface Product {
@@ -134,6 +135,14 @@ export function POSTerminal() {
       loadSettings()
     }
   }, [isSettingsLoaded, loadSettings])
+
+  // Clean any stale payment params from URL (safety measure)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('payment_status') || params.has('reference') || params.has('ref')) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
   
   // Local State
   const [search, setSearch] = useState('')
@@ -143,10 +152,18 @@ export function POSTerminal() {
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
+  const [productPage, setProductPage] = useState(1) // Product pagination
   
   // Stripe Payment Dialog State
   const [showStripeDialog, setShowStripeDialog] = useState(false)
   const [stripePaymentData, setStripePaymentData] = useState<{
+    orderId: number | null
+    gatewayId: number | null
+  }>({ orderId: null, gatewayId: null })
+
+  // HitPay Payment Dialog State
+  const [showHitPayDialog, setShowHitPayDialog] = useState(false)
+  const [hitPayPaymentData, setHitPayPaymentData] = useState<{
     orderId: number | null
     gatewayId: number | null
   }>({ orderId: null, gatewayId: null })
@@ -204,18 +221,36 @@ export function POSTerminal() {
     return (s ?? sq ?? 0) as number
   }
 
-  // Fetch Products
-  const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['pos-products', search, selectedCategory, warehouseId],
+  // Reset page when search/category/warehouse changes
+  useEffect(() => {
+    setProductPage(1)
+  }, [search, selectedCategory, warehouseId])
+
+  // Fetch Products with pagination
+  const { data: productsResponse, isLoading: productsLoading } = useQuery({
+    queryKey: ['pos-products', search, selectedCategory, warehouseId, productPage],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: 50 }
+      const params: Record<string, any> = { per_page: 50, page: productPage }
       if (search) params.search = search
       if (selectedCategory) params.category_id = selectedCategory
       if (warehouseId && warehouseId !== 'all') params.warehouse_id = warehouseId
       const response = await api.get('/products', { params })
-      return Array.isArray(response.data) ? response.data : (response.data.data || [])
+      if (Array.isArray(response.data)) {
+        return { data: response.data, last_page: 1, current_page: 1, total: response.data.length }
+      }
+      return {
+        data: response.data.data || [],
+        last_page: response.data.last_page || response.data.meta?.last_page || 1,
+        current_page: response.data.current_page || response.data.meta?.current_page || 1,
+        total: response.data.total || response.data.meta?.total || 0,
+      }
     },
+    placeholderData: (prev) => prev, // keep previous data while fetching
   })
+
+  const productsData = productsResponse?.data
+  const productLastPage = productsResponse?.last_page ?? 1
+  const productTotal = productsResponse?.total ?? 0
 
   // Fetch Categories
   const { data: categories } = useQuery<Category[]>({
@@ -598,6 +633,20 @@ export function POSTerminal() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [barcodeInput, handleBarcodeScan])
+
+  // Extract detailed error message from API error response
+  const extractErrorMessage = (error: any): string => {
+    if (error.response?.data) {
+      const data = error.response.data
+      if (data.errors) {
+        const messages = Object.values(data.errors).flat()
+        return (messages as string[]).join(', ')
+      }
+      if (data.message) return data.message
+      if (typeof data === 'string') return data
+    }
+    return error.message || 'An error occurred'
+  }
   
   const getOrderData = (externalId?: string) => ({
     external_id: externalId,
@@ -783,9 +832,11 @@ export function POSTerminal() {
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
       queryClient.invalidateQueries({ queryKey: ['customers-pos'] }) // Refresh customer data
     } catch (error: any) {
+      const errorMessage = extractErrorMessage(error)
+      console.error('Checkout error:', error.response?.data || error)
       toast({
         title: "Checkout Failed",
-        description: error.response?.data?.message || "An error occurred",
+        description: errorMessage,
         variant: "destructive",
       })
     }
@@ -877,9 +928,11 @@ export function POSTerminal() {
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
       queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
     } catch (error: any) {
+      const errorMessage = extractErrorMessage(error)
+      console.error('Checkout error:', error.response?.data || error)
       toast({
         title: "Checkout Failed",
-        description: error.response?.data?.message || "An error occurred",
+        description: errorMessage,
         variant: "destructive",
       })
     }
@@ -888,10 +941,10 @@ export function POSTerminal() {
   const products = productsData || []
 
   return (
-    <div className="flex flex-col h-full p-4 gap-4">
-      <div className="flex flex-1 gap-4 overflow-hidden">
+    <div className="flex flex-col h-full p-4 gap-4 overflow-hidden">
+      <div className="flex flex-1 gap-4 overflow-hidden min-h-0">
         {/* Left: Product Selection */}
-        <div className="flex flex-1 flex-col gap-4 h-full">
+        <div className="flex flex-1 flex-col gap-4 min-h-0 min-w-0 overflow-hidden">
           {/* Search and Barcode */}
           <div className="flex gap-2">
           <div className="relative flex-1">
@@ -987,10 +1040,39 @@ export function POSTerminal() {
             </div>
           )}
         </ScrollArea>
+
+        {/* Pagination Controls */}
+        {productLastPage > 1 && (
+          <div className="flex items-center justify-between pt-2 shrink-0">
+            <span className="text-xs text-muted-foreground">
+              {productTotal.toLocaleString()} products · Page {productPage} of {productLastPage}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={productPage <= 1}
+                onClick={() => setProductPage(p => Math.max(1, p - 1))}
+              >
+                <Icon icon="solar:alt-arrow-left-bold" className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={productPage >= productLastPage}
+                onClick={() => setProductPage(p => Math.min(productLastPage, p + 1))}
+              >
+                <Icon icon="solar:alt-arrow-right-bold" className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right: Cart */}
-      <Card className="flex w-96 flex-col">
+      <Card className="flex w-96 shrink-0 flex-col h-full min-h-0 overflow-hidden">
         <CardHeader className="pb-3 space-y-3">
           {/* Top Row: Title, Items Badge, Customer Button */}
           <div className="flex items-center justify-between">
@@ -1452,7 +1534,7 @@ export function POSTerminal() {
               // Handle different payment types
               if (method.type === 'online') {
                 try {
-                  // For online payments (Stripe, PayPal, etc.), create order first
+                  // For online payments, create order first
                   const orderData = getOrderData()
                   console.log('Creating order for online payment:', orderData)
                   
@@ -1462,22 +1544,24 @@ export function POSTerminal() {
                   if (!order || !order.id) {
                     throw new Error('Order creation failed - no order ID returned')
                   }
-                  
-                  // Validate order has required fields
-                  if (!order?.id) {
-                    throw new Error('Order created but no ID returned')
-                  }
                   if (!method?.gateway_id) {
                     throw new Error('No gateway ID found for selected payment method')
                   }
                   
-                  // Close checkout dialog first
+                  // Route to appropriate payment dialog based on gateway type
+                  if (method.code === 'hitpay') {
+                    // HitPay: use Drop-In UI (popup overlay)
+                    setShowCheckoutDialog(false)
+                    setHitPayPaymentData({ orderId: order.id, gatewayId: method.gateway_id })
+                    setTimeout(() => {
+                      setShowHitPayDialog(true)
+                    }, 100)
+                    return
+                  }
+                  
+                  // For Stripe / other inline gateways: open Stripe dialog
                   setShowCheckoutDialog(false)
-                  
-                  // Set the payment data and open Stripe dialog
                   setStripePaymentData({ orderId: order.id, gatewayId: method.gateway_id })
-                  
-                  // Small delay to ensure state is updated
                   setTimeout(() => {
                     setShowStripeDialog(true)
                   }, 100)
@@ -2002,6 +2086,73 @@ export function POSTerminal() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* HitPay Payment Dialog */}
+      <HitPayPaymentDialog
+        open={showHitPayDialog}
+        onOpenChange={setShowHitPayDialog}
+        amount={total}
+        posOrderId={hitPayPaymentData.orderId}
+        gatewayId={hitPayPaymentData.gatewayId || 0}
+        onSuccess={async (transactionId) => {
+          toast({
+            title: 'Payment successful!',
+            description: `HitPay payment completed. Transaction: ${transactionId}`,
+          })
+          setShowHitPayDialog(false)
+          setLastOrder({
+            orderNumber: hitPayPaymentData.orderId?.toString() || 'ONLINE',
+            receiptNumber: `HITPAY-${Date.now()}`,
+            date: new Date(),
+            customer: selectedCustomer ? {
+              name: selectedCustomer.name,
+              phone: selectedCustomer.phone,
+              email: selectedCustomer.email,
+            } : { name: 'Walk-in Customer' },
+            items: cart.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              line_total: item.line_total
+            })),
+            subtotal,
+            taxAmount,
+            discountAmount: regularDiscountAmount,
+            discountType: discount.type,
+            discountValue: discount.value,
+            coupon: appliedCoupon ? {
+              code: appliedCoupon.code,
+              discountAmount: couponDiscountAmount,
+              discountType: appliedCoupon.discount_type,
+              discountValue: appliedCoupon.discount_value,
+            } : null,
+            loyaltyDiscountAmount,
+            loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
+            total,
+            paymentMethod: 'Card (HitPay)',
+            amountPaid: total,
+            change: 0,
+            terminal: activeTerminalId,
+            transactionId,
+          })
+          setShowReceiptDialog(true)
+          setTimeout(() => {
+            clearSessionCart()
+            setSelectedCustomer(null)
+            setCurrentOrderId(null)
+            setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+            setAppliedCoupon(null)
+            setDiscount({ type: 'fixed', value: 0 })
+          }, 500)
+        }}
+        onError={(error) => {
+          toast({
+            variant: 'destructive',
+            title: 'HitPay payment failed',
+            description: error,
+          })
+        }}
+      />
 
       {/* Stripe Payment Dialog */}
       <StripePaymentDialog

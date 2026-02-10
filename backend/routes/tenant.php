@@ -74,8 +74,8 @@ Route::middleware([
     'api',
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
+    \App\Http\Middleware\EnsureTenantSearchPath::class,
     PreventAccessFromCentralDomains::class,
-    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
 ])->prefix('api/v1')->group(function () {
     $modules = app(\App\Modules\ModuleManager::class);
 

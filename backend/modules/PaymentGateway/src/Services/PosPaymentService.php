@@ -32,7 +32,11 @@ class PosPaymentService
 
         // 2. Online Payment Gateways (Stripe, PayPal, HitPay)
         $onlineGateways = PaymentGateway::where('is_active', true)
-            ->where('gateway_type', 'online')
+            ->where(function ($query) {
+                $query->where('gateway_type', 'online')
+                      ->orWhereIn('gateway_name', ['stripe', 'hitpay', 'paypal']);
+            })
+            ->where('gateway_name', '!=', 'offline')
             ->get();
 
         foreach ($onlineGateways as $gateway) {

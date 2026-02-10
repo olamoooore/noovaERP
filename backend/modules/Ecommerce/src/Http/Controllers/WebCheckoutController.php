@@ -244,6 +244,7 @@ class WebCheckoutController extends Controller
                     'currency' => $order->currency,
                     'description' => "Web Order {$order->order_number}",
                     'email' => $email,
+                    'gateway_id' => $request->input('gateway_id'),
                     'metadata' => [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -263,10 +264,12 @@ class WebCheckoutController extends Controller
                     'order_number' => $order->order_number,
                     'total' => (float) $order->total,
                     'currency' => $order->currency,
+                    'gateway_name' => $paymentIntent['gateway_name'] ?? 'stripe',
                     'payment_intent' => [
                         'client_secret' => $paymentIntent['client_secret'],
                         'publishable_key' => $paymentIntent['publishable_key'],
                         'transaction_id' => $paymentIntent['transaction_id'],
+                        'payment_url' => $paymentIntent['payment_url'] ?? null,
                     ],
                     'guest_token' => $guestToken,
                     'customer_id' => $customerId,

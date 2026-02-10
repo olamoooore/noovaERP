@@ -93,6 +93,7 @@ const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ de
 const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
 const WebShopCartPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCartPage })))
 const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.OrderSuccessPage })))
+const PaymentCallbackPage = lazy(() => import('@/pages/PaymentCallbackPage'))
 
 // Web Shop Customer Portal
 const PortalLayout = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.PortalLayout })))
@@ -324,6 +325,9 @@ function App() {
             <Route path="/sites/:websiteSlug" element={<PublicSiteViewer />} />
             <Route path="/sites/:websiteSlug/:pageSlug" element={<PublicSiteViewer />} />
             
+            {/* Payment callback for popup-based gateways (HitPay etc) */}
+            <Route path="/payment/callback" element={<PaymentCallbackPage />} />
+
             {/* Public E-commerce Storefront */}
             <Route path="/shop" element={<EcommerceShopPage />} />
             <Route path="/shop/:pageType" element={<EcommerceShopPage />} />

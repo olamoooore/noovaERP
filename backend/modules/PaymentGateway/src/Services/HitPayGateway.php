@@ -73,6 +73,10 @@ class HitPayGateway implements PaymentGatewayInterface
                 'reference_number' => $referenceNumber,
             ];
 
+            // Add payment_methods if specified (otherwise HitPay uses account defaults)
+            $paymentMethods = $data['payment_methods'] ?? null;
+
+
             // Only add redirect_url and webhook if not localhost
             $appUrl = config('app.url');
             $isLocalhost = str_contains($appUrl, 'localhost') || str_contains($appUrl, '127.0.0.1');
@@ -92,11 +96,21 @@ class HitPayGateway implements PaymentGatewayInterface
                 $payload['webhook'] = $webhookUrl;
             }
 
-            \Log::info('HitPay Payment Request', ['payload' => $payload]);
+            // Build form data - HitPay requires application/x-www-form-urlencoded
+            $formPayload = $payload;
+            
+            // Add payment_methods[] if specified
+            if ($paymentMethods && is_array($paymentMethods)) {
+                foreach ($paymentMethods as $i => $method) {
+                    $formPayload["payment_methods[$i]"] = $method;
+                }
+            }
+
+            \Log::info('HitPay Payment Request', ['payload' => $formPayload]);
 
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-            ])->post($this->baseUrl . '/payment-requests', $payload);
+            ])->asForm()->post($this->baseUrl . '/payment-requests', $formPayload);
 
             if ($response->successful()) {
                 $result = $response->json();

@@ -29,7 +29,7 @@ class PaymentController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'sometimes|string|size:3',
             'email' => 'sometimes|email',
-            'redirect_url' => 'sometimes|url',
+            'redirect_url' => 'sometimes|string',
         ]);
 
         // Must have either invoice_id or pos_order_id
@@ -74,7 +74,7 @@ class PaymentController extends Controller
             if (!$currency) {
                 // Default currencies by gateway
                 $currency = match ($gateway->gateway_name) {
-                    'hitpay' => 'MYR',
+                    'hitpay' => 'SGD',
                     'paypal' => 'MYR',
                     'stripe' => 'MYR',
                     default => 'MYR',
@@ -82,13 +82,14 @@ class PaymentController extends Controller
             }
 
             $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
+            $redirectUrl = $validated['redirect_url'] ?? ($frontendUrl . '/payment/success');
             $paymentData = [
                 'amount' => $validated['amount'],
                 'currency' => $currency,
                 'email' => $validated['email'] ?? $customerEmail,
                 'description' => $description,
                 'reference' => $reference,
-                'redirect_url' => $frontendUrl . '/payment/success',
+                'redirect_url' => $redirectUrl,
                 'metadata' => [
                     'invoice_id' => $invoice?->id,
                     'pos_order_id' => $posOrder?->id,
@@ -124,12 +125,17 @@ class PaymentController extends Controller
                 );
 
                 // Use firstOrCreate to handle idempotency atomically
+                // Note: payment_transactions table is in public schema.
+                // For POS orders, customer_id may be in tenant schema only,
+                // so we skip it to avoid FK violations. It's stored in metadata.
+                $customerId = $invoice?->customer_id ?? null;
+
                 $transaction = PaymentTransaction::firstOrCreate(
                     ['transaction_id' => $result['transaction_id']], // Find by this
                     [ // Create with these values if not found
                         'payment_gateway_id' => $gateway->id,
                         'invoice_id' => $invoice?->id,
-                        'customer_id' => $invoice?->customer_id ?? $posOrder?->customer_id,
+                        'customer_id' => $customerId,
                         'amount' => $validated['amount'],
                         'currency' => $currency,
                         'status' => 'pending',
@@ -158,6 +164,8 @@ class PaymentController extends Controller
                     'payment_url' => $result['payment_url'] ?? null,
                     'client_secret' => $result['client_secret'] ?? null,
                     'publishable_key' => $gateway->publishable_key ?? null,
+                    'is_test_mode' => $gateway->is_test_mode ?? false,
+                    'gateway_name' => $gateway->gateway_name,
                 ];
                 
                 if ($invoice) {
