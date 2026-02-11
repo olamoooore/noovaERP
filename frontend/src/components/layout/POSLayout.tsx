@@ -6,6 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 // import { Badge } from '@/components/ui/badge'
 import { usePosSessionStore } from '@/store/posSessionStore'
 import { POSOrderDrawer } from '@/components/pos/POSOrderDrawer'
+import { PWAInstallButton } from '@/components/pos/PWAInstallButton'
+import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 
@@ -131,6 +133,7 @@ export function POSLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <OfflineBanner />
       {/* Mint Top Bar */}
       <header className="flex h-14 items-center justify-between border-b bg-primary px-4 text-primary-foreground">
         <div className="flex min-w-0 items-center gap-4">
@@ -172,6 +175,8 @@ export function POSLayout() {
               </Button>
             </>
           )}
+
+          <PWAInstallButton />
 
           <Button
             variant="ghost"

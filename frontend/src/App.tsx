@@ -117,6 +117,9 @@ const PublicSiteViewer = lazy(() => import('@/pages/PublicSite').then(m => ({ de
 // Ecommerce Shop Pages (public-facing)
 const EcommerceShopPage = lazy(() => import('@/pages/WebShop/EcommerceStorefront').then(m => ({ default: m.EcommerceStorefront })))
 
+// Client Storefront (infiniti-kpop-store integration)
+const StorefrontApp = lazy(() => import('@/storefront/StorefrontApp'))
+
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
 const InventoryDashboardPage = lazy(() => import('@/pages/Inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
@@ -331,6 +334,9 @@ function App() {
             {/* Public E-commerce Storefront */}
             <Route path="/shop" element={<EcommerceShopPage />} />
             <Route path="/shop/:pageType" element={<EcommerceShopPage />} />
+
+            {/* Client Storefront (infiniti-kpop-store) */}
+            <Route path="/store/*" element={<StorefrontApp />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
