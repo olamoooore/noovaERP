@@ -129,3 +129,8 @@
 .storefront .shadow-soft-xl {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
 }
+
+/* Hide Stripe Developer Tools floating button (appears in test mode) */
+div[class*="Easel-contentWrapper"] {
+  display: none !important;
+}
