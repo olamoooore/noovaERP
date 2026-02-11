@@ -78,7 +78,7 @@ export default defineConfig({
         ],
         // Fallback to index.html for SPA navigation (offline support)
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/storage/, /^\/w\//],
+        navigateFallbackDenylist: [/^\/api/, /^\/storage/, /^\/w\//, /^\/store/],
       },
       devOptions: {
         enabled: true,
