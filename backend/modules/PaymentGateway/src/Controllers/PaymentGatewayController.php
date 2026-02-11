@@ -137,20 +137,11 @@ class PaymentGatewayController extends Controller
 
     /**
      * Toggle gateway active status
-     * Only one gateway can be active at a time
+     * Multiple gateways can be active simultaneously
      */
     public function toggle(PaymentGateway $gateway)
     {
         $newStatus = !$gateway->is_active;
-
-        // If activating this gateway, deactivate all others
-        if ($newStatus) {
-            PaymentGateway::where('id', '!=', $gateway->id)
-                ->update([
-                    'is_active' => false,
-                    'updated_by' => auth()->id(),
-                ]);
-        }
 
         $gateway->update([
             'is_active' => $newStatus,
@@ -159,7 +150,7 @@ class PaymentGatewayController extends Controller
 
         return response()->json([
             'message' => $newStatus
-                ? 'Gateway activated. All other gateways have been deactivated.'
+                ? 'Gateway activated'
                 : 'Gateway deactivated',
             'is_active' => $gateway->is_active,
         ]);
