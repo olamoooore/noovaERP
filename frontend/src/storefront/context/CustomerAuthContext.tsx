@@ -83,7 +83,13 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
       return { success: false, message: response.message || 'Registration failed' };
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || 'Registration failed' };
+      const data = error.response?.data;
+      // Extract specific validation errors from 422 responses
+      if (data?.errors) {
+        const firstError = Object.values(data.errors).flat()[0] as string;
+        return { success: false, message: firstError || data.message || 'Registration failed' };
+      }
+      return { success: false, message: data?.message || 'Registration failed' };
     }
   }, []);
 

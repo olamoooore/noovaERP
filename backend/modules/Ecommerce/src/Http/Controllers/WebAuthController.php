@@ -19,7 +19,7 @@ class WebAuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => 'required|email|max:255|unique:customers,email',
+            'email' => 'required|email|max:255',
             'password' => 'required|string|min:8|confirmed',
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',
@@ -27,21 +27,41 @@ class WebAuthController extends Controller
             'guest_token' => 'nullable|string',
         ]);
 
-        // Create customer
-        $customerData = [
-            'name' => $validated['first_name'] . ' ' . $validated['last_name'],
-            'email' => $validated['email'],
-            'phone' => $validated['phone'] ?? null,
-            'is_active' => true,
-            'password' => Hash::make($validated['password']),
-        ];
+        // Check if customer already exists
+        $existing = Customer::where('email', $validated['email'])->first();
+        if ($existing) {
+            // If the customer has a password set, they already registered properly
+            if ($existing->password) {
+                return response()->json([
+                    'message' => 'An account with this email already exists. Please login instead.',
+                    'errors' => ['email' => ['An account with this email already exists. Please login instead.']],
+                ], 422);
+            }
 
-        // Only set 'type' if the column exists (added by enhancement migration)
-        if (\Schema::hasColumn('customers', 'type')) {
-            $customerData['type'] = 'individual';
+            // Customer exists without password (legacy/orphaned) — update their record
+            $existing->update([
+                'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                'phone' => $validated['phone'] ?? $existing->phone,
+                'password' => Hash::make($validated['password']),
+            ]);
+            $customer = $existing;
+        } else {
+            // Create new customer
+            $customerData = [
+                'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                'email' => $validated['email'],
+                'phone' => $validated['phone'] ?? null,
+                'is_active' => true,
+                'password' => Hash::make($validated['password']),
+            ];
+
+            // Only set 'type' if the column exists (added by enhancement migration)
+            if (\Schema::hasColumn('customers', 'type')) {
+                $customerData['type'] = 'individual';
+            }
+
+            $customer = Customer::create($customerData);
         }
-
-        $customer = Customer::create($customerData);
 
         // Link guest orders by token
         if (!empty($validated['guest_token'])) {
