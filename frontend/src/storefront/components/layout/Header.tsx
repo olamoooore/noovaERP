@@ -8,6 +8,7 @@ import { useCustomerAuth } from '@/storefront/context/CustomerAuthContext';
 import { useMembership, MembershipTier } from '@/storefront/context/MembershipContext';
 import { cn } from '@/lib/utils';
 import { storefrontRoutes } from '@/storefront/lib/paths';
+import { STOREFRONT_LOGO_URL } from '@/storefront/lib/assets';
 
 // Base path for storefront routes (matches App.tsx mount point)
 const STOREFRONT_BASE = '/store';
@@ -66,7 +67,7 @@ export const Header = () => {
             {/* Logo */}
             <Link to={STOREFRONT_BASE} className="flex items-center gap-2 group">
               <img 
-                src="/storefront-logo.webp" 
+                src={STOREFRONT_LOGO_URL} 
                 alt="InfinitiKPOP" 
                 className="h-10 md:h-12 w-auto object-contain transition-transform group-hover:scale-105"
               />

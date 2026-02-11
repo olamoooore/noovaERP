@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 import { ProductCard } from '@/storefront/components/products/ProductCard';
 import { cn } from '@/lib/utils';
+import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 import { CreditCard, AlertTriangle, XCircle } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -699,7 +700,7 @@ const Account = () => {
                                   className="w-14 h-14 object-cover rounded-lg"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).src =
-                                      '/placeholder-product.svg';
+                                      PLACEHOLDER_PRODUCT_URL;
                                   }}
                                 />
                               ) : (

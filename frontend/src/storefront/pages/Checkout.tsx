@@ -35,6 +35,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { cn } from '@/lib/utils';
+import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 // ── Types ──────────────────────────────────────────────────────────
 type Step = 'details' | 'stripe-payment' | 'redirect-payment' | 'processing' | 'success';
@@ -427,7 +428,7 @@ const Checkout = () => {
                 alt={item.product.title}
                 className="w-16 h-16 object-cover rounded-lg"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/placeholder-product.svg';
+                  (e.target as HTMLImageElement).src = PLACEHOLDER_PRODUCT_URL;
                 }}
               />
               <div className="flex-1 min-w-0">

@@ -4,6 +4,7 @@ import { Button } from '@/storefront/components/ui/button';
 import { useCart } from '@/storefront/context/CartContext';
 import { cn } from '@/lib/utils';
 import { storefrontRoutes } from '@/storefront/lib/paths';
+import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 export const CartDrawer = () => {
   const { items, isOpen, setIsOpen, removeFromCart, updateQuantity, totalPrice, totalItems } = useCart();
@@ -62,7 +63,7 @@ export const CartDrawer = () => {
                     src={item.product.image}
                     alt={item.product.title}
                     className="w-20 h-20 object-cover rounded-lg"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-product.svg'; }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_PRODUCT_URL; }}
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">{item.product.title}</h4>

@@ -17,8 +17,8 @@ export default defineConfig({
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'any',
-        start_url: '/pos/terminal',
-        scope: '/',
+        start_url: './pos/terminal',
+        scope: './',
         icons: [
           {
             src: 'pwa-192x192.svg',

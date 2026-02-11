@@ -7,6 +7,7 @@ import { useCart } from '@/storefront/context/CartContext';
 import { useMembership } from '@/storefront/context/MembershipContext';
 import { useWishlist } from '@/storefront/context/WishlistContext';
 import { cn } from '@/lib/utils';
+import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -81,7 +82,7 @@ export const QuickViewModal = ({ product, isOpen, onClose }: QuickViewModalProps
               src={product.image}
               alt={product.title}
               className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-product.svg'; }}
+              onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_PRODUCT_URL; }}
             />
             <div className="absolute top-3 left-3 flex flex-wrap gap-1">
               {product.tags.map((tag) => (

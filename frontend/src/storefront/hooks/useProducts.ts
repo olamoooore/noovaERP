@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchProducts, fetchCategories, fetchTags, ApiProduct } from '@/storefront/lib/api';
 import { Product } from '@/storefront/data/products';
+import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 /**
  * Map backend API product to the storefront Product interface.
@@ -46,7 +47,7 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     ) || 'Regular',
     price: apiProduct.price,
     memberPrice: Math.round(apiProduct.price * 0.9 * 100) / 100, // 10% member discount
-    image: apiProduct.image || '/placeholder-product.svg',
+    image: apiProduct.image || PLACEHOLDER_PRODUCT_URL,
     tags: mappedTags,
     description: apiProduct.description || undefined,
     inStock: apiProduct.in_stock,
