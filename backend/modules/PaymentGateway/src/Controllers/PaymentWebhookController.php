@@ -313,6 +313,9 @@ class PaymentWebhookController extends Controller
             // Update invoice
             $this->updateInvoice($invoice, $transaction->amount);
 
+            // Update associated WebOrder status if payment is complete
+            $this->updateWebOrderStatus($invoice, $transaction);
+
             // Mark as processed
             $transaction->update(['processed_at' => now()]);
         });
@@ -343,6 +346,57 @@ class PaymentWebhookController extends Controller
             'paid_amount' => $invoice->paid_amount,
             'balance' => $invoice->balance,
         ]);
+    }
+
+    /**
+     * Update WebOrder status when payment is confirmed
+     */
+    protected function updateWebOrderStatus($invoice, $transaction = null)
+    {
+        try {
+            // Try to find WebOrder by invoice_id first, then by payment_transaction_id
+            $webOrder = \Modules\Ecommerce\Models\WebOrder::where('invoice_id', $invoice->id)->first();
+
+            if (!$webOrder && $transaction) {
+                $webOrder = \Modules\Ecommerce\Models\WebOrder::where('payment_transaction_id', $transaction->transaction_id)->first();
+            }
+
+            if ($webOrder && $webOrder->payment_status !== 'paid') {
+                $webOrder->update([
+                    'payment_status' => 'paid',
+                    'status' => 'confirmed',
+                    'paid_at' => now(),
+                    'confirmed_at' => now(),
+                ]);
+
+                // Convert to invoice if not already linked
+                if (!$webOrder->invoice_id) {
+                    try {
+                        $inv = $webOrder->convertToInvoice();
+                        Log::info('WebOrder converted to invoice via webhook', [
+                            'order_id' => $webOrder->id,
+                            'invoice_id' => $inv->id,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to convert WebOrder to invoice via webhook', [
+                            'order_id' => $webOrder->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                Log::info('WebOrder status updated to confirmed/paid via webhook', [
+                    'order_id' => $webOrder->id,
+                    'order_number' => $webOrder->order_number,
+                ]);
+            }
+        } catch (\Exception $e) {
+            // WebOrder may not exist (e.g., non-ecommerce payment) — ignore
+            Log::debug('No WebOrder found for invoice/transaction', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

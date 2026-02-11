@@ -62,6 +62,7 @@ export const CartDrawer = () => {
                     src={item.product.image}
                     alt={item.product.title}
                     className="w-20 h-20 object-cover rounded-lg"
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-product.svg'; }}
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">{item.product.title}</h4>

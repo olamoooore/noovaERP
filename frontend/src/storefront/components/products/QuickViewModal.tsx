@@ -5,6 +5,7 @@ import { Button } from '@/storefront/components/ui/button';
 import { Badge } from '@/storefront/components/ui/badge';
 import { useCart } from '@/storefront/context/CartContext';
 import { useMembership } from '@/storefront/context/MembershipContext';
+import { useWishlist } from '@/storefront/context/WishlistContext';
 import { cn } from '@/lib/utils';
 
 interface QuickViewModalProps {
@@ -17,8 +18,11 @@ export const QuickViewModal = ({ product, isOpen, onClose }: QuickViewModalProps
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useCart();
   const { tier, discount } = useMembership();
+  const { isInWishlist, toggleWishlist } = useWishlist();
 
   if (!product) return null;
+
+  const isLiked = isInWishlist(product.id);
 
   const memberPrice = tier !== 'free' ? product.price * (1 - discount / 100) : null;
 
@@ -77,6 +81,7 @@ export const QuickViewModal = ({ product, isOpen, onClose }: QuickViewModalProps
               src={product.image}
               alt={product.title}
               className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-product.svg'; }}
             />
             <div className="absolute top-3 left-3 flex flex-wrap gap-1">
               {product.tags.map((tag) => (
@@ -151,12 +156,22 @@ export const QuickViewModal = ({ product, isOpen, onClose }: QuickViewModalProps
 
             {/* Actions */}
             <div className="flex gap-3 mt-auto pt-6">
-              <Button variant="neon" className="flex-1" onClick={handleAddToCart}>
+              <Button
+                variant="neon"
+                className="flex-1"
+                onClick={handleAddToCart}
+                disabled={product.inStock === false || product.stockQuantity === 0}
+              >
                 <ShoppingBag className="h-4 w-4 mr-2" />
-                Add to Cart
+                {product.inStock === false || product.stockQuantity === 0 ? 'Out of Stock' : 'Add to Cart'}
               </Button>
-              <Button variant="outline" size="icon">
-                <Heart className="h-4 w-4" />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => toggleWishlist(product)}
+                aria-label={isLiked ? 'Remove from wishlist' : 'Add to wishlist'}
+              >
+                <Heart className={cn('h-4 w-4 transition-colors', isLiked && 'fill-red-500 text-red-500')} />
               </Button>
             </div>
           </div>

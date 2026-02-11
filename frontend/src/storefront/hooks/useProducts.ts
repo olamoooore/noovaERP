@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchProducts, fetchCategories, fetchTags, ApiProduct } from '@/storefront/lib/api';
-import { Product, PRODUCTS } from '@/storefront/data/products';
+import { Product } from '@/storefront/data/products';
 
 /**
  * Map backend API product to the storefront Product interface.
@@ -46,9 +46,11 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     ) || 'Regular',
     price: apiProduct.price,
     memberPrice: Math.round(apiProduct.price * 0.9 * 100) / 100, // 10% member discount
-    image: apiProduct.image || '/placeholder.svg',
+    image: apiProduct.image || '/placeholder-product.svg',
     tags: mappedTags,
     description: apiProduct.description || undefined,
+    inStock: apiProduct.in_stock,
+    stockQuantity: apiProduct.stock_quantity,
   };
 }
 
@@ -71,7 +73,7 @@ export function useProducts(params?: {
   return useQuery({
     queryKey: ['storefront-products', params],
     queryFn: async () => {
-      const response = await fetchProducts({ ...params, per_page: params?.per_page || 100 });
+      const response = await fetchProducts({ ...params, per_page: params?.per_page || 30 });
       return {
         products: response.data.map(mapApiProduct),
         total: response.total,
@@ -80,12 +82,6 @@ export function useProducts(params?: {
       };
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
-    placeholderData: {
-      products: PRODUCTS,
-      total: PRODUCTS.length,
-      currentPage: 1,
-      lastPage: 1,
-    },
   });
 }
 

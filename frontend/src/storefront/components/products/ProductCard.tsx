@@ -4,6 +4,7 @@ import { Product } from '@/storefront/data/products';
 import { Button } from '@/storefront/components/ui/button';
 import { Badge } from '@/storefront/components/ui/badge';
 import { useCart } from '@/storefront/context/CartContext';
+import { useWishlist } from '@/storefront/context/WishlistContext';
 import { useMembership } from '@/storefront/context/MembershipContext';
 import { cn } from '@/lib/utils';
 
@@ -14,11 +15,13 @@ interface ProductCardProps {
 
 export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
   const [isHovered, setIsHovered] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
   const { addToCart } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
   const { tier, discount } = useMembership();
 
+  const isLiked = isInWishlist(product.id);
   const memberPrice = tier !== 'free' ? product.price * (1 - discount / 100) : null;
+  const isOutOfStock = product.inStock === false || product.stockQuantity === 0;
 
   const tagVariant = (tag: string) => {
     switch (tag) {
@@ -43,6 +46,7 @@ export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
           alt={product.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-product.svg'; }}
         />
 
         {/* Overlay */}
@@ -55,6 +59,11 @@ export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
 
         {/* Tags */}
         <div className="absolute top-3 left-3 flex flex-wrap gap-1">
+          {isOutOfStock && (
+            <Badge variant="destructive" className="text-xs">
+              Out of Stock
+            </Badge>
+          )}
           {product.tags.map((tag) => (
             <Badge key={tag} variant={tagVariant(tag)} className="text-xs">
               {tag.charAt(0).toUpperCase() + tag.slice(1)}
@@ -64,7 +73,7 @@ export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
 
         {/* Wishlist Button */}
         <button
-          onClick={() => setIsLiked(!isLiked)}
+          onClick={() => toggleWishlist(product)}
           className={cn(
             "absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300",
             isLiked
@@ -88,9 +97,10 @@ export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
             size="sm"
             className="flex-1"
             onClick={() => addToCart(product)}
+            disabled={isOutOfStock}
           >
             <ShoppingBag className="h-4 w-4 mr-1" />
-            Add to Cart
+            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
           </Button>
           {onQuickView && (
             <Button

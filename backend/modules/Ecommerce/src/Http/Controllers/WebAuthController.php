@@ -28,14 +28,20 @@ class WebAuthController extends Controller
         ]);
 
         // Create customer
-        $customer = Customer::create([
+        $customerData = [
             'name' => $validated['first_name'] . ' ' . $validated['last_name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
-            'type' => 'individual',
             'is_active' => true,
             'password' => Hash::make($validated['password']),
-        ]);
+        ];
+
+        // Only set 'type' if the column exists (added by enhancement migration)
+        if (\Schema::hasColumn('customers', 'type')) {
+            $customerData['type'] = 'individual';
+        }
+
+        $customer = Customer::create($customerData);
 
         // Link guest orders by token
         if (!empty($validated['guest_token'])) {

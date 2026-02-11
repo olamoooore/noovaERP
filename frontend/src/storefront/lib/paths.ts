@@ -21,4 +21,6 @@ export const storefrontRoutes = {
   events: `${STOREFRONT_BASE}/events`,
   membership: `${STOREFRONT_BASE}/membership`,
   checkout: `${STOREFRONT_BASE}/checkout`,
+  account: `${STOREFRONT_BASE}/account`,
+  login: `${STOREFRONT_BASE}/login`,
 } as const;

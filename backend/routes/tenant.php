@@ -63,6 +63,8 @@ Route::middleware([
         Route::post('/customer/addresses/{id}/default', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'setDefaultAddress']);
         Route::get('/orders', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'index']);
         Route::get('/orders/{id}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'show']);
+        Route::post('/orders/{id}/cancel', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'cancelOrder']);
+        Route::post('/orders/{id}/retry-payment', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'retryPayment']);
     });
 });
 

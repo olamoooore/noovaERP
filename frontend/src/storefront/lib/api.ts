@@ -89,31 +89,42 @@ export async function fetchTags(): Promise<ApiTag[]> {
 // ---- Checkout API ----
 
 export interface CheckoutPayload {
-  customer_name: string;
-  customer_email: string;
-  customer_phone?: string;
-  shipping_address?: string;
-  shipping_city?: string;
-  shipping_state?: string;
-  shipping_zip?: string;
-  shipping_country?: string;
-  payment_gateway: string;
+  email: string;
+  phone?: string;
+  shipping_address: {
+    first_name: string;
+    last_name: string;
+    address: string;
+    city: string;
+    state?: string;
+    postal_code: string;
+    country: string;
+  };
   items: {
     product_id: number;
     quantity: number;
-    price: number;
   }[];
+  gateway_id?: number;
   notes?: string;
-  currency?: string;
 }
 
 export interface CheckoutResponse {
   success: boolean;
   order_id: number;
   order_number: string;
-  payment_url?: string;
-  client_secret?: string;
+  total?: number;
+  currency?: string;
+  gateway_name?: string;
+  payment_intent?: {
+    client_secret?: string;
+    publishable_key?: string;
+    transaction_id?: string;
+    payment_url?: string;
+  };
+  guest_token?: string;
+  customer_id?: number;
   message?: string;
+  error?: string;
 }
 
 export async function guestCheckout(payload: CheckoutPayload): Promise<CheckoutResponse> {
@@ -121,12 +132,210 @@ export async function guestCheckout(payload: CheckoutPayload): Promise<CheckoutR
   return data;
 }
 
-export async function getPaymentGateways(): Promise<{ id: number; name: string; gateway: string; is_active: boolean }[]> {
+export async function getPaymentGateways(): Promise<{ id: number; name: string; gateway: string; display_name: string; is_test_mode: boolean }[]> {
   const { data } = await storefrontApi.get('/web-shop/payment-gateways');
+  // Backend returns { gateways: [...], has_gateways: bool }
+  const gateways = data.gateways || data || [];
+  return gateways.map((gw: any) => ({
+    id: gw.id,
+    name: gw.display_name || gw.name,
+    gateway: gw.name || gw.gateway, // backend uses `name` for the gateway type (stripe/hitpay/paypal)
+    display_name: gw.display_name || gw.name,
+    is_test_mode: gw.is_test_mode || false,
+  }));
+}
+
+export async function confirmPayment(payload: {
+  order_id: number;
+  payment_intent_id: string;
+  guest_token?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const { data } = await storefrontApi.post('/web-shop/checkout/confirm-payment', payload);
   return data;
 }
 
-export async function confirmPayment(payload: { order_id: number; payment_reference: string; gateway: string }): Promise<{ success: boolean; message: string }> {
-  const { data } = await storefrontApi.post('/web-shop/checkout/confirm-payment', payload);
+// ---- Customer Auth API ----
+
+export interface CustomerLoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface CustomerRegisterPayload {
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+  phone?: string;
+}
+
+export interface CustomerProfile {
+  id: number;
+  name: string;
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  phone: string | null;
+  loyalty_points?: number;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message?: string;
+  customer?: CustomerProfile;
+  token?: string;
+}
+
+export interface CustomerOrder {
+  id: number;
+  order_number: string;
+  status: string;
+  payment_status: string;
+  total: number;
+  currency: string;
+  created_at: string;
+  items_count?: number;
+  items?: OrderItem[];
+  shipping_address?: {
+    first_name?: string;
+    last_name?: string;
+    address?: string;
+    city?: string;
+    postal_code?: string;
+    country?: string;
+  };
+  subtotal?: number;
+  shipping_cost?: number;
+  tax_amount?: number;
+  discount_amount?: number;
+  loyalty_discount?: number;
+  confirmed_at?: string;
+  paid_at?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+}
+
+export interface OrderItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  product_sku: string | null;
+  product_image: string | null;
+  unit_price: number;
+  quantity: number;
+  tax_amount: number;
+  line_total: number;
+}
+
+export async function customerLogin(payload: CustomerLoginPayload): Promise<AuthResponse> {
+  const { data } = await storefrontApi.post('/web-shop/auth/login', payload);
   return data;
+}
+
+export async function customerRegister(payload: CustomerRegisterPayload): Promise<AuthResponse> {
+  const { data } = await storefrontApi.post('/web-shop/auth/register', payload);
+  return data;
+}
+
+export async function customerLogout(token: string): Promise<{ success: boolean }> {
+  const { data } = await storefrontApi.post('/web-shop/auth/logout', {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
+export async function getCustomerProfile(token: string): Promise<CustomerProfile> {
+  const { data } = await storefrontApi.get('/web-shop/customer/profile', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.customer || data;
+}
+
+export async function updateCustomerProfile(token: string, payload: Partial<CustomerProfile>): Promise<CustomerProfile> {
+  const { data } = await storefrontApi.put('/web-shop/customer/profile', payload, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.customer || data;
+}
+
+export async function getCustomerOrders(token: string): Promise<CustomerOrder[]> {
+  const { data } = await storefrontApi.get('/web-shop/orders', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  // Backend returns { orders: [...], pagination: {...} }
+  return data.orders || data || [];
+}
+
+export async function getCustomerOrder(token: string, orderId: number): Promise<CustomerOrder> {
+  const { data } = await storefrontApi.get(`/web-shop/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.order || data;
+}
+
+export async function cancelOrder(token: string, orderId: number): Promise<{ success: boolean; message: string; order: CustomerOrder }> {
+  const { data } = await storefrontApi.post(`/web-shop/orders/${orderId}/cancel`, {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
+export async function retryOrderPayment(token: string, orderId: number, gatewayId?: number): Promise<CheckoutResponse> {
+  const { data } = await storefrontApi.post(`/web-shop/orders/${orderId}/retry-payment`, {
+    gateway_id: gatewayId,
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
+// ---- Address API ----
+
+export interface CustomerAddress {
+  id: number;
+  type: 'shipping' | 'billing';
+  name: string;
+  company?: string | null;
+  address: string;
+  city: string;
+  state?: string | null;
+  postal_code: string;
+  country: string;
+  phone?: string | null;
+  is_default: boolean;
+}
+
+export async function getCustomerAddresses(token: string): Promise<CustomerAddress[]> {
+  const { data } = await storefrontApi.get('/web-shop/customer/addresses', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.addresses || data || [];
+}
+
+export async function addCustomerAddress(token: string, payload: Omit<CustomerAddress, 'id'>): Promise<CustomerAddress> {
+  const { data } = await storefrontApi.post('/web-shop/customer/addresses', payload, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.address || data;
+}
+
+export async function updateCustomerAddress(token: string, id: number, payload: Omit<CustomerAddress, 'id'>): Promise<CustomerAddress> {
+  const { data } = await storefrontApi.put(`/web-shop/customer/addresses/${id}`, payload, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.address || data;
+}
+
+export async function deleteCustomerAddress(token: string, id: number): Promise<void> {
+  await storefrontApi.delete(`/web-shop/customer/addresses/${id}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}
+
+export async function setDefaultAddress(token: string, id: number): Promise<void> {
+  await storefrontApi.post(`/web-shop/customer/addresses/${id}/default`, {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
 }

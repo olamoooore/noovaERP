@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\PaymentGateway\Services\PaymentService;
 
 class WebOrderController extends Controller
 {
@@ -230,6 +231,133 @@ class WebOrderController extends Controller
             'message' => "Order status updated from {$oldStatus} to {$newStatus}",
             'order' => $this->formatOrderResponse($order->fresh()),
         ]);
+    }
+
+    /**
+     * Customer: Cancel a pending order
+     */
+    public function cancelOrder(Request $request, int $id): JsonResponse
+    {
+        $customer = $request->attributes->get('web_customer');
+
+        if (!$customer) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $order = WebOrder::with('items.product')
+            ->where('id', $id)
+            ->where('customer_id', $customer->id)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+
+        if (!in_array($order->status, ['pending'])) {
+            return response()->json([
+                'error' => 'Only pending orders can be cancelled',
+            ], 422);
+        }
+
+        // Refund stock
+        foreach ($order->items as $item) {
+            if ($item->product && $item->product->stock_quantity !== null) {
+                $item->product->increment('stock_quantity', $item->quantity);
+            }
+        }
+
+        $order->update([
+            'status' => 'cancelled',
+            'payment_status' => $order->payment_status === 'paid' ? 'refund_pending' : 'cancelled',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order cancelled successfully',
+            'order' => $this->formatOrderResponse($order->fresh()),
+        ]);
+    }
+
+    /**
+     * Customer: Retry payment for a pending order
+     */
+    public function retryPayment(Request $request, int $id): JsonResponse
+    {
+        $customer = $request->attributes->get('web_customer');
+
+        if (!$customer) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $order = WebOrder::with('items')
+            ->where('id', $id)
+            ->where('customer_id', $customer->id)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['error' => 'Order is already paid'], 422);
+        }
+
+        if ($order->status === 'cancelled') {
+            return response()->json(['error' => 'Cannot pay for a cancelled order'], 422);
+        }
+
+        $validated = $request->validate([
+            'gateway_id' => 'nullable|integer',
+        ]);
+
+        try {
+            $paymentService = app(PaymentService::class);
+
+            $paymentIntent = $paymentService->createIntent([
+                'amount' => $order->total,
+                'currency' => $order->currency,
+                'description' => "Web Order {$order->order_number} (retry)",
+                'email' => $order->email,
+                'gateway_id' => $validated['gateway_id'] ?? $request->input('gateway_id'),
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'customer_id' => $customer->id,
+                    'type' => 'web_order',
+                    'retry' => true,
+                ],
+            ]);
+
+            // Update order with new transaction reference
+            $order->update([
+                'payment_transaction_id' => $paymentIntent['transaction_id'] ?? $order->payment_transaction_id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'total' => (float) $order->total,
+                'currency' => $order->currency,
+                'gateway_name' => $paymentIntent['gateway_name'] ?? 'stripe',
+                'payment_intent' => [
+                    'client_secret' => $paymentIntent['client_secret'] ?? null,
+                    'publishable_key' => $paymentIntent['publishable_key'] ?? null,
+                    'payment_url' => $paymentIntent['payment_url'] ?? null,
+                    'transaction_id' => $paymentIntent['transaction_id'] ?? null,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Retry payment failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Payment initialization failed',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

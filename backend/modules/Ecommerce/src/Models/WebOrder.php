@@ -99,7 +99,7 @@ class WebOrder extends Model
         $invoice = Invoice::create([
             'customer_id' => $this->customer_id,
             'invoice_number' => Invoice::generateInvoiceNumber(),
-            'issue_date' => now(),
+            'invoice_date' => now(),
             'due_date' => now()->addDays(30),
             'subtotal' => $this->subtotal,
             'tax_amount' => $this->tax_amount,
@@ -108,6 +108,7 @@ class WebOrder extends Model
             'balance' => 0, // Paid
             'status' => 'paid',
             'notes' => "Web Order: {$this->order_number}",
+            'created_by' => \App\Models\User::first()?->id ?? 1,
         ]);
 
         // Create invoice lines

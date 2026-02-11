@@ -9,6 +9,8 @@ export interface Product {
   image: string;
   tags: ('limited' | 'preorder' | 'new' | 'bestseller')[];
   description?: string;
+  inStock?: boolean;
+  stockQuantity?: number;
 }
 
 export const PRODUCTS: Product[] = [

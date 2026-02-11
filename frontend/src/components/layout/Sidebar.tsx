@@ -213,7 +213,7 @@ const baseNavItems: NavItem[] = [
       },
       {
         title: 'Online Shop',
-        href: '/shop',
+        href: '/store',
         icon: 'solar:bag-4-bold-duotone',
       },
     ],

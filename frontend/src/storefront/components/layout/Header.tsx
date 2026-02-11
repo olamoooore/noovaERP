@@ -3,8 +3,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Button } from '@/storefront/components/ui/button';
 import { useCart } from '@/storefront/context/CartContext';
+import { useWishlist } from '@/storefront/context/WishlistContext';
+import { useCustomerAuth } from '@/storefront/context/CustomerAuthContext';
 import { useMembership, MembershipTier } from '@/storefront/context/MembershipContext';
 import { cn } from '@/lib/utils';
+import { storefrontRoutes } from '@/storefront/lib/paths';
 
 // Base path for storefront routes (matches App.tsx mount point)
 const STOREFRONT_BASE = '/store';
@@ -21,6 +24,8 @@ const tierOptions: MembershipTier[] = ['free', 'bronze', 'silver', 'gold'];
 export const Header = () => {
   const location = useLocation();
   const { totalItems, setIsOpen: setCartOpen } = useCart();
+  const { totalItems: wishlistCount } = useWishlist();
+  const { isAuthenticated } = useCustomerAuth();
   const { tier, setTier } = useMembership();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -93,7 +98,20 @@ export const Header = () => {
               <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-primary/5 hover:text-primary transition-colors">
                 <Icon icon="solar:magnifer-linear" className="h-6 w-6" />
               </Button>
-              
+
+              {/* Wishlist */}
+              <Button variant="ghost" size="icon" className="relative hover:bg-primary/5 hover:text-primary transition-colors" asChild>
+                <Link to={storefrontRoutes.account + '?tab=wishlist'}>
+                  <Icon icon="solar:heart-linear" className="h-6 w-6" />
+                  {wishlistCount > 0 && (
+                    <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-secondary text-secondary-foreground text-[10px] flex items-center justify-center font-bold shadow-sm">
+                      {wishlistCount}
+                    </span>
+                  )}
+                </Link>
+              </Button>
+
+              {/* Cart */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -108,8 +126,11 @@ export const Header = () => {
                 )}
               </Button>
 
-              <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-primary/5 hover:text-primary transition-colors">
-                <Icon icon="solar:user-circle-linear" className="h-6 w-6" />
+              {/* Account */}
+              <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-primary/5 hover:text-primary transition-colors" asChild>
+                <Link to={isAuthenticated ? storefrontRoutes.account : storefrontRoutes.login}>
+                  <Icon icon="solar:user-circle-linear" className="h-6 w-6" />
+                </Link>
               </Button>
 
               {/* Mobile Menu Toggle */}
@@ -149,10 +170,29 @@ export const Header = () => {
                 </Link>
               ))}
               <div className="h-px bg-border my-2" />
-              <div className="flex items-center justify-between py-2 text-muted-foreground">
-                <span>Account</span>
+              <Link
+                to={storefrontRoutes.account + '?tab=wishlist'}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-between py-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  Wishlist
+                  {wishlistCount > 0 && (
+                    <span className="text-xs bg-secondary/20 text-secondary-foreground px-2 py-0.5 rounded-full">
+                      {wishlistCount}
+                    </span>
+                  )}
+                </span>
+                <Icon icon="solar:heart-linear" className="h-6 w-6" />
+              </Link>
+              <Link
+                to={isAuthenticated ? storefrontRoutes.account : storefrontRoutes.login}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-between py-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span>{isAuthenticated ? 'Account' : 'Sign In'}</span>
                 <Icon icon="solar:user-circle-linear" className="h-6 w-6" />
-              </div>
+              </Link>
             </nav>
           </div>
         )}

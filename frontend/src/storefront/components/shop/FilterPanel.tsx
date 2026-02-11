@@ -1,8 +1,9 @@
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { BRANDS, COLLECTIONS, Brand, ProductType, Collection } from '@/storefront/data/products';
 import { Button } from '@/storefront/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { useCategories } from '@/storefront/hooks/useProducts';
 import { cn } from '@/lib/utils';
 
 interface FilterPanelProps {
@@ -32,15 +33,63 @@ export const FilterPanel = ({
   isMobile,
   onClose,
 }: FilterPanelProps) => {
-  const categoryItems: Array<{ type: ProductType; icon: string; label: string }> = [
-    { type: 'Album', icon: 'solar:music-note-linear', label: 'Album' },
-    { type: 'DVD', icon: 'solar:videocamera-record-linear', label: 'DVD' },
-    { type: "Season's Greetings", icon: 'solar:gift-linear', label: "Season's Greetings" },
-    { type: 'Lightstick', icon: 'solar:flashlight-linear', label: 'Lightstick' },
-    { type: 'Merchandise', icon: 'solar:bag-2-linear', label: 'Merchandise' },
-    { type: 'Photocard', icon: 'solar:gallery-linear', label: 'Photocard' },
-    { type: 'Miscellaneous', icon: 'solar:stars-line-duotone', label: 'Miscellaneous' },
-  ];
+  const { data: apiCategories, isLoading: categoriesLoading } = useCategories();
+
+  // Icon mapping for categories - fallback to a default icon
+  const categoryIconMap: Record<string, string> = {
+    'album': 'solar:music-note-linear',
+    'albums': 'solar:music-note-linear',
+    'dvd': 'solar:videocamera-record-linear',
+    'dvds': 'solar:videocamera-record-linear',
+    'video': 'solar:videocamera-record-linear',
+    "season's greetings": 'solar:gift-linear',
+    'seasons greetings': 'solar:gift-linear',
+    'lightstick': 'solar:flashlight-linear',
+    'lightsticks': 'solar:flashlight-linear',
+    'merchandise': 'solar:bag-2-linear',
+    'merch': 'solar:bag-2-linear',
+    'photocard': 'solar:gallery-linear',
+    'photocards': 'solar:gallery-linear',
+    'miscellaneous': 'solar:stars-line-duotone',
+    'accessories': 'solar:hanger-2-linear',
+    'clothing': 'solar:t-shirt-linear',
+    'apparel': 'solar:t-shirt-linear',
+    'stationery': 'solar:pen-new-square-linear',
+    'poster': 'solar:gallery-wide-linear',
+    'posters': 'solar:gallery-wide-linear',
+    'books': 'solar:book-linear',
+    'collectibles': 'solar:star-shine-linear',
+    'food': 'solar:cup-hot-linear',
+    'beauty': 'solar:palette-round-linear',
+    'electronics': 'solar:laptop-linear',
+    'toys': 'solar:gameboy-linear',
+    'home': 'solar:home-linear',
+    'bags': 'solar:bag-3-linear',
+    'jewelry': 'solar:diamond-linear',
+  };
+
+  const getCategoryIcon = (name: string) => {
+    const key = name.toLowerCase().trim();
+    return categoryIconMap[key] || 'solar:box-linear';
+  };
+
+  // Build category items from DB categories, fallback to hardcoded
+  const categoryItems: Array<{ type: ProductType; icon: string; label: string; id?: number }> = apiCategories && apiCategories.length > 0
+    ? apiCategories.map(cat => ({
+        type: cat.name as ProductType,
+        icon: getCategoryIcon(cat.name),
+        label: cat.name,
+        id: cat.id,
+      }))
+    : [
+        { type: 'Album', icon: 'solar:music-note-linear', label: 'Album' },
+        { type: 'DVD', icon: 'solar:videocamera-record-linear', label: 'DVD' },
+        { type: "Season's Greetings", icon: 'solar:gift-linear', label: "Season's Greetings" },
+        { type: 'Lightstick', icon: 'solar:flashlight-linear', label: 'Lightstick' },
+        { type: 'Merchandise', icon: 'solar:bag-2-linear', label: 'Merchandise' },
+        { type: 'Photocard', icon: 'solar:gallery-linear', label: 'Photocard' },
+        { type: 'Miscellaneous', icon: 'solar:stars-line-duotone', label: 'Miscellaneous' },
+      ];
 
   const toggleBrand = (brand: Brand) => {
     if (selectedBrands.includes(brand)) {
@@ -66,7 +115,7 @@ export const FilterPanel = ({
     }
   };
 
-  const hasFilters = selectedBrands.length > 0 || selectedTypes.length > 0 || selectedCollections.length > 0 || priceRange[0] > 0 || priceRange[1] < 150;
+  const hasFilters = selectedBrands.length > 0 || selectedTypes.length > 0 || selectedCollections.length > 0 || priceRange[0] > 0 || priceRange[1] < 500;
 
   return (
     <div className={cn("space-y-6", isMobile && "p-6")}>
@@ -98,7 +147,7 @@ export const FilterPanel = ({
           value={priceRange}
           onValueChange={(value) => onPriceChange(value as [number, number])}
           min={0}
-          max={150}
+          max={500}
           step={5}
           className="mt-4"
         />
