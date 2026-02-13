@@ -75,6 +75,9 @@ class WebAuthController extends Controller
             ->whereNull('customer_id')
             ->update(['customer_id' => $customer->id]);
 
+        // Auto-enroll customer in loyalty program
+        $this->autoEnrollInLoyalty($customer);
+
         // Create session
         $session = $this->createSession($customer);
 
@@ -83,6 +86,55 @@ class WebAuthController extends Controller
             'token' => $session->token,
             'customer' => $this->formatCustomerResponse($customer),
         ], 201);
+    }
+
+    /**
+     * Auto-enroll customer in loyalty program if one exists
+     */
+    private function autoEnrollInLoyalty(Customer $customer): void
+    {
+        try {
+            // Check if customer is already enrolled
+            $existingLoyalty = \Modules\Loyalty\Models\CustomerLoyalty::where('customer_id', $customer->id)->first();
+            if ($existingLoyalty) {
+                return; // Already enrolled
+            }
+
+            // Get active loyalty program
+            $program = \Modules\Loyalty\Models\LoyaltyProgram::where('is_active', true)->first();
+            if (!$program) {
+                return; // No active program to enroll in
+            }
+
+            // Get starting tier (lowest sort_order)
+            $startingTier = $program->tiers()
+                ->orderBy('sort_order', 'asc')
+                ->first();
+
+            // Create loyalty account
+            \Modules\Loyalty\Models\CustomerLoyalty::create([
+                'customer_id' => $customer->id,
+                'loyalty_program_id' => $program->id,
+                'loyalty_tier_id' => $startingTier?->id,
+                'current_points' => 0,
+                'lifetime_points' => 0,
+                'points_earned' => 0,
+                'points_redeemed' => 0,
+                'points_expired' => 0,
+                'joined_at' => now(),
+            ]);
+
+            \Illuminate\Support\Facades\Log::info('Auto-enrolled customer in loyalty program', [
+                'customer_id' => $customer->id,
+                'program_id' => $program->id,
+            ]);
+        } catch (\Exception $e) {
+            // Don't fail registration if loyalty enrollment fails
+            \Illuminate\Support\Facades\Log::warning('Failed to auto-enroll customer in loyalty program', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

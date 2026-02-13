@@ -9,6 +9,8 @@ import {
   Loader2,
   ExternalLink,
   ShieldCheck,
+  Star,
+  Gift,
 } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { Button } from '@/storefront/components/ui/button';
@@ -26,6 +28,9 @@ import {
   confirmPayment,
   getCustomerAddresses,
   CustomerAddress,
+  getLoyaltyBalance,
+  LoyaltyBalance,
+  calculateLoyaltyDiscount,
 } from '@/storefront/lib/api';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import {
@@ -164,6 +169,12 @@ const Checkout = () => {
   const [selectedAddressId, setSelectedAddressId] = useState<number | 'new' | null>(null);
   const [addressesLoaded, setAddressesLoaded] = useState(false);
 
+  // Loyalty
+  const [loyaltyBalance, setLoyaltyBalance] = useState<LoyaltyBalance | null>(null);
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState<number>(0);
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState<number>(0);
+  const [isCalculatingLoyalty, setIsCalculatingLoyalty] = useState(false);
+
   // Form
   const [formData, setFormData] = useState({
     firstName: '',
@@ -219,6 +230,19 @@ const Checkout = () => {
     }
   }, [isAuthenticated, token, addressesLoaded]);
 
+  // Load loyalty balance for logged-in users
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      getLoyaltyBalance(token)
+        .then((balance) => {
+          setLoyaltyBalance(balance);
+        })
+        .catch(() => {
+          // Not enrolled or error - silently ignore
+        });
+    }
+  }, [isAuthenticated, token]);
+
   // Apply a saved address to the form
   const applyAddress = (addr: CustomerAddress) => {
     setFormData((prev) => ({
@@ -250,6 +274,43 @@ const Checkout = () => {
       const addr = savedAddresses.find((a) => a.id === id);
       if (addr) applyAddress(addr);
     }
+  };
+
+  // Handle loyalty points change
+  const handleLoyaltyPointsChange = async (points: number) => {
+    setLoyaltyPointsToRedeem(points);
+    
+    if (!token || points <= 0) {
+      setLoyaltyDiscount(0);
+      return;
+    }
+
+    setIsCalculatingLoyalty(true);
+    try {
+      const result = await calculateLoyaltyDiscount(token, points, totalPrice);
+      if (result.can_redeem) {
+        setLoyaltyDiscount(result.discount_amount);
+      } else {
+        setLoyaltyDiscount(0);
+        if (result.reason) {
+          toast.error(result.reason);
+        }
+      }
+    } catch {
+      setLoyaltyDiscount(0);
+    } finally {
+      setIsCalculatingLoyalty(false);
+    }
+  };
+
+  // Use max loyalty points
+  const useMaxLoyaltyPoints = async () => {
+    if (!token || !loyaltyBalance?.enrolled) return;
+    
+    const maxPoints = loyaltyBalance.points.current;
+    if (maxPoints <= 0) return;
+    
+    await handleLoyaltyPointsChange(maxPoints);
   };
 
   // Fetch available payment gateways
@@ -342,6 +403,7 @@ const Checkout = () => {
           quantity: item.quantity,
         })),
         gateway_id: selectedGatewayId || undefined,
+        loyalty_points_to_redeem: loyaltyPointsToRedeem > 0 ? loyaltyPointsToRedeem : undefined,
       };
 
       const response = await guestCheckout(payload);
@@ -415,6 +477,8 @@ const Checkout = () => {
   };
 
   // ── Order Summary Sidebar ───────────────────────────────────────
+  const finalTotal = Math.max(0, totalPrice - loyaltyDiscount);
+  
   const orderSummary = (
     <div className="lg:col-span-1">
       <div className="glass-strong rounded-2xl p-6 sticky top-24">
@@ -447,9 +511,15 @@ const Checkout = () => {
             <span className="text-muted-foreground">Subtotal</span>
             <span>SGD {totalPrice.toFixed(2)}</span>
           </div>
+          {loyaltyDiscount > 0 && (
+            <div className="flex justify-between text-sm text-green-500">
+              <span>Loyalty Discount</span>
+              <span>-SGD {loyaltyDiscount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-display font-bold pt-2 border-t border-border">
             <span>Total</span>
-            <span className="gradient-text">SGD {totalPrice.toFixed(2)}</span>
+            <span className="gradient-text">SGD {finalTotal.toFixed(2)}</span>
           </div>
         </div>
       </div>
@@ -700,6 +770,80 @@ const Checkout = () => {
                         <p className="text-sm text-muted-foreground">
                           Loading payment methods…
                         </p>
+                      )}
+
+                      {/* Loyalty Points Redemption */}
+                      {isAuthenticated && loyaltyBalance?.enrolled && loyaltyBalance.points.current > 0 && (
+                        <div className="p-4 rounded-xl bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Gift className="h-5 w-5 text-primary" />
+                            <h3 className="font-medium">Redeem Loyalty Points</h3>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 mb-3">
+                            <Star className="h-4 w-4 text-yellow-500" />
+                            <span className="text-sm">
+                              Available: <strong>{loyaltyBalance.points.current}</strong> points
+                              {loyaltyBalance.tier && (
+                                <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: loyaltyBalance.tier.color || '#888', color: '#fff' }}>
+                                  {loyaltyBalance.tier.name}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                              <Label htmlFor="loyaltyPoints" className="text-xs text-muted-foreground">
+                                Points to redeem
+                              </Label>
+                              <Input
+                                id="loyaltyPoints"
+                                type="number"
+                                min={0}
+                                max={loyaltyBalance.points.current}
+                                value={loyaltyPointsToRedeem || ''}
+                                onChange={(e) => handleLoyaltyPointsChange(parseInt(e.target.value) || 0)}
+                                placeholder="0"
+                                className="mt-1"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={useMaxLoyaltyPoints}
+                              disabled={isCalculatingLoyalty}
+                            >
+                              Use All
+                            </Button>
+                          </div>
+
+                          {isCalculatingLoyalty && (
+                            <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Calculating...
+                            </div>
+                          )}
+
+                          {loyaltyDiscount > 0 && !isCalculatingLoyalty && (
+                            <div className="mt-3 p-2 rounded-lg bg-green-500/10 text-green-600 text-sm">
+                              You will save <strong>SGD {loyaltyDiscount.toFixed(2)}</strong> with {loyaltyPointsToRedeem} points
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Show loyalty info for logged-in users with 0 points */}
+                      {isAuthenticated && loyaltyBalance?.enrolled && loyaltyBalance.points.current === 0 && (
+                        <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                          <div className="flex items-center gap-2">
+                            <Star className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">
+                              You have 0 loyalty points. Complete this order to earn points!
+                            </span>
+                          </div>
+                        </div>
                       )}
 
                       <Button

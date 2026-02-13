@@ -106,6 +106,7 @@ export interface CheckoutPayload {
   }[];
   gateway_id?: number;
   notes?: string;
+  loyalty_points_to_redeem?: number;
 }
 
 export interface CheckoutResponse {
@@ -338,4 +339,85 @@ export async function setDefaultAddress(token: string, id: number): Promise<void
   await storefrontApi.post(`/web-shop/customer/addresses/${id}/default`, {}, {
     headers: { Authorization: `Bearer ${token}` }
   });
+}
+
+// ---- Loyalty API ----
+
+export interface LoyaltyBalance {
+  enrolled: boolean;
+  points: {
+    current: number;
+    lifetime: number;
+    earned: number;
+    redeemed: number;
+  };
+  tier: {
+    id: number;
+    name: string;
+    color: string;
+    multiplier: number;
+    icon: string | null;
+  } | null;
+  next_tier: {
+    name: string;
+    points_needed: number;
+  } | null;
+  progress: {
+    current: number;
+    needed: number;
+    percent: number;
+  } | null;
+}
+
+export interface LoyaltyTransaction {
+  id: number;
+  type: 'earn' | 'redeem' | 'expire' | 'adjust';
+  points: number;
+  balance_after: number;
+  description: string;
+  reference_type: string | null;
+  reference_id: number | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface LoyaltyCalculateResponse {
+  can_redeem: boolean;
+  points: number;
+  discount_amount: number;
+  max_points: number;
+  new_balance: number;
+  reason?: string;
+}
+
+export async function getLoyaltyBalance(token: string): Promise<LoyaltyBalance> {
+  const { data } = await storefrontApi.get('/web-shop/loyalty/balance', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
+export async function getLoyaltyHistory(token: string, page: number = 1): Promise<{
+  transactions: LoyaltyTransaction[];
+  pagination: { current_page: number; total: number };
+}> {
+  const { data } = await storefrontApi.get('/web-shop/loyalty/history', {
+    params: { page, per_page: 20 },
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
+export async function calculateLoyaltyDiscount(
+  token: string,
+  points: number,
+  orderAmount: number
+): Promise<LoyaltyCalculateResponse> {
+  const { data } = await storefrontApi.post('/web-shop/loyalty/calculate', {
+    points,
+    order_amount: orderAmount,
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }
