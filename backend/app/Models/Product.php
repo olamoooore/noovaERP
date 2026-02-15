@@ -554,16 +554,22 @@ class Product extends Model
         $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
         $this->save();
 
-        StockMovement::create([
+        $movementData = [
             'product_id' => $this->id,
-            'warehouse_id' => $warehouseId,
             'type' => $type,
             'quantity' => abs($quantity),
             'old_quantity' => $oldQuantity,
             'reference' => $reference,
             'balance_after' => $this->stock_quantity,
-            'created_by' => auth()->id(),
-        ]);
+            'created_by' => auth()->id() ?? 1, // Default to system user if no auth
+        ];
+        
+        // Only add warehouse_id if the column exists
+        if ($warehouseId && \Schema::hasColumn('stock_movements', 'warehouse_id')) {
+            $movementData['warehouse_id'] = $warehouseId;
+        }
+        
+        StockMovement::create($movementData);
 
         ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STOCK_CHANGED, 'stock_quantity', $oldQuantity, $this->stock_quantity);
     }
