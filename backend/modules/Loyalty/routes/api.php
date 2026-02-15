@@ -71,12 +71,5 @@ Route::middleware(['auth:sanctum', 'feature:loyalty'])->group(function () {
     });
 });
 
-use Modules\Loyalty\Http\Controllers\WebLoyaltyController;
-use Modules\Ecommerce\Http\Middleware\WebCustomerAuth;
-
-// Web Shop Loyalty Routes (Customer Portal)
-Route::middleware(WebCustomerAuth::class)->prefix('web-shop')->group(function () {
-    Route::get('/loyalty/balance', [WebLoyaltyController::class, 'balance']);
-    Route::get('/loyalty/history', [WebLoyaltyController::class, 'history']);
-    Route::post('/loyalty/calculate', [WebLoyaltyController::class, 'calculate']);
-});
+// Note: Web Shop Loyalty Routes (Customer Portal) are defined in routes/tenant.php
+// to ensure proper middleware ordering with InitializeTenantForPublicAccess

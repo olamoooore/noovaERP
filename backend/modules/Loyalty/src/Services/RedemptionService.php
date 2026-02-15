@@ -21,9 +21,11 @@ class RedemptionService
     public function redeemForDiscount(
         int $customerId,
         int $points,
-        ?int $invoiceId = null
+        ?int $invoiceId = null,
+        ?string $referenceType = null,
+        ?int $referenceId = null
     ): array {
-        return DB::transaction(function () use ($customerId, $points, $invoiceId) {
+        return DB::transaction(function () use ($customerId, $points, $invoiceId, $referenceType, $referenceId) {
             $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -52,14 +54,18 @@ class RedemptionService
                 'points_redeemed' => $customerLoyalty->points_redeemed + $points,
             ]);
 
+            // Determine reference type
+            $finalRefType = $referenceType ?? ($invoiceId ? 'invoice' : 'manual');
+            $finalRefId = $referenceId ?? $invoiceId;
+
             // Create transaction record
             $transaction = LoyaltyTransaction::create([
                 'customer_loyalty_id' => $customerLoyalty->id,
                 'type' => 'redeem',
                 'points' => -$points,
                 'balance_after' => $newBalance,
-                'reference_type' => $invoiceId ? 'invoice' : 'manual',
-                'reference_id' => $invoiceId,
+                'reference_type' => $finalRefType,
+                'reference_id' => $finalRefId,
                 'description' => "Redeemed {$points} points for discount",
                 'created_by' => auth()->id(),
                 'created_at' => now(),

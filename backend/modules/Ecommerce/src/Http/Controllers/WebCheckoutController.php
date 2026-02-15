@@ -127,37 +127,7 @@ class WebCheckoutController extends Controller
 
             $customerId = $systemCustomer->id;
 
-            // ── Handle loyalty points redemption ─────────────────────────
-            $loyaltyDiscount = 0;
-            $pointsRedeemed = 0;
-
-            if ($request->has('loyalty_points_to_redeem') && $request->input('loyalty_points_to_redeem') > 0) {
-                $pointsToRedeem = (int) $request->input('loyalty_points_to_redeem');
-
-                try {
-                    $redemptionService = app(\Modules\Loyalty\Services\RedemptionService::class);
-
-                    $result = $redemptionService->redeemForDiscount(
-                        customerId: $customerId,
-                        points: $pointsToRedeem,
-                        invoiceId: null
-                    );
-
-                    if ($result['success']) {
-                        $loyaltyDiscount = $result['discount_amount'];
-                        $pointsRedeemed = $pointsToRedeem;
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Loyalty redemption failed during checkout', [
-                        'customer_id' => $customerId,
-                        'points' => $pointsToRedeem,
-                        'error' => $e->getMessage(),
-                    ]);
-                    // Don't fail checkout - just skip loyalty discount
-                }
-            }
-
-            // ── Calculate totals ─────────────────────────────────────────
+            // ── Calculate totals first (needed for loyalty validation) ───────────
             $subtotal = 0;
             $taxAmount = 0;
             $items = [];
@@ -186,12 +156,11 @@ class WebCheckoutController extends Controller
             }
 
             $shippingCost = 0;
-            $total = max(0, $subtotal + $taxAmount + $shippingCost - $loyaltyDiscount);
 
             // ── Generate guest token ─────────────────────────────────────
             $guestToken = Str::uuid()->toString();
 
-            // ── Create web order ─────────────────────────────────────────
+            // ── Create web order first (needed for loyalty reference) ───────────
             $order = WebOrder::create([
                 'order_number' => WebOrder::generateOrderNumber(),
                 'customer_id' => $customerId,
@@ -206,14 +175,54 @@ class WebCheckoutController extends Controller
                 'shipping_cost' => $shippingCost,
                 'tax_amount' => $taxAmount,
                 'discount_amount' => 0,
-                'loyalty_discount' => $loyaltyDiscount,
-                'total' => $total,
-                'loyalty_points_redeemed' => $pointsRedeemed,
+                'loyalty_discount' => 0,
+                'total' => $subtotal + $taxAmount + $shippingCost, // Will be updated after loyalty
+                'loyalty_points_redeemed' => 0,
                 'currency' => 'USD',
                 'notes' => $validated['notes'] ?? null,
                 'guest_token' => $guestToken,
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
+            ]);
+
+            // ── Handle loyalty points redemption ─────────────────────────
+            $loyaltyDiscount = 0;
+            $pointsRedeemed = 0;
+
+            if ($request->has('loyalty_points_to_redeem') && $request->input('loyalty_points_to_redeem') > 0) {
+                $pointsToRedeem = (int) $request->input('loyalty_points_to_redeem');
+
+                try {
+                    $redemptionService = app(\Modules\Loyalty\Services\RedemptionService::class);
+
+                    $result = $redemptionService->redeemForDiscount(
+                        customerId: $customerId,
+                        points: $pointsToRedeem,
+                        invoiceId: null,
+                        referenceType: 'web_order',
+                        referenceId: $order->id
+                    );
+
+                    if ($result['success']) {
+                        $loyaltyDiscount = $result['discount_amount'];
+                        $pointsRedeemed = $pointsToRedeem;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Loyalty redemption failed during checkout', [
+                        'customer_id' => $customerId,
+                        'points' => $pointsToRedeem,
+                        'error' => $e->getMessage(),
+                    ]);
+                    // Don't fail checkout - just skip loyalty discount
+                }
+            }
+
+            // Update order with loyalty discount and final total
+            $total = max(0, $subtotal + $taxAmount + $shippingCost - $loyaltyDiscount);
+            $order->update([
+                'loyalty_discount' => $loyaltyDiscount,
+                'loyalty_points_redeemed' => $pointsRedeemed,
+                'total' => $total,
             ]);
 
             // ── Create order items & deduct stock ────────────────────────
@@ -245,6 +254,7 @@ class WebCheckoutController extends Controller
                     'description' => "Web Order {$order->order_number}",
                     'email' => $email,
                     'gateway_id' => $request->input('gateway_id'),
+                    'customer_id' => $customerId,
                     'metadata' => [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,

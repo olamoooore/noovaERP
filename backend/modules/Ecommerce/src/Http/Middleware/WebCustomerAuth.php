@@ -4,6 +4,8 @@ namespace Modules\Ecommerce\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebCustomerSession;
 
 class WebCustomerAuth
@@ -22,12 +24,22 @@ class WebCustomerAuth
             ], 401);
         }
 
+        // Debug: Check if tenant is initialized
+        Log::debug('WebCustomerAuth: Checking tenant context', [
+            'tenancy_initialized' => tenancy()->initialized,
+            'tenant_id' => tenancy()->initialized ? tenancy()->tenant?->id : null,
+            'search_path' => DB::select("SHOW search_path")[0]->search_path ?? 'unknown',
+        ]);
+
         $session = WebCustomerSession::with('customer')
             ->where('token', $token)
             ->where('expires_at', '>', now())
             ->first();
 
         if (!$session || !$session->isValid()) {
+            Log::debug('WebCustomerAuth: Session not found or invalid', [
+                'token_prefix' => substr($token, 0, 10) . '...',
+            ]);
             return response()->json([
                 'error' => 'Unauthorized',
                 'message' => 'Invalid or expired token',

@@ -267,7 +267,27 @@ class PaymentWebhookController extends Controller
     protected function processPayment(PaymentTransaction $transaction)
     {
         \DB::transaction(function () use ($transaction) {
+            // Check if this is a web order payment (no invoice yet)
+            $metadata = $transaction->metadata ?? [];
+            $isWebOrder = ($metadata['type'] ?? null) === 'web_order';
+            
+            // For web orders, find and process the WebOrder first
+            if ($isWebOrder && !$transaction->invoice_id) {
+                $this->processWebOrderPayment($transaction);
+                return;
+            }
+            
+            // Standard invoice-based payment processing
             $invoice = $transaction->invoice;
+            
+            if (!$invoice) {
+                Log::error('Payment transaction has no associated invoice', [
+                    'transaction_id' => $transaction->transaction_id,
+                    'invoice_id' => $transaction->invoice_id,
+                ]);
+                return;
+            }
+            
             $invoice->refresh();
 
             // Check if payment already exists
@@ -319,6 +339,218 @@ class PaymentWebhookController extends Controller
             // Mark as processed
             $transaction->update(['processed_at' => now()]);
         });
+    }
+    
+    /**
+     * Process payment for web orders (which don't have invoices yet)
+     */
+    protected function processWebOrderPayment(PaymentTransaction $transaction)
+    {
+        $metadata = $transaction->metadata ?? [];
+        $orderId = $metadata['order_id'] ?? null;
+        
+        // Try to find WebOrder by metadata order_id or payment_transaction_id
+        $webOrder = null;
+        
+        if ($orderId) {
+            $webOrder = \Modules\Ecommerce\Models\WebOrder::find($orderId);
+        }
+        
+        if (!$webOrder) {
+            $webOrder = \Modules\Ecommerce\Models\WebOrder::where('payment_transaction_id', $transaction->transaction_id)->first();
+        }
+        
+        if (!$webOrder) {
+            Log::error('WebOrder not found for payment transaction', [
+                'transaction_id' => $transaction->transaction_id,
+                'order_id' => $orderId,
+            ]);
+            return;
+        }
+        
+        Log::info('Processing web order payment via webhook', [
+            'transaction_id' => $transaction->transaction_id,
+            'order_id' => $webOrder->id,
+            'order_number' => $webOrder->order_number,
+        ]);
+        
+        // Update web order status
+        $webOrder->update([
+            'payment_status' => 'paid',
+            'status' => 'confirmed',
+            'paid_at' => now(),
+            'confirmed_at' => now(),
+        ]);
+        
+        // Convert to invoice
+        $invoice = null;
+        if (!$webOrder->invoice_id) {
+            try {
+                $invoice = $webOrder->convertToInvoice();
+                Log::info('WebOrder converted to invoice via webhook', [
+                    'order_id' => $webOrder->id,
+                    'invoice_id' => $invoice->id,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to convert WebOrder to invoice via webhook', [
+                    'order_id' => $webOrder->id,
+                    'error' => $e->getMessage(),
+                ]);
+                return;
+            }
+        } else {
+            $invoice = $webOrder->invoice;
+        }
+        
+        if (!$invoice) {
+            Log::error('Invoice not created for web order', [
+                'order_id' => $webOrder->id,
+            ]);
+            return;
+        }
+        
+        // Update transaction with invoice_id and customer_id
+        $transaction->update([
+            'invoice_id' => $invoice->id,
+            'customer_id' => $webOrder->customer_id,
+        ]);
+        
+        // Create Payment record
+        try {
+            $payment = \App\Models\Payment::create([
+                'customer_id' => $webOrder->customer_id,
+                'invoice_id' => $invoice->id,
+                'payment_date' => now(),
+                'method' => 'card',
+                'reference' => $transaction->transaction_id,
+                'amount' => $transaction->amount,
+                'notes' => "Online payment via {$transaction->gateway->gateway_name} (webhook)",
+                'received_by' => $invoice->created_by,
+            ]);
+
+            Log::info('Payment created for web order via webhook', [
+                'payment_id' => $payment->id,
+                'payment_number' => $payment->payment_number,
+                'transaction_id' => $transaction->transaction_id,
+                'order_number' => $webOrder->order_number,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to create payment for web order from webhook', [
+                'transaction_id' => $transaction->transaction_id,
+                'order_id' => $webOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        
+        // Award loyalty points
+        $this->awardLoyaltyPoints($webOrder);
+        
+        // Update customer stats
+        $this->updateCustomerStats($webOrder);
+        
+        // Post to accounting (journal entries)
+        $this->postToAccounting($webOrder, $transaction);
+        
+        // Mark transaction as processed
+        $transaction->update(['processed_at' => now()]);
+        
+        Log::info('Web order payment processed successfully via webhook', [
+            'transaction_id' => $transaction->transaction_id,
+            'order_number' => $webOrder->order_number,
+            'invoice_id' => $invoice->id,
+        ]);
+    }
+    
+    /**
+     * Post web order to accounting system.
+     */
+    protected function postToAccounting(\Modules\Ecommerce\Models\WebOrder $order, PaymentTransaction $transaction): void
+    {
+        try {
+            $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
+            $paymentMethod = $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card';
+            
+            $entry = $postingService->postPaidOrder(
+                $order,
+                (float) $transaction->amount,
+                $paymentMethod
+            );
+            
+            if ($entry) {
+                Log::info('Web order posted to accounting via webhook', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'entry_number' => $entry->entry_number,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to post web order to accounting', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+    
+    /**
+     * Award loyalty points after successful payment.
+     */
+    protected function awardLoyaltyPoints(\Modules\Ecommerce\Models\WebOrder $order): void
+    {
+        if (!$order->customer_id) return;
+
+        try {
+            $earningService = app(\Modules\Loyalty\Services\PointsEarningService::class);
+            $result = $earningService->awardPoints(
+                customerId: $order->customer_id,
+                amount: (float) $order->subtotal,
+                referenceType: 'web_order',
+                referenceId: $order->id,
+                description: "Points earned from web order {$order->order_number}"
+            );
+
+            if ($result['success'] ?? false) {
+                $order->update([
+                    'loyalty_points_earned' => $result['points_earned'] ?? 0,
+                ]);
+
+                Log::info('Loyalty points awarded for web order via webhook', [
+                    'order_id' => $order->id,
+                    'points' => $result['points_earned'] ?? 0,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to award loyalty points via webhook', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+    
+    /**
+     * Update customer purchase statistics.
+     */
+    protected function updateCustomerStats(\Modules\Ecommerce\Models\WebOrder $order): void
+    {
+        if (!$order->customer_id) return;
+
+        try {
+            $customer = \App\Models\Customer::find($order->customer_id);
+            if ($customer) {
+                $customer->increment('total_orders');
+                $customer->increment('total_purchases', (float) $order->total);
+                $customer->update([
+                    'last_interaction_at' => now(),
+                    'average_order_value' => $customer->total_orders > 0
+                        ? $customer->total_purchases / $customer->total_orders
+                        : 0,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to update customer stats via webhook', [
+                'customer_id' => $order->customer_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

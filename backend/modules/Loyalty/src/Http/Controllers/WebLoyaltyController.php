@@ -49,13 +49,24 @@ class WebLoyaltyController extends Controller
                 ->first();
 
             if ($nextTier) {
-                $currentThreshold = $loyalty->tier->points_threshold;
-                $nextThreshold = $nextTier->points_threshold;
-                $progress = [
-                    'current' => $loyalty->lifetime_points - $currentThreshold,
-                    'needed' => $nextThreshold - $currentThreshold,
-                    'percent' => min(100, round((($loyalty->lifetime_points - $currentThreshold) / ($nextThreshold - $currentThreshold)) * 100)),
-                ];
+                $currentThreshold = $loyalty->tier->points_threshold ?? 0;
+                $nextThreshold = $nextTier->points_threshold ?? 0;
+                $pointsRange = $nextThreshold - $currentThreshold;
+                
+                // Avoid division by zero
+                if ($pointsRange > 0) {
+                    $progress = [
+                        'current' => $loyalty->lifetime_points - $currentThreshold,
+                        'needed' => $pointsRange,
+                        'percent' => min(100, round((($loyalty->lifetime_points - $currentThreshold) / $pointsRange) * 100)),
+                    ];
+                } else {
+                    $progress = [
+                        'current' => $loyalty->lifetime_points - $currentThreshold,
+                        'needed' => 0,
+                        'percent' => 100,
+                    ];
+                }
             }
         }
 
@@ -79,6 +90,11 @@ class WebLoyaltyController extends Controller
                 'points_needed' => $nextTier->points_threshold - $loyalty->lifetime_points,
             ] : null,
             'progress' => $progress,
+            'program' => $loyalty->program ? [
+                'min_redemption_points' => $loyalty->program->min_redemption_points,
+                'max_redemption_percent' => $loyalty->program->max_redemption_percent,
+                'currency_per_point' => $loyalty->program->currency_per_point,
+            ] : null,
         ]);
     }
 

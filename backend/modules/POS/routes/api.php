@@ -10,11 +10,18 @@ use Modules\POS\Http\Controllers\PosSessionController;
 use Modules\POS\Http\Controllers\PosTerminalController;
 use Modules\POS\Http\Controllers\PosHeldOrderController;
 use Modules\POS\Http\Controllers\PosPaymentMethodController;
+use App\Http\Controllers\SalesOrderController;
 
 Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     Route::get('/pos/health', function () {
         return ['module' => 'pos', 'ok' => true];
     });
+    
+    // =====================================================
+    // UNIFIED SALES ORDERS (POS + Web)
+    // =====================================================
+    
+    Route::get('/sales/orders', [SalesOrderController::class, 'index']);
 
     // =====================================================
     // TERMINALS & SESSIONS (Enterprise POS)

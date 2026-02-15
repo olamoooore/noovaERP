@@ -12,6 +12,12 @@ class WebCustomerSession extends Model
     use HasFactory;
 
     protected $table = 'web_customer_sessions';
+    
+    /**
+     * The connection name for the model.
+     * Uses the default connection which is switched to tenant schema by tenancy middleware.
+     */
+    protected $connection = null; // Uses default connection (switched to tenant by middleware)
 
     protected $fillable = [
         'customer_id',

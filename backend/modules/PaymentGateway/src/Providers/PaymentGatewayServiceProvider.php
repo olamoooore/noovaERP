@@ -3,6 +3,7 @@
 namespace Modules\PaymentGateway\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\PaymentGateway\Console\Commands\FixStuckWebOrders;
 
 class PaymentGatewayServiceProvider extends ServiceProvider
 {
@@ -23,6 +24,11 @@ class PaymentGatewayServiceProvider extends ServiceProvider
             $classPath = str_replace('\\', '/', $classPath);
             $file = __DIR__ . '/../../src/' . $classPath . '.php';
             
+            // Also check Console directory for commands
+            if (!file_exists($file)) {
+                $file = __DIR__ . '/../../Console/' . $classPath . '.php';
+            }
+            
             if (file_exists($file)) {
                 require_once $file;
             }
@@ -42,5 +48,12 @@ class PaymentGatewayServiceProvider extends ServiceProvider
 
         // Load routes
         $this->loadRoutesFrom(__DIR__ . '/../../routes/api.php');
+        
+        // Register commands
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                FixStuckWebOrders::class,
+            ]);
+        }
     }
 }

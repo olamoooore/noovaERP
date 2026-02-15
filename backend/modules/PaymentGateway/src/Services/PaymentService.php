@@ -59,6 +59,7 @@ class PaymentService
         // Create payment transaction record
         $transaction = PaymentTransaction::create([
             'payment_gateway_id' => $gateway->id,
+            'customer_id' => $data['customer_id'] ?? ($data['metadata']['customer_id'] ?? null),
             'transaction_id' => $result['transaction_id'],
             'amount' => $data['amount'],
             'currency' => $data['currency'] ?? 'USD',

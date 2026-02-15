@@ -303,14 +303,33 @@ const Checkout = () => {
     }
   };
 
-  // Use max loyalty points
+  // Use max loyalty points (respecting program limits)
   const useMaxLoyaltyPoints = async () => {
-    if (!token || !loyaltyBalance?.enrolled) return;
+    if (!token || !loyaltyBalance?.enrolled || !loyaltyBalance.program) return;
     
-    const maxPoints = loyaltyBalance.points.current;
-    if (maxPoints <= 0) return;
+    const { min_redemption_points, max_redemption_percent, currency_per_point } = loyaltyBalance.program;
+    const availablePoints = loyaltyBalance.points.current;
+    const currencyPerPoint = Number(currency_per_point);
+    const maxRedemptionPercent = Number(max_redemption_percent);
     
-    await handleLoyaltyPointsChange(maxPoints);
+    if (availablePoints < min_redemption_points) {
+      toast.error(`Minimum ${min_redemption_points} points required for redemption`);
+      return;
+    }
+    
+    // Calculate max points based on max_redemption_percent of order total
+    const maxDiscountAmount = totalPrice * (maxRedemptionPercent / 100);
+    const maxPointsByOrder = Math.floor(maxDiscountAmount / currencyPerPoint);
+    
+    // Use the minimum of available points and max allowed by order
+    const maxRedeemable = Math.min(availablePoints, maxPointsByOrder);
+    
+    if (maxRedeemable <= 0) {
+      toast.error(`Points can only cover up to ${maxRedemptionPercent}% of order total`);
+      return;
+    }
+    
+    await handleLoyaltyPointsChange(maxRedeemable);
   };
 
   // Fetch available payment gateways
@@ -792,6 +811,14 @@ const Checkout = () => {
                             </span>
                           </div>
 
+                          {loyaltyBalance.program && (
+                            <div className="text-xs text-muted-foreground mb-3 space-y-1">
+                              <div>Min redemption: {loyaltyBalance.program.min_redemption_points} points</div>
+                              <div>Max covers {loyaltyBalance.program.max_redemption_percent}% of order total</div>
+                              <div>1 point = SGD {Number(loyaltyBalance.program.currency_per_point).toFixed(2)}</div>
+                            </div>
+                          )}
+
                           <div className="flex gap-2 items-end">
                             <div className="flex-1">
                               <Label htmlFor="loyaltyPoints" className="text-xs text-muted-foreground">
@@ -800,7 +827,7 @@ const Checkout = () => {
                               <Input
                                 id="loyaltyPoints"
                                 type="number"
-                                min={0}
+                                min={loyaltyBalance.program?.min_redemption_points || 0}
                                 max={loyaltyBalance.points.current}
                                 value={loyaltyPointsToRedeem || ''}
                                 onChange={(e) => handleLoyaltyPointsChange(parseInt(e.target.value) || 0)}
@@ -815,7 +842,7 @@ const Checkout = () => {
                               onClick={useMaxLoyaltyPoints}
                               disabled={isCalculatingLoyalty}
                             >
-                              Use All
+                              Use Max
                             </Button>
                           </div>
 

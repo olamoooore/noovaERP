@@ -128,10 +128,19 @@ class WebOrder extends Model
         $this->update(['invoice_id' => $invoice->id]);
 
         // Update redemption with invoice_id if points were redeemed
+        // The redemption is linked via the loyalty_transaction which has reference_type='web_order'
         if ($this->loyalty_points_redeemed > 0) {
-            \Modules\Loyalty\Models\LoyaltyRedemption::where('reference_id', $this->id)
-                ->where('reference_type', 'web_order')
-                ->update(['invoice_id' => $invoice->id]);
+            // Find the loyalty transaction for this web order redemption
+            $loyaltyTransaction = \Modules\Loyalty\Models\LoyaltyTransaction::where('reference_type', 'web_order')
+                ->where('reference_id', $this->id)
+                ->where('type', 'redeem')
+                ->first();
+            
+            if ($loyaltyTransaction) {
+                // Update the redemption record linked to this transaction
+                \Modules\Loyalty\Models\LoyaltyRedemption::where('loyalty_transaction_id', $loyaltyTransaction->id)
+                    ->update(['invoice_id' => $invoice->id]);
+            }
         }
 
         return $invoice;

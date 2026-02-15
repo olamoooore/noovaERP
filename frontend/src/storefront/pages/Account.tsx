@@ -80,7 +80,7 @@ function statusBadge(status: string) {
 
 /** Derive effective order status: if payment is "paid" but order status is "pending", show "confirmed" */
 function effectiveOrderStatus(order: CustomerOrder): string {
-  if (order.status === 'pending' && order.payment_status === 'paid') {
+  if (order.status === 'pending' && order.payment_status?.toLowerCase() === 'paid') {
     return 'confirmed';
   }
   return order.status;
@@ -769,7 +769,7 @@ const Account = () => {
                     </div>
 
                     {/* Action Buttons for pending/unpaid orders */}
-                    {selectedOrder.status === 'pending' && selectedOrder.payment_status !== 'paid' && (
+                    {selectedOrder.status === 'pending' && selectedOrder.payment_status?.toLowerCase() !== 'paid' && (
                       <div className="flex gap-3 mt-6 pt-4 border-t border-border">
                         <Button
                           variant="neon"

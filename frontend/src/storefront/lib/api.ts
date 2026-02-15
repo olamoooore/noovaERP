@@ -367,6 +367,11 @@ export interface LoyaltyBalance {
     needed: number;
     percent: number;
   } | null;
+  program: {
+    min_redemption_points: number;
+    max_redemption_percent: number;
+    currency_per_point: number;
+  } | null;
 }
 
 export interface LoyaltyTransaction {
