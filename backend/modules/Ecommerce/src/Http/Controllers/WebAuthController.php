@@ -162,6 +162,9 @@ class WebAuthController extends Controller
             ], 403);
         }
 
+        // Auto-enroll in loyalty if not already enrolled (for existing customers)
+        $this->autoEnrollInLoyalty($customer);
+
         // Create session
         $session = $this->createSession($customer);
 
