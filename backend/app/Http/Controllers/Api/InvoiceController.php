@@ -53,13 +53,25 @@ class InvoiceController extends Controller
         }
     }
 
-    public function show(Invoice $invoice)
+    public function show($id)
     {
-        return response()->json($invoice->load(['customer', 'lines.product', 'journalEntry', 'payments']));
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments'])->find($id);
+
+        if (!$invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json($invoice);
     }
 
-    public function update(Request $request, Invoice $invoice)
+    public function update(Request $request, $id)
     {
+        $invoice = Invoice::find($id);
+
+        if (!$invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
         if ($invoice->status !== 'draft') {
             return response()->json(['message' => 'Only draft invoices can be edited'], 403);
         }
@@ -79,8 +91,14 @@ class InvoiceController extends Controller
         return response()->json($invoice->fresh(['customer', 'lines']));
     }
 
-    public function send(Invoice $invoice)
+    public function send($id)
     {
+        $invoice = Invoice::find($id);
+
+        if (!$invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -97,8 +115,14 @@ class InvoiceController extends Controller
         }
     }
 
-    public function destroy(Invoice $invoice)
+    public function destroy($id)
     {
+        $invoice = Invoice::find($id);
+
+        if (!$invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
         if ($invoice->status !== 'draft') {
             return response()->json(['message' => 'Only draft invoices can be deleted'], 403);
         }
