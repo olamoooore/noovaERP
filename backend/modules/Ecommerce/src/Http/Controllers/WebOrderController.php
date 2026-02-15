@@ -279,6 +279,63 @@ class WebOrderController extends Controller
     }
 
     /**
+     * Customer: Get invoice for an order
+     */
+    public function getInvoice(Request $request, int $id): JsonResponse
+    {
+        $customer = $request->attributes->get('web_customer');
+
+        if (!$customer) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $order = WebOrder::with('items', 'invoice.lines')
+            ->where('id', $id)
+            ->where('customer_id', $customer->id)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+
+        if (!$order->invoice) {
+            return response()->json(['error' => 'No invoice found for this order'], 404);
+        }
+
+        $invoice = $order->invoice;
+
+        return response()->json([
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'invoice_date' => $invoice->invoice_date,
+                'due_date' => $invoice->due_date,
+                'status' => $invoice->status,
+                'subtotal' => (float) $invoice->subtotal,
+                'tax_amount' => (float) $invoice->tax_amount,
+                'discount_amount' => (float) $invoice->discount_amount,
+                'total' => (float) $invoice->total,
+                'paid_amount' => (float) $invoice->paid_amount,
+                'balance' => (float) $invoice->balance,
+                'notes' => $invoice->notes,
+                'customer' => $invoice->customer ? [
+                    'name' => $invoice->customer->name,
+                    'email' => $invoice->customer->email,
+                    'phone' => $invoice->customer->phone,
+                ] : null,
+                'lines' => $invoice->lines->map(fn($line) => [
+                    'id' => $line->id,
+                    'description' => $line->description,
+                    'quantity' => $line->quantity,
+                    'unit_price' => (float) $line->unit_price,
+                    'line_total' => (float) $line->line_total,
+                ]),
+                'created_at' => $invoice->created_at?->toISOString(),
+            ],
+        ]);
+    }
+
+    /**
      * Customer: Retry payment for a pending order
      */
     public function retryPayment(Request $request, int $id): JsonResponse

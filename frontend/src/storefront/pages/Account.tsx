@@ -38,9 +38,11 @@ import {
   cancelOrder,
   retryOrderPayment,
   getPaymentGateways,
+  getOrderInvoice,
   CustomerOrder,
   CustomerAddress,
   CheckoutResponse,
+  WebInvoice,
 } from '@/storefront/lib/api';
 import { toast } from 'sonner';
 import { storefrontRoutes } from '@/storefront/lib/paths';
@@ -104,6 +106,8 @@ const Account = () => {
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrder | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<WebInvoice | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
 
   // Addresses
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -196,6 +200,20 @@ const Account = () => {
       toast.error('Failed to load order details');
     } finally {
       setOrderDetailLoading(false);
+    }
+  };
+
+  // ── View Invoice ────────────────────────────────────────────
+  const handleViewInvoice = async (orderId: number) => {
+    if (!token) return;
+    setInvoiceLoading(true);
+    try {
+      const invoice = await getOrderInvoice(token, orderId);
+      setSelectedInvoice(invoice);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to load invoice');
+    } finally {
+      setInvoiceLoading(false);
     }
   };
 
@@ -795,7 +813,26 @@ const Account = () => {
                         </Button>
                       </div>
                     )}
-                  </div>
+
+                    {/* View Invoice Button for paid orders */}
+                    {selectedOrder.payment_status?.toLowerCase() === 'paid' && (
+                      <div className="flex gap-3 mt-6 pt-4 border-t border-border">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => handleViewInvoice(selectedOrder.id)}
+                          disabled={invoiceLoading}
+                        >
+                          {invoiceLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2" />
+                          )}
+                          View Invoice
+                        </Button>
+                      </div>
+                    )}
+                   </div>
                 ) : (
                   /* Order List */
                   <div>
@@ -853,6 +890,139 @@ const Account = () => {
                   <div className="fixed inset-0 bg-background/50 flex items-center justify-center z-50">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
+                )}
+
+                {/* Invoice Modal */}
+                {selectedInvoice && (
+                  <>
+                    <div
+                      className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
+                      onClick={() => setSelectedInvoice(null)}
+                    />
+                    <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[95%] max-w-lg max-h-[90vh] overflow-y-auto z-50 rounded-2xl bg-card border border-border shadow-2xl p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-display font-bold flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-primary" />
+                          Invoice {selectedInvoice.invoice_number}
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSelectedInvoice(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {/* Invoice Status */}
+                      <div className="mb-4">
+                        {statusBadge(selectedInvoice.status)}
+                      </div>
+
+                      {/* Invoice Details */}
+                      <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                        <div>
+                          <span className="text-muted-foreground">Invoice Date:</span>
+                          <p className="font-medium">
+                            {new Date(selectedInvoice.invoice_date).toLocaleDateString('en-SG')}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Due Date:</span>
+                          <p className="font-medium">
+                            {new Date(selectedInvoice.due_date).toLocaleDateString('en-SG')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Customer Info */}
+                      {selectedInvoice.customer && (
+                        <div className="p-3 bg-muted/50 rounded-lg mb-4">
+                          <p className="font-medium">{selectedInvoice.customer.name}</p>
+                          {selectedInvoice.customer.email && (
+                            <p className="text-sm text-muted-foreground">{selectedInvoice.customer.email}</p>
+                          )}
+                          {selectedInvoice.customer.phone && (
+                            <p className="text-sm text-muted-foreground">{selectedInvoice.customer.phone}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Line Items */}
+                      {selectedInvoice.lines && selectedInvoice.lines.length > 0 && (
+                        <div className="mb-4">
+                          <h4 className="font-medium mb-2 text-sm">Items</h4>
+                          <div className="space-y-2">
+                            {selectedInvoice.lines.map((line) => (
+                              <div key={line.id} className="flex justify-between text-sm p-2 rounded bg-muted/50">
+                                <div>
+                                  <p className="font-medium">{line.description}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {line.quantity} x SGD {line.unit_price.toFixed(2)}
+                                  </p>
+                                </div>
+                                <span className="font-medium">SGD {line.line_total.toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Totals */}
+                      <div className="space-y-2 border-t pt-4">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal</span>
+                          <span>SGD {selectedInvoice.subtotal.toFixed(2)}</span>
+                        </div>
+                        {selectedInvoice.tax_amount > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Tax</span>
+                            <span>SGD {selectedInvoice.tax_amount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {selectedInvoice.discount_amount > 0 && (
+                          <div className="flex justify-between text-sm text-green-500">
+                            <span>Discount</span>
+                            <span>-SGD {selectedInvoice.discount_amount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-lg border-t pt-2">
+                          <span>Total</span>
+                          <span>SGD {selectedInvoice.total.toFixed(2)}</span>
+                        </div>
+                        {selectedInvoice.paid_amount > 0 && (
+                          <div className="flex justify-between text-green-500">
+                            <span>Paid</span>
+                            <span>SGD {selectedInvoice.paid_amount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {selectedInvoice.balance > 0 && (
+                          <div className="flex justify-between text-orange-500">
+                            <span>Balance Due</span>
+                            <span>SGD {selectedInvoice.balance.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {selectedInvoice.notes && (
+                        <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+                          <h4 className="font-medium mb-1 text-sm">Notes</h4>
+                          <p className="text-xs text-muted-foreground">{selectedInvoice.notes}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 mt-6">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => setSelectedInvoice(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             )}

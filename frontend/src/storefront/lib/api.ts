@@ -426,3 +426,40 @@ export async function calculateLoyaltyDiscount(
   });
   return data;
 }
+
+// ---- Invoice API ----
+
+export interface WebInvoice {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  status: string;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total: number;
+  paid_amount: number;
+  balance: number;
+  notes: string | null;
+  customer?: {
+    name: string;
+    email?: string;
+    phone?: string;
+  };
+  lines?: {
+    id: number;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }[];
+  created_at: string;
+}
+
+export async function getOrderInvoice(token: string, orderId: number): Promise<WebInvoice> {
+  const { data } = await storefrontApi.get(`/web-shop/orders/${orderId}/invoice`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data.invoice || data;
+}
