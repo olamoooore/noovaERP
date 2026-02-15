@@ -65,6 +65,11 @@ Route::middleware([
         Route::get('/orders/{id}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'show']);
         Route::post('/orders/{id}/cancel', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'cancelOrder']);
         Route::post('/orders/{id}/retry-payment', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'retryPayment']);
+        
+        // Loyalty routes for web shop customers
+        Route::get('/loyalty/balance', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'balance']);
+        Route::get('/loyalty/history', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'history']);
+        Route::post('/loyalty/calculate', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'calculate']);
     });
 });
 
