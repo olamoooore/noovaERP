@@ -225,6 +225,13 @@ class Customer extends Model
      */
     public function getLoyaltyPointsAttribute(): int
     {
+        // First check the Loyalty module's CustomerLoyalty model
+        $customerLoyalty = $this->customerLoyalty;
+        if ($customerLoyalty) {
+            return $customerLoyalty->current_points ?? 0;
+        }
+        
+        // Fallback to legacy loyaltyBalances relationship
         return $this->loyaltyBalances()->sum('points_balance') ?? 0;
     }
 

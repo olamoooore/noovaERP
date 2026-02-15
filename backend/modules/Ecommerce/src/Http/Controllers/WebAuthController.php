@@ -266,10 +266,12 @@ class WebAuthController extends Controller
         return [
             'id' => $customer->id,
             'email' => $customer->email,
+            'name' => $customer->name,
             'first_name' => $nameParts[0] ?? '',
             'last_name' => $nameParts[1] ?? '',
             'phone' => $customer->phone,
             'loyalty_points' => $customer->loyalty_points,
+            'created_at' => $customer->created_at?->toIso8601String(),
         ];
     }
 }
