@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Notifications\Notifiable;
 use Modules\POS\Models\PosOrder;
 
 class Customer extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, Notifiable;
 
     protected $fillable = [
         // Basic Info
@@ -203,6 +204,14 @@ class Customer extends Model
     public function posOrders(): HasMany
     {
         return $this->hasMany(PosOrder::class);
+    }
+
+    /**
+     * Web Orders from Ecommerce
+     */
+    public function webOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Ecommerce\Models\WebOrder::class);
     }
 
     // ==========================================

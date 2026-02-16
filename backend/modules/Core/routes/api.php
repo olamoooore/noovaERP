@@ -148,8 +148,30 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::put('/product-variants/{productVariant}', [ProductVariantController::class, 'update']);
     Route::delete('/product-variants/{productVariant}', [ProductVariantController::class, 'destroy']);
 
-    // Customers
+    // Customer Categories (must be before customers resource to avoid route conflicts)
+    Route::get('customer-categories', [CustomerController::class, 'categories']);
+    Route::post('customer-categories', [CustomerController::class, 'storeCategory']);
+    
+    // Customers - static routes first (before apiResource)
+    Route::get('customers/statistics', [CustomerController::class, 'statistics']);
+    Route::get('customers/search', [CustomerController::class, 'search']);
+    
+    // Customers - resource routes
     Route::apiResource('customers', CustomerController::class);
+    
+    // Customers - dynamic routes with {customer} parameter (must be after apiResource)
+    Route::get('customers/{customer}/statistics', [CustomerController::class, 'customerStatistics']);
+    Route::get('customers/{customer}/activity', [CustomerController::class, 'activity']);
+    Route::get('customers/{customer}/loyalty', [CustomerController::class, 'loyaltyHistory']);
+    Route::post('customers/{customer}/loyalty/adjust', [CustomerController::class, 'adjustLoyalty']);
+    Route::post('customers/{customer}/recalculate-stats', [CustomerController::class, 'recalculateStats']);
+    Route::post('customers/{customer}/send-email', [CustomerController::class, 'sendEmail']);
+    Route::post('customers/{customer}/addresses', [CustomerController::class, 'addAddress']);
+    Route::put('customers/{customer}/addresses/{address}', [CustomerController::class, 'updateAddress']);
+    Route::delete('customers/{customer}/addresses/{address}', [CustomerController::class, 'deleteAddress']);
+    Route::post('customers/{customer}/contacts', [CustomerController::class, 'addContact']);
+    Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
+    Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
 
     // Invoices
     Route::apiResource('invoices', InvoiceController::class);

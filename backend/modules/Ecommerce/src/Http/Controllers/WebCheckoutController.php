@@ -13,6 +13,10 @@ use Illuminate\Support\Str;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Models\WebOrderItem;
 use Modules\PaymentGateway\Services\PaymentService;
+use App\Notifications\AdminOrderAlert;
+use App\Notifications\CustomerOrderConfirmation;
+use Illuminate\Support\Facades\Notification;
+use App\Models\User;
 
 class WebCheckoutController extends Controller
 {
@@ -382,6 +386,37 @@ class WebCheckoutController extends Controller
 
                     // Update customer purchase stats
                     $this->updateCustomerStats($order);
+
+                    // Notifications
+                    try {
+                        // 1. Notify Customer
+                        if ($order->customer_id) {
+                            $customer = Customer::find($order->customer_id);
+                            if ($customer) {
+                                $customer->notify(new CustomerOrderConfirmation($order, 'Web'));
+                            }
+                        } elseif ($order->email) {
+                            Notification::route('mail', $order->email)
+                                        ->notify(new CustomerOrderConfirmation($order, 'Web'));
+                        }
+
+                        // 2. Notify Admins
+                        $admins = User::whereHas('roles', function($q) {
+                             $q->where('name', 'like', '%admin%');
+                        })->get();
+                         
+                        if ($admins->isEmpty()) {
+                            $admin = User::find(1);
+                            if ($admin) $admins = collect([$admin]);
+                        }
+
+                        if ($admins->isNotEmpty()) {
+                            Notification::send($admins, new AdminOrderAlert($order, 'Web'));
+                        }
+
+                    } catch (\Exception $e) {
+                         Log::error('Web Notification Failed: ' . $e->getMessage());
+                    }
 
                     return response()->json([
                         'success' => true,

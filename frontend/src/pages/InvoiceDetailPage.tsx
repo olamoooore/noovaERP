@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { format } from 'date-fns'
@@ -75,6 +75,7 @@ interface Payment {
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { toast } = useToast()
 
   const { data: invoice, isLoading } = useQuery({
@@ -155,7 +156,13 @@ export function InvoiceDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => navigate('/invoices')}>
+          <Button variant="outline" onClick={() => {
+             if (location.state?.from) {
+               navigate(location.state.from);
+             } else {
+               navigate('/invoices');
+             }
+          }}>
             <Icon icon="material-symbols:arrow-back" className="mr-2 h-4 w-4" />
             Back
           </Button>

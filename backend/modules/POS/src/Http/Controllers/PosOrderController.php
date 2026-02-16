@@ -18,6 +18,10 @@ use Modules\POS\Services\PosPostingService;
 use Modules\Loyalty\Services\RedemptionService;
 use Modules\Loyalty\Services\PointsEarningService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Notifications\AdminOrderAlert;
+use App\Notifications\CustomerOrderConfirmation;
+use Illuminate\Support\Facades\Notification;
+use App\Models\User;
 
 class PosOrderController extends Controller
 {
@@ -397,6 +401,33 @@ class PosOrderController extends Controller
                 'journal_entry_id' => $entry->id,
                 'receipt_number' => PosOrder::generateReceiptNumber(),
             ]);
+
+            // Notifications
+            try {
+                // 1. Notify Customer
+                if ($posOrder->customer && $posOrder->customer->email) {
+                    $posOrder->customer->notify(new CustomerOrderConfirmation($posOrder, 'POS'));
+                }
+
+                // 2. Notify Admins
+                // Find users with admin role or fallback to first user
+                $admins = User::whereHas('roles', function($q) {
+                    $q->where('name', 'like', '%admin%'); // Matches admin, super-admin, etc.
+                })->get();
+
+                if ($admins->isEmpty()) {
+                    // Fallback: Notify the user who created the order if no admins found? No, that's the cashier.
+                    // Maybe notify user ID 1?
+                    $admin = User::find(1);
+                    if ($admin) $admins = collect([$admin]);
+                }
+
+                if ($admins->isNotEmpty()) {
+                    Notification::send($admins, new AdminOrderAlert($posOrder, 'POS'));
+                }
+            } catch (\Exception $e) {
+                \Log::error('POS Notification Failed: ' . $e->getMessage());
+            }
 
             // Award loyalty points for the purchase (after payment)
             $loyaltyEarningResult = null;

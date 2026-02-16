@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { format } from 'date-fns'
@@ -19,6 +19,32 @@ import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, cn } from '@/lib/utils'
 import api from '@/lib/api'
+
+const formatLegacyAddress = (address: string) => {
+  if (!address) return null
+  try {
+    // If it looks like JSON starts with {
+    if (address.trim().startsWith('{')) {
+      const parsed = JSON.parse(address)
+      const parts = [
+        parsed.address || parsed.street,
+        parsed.street2,
+        parsed.city,
+        parsed.state,
+        parsed.postal_code || parsed.zip,
+        parsed.country
+      ].filter(Boolean)
+      
+      if (parts.length > 0) return parts.join(', ')
+      
+      // Fallback: join values
+      return Object.values(parsed).filter(v => typeof v === 'string').join(', ')
+    }
+  } catch (e) {
+    // Ignore error, treat as string
+  }
+  return address
+}
 
 interface Customer {
   id: number
@@ -57,6 +83,8 @@ interface Customer {
   loyalty_balances: LoyaltyBalance[]
   invoices: Invoice[]
   pos_orders: PosOrder[]
+  web_orders: WebOrder[]
+  webOrders?: WebOrder[]
 }
 
 interface CustomerAddress {
@@ -97,7 +125,7 @@ interface Invoice {
   status: string
   total: number
   balance: number
-  issue_date: string
+  invoice_date: string
   due_date: string
 }
 
@@ -128,6 +156,25 @@ interface PosOrder {
   paid_at: string
   created_at: string
   items?: PosOrderItem[]
+}
+
+interface WebOrderItem {
+    id: number
+    product_name: string
+    product_sku: string
+    quantity: number
+    unit_price: number
+    line_total: number
+}
+
+interface WebOrder {
+  id: number
+  order_number: string
+  status: string
+  total: number
+  created_at: string
+  payment_status: string
+  items?: WebOrderItem[]
 }
 
 interface LoyaltyTransaction {
@@ -737,14 +784,6 @@ export function CustomerDetailsPage() {
                           .filter(Boolean)
                           .join(', ')}
                       </p>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => deleteAddressMutation.mutate(address.id)}
-                      >
-                        <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -763,13 +802,13 @@ export function CustomerDetailsPage() {
                     {customer.billing_address && (
                       <div className="p-4 border rounded-lg">
                         <Badge variant="outline" className="mb-2">Billing (Legacy)</Badge>
-                        <p className="text-sm whitespace-pre-line">{customer.billing_address}</p>
+                        <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.billing_address)}</p>
                       </div>
                     )}
                     {customer.shipping_address && (
                       <div className="p-4 border rounded-lg">
                         <Badge variant="outline" className="mb-2">Shipping (Legacy)</Badge>
-                        <p className="text-sm whitespace-pre-line">{customer.shipping_address}</p>
+                        <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.shipping_address)}</p>
                       </div>
                     )}
                   </div>
@@ -823,15 +862,20 @@ export function CustomerDetailsPage() {
                   </div>
                 ))}
                 {customer.invoices?.slice(0, 3).map(invoice => (
-                  <div key={invoice.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <Link 
+                    key={invoice.id} 
+                    to={`/invoices/${invoice.id}`}
+                    state={{ from: `/customers/${customer.id}` }}
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-full bg-blue-100">
                         <Icon icon="solar:document-text-bold" className="h-4 w-4 text-blue-600" />
                       </div>
                       <div>
-                        <p className="font-medium">Invoice #{invoice.invoice_number}</p>
+                        <p className="font-medium text-blue-600">Invoice #{invoice.invoice_number}</p>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(invoice.issue_date), 'MMM d, yyyy')}
+                          {format(new Date(invoice.invoice_date), 'MMM d, yyyy')}
                         </p>
                       </div>
                     </div>
@@ -839,7 +883,7 @@ export function CustomerDetailsPage() {
                       <p className="font-medium">{formatCurrency(invoice.total)}</p>
                       <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
                     </div>
-                  </div>
+                  </Link>
                 ))}
                 {(!customer.pos_orders?.length && !customer.invoices?.length) && (
                   <div className="text-center py-8 text-muted-foreground">
@@ -931,15 +975,37 @@ export function CustomerDetailsPage() {
         <TabsContent value="orders" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>POS Orders</CardTitle>
-              <CardDescription>All point of sale orders for this customer</CardDescription>
+              <CardTitle>Orders</CardTitle>
+              <CardDescription>All orders for this customer (POS & Web)</CardDescription>
             </CardHeader>
             <CardContent>
-              {customer.pos_orders?.length > 0 ? (
+              {(() => {
+                const webOrdersList = customer.web_orders || customer.webOrders || [];
+                const allOrders = [
+                    ...(customer.pos_orders || []).map(o => ({ ...o, type: 'POS', payment_method: o.payment_method || '-' })),
+                    ...(webOrdersList).map(o => ({ 
+                      ...o, 
+                      type: 'Web', 
+                      payment_method: o.payment_status,
+                      paid_at: o.created_at // Fallback for sort/display
+                    }))
+                ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                
+                if (allOrders.length === 0) {
+                     return (
+                        <div className="text-center py-12 text-muted-foreground">
+                          <Icon icon="solar:cart-large-2-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                          <p>No orders yet</p>
+                        </div>
+                     )
+                }
+
+                return (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Order #</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Payment</TableHead>
@@ -948,9 +1014,12 @@ export function CustomerDetailsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {customer.pos_orders.map(order => (
-                      <TableRow key={order.id}>
+                    {allOrders.map((order: any, idx) => (
+                      <TableRow key={`${order.type}-${order.id}-${idx}`}>
                         <TableCell className="font-medium">{order.order_number}</TableCell>
+                        <TableCell>
+                           <Badge variant="outline">{order.type}</Badge>
+                        </TableCell>
                         <TableCell>
                           {order.paid_at ? format(new Date(order.paid_at), 'MMM d, yyyy h:mm a') : format(new Date(order.created_at), 'MMM d, yyyy')}
                         </TableCell>
@@ -978,12 +1047,8 @@ export function CustomerDetailsPage() {
                     ))}
                   </TableBody>
                 </Table>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Icon icon="solar:cart-large-2-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <p>No orders yet</p>
-                </div>
-              )}
+                )
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1018,7 +1083,7 @@ export function CustomerDetailsPage() {
                     {customer.invoices.map(invoice => (
                       <TableRow key={invoice.id}>
                         <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                        <TableCell>{format(new Date(invoice.issue_date), 'MMM d, yyyy')}</TableCell>
+                        <TableCell>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</TableCell>
                         <TableCell>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
@@ -1923,7 +1988,7 @@ export function CustomerDetailsPage() {
                         <TableRow key={item.id}>
                           <TableCell>
                             <div>
-                              <p className="font-medium">{item.name || item.product?.name}</p>
+                              <p className="font-medium">{item.name || item.product?.name || item.product_name}</p>
                               {item.variant && (
                                 <p className="text-sm text-muted-foreground">{item.variant.name}</p>
                               )}

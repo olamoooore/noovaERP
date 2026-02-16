@@ -178,8 +178,10 @@ class CustomerController extends Controller
         );
     }
 
-    public function show(Customer $customer): JsonResponse
+    public function show($id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+        
         return response()->json(
             $customer->load([
                 'categories',
@@ -192,12 +194,14 @@ class CustomerController extends Controller
                 'contacts',
                 'invoices' => fn($q) => $q->latest()->limit(10),
                 'posOrders' => fn($q) => $q->with('items.product:id,name')->latest()->limit(10),
+                'webOrders' => fn($q) => $q->with('items.product')->latest()->limit(10),
             ])
         );
     }
 
-    public function update(Request $request, Customer $customer): JsonResponse
+    public function update(Request $request, $id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
         $validated = $request->validate([
             // Basic
             'type' => 'in:individual,company',
@@ -256,8 +260,9 @@ class CustomerController extends Controller
         );
     }
 
-    public function destroy(Customer $customer): JsonResponse
+    public function destroy($id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
         $customer->delete();
 
         return response()->json(['message' => 'Customer deleted successfully']);
@@ -267,8 +272,10 @@ class CustomerController extends Controller
     // ADDRESSES
     // ==========================================
 
-    public function addAddress(Request $request, Customer $customer): JsonResponse
+    public function addAddress(Request $request, $id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+        
         $validated = $request->validate([
             'type' => 'required|in:billing,shipping,other',
             'label' => 'nullable|string|max:100',
@@ -286,8 +293,11 @@ class CustomerController extends Controller
         return response()->json($address, 201);
     }
 
-    public function updateAddress(Request $request, Customer $customer, CustomerAddress $address): JsonResponse
+    public function updateAddress(Request $request, $customerId, $addressId): JsonResponse
     {
+        $customer = Customer::findOrFail($customerId);
+        $address = $customer->addresses()->findOrFail($addressId);
+
         $validated = $request->validate([
             'type' => 'in:billing,shipping,other',
             'label' => 'nullable|string|max:100',
@@ -305,8 +315,11 @@ class CustomerController extends Controller
         return response()->json($address);
     }
 
-    public function deleteAddress(Customer $customer, CustomerAddress $address): JsonResponse
+    public function deleteAddress($customerId, $addressId): JsonResponse
     {
+        $customer = Customer::findOrFail($customerId);
+        $address = $customer->addresses()->findOrFail($addressId);
+        
         $address->delete();
 
         return response()->json(['message' => 'Address deleted']);
@@ -316,8 +329,10 @@ class CustomerController extends Controller
     // CONTACTS
     // ==========================================
 
-    public function addContact(Request $request, Customer $customer): JsonResponse
+    public function addContact(Request $request, $id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+        
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'job_title' => 'nullable|string|max:100',
@@ -333,8 +348,11 @@ class CustomerController extends Controller
         return response()->json($contact, 201);
     }
 
-    public function updateContact(Request $request, Customer $customer, CustomerContact $contact): JsonResponse
+    public function updateContact(Request $request, $customerId, $contactId): JsonResponse
     {
+        $customer = Customer::findOrFail($customerId);
+        $contact = $customer->customerContacts()->findOrFail($contactId);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'job_title' => 'nullable|string|max:100',
@@ -350,8 +368,11 @@ class CustomerController extends Controller
         return response()->json($contact);
     }
 
-    public function deleteContact(Customer $customer, CustomerContact $contact): JsonResponse
+    public function deleteContact($customerId, $contactId): JsonResponse
     {
+        $customer = Customer::findOrFail($customerId);
+        $contact = $customer->customerContacts()->findOrFail($contactId);
+        
         $contact->delete();
 
         return response()->json(['message' => 'Contact deleted']);
@@ -361,12 +382,32 @@ class CustomerController extends Controller
     // LOYALTY
     // ==========================================
 
-    public function loyaltyHistory(Customer $customer): JsonResponse
+    public function loyaltyHistory($id): JsonResponse
     {
-        $transactions = $customer->loyaltyTransactions()
-            ->with('program')
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $customer = Customer::findOrFail($id);
+
+        // Try to fetch from Loyalty Module first
+        $moduleLoyalty = $customer->customerLoyalty;
+        
+        if ($moduleLoyalty) {
+            $transactions = $moduleLoyalty->transactions()
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
+
+            // Map fields for frontend compatibility
+            $transactions->getCollection()->transform(function ($tx) {
+                $tx->notes = $tx->description; // detailed description
+                // If type is adjust, maybe map it?
+                // Module types: earn, redeem, expire, adjust (seems compatible)
+                return $tx;
+            });
+        } else {
+            // Legacy fallback
+            $transactions = $customer->loyaltyTransactions()
+                ->with('program')
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
+        }
 
         return response()->json([
             'balance' => $customer->loyalty_points,
@@ -484,8 +525,10 @@ class CustomerController extends Controller
     /**
      * Get individual customer statistics
      */
-    public function customerStatistics(Customer $customer): JsonResponse
+    public function customerStatistics($id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+
         // Calculate additional stats
         $posOrderStats = $customer->posOrders()
             ->where('status', 'paid')
@@ -545,8 +588,10 @@ class CustomerController extends Controller
     /**
      * Get customer activity timeline
      */
-    public function activity(Customer $customer, Request $request): JsonResponse
+    public function activity($id, Request $request): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+        
         $limit = $request->limit ?? 20;
         $activities = collect();
 
@@ -581,7 +626,7 @@ class CustomerController extends Controller
                     'description' => ucfirst($invoice->status),
                     'amount' => $invoice->total,
                     'status' => $invoice->status,
-                    'date' => $invoice->issue_date,
+                    'date' => $invoice->invoice_date,
                     'icon' => 'document',
                 ];
             });
@@ -639,8 +684,10 @@ class CustomerController extends Controller
     /**
      * Recalculate customer statistics
      */
-    public function recalculateStats(Customer $customer): JsonResponse
+    public function recalculateStats($id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+        
         $customer->updatePurchaseStats();
         $customer->updateOutstanding();
 
@@ -653,11 +700,14 @@ class CustomerController extends Controller
     /**
      * Send email to customer
      */
-    public function sendEmail(Request $request, Customer $customer): JsonResponse
+    public function sendEmail(Request $request, $id): JsonResponse
     {
+        $customer = Customer::findOrFail($id);
+
         $validated = $request->validate([
             'subject' => 'required|string|max:255',
             'body' => 'required|string',
+
         ]);
 
         if (!$customer->email) {

@@ -1,5 +1,6 @@
 import { GeneralSettings } from './Settings/GeneralSettings'
 import { PaymentGatewaySettings } from './Settings/PaymentGatewaySettings'
+import { MailSettings } from './Settings/MailSettings'
 
 // ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
@@ -217,10 +218,15 @@ export function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
           <TabsTrigger value="payment-gateways">Payment Gateways</TabsTrigger>
+          <TabsTrigger value="mail">Email Configuration</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
           <GeneralSettings />
+        </TabsContent>
+
+        <TabsContent value="mail">
+          <MailSettings />
         </TabsContent>
 
         <TabsContent value="payment-gateways">
