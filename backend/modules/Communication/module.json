@@ -1,0 +1,8 @@
+{
+  "key": "communication",
+  "name": "Communication",
+  "type": "core",
+  "providers": [
+    "Modules\\Communication\\Providers\\CommunicationServiceProvider"
+  ]
+}
