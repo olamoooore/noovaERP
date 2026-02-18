@@ -157,20 +157,20 @@ jobs:
             chmod -R 775 "$PROJECT_PATH/backend/bootstrap/cache"
             
             # Setup/Update Supervisor for queue worker (always update to keep config in sync)
-            cat > /etc/supervisor/conf.d/noovaerp-worker.conf << 'EOF'
-[program:noovaerp-worker]
-process_name=%(program_name)s_%(process_num)02d
-command=php /var/www/noovaerp/backend/artisan queue:work --sleep=3 --tries=3 --max-time=3600
-autostart=true
-autorestart=true
-stopasgroup=true
-killasgroup=true
-user=www-data
-numprocs=2
-redirect_stderr=true
-stdout_logfile=/var/www/noovaerp/backend/storage/logs/worker.log
-stopwaitsecs=3600
-EOF
+            {
+              echo "[program:noovaerp-worker]"
+              echo "process_name=%(program_name)s_%(process_num)02d"
+              echo "command=php /var/www/noovaerp/backend/artisan queue:work --sleep=3 --tries=3 --max-time=3600"
+              echo "autostart=true"
+              echo "autorestart=true"
+              echo "stopasgroup=true"
+              echo "killasgroup=true"
+              echo "user=www-data"
+              echo "numprocs=2"
+              echo "redirect_stderr=true"
+              echo "stdout_logfile=/var/www/noovaerp/backend/storage/logs/worker.log"
+              echo "stopwaitsecs=3600"
+            } > /etc/supervisor/conf.d/noovaerp-worker.conf
             
             supervisorctl reread
             supervisorctl update
