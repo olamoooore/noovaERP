@@ -6,9 +6,270 @@ use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Models\Tax;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Exception;
 
 class SettingsController extends Controller
 {
+    /**
+     * Test SMTP connectivity.
+     * Tests the connection to the SMTP server using provided or stored credentials.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function testSmtp(Request $request)
+    {
+        $validated = $request->validate([
+            'host' => 'required|string',
+            'port' => 'required|integer',
+            'encryption' => 'nullable|string|in:tls,ssl,none',
+            'username' => 'required|string',
+            'password' => 'nullable|string',
+            'from_address' => 'nullable|email',
+            'timeout' => 'nullable|integer|min:5|max:60',
+        ]);
+
+        $timeout = $validated['timeout'] ?? 10;
+        $encryption = $validated['encryption'] ?? 'tls';
+        
+        // If password is masked or empty, use the stored password
+        $password = $validated['password'];
+        if (empty($password) || $password === '********') {
+            $existingConfig = Setting::getValue('mail_config', []);
+            $password = $existingConfig['password'] ?? '';
+        }
+
+        $host = $validated['host'];
+        $port = (int) $validated['port'];
+        $username = $validated['username'];
+        $fromAddress = $validated['from_address'] ?? $username;
+
+        $result = [
+            'success' => false,
+            'message' => '',
+            'details' => [],
+        ];
+
+        try {
+            // Step 1: Test basic socket connectivity
+            $socketTest = $this->testSocketConnection($host, $port, $timeout);
+            
+            if (!$socketTest['success']) {
+                $result['message'] = 'Connection failed: ' . $socketTest['message'];
+                $result['details'] = $socketTest['details'];
+                return response()->json($result, 422);
+            }
+
+            $result['details']['socket'] = 'Connected to ' . $host . ':' . $port;
+
+            // Step 2: Test SMTP authentication using PHP's built-in functions
+            $smtpTest = $this->testSmtpAuthentication($host, $port, $username, $password, $encryption, $timeout);
+
+            if ($smtpTest['success']) {
+                $result['success'] = true;
+                $result['message'] = 'SMTP connection successful! The mail server is reachable and credentials are valid.';
+                $result['details']['auth'] = 'Authentication successful';
+                $result['details']['server_info'] = $smtpTest['server_info'] ?? [];
+            } else {
+                $result['message'] = 'SMTP authentication failed: ' . $smtpTest['message'];
+                $result['details']['auth'] = 'Authentication failed';
+            }
+
+        } catch (Exception $e) {
+            $result['message'] = 'SMTP test failed: ' . $e->getMessage();
+            $result['details']['error'] = $e->getMessage();
+            Log::error('SMTP Test Error', [
+                'host' => $host,
+                'port' => $port,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+
+        return response()->json($result, $result['success'] ? 200 : 422);
+    }
+
+    /**
+     * Test basic socket connection to the SMTP server.
+     */
+    private function testSocketConnection(string $host, int $port, int $timeout): array
+    {
+        $result = [
+            'success' => false,
+            'message' => '',
+            'details' => [],
+        ];
+
+        $startTime = microtime(true);
+        
+        // Try to open a socket connection
+        $socket = @fsockopen($host, $port, $errno, $errstr, $timeout);
+        $connectTime = round((microtime(true) - $startTime) * 1000, 2);
+
+        if (!$socket) {
+            $result['message'] = "Could not connect to {$host}:{$port}. Error: {$errstr} (Code: {$errno})";
+            $result['details'] = [
+                'error_code' => $errno,
+                'error_message' => $errstr,
+                'connection_time_ms' => $connectTime,
+            ];
+            return $result;
+        }
+
+        // Read the server greeting
+        $greeting = fgets($socket);
+        fclose($socket);
+
+        $result['success'] = true;
+        $result['message'] = 'Socket connection successful';
+        $result['details'] = [
+            'connection_time_ms' => $connectTime,
+            'server_greeting' => trim($greeting ?? ''),
+        ];
+
+        return $result;
+    }
+
+    /**
+     * Test SMTP authentication by sending SMTP commands.
+     */
+    private function testSmtpAuthentication(string $host, int $port, string $username, string $password, string $encryption, int $timeout): array
+    {
+        $result = [
+            'success' => false,
+            'message' => '',
+            'server_info' => [],
+        ];
+
+        // Build connection string based on encryption
+        $remote = '';
+        if ($encryption === 'ssl') {
+            $remote = 'ssl://' . $host;
+        } else {
+            $remote = $host;
+        }
+
+        $socket = @fsockopen($remote, $port, $errno, $errstr, $timeout);
+
+        if (!$socket) {
+            $result['message'] = "Could not connect: {$errstr} ({$errno})";
+            return $result;
+        }
+
+        stream_set_timeout($socket, $timeout);
+
+        try {
+            // Read greeting
+            $greeting = $this->readSmtpResponse($socket);
+            $result['server_info']['greeting'] = trim($greeting);
+
+            if (!$this->isSuccessCode($greeting, 220)) {
+                $result['message'] = 'Invalid server greeting: ' . $greeting;
+                return $result;
+            }
+
+            // Send EHLO
+            fwrite($socket, "EHLO localhost\r\n");
+            $ehloResponse = $this->readSmtpResponse($socket);
+            $result['server_info']['ehlo'] = trim($ehloResponse);
+
+            if (!$this->isSuccessCode($ehloResponse, 250)) {
+                $result['message'] = 'EHLO failed: ' . $ehloResponse;
+                return $result;
+            }
+
+            // Handle TLS if needed
+            if ($encryption === 'tls' && strpos($ehloResponse, 'STARTTLS') !== false) {
+                fwrite($socket, "STARTTLS\r\n");
+                $tlsResponse = $this->readSmtpResponse($socket);
+                $result['server_info']['starttls'] = trim($tlsResponse);
+
+                if ($this->isSuccessCode($tlsResponse, 220)) {
+                    // Enable crypto for TLS
+                    if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                        $result['message'] = 'Failed to enable TLS encryption';
+                        return $result;
+                    }
+
+                    // Send EHLO again after TLS
+                    fwrite($socket, "EHLO localhost\r\n");
+                    $ehloResponse2 = $this->readSmtpResponse($socket);
+                    $result['server_info']['ehlo_after_tls'] = trim($ehloResponse2);
+                }
+            }
+
+            // Check if AUTH is supported
+            $authMethods = [];
+            if (preg_match('/AUTH\s+(.+)/i', $ehloResponse, $matches)) {
+                $authMethods = array_map('trim', explode(' ', strtoupper($matches[1])));
+            }
+            $result['server_info']['auth_methods'] = $authMethods;
+
+            // Try LOGIN authentication
+            if (empty($authMethods) || in_array('LOGIN', $authMethods)) {
+                fwrite($socket, "AUTH LOGIN\r\n");
+                $authResponse = $this->readSmtpResponse($socket);
+
+                if ($this->isSuccessCode($authResponse, 334)) {
+                    // Send username
+                    fwrite($socket, base64_encode($username) . "\r\n");
+                    $userResponse = $this->readSmtpResponse($socket);
+
+                    if ($this->isSuccessCode($userResponse, 334)) {
+                        // Send password
+                        fwrite($socket, base64_encode($password) . "\r\n");
+                        $passResponse = $this->readSmtpResponse($socket);
+
+                        if ($this->isSuccessCode($passResponse, 235)) {
+                            $result['success'] = true;
+                            $result['message'] = 'Authentication successful';
+                        } else {
+                            $result['message'] = 'Authentication failed (invalid credentials): ' . $passResponse;
+                        }
+                    } else {
+                        $result['message'] = 'Username rejected: ' . $userResponse;
+                    }
+                } else {
+                    $result['message'] = 'AUTH LOGIN not accepted: ' . $authResponse;
+                }
+            } else {
+                $result['message'] = 'No supported authentication methods available. Server supports: ' . implode(', ', $authMethods);
+            }
+
+        } finally {
+            // Send QUIT and close
+            fwrite($socket, "QUIT\r\n");
+            fclose($socket);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Read SMTP response from socket.
+     */
+    private function readSmtpResponse($socket): string
+    {
+        $response = '';
+        while ($line = fgets($socket)) {
+            $response .= $line;
+            // Multi-line responses end with space after code
+            if (isset($line[3]) && $line[3] === ' ') {
+                break;
+            }
+        }
+        return $response;
+    }
+
+    /**
+     * Check if SMTP response has success code.
+     */
+    private function isSuccessCode(string $response, int $expectedCode): bool
+    {
+        return strpos($response, (string) $expectedCode) === 0;
+    }
+
     public function show()
     {
         $currency = Setting::getValue('currency', ['code' => 'USD']);

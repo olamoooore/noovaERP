@@ -56,10 +56,24 @@ class PaymentService
             throw new \Exception($result['error'] ?? 'Payment creation failed');
         }
 
+        // Determine customer_id - only set for invoices (tenant schema customers)
+        // For web orders and POS orders, customer is in tenant schema but payment_transactions
+        // is in public schema, so we store customer_id in metadata only to avoid FK violation
+        $customerId = null;
+        if (!empty($data['customer_id'])) {
+            // Only use customer_id if this is an invoice payment (customer exists in public schema)
+            // For web orders (type=web_order) and POS orders, skip to avoid FK violation
+            $metadata = $data['metadata'] ?? [];
+            $type = $metadata['type'] ?? null;
+            if ($type !== 'web_order' && !isset($metadata['pos_order_id'])) {
+                $customerId = $data['customer_id'];
+            }
+        }
+
         // Create payment transaction record
         $transaction = PaymentTransaction::create([
             'payment_gateway_id' => $gateway->id,
-            'customer_id' => $data['customer_id'] ?? ($data['metadata']['customer_id'] ?? null),
+            'customer_id' => $customerId,
             'transaction_id' => $result['transaction_id'],
             'amount' => $data['amount'],
             'currency' => $data['currency'] ?? 'USD',

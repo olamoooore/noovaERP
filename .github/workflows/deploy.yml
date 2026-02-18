@@ -156,6 +156,29 @@ jobs:
             chmod -R 775 "$PROJECT_PATH/backend/storage"
             chmod -R 775 "$PROJECT_PATH/backend/bootstrap/cache"
             
+            # Setup Supervisor for queue worker if not exists
+            if [ ! -f /etc/supervisor/conf.d/noovaerp-worker.conf ]; then
+              cat > /etc/supervisor/conf.d/noovaerp-worker.conf << 'SUPERVISOR'
+[program:noovaerp-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/noovaerp/backend/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/var/www/noovaerp/backend/storage/logs/worker.log
+stopwaitsecs=3600
+SUPERVISOR
+              supervisorctl reread
+              supervisorctl update
+            fi
+            
+            # Restart queue workers to pick up new code
+            supervisorctl restart noovaerp-worker:* || true
+            
             # Restart PHP-FPM
             systemctl restart php8.2-fpm || systemctl restart php8.1-fpm || true
             

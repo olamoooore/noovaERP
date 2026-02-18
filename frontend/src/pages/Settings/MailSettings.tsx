@@ -4,9 +4,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useSettingsStore, SettingsMailConfig } from '@/store/settingsStore'
 import { useToast } from '@/hooks/use-toast'
 import { useMutation } from '@tanstack/react-query'
+import api from '@/lib/api'
+import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+
+interface SmtpTestResult {
+  success: boolean
+  message: string
+  details: {
+    socket?: string
+    auth?: string
+    server_info?: Record<string, string | string[]>
+    error?: string
+  }
+}
 
 export function MailSettings() {
   const { toast } = useToast()
@@ -23,6 +37,8 @@ export function MailSettings() {
     from_address: '',
     from_name: '',
   })
+
+  const [testResult, setTestResult] = useState<SmtpTestResult | null>(null)
 
   // Initialize form with store data
   useEffect(() => {
@@ -49,6 +65,36 @@ export function MailSettings() {
     },
     onError: () => {
       toast({ title: 'Error', variant: 'destructive', description: 'Failed to save mail configuration' })
+    },
+  })
+
+  const testSmtpMutation = useMutation({
+    mutationFn: async (): Promise<SmtpTestResult> => {
+      const response = await api.post('/settings/test-smtp', {
+        host: form.host,
+        port: form.port,
+        encryption: form.encryption || 'none',
+        username: form.username,
+        password: form.password,
+        from_address: form.from_address,
+      })
+      return response.data
+    },
+    onSuccess: (data) => {
+      setTestResult(data)
+      if (data.success) {
+        toast({ title: 'Success', description: 'SMTP connection test successful' })
+      } else {
+        toast({ title: 'Connection Failed', variant: 'destructive', description: data.message })
+      }
+    },
+    onError: (error: Error) => {
+      setTestResult({
+        success: false,
+        message: error.message || 'Failed to test SMTP connection',
+        details: { error: error.message },
+      })
+      toast({ title: 'Error', variant: 'destructive', description: 'Failed to test SMTP connection' })
     },
   })
 
@@ -177,6 +223,73 @@ export function MailSettings() {
               {saveMutation.isPending ? 'Saving...' : 'Save Configuration'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Test Connection</CardTitle>
+          <CardDescription>Test your SMTP settings to verify connectivity.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => testSmtpMutation.mutate()}
+              disabled={testSmtpMutation.isPending || !form.host || !form.username}
+            >
+              {testSmtpMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                'Test Connection'
+              )}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Click to verify SMTP server connectivity and authentication.
+            </p>
+          </div>
+
+          {testResult && (
+            <Alert variant={testResult.success ? 'default' : 'destructive'}>
+              <div className="flex items-start gap-2">
+                {testResult.success ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                ) : (
+                  <XCircle className="h-5 w-5 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <AlertTitle>{testResult.success ? 'Connection Successful' : 'Connection Failed'}</AlertTitle>
+                  <AlertDescription className="mt-2">
+                    <p>{testResult.message}</p>
+                    {testResult.details && (
+                      <div className="mt-3 text-sm">
+                        {testResult.details.socket && (
+                          <p><span className="font-medium">Socket:</span> {testResult.details.socket}</p>
+                        )}
+                        {testResult.details.auth && (
+                          <p><span className="font-medium">Auth:</span> {testResult.details.auth}</p>
+                        )}
+                        {testResult.details.server_info && Object.keys(testResult.details.server_info).length > 0 && (
+                          <div className="mt-2">
+                            <p className="font-medium">Server Info:</p>
+                            <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
+                              {JSON.stringify(testResult.details.server_info, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {testResult.details.error && (
+                          <p className="text-destructive"><span className="font-medium">Error:</span> {testResult.details.error}</p>
+                        )}
+                      </div>
+                    )}
+                  </AlertDescription>
+                </div>
+              </div>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </div>

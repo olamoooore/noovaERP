@@ -3,7 +3,8 @@
   "scripts": {
     "dev:backend": "cd backend && php artisan serve",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev": "concurrently -n backend,frontend -c green,blue \"npm run dev:backend\" \"npm run dev:frontend\""
+    "dev:queue": "cd backend && php artisan queue:work --tries=3 --timeout=60",
+    "dev": "concurrently -n backend,frontend,queue -c green,blue,yellow \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1"

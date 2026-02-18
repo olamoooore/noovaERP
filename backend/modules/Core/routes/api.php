@@ -102,6 +102,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Settings
     Route::get('/settings', [SettingsController::class, 'show']);
     Route::put('/settings', [SettingsController::class, 'update']);
+    Route::post('/settings/test-smtp', [SettingsController::class, 'testSmtp']);
 
     // Taxes
     Route::get('/taxes', [TaxController::class, 'index']);
