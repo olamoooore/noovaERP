@@ -368,12 +368,15 @@ class WebCheckoutController extends Controller
                     ]);
 
                     // Convert to invoice
+                    $invoice = null;
                     try {
                         $invoice = $order->convertToInvoice();
                         Log::info('Web order converted to invoice', [
                             'order_id' => $order->id,
                             'invoice_id' => $invoice->id ?? null,
                         ]);
+                        // Refresh order to load invoice relationship
+                        $order = $order->fresh(['invoice', 'items']);
                     } catch (\Exception $e) {
                         Log::warning('Failed to convert web order to invoice', [
                             'order_id' => $order->id,
