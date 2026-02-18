@@ -46,8 +46,9 @@ class PaymentGatewayServiceProvider extends ServiceProvider
             $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
         }
 
-        // Load routes
-        $this->loadRoutesFrom(__DIR__ . '/../../routes/api.php');
+        // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
+        // Do NOT also loadRoutesFrom here or routes will be registered twice,
+        // causing "Another route has already been assigned name" errors.
         
         // Register commands
         if ($this->app->runningInConsole()) {

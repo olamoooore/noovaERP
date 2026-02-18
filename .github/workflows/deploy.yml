@@ -145,7 +145,7 @@ jobs:
             php artisan view:clear
             
             # Cache routes and views (but NOT config - it reads from .env at runtime)
-            php artisan route:cache
+            php artisan route:cache || echo "Warning: route:cache failed, continuing..."
             php artisan view:cache
             php artisan event:cache
             php artisan storage:link || true
@@ -157,6 +157,9 @@ jobs:
             chmod -R 775 "$PROJECT_PATH/backend/bootstrap/cache"
             
             # Setup/Update Supervisor for queue worker (always update to keep config in sync)
+            # Install supervisor if not present
+            which supervisorctl > /dev/null 2>&1 || apt-get install -y supervisor
+            mkdir -p /etc/supervisor/conf.d
             {
               echo "[program:noovaerp-worker]"
               echo "process_name=%(program_name)s_%(process_num)02d"
