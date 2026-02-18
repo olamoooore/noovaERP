@@ -310,7 +310,14 @@
                         <tr>
                             <td>
                                 @if ($item->product_image)
-                                <img src="{{ $item->product_image }}" alt="{{ $item->product_name }}" class="item-image">
+                                @php
+                                    $imageUrl = $item->product_image;
+                                    // Ensure absolute URL for email clients
+                                    if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
+                                        $imageUrl = rtrim(config('app.url'), '/') . '/' . ltrim($imageUrl, '/');
+                                    }
+                                @endphp
+                                <img src="{{ $imageUrl }}" alt="{{ $item->product_name }}" class="item-image">
                                 @else
                                 <div class="item-image" style="display: flex; align-items: center; justify-content: center; background: #e9ecef; color: #999; font-size: 10px;">No Image</div>
                                 @endif

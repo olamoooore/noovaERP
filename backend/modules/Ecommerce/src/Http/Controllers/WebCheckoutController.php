@@ -393,13 +393,19 @@ class WebCheckoutController extends Controller
                     // Notifications
                     try {
                         // 1. Notify Customer
-                        if ($order->customer_id) {
+                        // Always use AnonymousNotifiable (Notification::route) instead of
+                        // $customer->notify() because the Customer model lives in the tenant
+                        // schema. When the queue worker deserializes the job, it tries to
+                        // restore the Customer model using the default 'public' search_path,
+                        // fails to find it, and silently discards the notification.
+                        $customerEmail = $order->email;
+                        if (!$customerEmail && $order->customer_id) {
                             $customer = Customer::find($order->customer_id);
-                            if ($customer) {
-                                $customer->notify(new CustomerOrderConfirmation($order, 'Web'));
-                            }
-                        } elseif ($order->email) {
-                            Notification::route('mail', $order->email)
+                            $customerEmail = $customer?->email;
+                        }
+
+                        if ($customerEmail) {
+                            Notification::route('mail', $customerEmail)
                                         ->notify(new CustomerOrderConfirmation($order, 'Web'));
                         }
 

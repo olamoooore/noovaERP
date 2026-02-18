@@ -88,13 +88,17 @@ export function MailSettings() {
         toast({ title: 'Connection Failed', variant: 'destructive', description: data.message })
       }
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
+      // Axios error handling
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to test SMTP connection'
+      const errorDetails = error.response?.data?.details || { error: error.message }
+      
       setTestResult({
         success: false,
-        message: error.message || 'Failed to test SMTP connection',
-        details: { error: error.message },
+        message: errorMessage,
+        details: errorDetails,
       })
-      toast({ title: 'Error', variant: 'destructive', description: 'Failed to test SMTP connection' })
+      toast({ title: 'Connection Failed', variant: 'destructive', description: errorMessage })
     },
   })
 

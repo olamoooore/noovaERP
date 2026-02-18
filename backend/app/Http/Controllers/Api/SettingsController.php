@@ -20,21 +20,23 @@ class SettingsController extends Controller
      */
     public function testSmtp(Request $request)
     {
+        Log::info('Test SMTP Endpoint HIT', $request->all());
+
         $validated = $request->validate([
-            'host' => 'required|string',
-            'port' => 'required|integer',
-            'encryption' => 'nullable|string|in:tls,ssl,none',
-            'username' => 'required|string',
-            'password' => 'nullable|string',
-            'from_address' => 'nullable|email',
-            'timeout' => 'nullable|integer|min:5|max:60',
+            'host' => 'required',
+            'port' => 'required',
+            'encryption' => 'nullable',
+            'username' => 'nullable',
+            'password' => 'nullable',
+            'from_address' => 'nullable',
+            'timeout' => 'nullable',
         ]);
 
-        $timeout = $validated['timeout'] ?? 10;
+        $timeout = (int) ($validated['timeout'] ?? 10);
         $encryption = $validated['encryption'] ?? 'tls';
         
         // If password is masked or empty, use the stored password
-        $password = $validated['password'];
+        $password = $validated['password'] ?? '';
         if (empty($password) || $password === '********') {
             $existingConfig = Setting::getValue('mail_config', []);
             $password = $existingConfig['password'] ?? '';
@@ -53,17 +55,20 @@ class SettingsController extends Controller
 
         try {
             // Step 1: Test basic socket connectivity
+            Log::info("Testing socket connection to {$host}:{$port}");
             $socketTest = $this->testSocketConnection($host, $port, $timeout);
             
             if (!$socketTest['success']) {
                 $result['message'] = 'Connection failed: ' . $socketTest['message'];
                 $result['details'] = $socketTest['details'];
+                Log::error('SMTP Socket Connection Failed', $result);
                 return response()->json($result, 422);
             }
 
             $result['details']['socket'] = 'Connected to ' . $host . ':' . $port;
 
             // Step 2: Test SMTP authentication using PHP's built-in functions
+            Log::info("Testing SMTP authentication for {$username}");
             $smtpTest = $this->testSmtpAuthentication($host, $port, $username, $password, $encryption, $timeout);
 
             if ($smtpTest['success']) {
@@ -74,6 +79,7 @@ class SettingsController extends Controller
             } else {
                 $result['message'] = 'SMTP authentication failed: ' . $smtpTest['message'];
                 $result['details']['auth'] = 'Authentication failed';
+                Log::error('SMTP Authentication Failed', $result);
             }
 
         } catch (Exception $e) {

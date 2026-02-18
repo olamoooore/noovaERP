@@ -16,5 +16,14 @@ module.exports = {
       interpreter: 'none',
       watch: false,
     },
+    {
+      name: 'noovaerp-queue',
+      cwd: './backend',
+      script: 'php',
+      args: 'artisan queue:work --tries=3 --timeout=60 --sleep=3',
+      interpreter: 'none',
+      watch: false,
+      autorestart: true,
+    },
   ],
 };
