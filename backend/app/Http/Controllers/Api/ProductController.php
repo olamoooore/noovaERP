@@ -214,8 +214,12 @@ class ProductController extends Controller
         return response()->json($product->load(['incomeAccount', 'expenseAccount', 'category', 'tax']), 201);
     }
 
-    public function show(Product $product): JsonResponse
+    public function show(int $id): JsonResponse
     {
+        // Manually resolve product after tenant context is set
+        // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
+        $product = Product::findOrFail($id);
+        
         return response()->json($product->load([
             'incomeAccount',
             'expenseAccount',
@@ -526,8 +530,12 @@ class ProductController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, Product $product)
+    public function update(Request $request, int $id)
     {
+        // Manually resolve product after tenant context is set
+        // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
+        $product = Product::findOrFail($id);
+        
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
@@ -599,8 +607,11 @@ class ProductController extends Controller
         return response()->json($product->fresh(['incomeAccount', 'expenseAccount', 'category', 'tax']));
     }
 
-    public function destroy(Product $product)
+    public function destroy(int $id)
     {
+        // Manually resolve product after tenant context is set
+        // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
+        $product = Product::findOrFail($id);
         $product->delete();
 
         return response()->json(['message' => 'Product deleted successfully']);
