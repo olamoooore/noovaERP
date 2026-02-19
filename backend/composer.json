@@ -30,6 +30,7 @@
     "autoload": {
         "psr-4": {
             "App\\": "app/",
+            "Modules\\AI\\": "modules/AI/src/",
             "Modules\\Inventory\\": "modules/Inventory/src/",
             "Modules\\Core\\": "modules/Core/src/",
             "Modules\\POS\\": "modules/POS/src/",

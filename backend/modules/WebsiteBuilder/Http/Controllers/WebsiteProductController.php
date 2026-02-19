@@ -49,11 +49,13 @@ class WebsiteProductController extends Controller
         // Search
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('secondary_name', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('meta_keywords', 'like', "%{$search}%");
+            $searchLower = strtolower($search);
+            $query->where(function ($q) use ($search, $searchLower) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['%' . $searchLower . '%'])
+                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%' . $searchLower . '%'])
+                    ->orWhereRaw('LOWER(description) LIKE ?', ['%' . $searchLower . '%'])
+                    ->orWhereRaw('LOWER(meta_keywords) LIKE ?', ['%' . $searchLower . '%'])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . $searchLower . '%']);
             });
         }
 

@@ -81,6 +81,9 @@ const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralL
 const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
 const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
 
+// AI Module Pages
+const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ default: m.AIChatPage })))
+
 // Loyalty Module Pages
 const LoyaltyDashboardPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyDashboardPage })))
 const LoyaltyCustomersPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyCustomersPage })))
@@ -285,6 +288,9 @@ function App() {
                 <Route path="/loyalty/rewards" element={<LoyaltyRewardsPage />} />
                 <Route path="/loyalty/redemptions" element={<LoyaltyRedemptionsPage />} />
                 <Route path="/loyalty/settings" element={<LoyaltySettingsPage />} />
+                
+                {/* AI Module Routes */}
+                <Route path="/ai/chat" element={<AIChatPage />} />
                 
                 {/* Web Shop Routes - inside MainLayout for admin access too */}
                 {/* NOTE: Checkout accessible publicly below, outside ProtectedRoute */}

@@ -247,6 +247,12 @@ const baseNavItems: NavItem[] = [
     // featureKey: 'iot', // Temporarily disabled for testing
   },
   {
+    title: 'AI Chat',
+    href: '/ai/chat',
+    icon: 'solar:chat-round-dots-bold-duotone',
+    featureKey: 'ai',
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',

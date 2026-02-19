@@ -9,6 +9,7 @@ import { useMembership, MembershipTier } from '@/storefront/context/MembershipCo
 import { cn } from '@/lib/utils';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 import { STOREFRONT_LOGO_URL } from '@/storefront/lib/assets';
+import { ProductSearchOverlay } from './ProductSearchOverlay';
 
 // Base path for storefront routes (matches App.tsx mount point)
 const STOREFRONT_BASE = '/store';
@@ -29,6 +30,7 @@ export const Header = () => {
   const { isAuthenticated } = useCustomerAuth();
   const { tier, setTier } = useMembership();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <>
@@ -96,7 +98,12 @@ export const Header = () => {
 
             {/* Actions */}
             <div className="flex items-center gap-2 md:gap-3">
-              <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-primary/5 hover:text-primary transition-colors">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="hidden md:flex hover:bg-primary/5 hover:text-primary transition-colors"
+                onClick={() => setSearchOpen(true)}
+              >
                 <Icon icon="solar:magnifer-linear" className="h-6 w-6" />
               </Button>
 
@@ -198,6 +205,9 @@ export const Header = () => {
           </div>
         )}
       </header>
+
+      {/* Product Search Overlay */}
+      <ProductSearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 };

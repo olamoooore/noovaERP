@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { ProductCard } from '@/storefront/components/products/ProductCard';
 import { QuickViewModal } from '@/storefront/components/products/QuickViewModal';
@@ -16,9 +16,14 @@ const Shop = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
+  const searchQuery = searchParams.get('search') || '';
 
   // Fetch real products from backend with server-side pagination
-  const { data, isLoading, error } = useProducts({ per_page: PRODUCTS_PER_PAGE, page: currentPage });
+  const { data, isLoading, error } = useProducts({ 
+    per_page: PRODUCTS_PER_PAGE, 
+    page: currentPage,
+    search: searchQuery || undefined,
+  });
 
   const normalizeParam = <T extends readonly string[]>(value: string | null, allowed: T): T[number] | null => {
     if (!value) return null;
@@ -69,6 +74,18 @@ const Shop = () => {
     setSelectedTypes([]);
     setSelectedCollections([]);
     setPriceRange([0, 500]);
+    // Also clear search query
+    const params = new URLSearchParams(searchParams);
+    params.delete('search');
+    params.set('page', '1');
+    setSearchParams(params);
+  };
+
+  const clearSearch = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('search');
+    params.set('page', '1');
+    setSearchParams(params);
   };
 
   const goToPage = (page: number) => {
@@ -101,10 +118,28 @@ const Shop = () => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-display font-bold mb-2">
-            Shop <span className="gradient-text">All Products</span>
+            {searchQuery ? (
+              <>
+                Search Results for <span className="gradient-text">"{searchQuery}"</span>
+              </>
+            ) : (
+              <>
+                Shop <span className="gradient-text">All Products</span>
+              </>
+            )}
           </h1>
           <p className="text-muted-foreground">
-            {totalProducts} products available{lastPage > 1 ? ` • Page ${currentPage} of ${lastPage}` : ''}
+            {totalProducts} products found{lastPage > 1 ? ` - Page ${currentPage} of ${lastPage}` : ''}
+            {searchQuery && (
+              <Button 
+                variant="link" 
+                className="px-2 ml-2 h-auto text-primary"
+                onClick={clearSearch}
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear search
+              </Button>
+            )}
           </p>
         </div>
 

@@ -4,6 +4,7 @@ import { WishlistProvider } from '@/storefront/context/WishlistContext';
 import { CustomerAuthProvider } from '@/storefront/context/CustomerAuthContext';
 import { MembershipProvider } from '@/storefront/context/MembershipContext';
 import { Toaster } from '@/storefront/components/ui/sonner';
+import { FloatingChatButton } from '@/components/AI/FloatingChatButton';
 import '@/storefront/storefront.css';
 
 // Lazy load storefront pages
@@ -46,6 +47,7 @@ export default function StorefrontApp() {
                 </Routes>
               </Suspense>
               <Toaster />
+              <FloatingChatButton />
             </WishlistProvider>
           </CartProvider>
         </MembershipProvider>
