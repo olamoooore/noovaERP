@@ -72,6 +72,31 @@ interface Payment {
   created_at: string
 }
 
+// Helper function to format address (handles both string and JSON formats)
+function formatAddress(address: string | null | undefined): string {
+  if (!address) return '';
+  
+  try {
+    // Try to parse as JSON
+    const parsed = JSON.parse(address);
+    const parts = [];
+    
+    if (parsed.first_name || parsed.last_name) {
+      parts.push(`${parsed.first_name || ''} ${parsed.last_name || ''}`.trim());
+    }
+    if (parsed.address) parts.push(parsed.address);
+    if (parsed.city) parts.push(parsed.city);
+    if (parsed.state) parts.push(parsed.state);
+    if (parsed.postal_code) parts.push(parsed.postal_code);
+    if (parsed.country) parts.push(parsed.country);
+    
+    return parts.filter(Boolean).join('\n');
+  } catch {
+    // If not JSON, return as-is (plain text address)
+    return address;
+  }
+}
+
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -235,8 +260,8 @@ export function InvoiceDetailPage() {
                     </p>
                   )}
                   {invoice.customer.billing_address && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      {invoice.customer.billing_address}
+                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line">
+                      {formatAddress(invoice.customer.billing_address)}
                     </p>
                   )}
                 </div>

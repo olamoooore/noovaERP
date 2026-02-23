@@ -81,6 +81,31 @@ const initialFormData: CustomerFormData = {
   category_ids: [],
 }
 
+// Helper function to format address (handles both string and JSON formats)
+function formatAddress(address: string | null | undefined): string {
+  if (!address) return '';
+  
+  try {
+    // Try to parse as JSON
+    const parsed = JSON.parse(address);
+    const parts = [];
+    
+    if (parsed.first_name || parsed.last_name) {
+      parts.push(`${parsed.first_name || ''} ${parsed.last_name || ''}`.trim());
+    }
+    if (parsed.address) parts.push(parsed.address);
+    if (parsed.city) parts.push(parsed.city);
+    if (parsed.state) parts.push(parsed.state);
+    if (parsed.postal_code) parts.push(parsed.postal_code);
+    if (parsed.country) parts.push(parsed.country);
+    
+    return parts.filter(Boolean).join('\n');
+  } catch {
+    // If not JSON, return as-is (plain text address)
+    return address;
+  }
+}
+
 export function CustomersPage() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -760,7 +785,7 @@ export function CustomersPage() {
                       <CardTitle className="text-lg">Billing Address</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm">{customerDetail.billing_address || 'No billing address set'}</p>
+                      <p className="text-sm whitespace-pre-line">{formatAddress(customerDetail.billing_address) || 'No billing address set'}</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -768,7 +793,7 @@ export function CustomersPage() {
                       <CardTitle className="text-lg">Shipping Address</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm">{customerDetail.shipping_address || 'No shipping address set'}</p>
+                      <p className="text-sm whitespace-pre-line">{formatAddress(customerDetail.shipping_address) || 'No shipping address set'}</p>
                     </CardContent>
                   </Card>
                 </div>

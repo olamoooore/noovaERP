@@ -26,19 +26,25 @@ const formatLegacyAddress = (address: string) => {
     // If it looks like JSON starts with {
     if (address.trim().startsWith('{')) {
       const parsed = JSON.parse(address)
-      const parts = [
-        parsed.address || parsed.street,
-        parsed.street2,
-        parsed.city,
-        parsed.state,
-        parsed.postal_code || parsed.zip,
-        parsed.country
-      ].filter(Boolean)
+      const parts = []
       
-      if (parts.length > 0) return parts.join(', ')
+      // Add name if present
+      if (parsed.first_name || parsed.last_name) {
+        parts.push(`${parsed.first_name || ''} ${parsed.last_name || ''}`.trim())
+      }
+      
+      // Add address lines
+      if (parsed.address || parsed.street) parts.push(parsed.address || parsed.street)
+      if (parsed.street2) parts.push(parsed.street2)
+      if (parsed.city) parts.push(parsed.city)
+      if (parsed.state) parts.push(parsed.state)
+      if (parsed.postal_code || parsed.zip) parts.push(parsed.postal_code || parsed.zip)
+      if (parsed.country) parts.push(parsed.country)
+      
+      if (parts.length > 0) return parts.join('\n')
       
       // Fallback: join values
-      return Object.values(parsed).filter(v => typeof v === 'string').join(', ')
+      return Object.values(parsed).filter(v => typeof v === 'string').join('\n')
     }
   } catch (e) {
     // Ignore error, treat as string
@@ -132,6 +138,8 @@ interface Invoice {
 interface PosOrderItem {
   id: number
   name: string
+  product_name?: string
+  product_sku?: string
   sku: string
   quantity: number
   unit_price: number
@@ -1988,12 +1996,14 @@ export function CustomerDetailsPage() {
                         <TableRow key={item.id}>
                           <TableCell>
                             <div>
-                              <p className="font-medium">{item.name || item.product?.name || item.product_name}</p>
+                              <p className="font-medium">
+                                {item.product_name || item.name || item.product?.name}
+                              </p>
                               {item.variant && (
                                 <p className="text-sm text-muted-foreground">{item.variant.name}</p>
                               )}
-                              {item.sku && (
-                                <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                              {(item.sku || item.product_sku) && (
+                                <p className="text-xs text-muted-foreground">SKU: {item.sku || item.product_sku}</p>
                               )}
                             </div>
                           </TableCell>
