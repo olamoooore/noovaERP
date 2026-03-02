@@ -165,6 +165,25 @@ export function POSLayout() {
                 <div className="text-xs opacity-80">Opened: {openedDurationLabel}</div>
               </div>
               <Button
+                variant="secondary"
+                size="sm"
+                className="mr-2"
+                onClick={() => {
+                  const width = 1920
+                  const height = 1080
+                  const left = window.screen.width - width
+                  const top = 0
+                  window.open(
+                    '/pos/customer-display',
+                    'CustomerDisplay',
+                    `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+                  )
+                }}
+              >
+                <Icon icon="solar:monitor-bold-duotone" className="mr-2 h-4 w-4" />
+                Customer Display
+              </Button>
+              <Button
                 variant="destructive"
                 size="sm"
                 className="mr-2"

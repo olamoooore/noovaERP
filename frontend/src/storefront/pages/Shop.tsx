@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { ProductCard } from '@/storefront/components/products/ProductCard';
 import { QuickViewModal } from '@/storefront/components/products/QuickViewModal';
@@ -17,6 +17,15 @@ const Shop = () => {
   
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const searchQuery = searchParams.get('search') || '';
+  const sortBy = searchParams.get('sort') || 'name-asc';
+
+  // Local search input state
+  const [searchInput, setSearchInput] = useState(searchQuery);
+
+  // Sync searchInput with URL parameter
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
 
   // Fetch real products from backend with server-side pagination
   const { data, isLoading, error } = useProducts({ 
@@ -41,18 +50,24 @@ const Shop = () => {
     initialType ? [initialType] : []
   );
   const [selectedCollections, setSelectedCollections] = useState<Collection[]>([]);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showOutOfStock, setShowOutOfStock] = useState(true); // Toggle for out-of-stock products
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [gridSize, setGridSize] = useState<'small' | 'large'>('large');
 
-  // Use real products from API, with client-side filtering
+  // Use real products from API, with client-side filtering and sorting
   const products = data?.products || [];
   const totalProducts = data?.total || 0;
   const lastPage = data?.lastPage || 1;
   
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    let filtered = products.filter((product) => {
+      // Hide out-of-stock products if toggle is off
+      if (!showOutOfStock && (product.inStock === false || (product.stockQuantity || 0) === 0)) {
+        return false;
+      }
+      
       if (selectedBrands.length > 0 && !selectedBrands.includes(product.brand as Brand)) {
         return false;
       }
@@ -62,28 +77,79 @@ const Shop = () => {
       if (selectedCollections.length > 0 && !selectedCollections.includes(product.collection as Collection)) {
         return false;
       }
-      if (product.price < priceRange[0] || product.price > priceRange[1]) {
-        return false;
+      
+      // Tag filtering
+      if (selectedTags.length > 0) {
+        const hasMatchingTag = selectedTags.some(tag => {
+          if (tag === 'in-stock') return product.inStock !== false && (product.stockQuantity || 0) > 0;
+          if (tag === 'out-of-stock') return product.inStock === false || (product.stockQuantity || 0) === 0;
+          if (tag === 'preorder') return product.tags?.includes('preorder');
+          if (tag === 'new') return product.tags?.includes('new');
+          if (tag === 'sale') return product.memberPrice && product.memberPrice < product.price;
+          return false;
+        });
+        if (!hasMatchingTag) return false;
       }
+      
       return true;
     });
-  }, [products, selectedBrands, selectedTypes, selectedCollections, priceRange]);
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'name-asc':
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        case 'name-desc':
+          return String(b.name || '').localeCompare(String(a.name || ''));
+        case 'price-low':
+          return (a.price || 0) - (b.price || 0);
+        case 'price-high':
+          return (b.price || 0) - (a.price || 0);
+        case 'newest':
+          return (b.id || 0) - (a.id || 0);
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [products, selectedBrands, selectedTypes, selectedCollections, selectedTags, sortBy, showOutOfStock]);
 
   const clearAllFilters = () => {
     setSelectedBrands([]);
     setSelectedTypes([]);
     setSelectedCollections([]);
-    setPriceRange([0, 500]);
+    setSelectedTags([]);
     // Also clear search query
     const params = new URLSearchParams(searchParams);
     params.delete('search');
     params.set('page', '1');
     setSearchParams(params);
+    setSearchInput('');
   };
 
   const clearSearch = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('search');
+    params.set('page', '1');
+    setSearchParams(params);
+    setSearchInput('');
+  };
+
+  const handleSearch = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value.trim()) {
+      params.set('search', value.trim());
+    } else {
+      params.delete('search');
+    }
+    params.set('page', '1');
+    setSearchParams(params);
+  };
+
+  const handleSortChange = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('sort', value);
     params.set('page', '1');
     setSearchParams(params);
   };
@@ -151,11 +217,11 @@ const Shop = () => {
                 selectedBrands={selectedBrands}
                 selectedTypes={selectedTypes}
                 selectedCollections={selectedCollections}
-                priceRange={priceRange}
+                selectedTags={selectedTags}
                 onBrandChange={setSelectedBrands}
                 onTypeChange={setSelectedTypes}
                 onCollectionChange={setSelectedCollections}
-                onPriceChange={setPriceRange}
+                onTagChange={setSelectedTags}
                 onClearAll={clearAllFilters}
               />
             </div>
@@ -163,49 +229,104 @@ const Shop = () => {
 
           {/* Main Content */}
           <div className="flex-1">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between mb-6 gap-4">
+            {/* Search Bar and Sort - Aligned with Filter Title */}
+            <div className="flex items-start gap-4 mb-6 pt-6">
               {/* Mobile Filter Button */}
               <Button
                 variant="outline"
-                className="lg:hidden"
+                className="lg:hidden shrink-0 h-10"
                 onClick={() => setShowMobileFilters(true)}
               >
                 <Filter className="h-4 w-4 mr-2" />
                 Filters
               </Button>
 
-              {/* Active Filters (Mobile) */}
-              <div className="flex-1 lg:hidden">
-                {(selectedBrands.length > 0 || selectedTypes.length > 0) && (
-                  <p className="text-sm text-muted-foreground">
-                    {selectedBrands.length + selectedTypes.length} filters active
-                  </p>
-                )}
+              {/* Search Bar - Middle */}
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchInput}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                      handleSearch(e.target.value);
+                    }}
+                    className="w-full h-10 pl-10 pr-4 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput('');
+                        clearSearch();
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Grid Toggle */}
-              <div className="hidden sm:flex items-center gap-1 bg-muted rounded-lg p-1">
-                <button
-                  onClick={() => setGridSize('large')}
-                  className={cn(
-                    "p-2 rounded-md transition-colors",
-                    gridSize === 'large' ? "bg-background shadow" : "hover:bg-background/50"
-                  )}
-                  aria-label="Large grid"
+              {/* Sort Dropdown - Right */}
+              <div className="shrink-0">
+                <select
+                  value={sortBy}
+                  onChange={(e) => handleSortChange(e.target.value)}
+                  className="h-10 px-4 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
                 >
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setGridSize('small')}
-                  className={cn(
-                    "p-2 rounded-md transition-colors",
-                    gridSize === 'small' ? "bg-background shadow" : "hover:bg-background/50"
-                  )}
-                  aria-label="Small grid"
-                >
-                  <Grid className="h-4 w-4" />
-                </button>
+                  <option value="name-asc">Name (A-Z)</option>
+                  <option value="name-desc">Name (Z-A)</option>
+                  <option value="price-low">Price (Low to High)</option>
+                  <option value="price-high">Price (High to Low)</option>
+                  <option value="newest">Newest First</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Grid Toggle - Separate Row */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="text-sm text-muted-foreground">
+                {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {/* Out of Stock Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showOutOfStock}
+                    onChange={(e) => setShowOutOfStock(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-muted-foreground">Show Out of Stock</span>
+                </label>
+
+                {/* Grid Toggle */}
+                <div className="hidden sm:flex items-center gap-1 bg-muted rounded-lg p-1">
+                  <button
+                    onClick={() => setGridSize('large')}
+                    className={cn(
+                      "p-2 rounded-md transition-colors",
+                      gridSize === 'large' ? "bg-background shadow" : "hover:bg-background/50"
+                    )}
+                    aria-label="Large grid"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setGridSize('small')}
+                    className={cn(
+                      "p-2 rounded-md transition-colors",
+                      gridSize === 'small' ? "bg-background shadow" : "hover:bg-background/50"
+                    )}
+                    aria-label="Small grid"
+                  >
+                    <Grid className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -307,11 +428,11 @@ const Shop = () => {
               selectedBrands={selectedBrands}
               selectedTypes={selectedTypes}
               selectedCollections={selectedCollections}
-              priceRange={priceRange}
+              selectedTags={selectedTags}
               onBrandChange={setSelectedBrands}
               onTypeChange={setSelectedTypes}
               onCollectionChange={setSelectedCollections}
-              onPriceChange={setPriceRange}
+              onTagChange={setSelectedTags}
               onClearAll={clearAllFilters}
               isMobile
               onClose={() => setShowMobileFilters(false)}

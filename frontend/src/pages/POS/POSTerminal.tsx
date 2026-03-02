@@ -122,6 +122,7 @@ export function POSTerminal() {
   const setDiscount = usePosSessionStore((s) => s.setDiscount)
   const customerId = usePosSessionStore((s) => s.customerId)
   const setCustomerId = usePosSessionStore((s) => s.setCustomerId)
+  const setCustomerInfo = usePosSessionStore((s) => s.setCustomerInfo)
   const clearSessionCart = usePosSessionStore((s) => s.clearCart)
   const clearSession = usePosSessionStore((s) => s.clearSession)
 
@@ -337,6 +338,14 @@ export function POSTerminal() {
       toast({ title: 'Customer Created', description: newCust.name })
       setSelectedCustomer(newCust)
       setCustomerId(newCust.id.toString())
+      setCustomerInfo({
+        id: newCust.id,
+        name: newCust.name,
+        email: newCust.email,
+        phone: newCust.phone,
+        loyalty_points: newCust.loyalty_points || newCust.current_points,
+        loyalty_tier_name: newCust.loyalty_tier_name,
+      })
       setShowAddCustomerDialog(false)
       setNewCustomer({ name: '', phone: '', email: '' })
     },
@@ -369,6 +378,9 @@ export function POSTerminal() {
   // Pay Order Mutation
   const payOrderMutation = useMutation({
     mutationFn: async ({ orderId, paymentData }: { orderId: number; paymentData: any }) => {
+      // Add a small delay to ensure order is fully committed to database
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       const response = await api.post(`/pos/orders/${orderId}/pay`, paymentData)
       return response.data
     },
@@ -857,8 +869,30 @@ export function POSTerminal() {
       // Use existing order ID or generate new one for idempotency
       const orderId = currentOrderId || generateOrderId()
       
+      console.log('Creating order with external_id:', orderId)
+      
       // Create order
       const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
+      
+      console.log('Order created successfully:', order)
+      console.log('Order ID:', order.id)
+      console.log('Order Number:', order.order_number)
+      console.log('Order Status:', order.status)
+
+      // Verify order exists before attempting payment
+      if (!order || !order.id) {
+        throw new Error('Order creation failed - no order ID returned')
+      }
+
+      // Skip verification for now - tenant issue
+      // try {
+      //   console.log('Verifying order exists by fetching it...')
+      //   const verifyResponse = await api.get(`/pos/orders/${order.id}`)
+      //   console.log('Order verification successful:', verifyResponse.data)
+      // } catch (verifyError: any) {
+      //   console.error('Order verification failed:', verifyError)
+      //   throw new Error(`Order ${order.id} was created but cannot be found in database. This may be a multi-tenancy or database issue.`)
+      // }
 
       // Process payment with selected method
       const paymentData = {
@@ -869,6 +903,8 @@ export function POSTerminal() {
         gateway_id: method.gateway_id,
         offline_method_id: method.id?.startsWith('offline_') ? parseInt(method.id.replace('offline_', '')) : null,
       }
+
+      console.log('Processing payment for order ID:', order.id, 'with data:', paymentData)
 
       await payOrderMutation.mutateAsync({ orderId: order.id, paymentData })
 
@@ -929,7 +965,9 @@ export function POSTerminal() {
       queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
     } catch (error: any) {
       const errorMessage = extractErrorMessage(error)
-      console.error('Checkout error:', error.response?.data || error)
+      console.error('Checkout error:', error)
+      console.error('Error response:', error.response?.data)
+      console.error('Error status:', error.response?.status)
       toast({
         title: "Checkout Failed",
         description: errorMessage,
@@ -1142,6 +1180,7 @@ export function POSTerminal() {
                   onClick={() => {
                     setSelectedCustomer(null)
                     setCustomerId('walk-in')
+                    setCustomerInfo(null)
                     setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
                   }}
                 >
@@ -1155,7 +1194,8 @@ export function POSTerminal() {
         <ScrollArea className="flex-1 px-4">
           <div className="space-y-3">
             {cart.map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-lg border p-2">
+              <div key={item.id} className="flex gap-2 rounded-lg border p-2">
+                {/* Product Image */}
                 <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
                   {item.image ? (
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded" />
@@ -1163,26 +1203,43 @@ export function POSTerminal() {
                     <Icon icon="solar:box-bold" className="h-6 w-6 text-muted-foreground" />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-sm truncate">{item.name}</h4>
-                  <p className="text-xs text-muted-foreground">{formatCurrency(item.price)} x {item.quantity}</p>
+                
+                {/* Product Info - Flexible with proper truncation */}
+                <div className="flex-1 flex flex-col justify-center" style={{ minWidth: 0, overflow: 'hidden' }}>
+                  <h4 
+                    className="font-medium text-sm leading-tight" 
+                    title={item.name}
+                    style={{ 
+                      overflow: 'hidden', 
+                      textOverflow: 'ellipsis', 
+                      whiteSpace: 'nowrap',
+                      maxWidth: '100%'
+                    }}
+                  >
+                    {item.name}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5" style={{ whiteSpace: 'nowrap' }}>
+                    {formatCurrency(item.price)} x {item.quantity}
+                  </p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="font-bold text-sm">{formatCurrency(item.line_total)}</span>
-                  <div className="flex items-center gap-1">
+                
+                {/* Price and Actions - Fixed Width */}
+                <div className="flex flex-col items-end justify-between shrink-0" style={{ minWidth: '180px' }}>
+                  <span className="font-bold text-sm whitespace-nowrap">{formatCurrency(item.line_total)}</span>
+                  <div className="flex items-center gap-0.5">
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => updateQuantity(item.id, -1)}
                     >
                       <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm w-6 text-center">{item.quantity}</span>
+                    <span className="text-sm w-7 text-center shrink-0">{item.quantity}</span>
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => updateQuantity(item.id, 1)}
                     >
                       <Icon icon="solar:add-circle-bold" className="h-4 w-4" />
@@ -1190,7 +1247,7 @@ export function POSTerminal() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-destructive"
+                      className="h-6 w-6 text-destructive shrink-0"
                       onClick={() => removeFromCart(item.id)}
                     >
                       <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4" />
@@ -1739,6 +1796,14 @@ export function POSTerminal() {
                       onClick={() => {
                         setCustomerId(customer.id.toString())
                         setSelectedCustomer(customer)
+                        setCustomerInfo({
+                          id: customer.id,
+                          name: customer.name,
+                          email: customer.email,
+                          phone: customer.phone,
+                          loyalty_points: customer.loyalty_points || customer.current_points,
+                          loyalty_tier_name: customer.loyalty_tier_name,
+                        })
                         setShowCustomerDialog(false)
                         setCustomerSearch('')
                       }}

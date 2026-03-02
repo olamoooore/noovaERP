@@ -25,6 +25,7 @@ const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ 
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
 const POSPage = lazy(() => import('@/pages/POSPage').then(m => ({ default: m.POSPage })))
 const POSTerminal = lazy(() => import('@/pages/POS/POSTerminal').then(m => ({ default: m.POSTerminal })))
+const POSCustomerDisplay = lazy(() => import('@/pages/POS/POSCustomerDisplay').then(m => ({ default: m.POSCustomerDisplay })))
 const POSOrdersPage = lazy(() => import('@/pages/POS/POSOrdersPage').then(m => ({ default: m.POSOrdersPage })))
 const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m => ({ default: m.POSBarcodePage })))
 const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
@@ -306,6 +307,7 @@ function App() {
               {/* POS Layout Routes - fullscreen without sidebar */}
               <Route element={<POSLayout />}>
                 <Route path="/pos/terminal" element={<POSTerminal />} />
+                <Route path="/pos/customer-display" element={<POSCustomerDisplay />} />
               </Route>
             </Route>
 

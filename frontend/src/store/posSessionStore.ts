@@ -1,6 +1,18 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+// Broadcast channel for cross-tab communication
+let broadcastChannel: BroadcastChannel | null = null
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  broadcastChannel = new BroadcastChannel('pos-cart-sync')
+}
+
+const notifyCartUpdate = () => {
+  if (broadcastChannel) {
+    broadcastChannel.postMessage({ type: 'CART_UPDATE', timestamp: Date.now() })
+  }
+}
+
 export interface CartItem {
   id: number;
   name: string;
@@ -23,6 +35,15 @@ export interface Discount {
   value: number;
   loyaltyPointsUsed?: number;
   loyaltyDiscountValue?: number;
+}
+
+export interface CustomerInfo {
+  id: number;
+  name: string;
+  email?: string;
+  phone?: string;
+  loyalty_points?: number;
+  loyalty_tier_name?: string;
 }
 
 // Terminal data from database
@@ -68,6 +89,7 @@ interface PosSessionState {
   cart: CartItem[];
   discount: Discount;
   customerId: string;
+  customerInfo: CustomerInfo | null;
 
   // Actions
   setActiveSession: (session: PosSession | null) => void;
@@ -88,6 +110,7 @@ interface PosSessionState {
   clearCart: () => void;
   setDiscount: (discount: Discount) => void;
   setCustomerId: (id: string) => void;
+  setCustomerInfo: (customer: CustomerInfo | null) => void;
 }
 
 export const usePosSessionStore = create<PosSessionState>()(
@@ -104,6 +127,7 @@ export const usePosSessionStore = create<PosSessionState>()(
       cart: [],
       discount: { type: "fixed", value: 0 },
       customerId: "walk-in",
+      customerInfo: null,
 
       setActiveSession: (session) => {
         if (session) {
@@ -137,6 +161,7 @@ export const usePosSessionStore = create<PosSessionState>()(
           cart: [],
           discount: { type: "fixed", value: 0 },
           customerId: "walk-in",
+          customerInfo: null,
         });
       },
 
@@ -150,11 +175,15 @@ export const usePosSessionStore = create<PosSessionState>()(
           cart: [],
           discount: { type: "fixed", value: 0 },
           customerId: "walk-in",
+          customerInfo: null,
         });
       },
 
       // Cart Actions
-      setCart: (cart) => set({ cart }),
+      setCart: (cart) => {
+        set({ cart })
+        notifyCartUpdate()
+      },
 
       addToCart: (newItem) =>
         set((state) => {
@@ -163,35 +192,57 @@ export const usePosSessionStore = create<PosSessionState>()(
             const nextCart = state.cart.map((i) =>
               i.id === newItem.id ? newItem : i
             );
+            notifyCartUpdate()
             return { cart: nextCart };
           }
+          notifyCartUpdate()
           return { cart: [...state.cart, newItem] };
         }),
 
       removeFromCart: (itemId) =>
-        set((state) => ({
-          cart: state.cart.filter((i) => i.id !== itemId),
-        })),
+        set((state) => {
+          notifyCartUpdate()
+          return {
+            cart: state.cart.filter((i) => i.id !== itemId),
+          }
+        }),
 
       updateQuantity: (itemId, quantity) =>
-        set((state) => ({
-          cart: state.cart.map((item) =>
-            item.id === itemId
-              ? { ...item, quantity }
-              : item
-          ),
-        })),
+        set((state) => {
+          notifyCartUpdate()
+          return {
+            cart: state.cart.map((item) =>
+              item.id === itemId
+                ? { ...item, quantity }
+                : item
+            ),
+          }
+        }),
 
-      clearCart: () =>
+      clearCart: () => {
+        notifyCartUpdate()
         set({
           cart: [],
           discount: { type: "fixed", value: 0, loyaltyPointsUsed: 0, loyaltyDiscountValue: 0 },
           customerId: "walk-in",
-        }),
+          customerInfo: null,
+        })
+      },
 
-      setDiscount: (discount) => set({ discount }),
+      setDiscount: (discount) => {
+        set({ discount })
+        notifyCartUpdate()
+      },
 
-      setCustomerId: (customerId) => set({ customerId }),
+      setCustomerId: (customerId) => {
+        set({ customerId })
+        notifyCartUpdate()
+      },
+
+      setCustomerInfo: (customerInfo) => {
+        set({ customerInfo })
+        notifyCartUpdate()
+      },
     }),
     {
       name: "pos-session-storage-v2",
@@ -205,6 +256,7 @@ export const usePosSessionStore = create<PosSessionState>()(
         cart: state.cart,
         discount: state.discount,
         customerId: state.customerId,
+        customerInfo: state.customerInfo,
       }),
     }
   )

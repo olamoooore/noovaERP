@@ -2,7 +2,6 @@ import { X, Loader2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { BRANDS, COLLECTIONS, Brand, ProductType, Collection } from '@/storefront/data/products';
 import { Button } from '@/storefront/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { useCategories } from '@/storefront/hooks/useProducts';
 import { cn } from '@/lib/utils';
 
@@ -10,11 +9,11 @@ interface FilterPanelProps {
   selectedBrands: Brand[];
   selectedTypes: ProductType[];
   selectedCollections: Collection[];
-  priceRange: [number, number];
+  selectedTags: string[];
   onBrandChange: (brands: Brand[]) => void;
   onTypeChange: (types: ProductType[]) => void;
   onCollectionChange: (collections: Collection[]) => void;
-  onPriceChange: (range: [number, number]) => void;
+  onTagChange: (tags: string[]) => void;
   onClearAll: () => void;
   isMobile?: boolean;
   onClose?: () => void;
@@ -24,11 +23,11 @@ export const FilterPanel = ({
   selectedBrands,
   selectedTypes,
   selectedCollections,
-  priceRange,
+  selectedTags,
   onBrandChange,
   onTypeChange,
   onCollectionChange,
-  onPriceChange,
+  onTagChange,
   onClearAll,
   isMobile,
   onClose,
@@ -115,7 +114,15 @@ export const FilterPanel = ({
     }
   };
 
-  const hasFilters = selectedBrands.length > 0 || selectedTypes.length > 0 || selectedCollections.length > 0 || priceRange[0] > 0 || priceRange[1] < 500;
+  const toggleTag = (tag: string) => {
+    if (selectedTags.includes(tag)) {
+      onTagChange(selectedTags.filter(t => t !== tag));
+    } else {
+      onTagChange([...selectedTags, tag]);
+    }
+  };
+
+  const hasFilters = selectedBrands.length > 0 || selectedTypes.length > 0 || selectedCollections.length > 0 || selectedTags.length > 0;
 
   return (
     <div className={cn("space-y-6", isMobile && "p-6")}>
@@ -129,6 +136,13 @@ export const FilterPanel = ({
         </div>
       )}
 
+      {/* Desktop Title - Aligned with search bar */}
+      {!isMobile && (
+        <div className="mb-6">
+          <h3 className="font-semibold text-lg leading-10">Filters</h3>
+        </div>
+      )}
+
       {/* Clear All */}
       {hasFilters && (
         <div className="flex justify-end">
@@ -138,19 +152,38 @@ export const FilterPanel = ({
         </div>
       )}
 
-      {/* Price Range */}
+      {/* Sort by Tag/Status */}
       <div>
-        <h4 className="text-sm font-medium mb-3">
-          Price Range: SGD {priceRange[0]} - SGD {priceRange[1]}
-        </h4>
-        <Slider
-          value={priceRange}
-          onValueChange={(value) => onPriceChange(value as [number, number])}
-          min={0}
-          max={500}
-          step={5}
-          className="mt-4"
-        />
+        <h4 className="font-medium mb-3">Sort by Tag</h4>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { value: 'preorder', label: 'Pre-Order', icon: 'solar:clock-circle-bold' },
+            { value: 'new', label: 'New Arrival', icon: 'solar:star-bold' },
+            { value: 'in-stock', label: 'In-Stock', icon: 'solar:check-circle-bold' },
+            { value: 'out-of-stock', label: 'Out of Stock', icon: 'solar:close-circle-bold' },
+            { value: 'sale', label: 'Sales', icon: 'solar:tag-price-bold' },
+          ].map((tag) => {
+            const isActive = selectedTags.includes(tag.value);
+            return (
+              <button
+                key={tag.value}
+                onClick={() => toggleTag(tag.value)}
+                className={cn(
+                  "w-full flex items-center gap-3 rounded-lg border p-2.5 text-left transition-all",
+                  isActive
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border bg-background hover:bg-muted/40"
+                )}
+              >
+                <Icon
+                  className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")}
+                  icon={tag.icon}
+                />
+                <span className="text-sm font-medium">{tag.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Shop by Category */}
