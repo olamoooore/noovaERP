@@ -138,8 +138,18 @@ jobs:
             php artisan migrate --force
             php artisan tenants:migrate --force || true
             
+            # Ensure EventManagement columns exist (idempotent - server uses unified public schema
+            # so tenants:migrate may fail; ALTER TABLE IF NOT EXISTS is safe to run every time)
+            php artisan tinker --no-interaction <<'PHP' || true
+DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) DEFAULT 0 NOT NULL');
+DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT NULL');
+DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS start_date TIMESTAMP NULL');
+DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS end_date TIMESTAMP NULL');
+echo 'EventManagement schema ensured' . PHP_EOL;
+PHP
+            
             # Seed event data for all tenants (idempotent - skips if events already exist)
-            php artisan tenants:seed --class=EventManagementTestSeeder --force || true
+            php artisan db:seed --class=EventManagementTestSeeder --force || true
             
             # Clear all caches to ensure fresh config from .env
             php artisan config:clear
