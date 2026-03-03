@@ -31,8 +31,8 @@ class EventOperationsController extends Controller
         $this->auditService = $auditService;
 
         // Apply middleware for staff access
-        $this->middleware(['auth:sanctum', 'rbac:staff,admin']);
-        $this->middleware('throttle:operations')->only([
+        $this->middleware(['auth:sanctum', 'rbac.event_management']);
+        $this->middleware('rate_limit:operations')->only([
             'getLiveDashboard',
             'updateZoneOccupancy',
             'updateCounterQueue'
@@ -57,11 +57,16 @@ class EventOperationsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            $this->auditService->logActivity(
-                'operations_error',
-                'Failed to retrieve live dashboard',
-                ['event_id' => $eventId, 'error' => $e->getMessage()]
-            );
+            try {
+                $this->auditService->logActivity(
+                    'operations_error',
+                    'event',
+                    $eventId,
+                    ['error' => $e->getMessage()]
+                );
+            } catch (\Throwable $auditEx) {
+                // Never let audit failure mask the real error
+            }
 
             return response()->json([
                 'success' => false,
@@ -417,11 +422,15 @@ class EventOperationsController extends Controller
         try {
             $report = $this->operationsService->generateOperationalReport($eventId);
 
-            $this->auditService->logActivity(
-                'operations_report',
-                'Operational report generated',
-                ['event_id' => $eventId]
-            );
+            try {
+                $this->auditService->logActivity(
+                    'operations_report',
+                    'event',
+                    $eventId
+                );
+            } catch (\Throwable $auditEx) {
+                // Audit failure must not break the response
+            }
 
             return response()->json([
                 'success' => true,

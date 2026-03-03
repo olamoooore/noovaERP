@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Modules\EventManagement\Services\TicketStatusService;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 /**
@@ -28,27 +29,86 @@ class CustomerHubController extends Controller
 
     /**
      * Get customer hub dashboard
+     * Shows all event bookings across the tenant so admins can review them.
+     * Results are sorted with upcoming events first.
      */
     public function getDashboard(Request $request): JsonResponse
     {
         try {
-            $customerId = $request->user()->id;
+            $now = now();
 
-            $options = [
-                'notification_limit' => $request->input('notification_limit', 10),
-                'unread_only' => $request->boolean('unread_only', false),
-                'include_history' => $request->boolean('include_history', false)
-            ];
+            // Fetch all confirmed bookings, joining event data
+            $bookings = DB::table('bookings as b')
+                ->leftJoin('events as e', 'b.event_id', '=', 'e.id')
+                ->whereIn('b.state', ['confirmed', 'paid', 'attended'])
+                ->select(
+                    'b.id',
+                    'b.booking_reference',
+                    'b.event_id',
+                    'b.buyer_name',
+                    'b.buyer_email',
+                    'b.state',
+                    'b.total_amount',
+                    'b.currency',
+                    'b.created_at',
+                    'e.title as event_title',
+                    'e.start_date as event_start',
+                    'e.end_date as event_end',
+                    'e.venue as event_venue',
+                    'e.image_url as event_image',
+                    'e.price as event_price',
+                    'e.status as event_status'
+                )
+                ->orderBy('e.start_date', 'asc')
+                ->get();
 
-            $dashboard = $this->ticketStatusService->getCustomerHubDashboard($customerId, $options);
+            // Split into upcoming / past
+            $upcoming = $bookings->filter(function ($b) use ($now) {
+                return $b->event_start && \Carbon\Carbon::parse($b->event_start)->gt($now);
+            })->values();
 
-            return response()->json($dashboard);
+            $past = $bookings->filter(function ($b) use ($now) {
+                return !$b->event_start || \Carbon\Carbon::parse($b->event_start)->lte($now);
+            })->values();
+
+            $formatBooking = function ($b) {
+                return [
+                    'id'                => $b->id,
+                    'booking_reference' => $b->booking_reference,
+                    'event_id'          => $b->event_id,
+                    'event_title'       => $b->event_title ?? 'Unknown Event',
+                    'event_date'        => $b->event_start,
+                    'event_venue'       => $b->event_venue,
+                    'event_image'       => $b->event_image,
+                    'buyer_name'        => $b->buyer_name,
+                    'buyer_email'       => $b->buyer_email,
+                    'amount'            => $b->total_amount,
+                    'currency'          => $b->currency ?? 'SGD',
+                    'state'             => $b->state,
+                    'created_at'        => $b->created_at,
+                ];
+            };
+
+            return response()->json([
+                'success'     => true,
+                'customer_id' => $request->user()->id,
+                'dashboard'   => [
+                    'upcoming_events' => $upcoming->map($formatBooking)->all(),
+                    'tickets'         => $bookings->map($formatBooking)->all(),
+                    'past_events'     => $past->map($formatBooking)->all(),
+                    'stats'           => [
+                        'upcoming_count' => $upcoming->count(),
+                        'total_bookings' => $bookings->count(),
+                        'total_tickets'  => $bookings->count(),
+                    ],
+                ],
+            ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to load dashboard',
-                'message' => $e->getMessage()
+                'error'   => 'Failed to load dashboard',
+                'message' => $e->getMessage(),
             ], 500);
         }
     }

@@ -1,9 +1,10 @@
 {
-    "name": "EventManagement",
+    "name": "Event Management",
     "alias": "eventmanagement",
     "description": "Event Management Module",
     "keywords": [],
     "key": "event_management",
+    "type": "core",
     "priority": 0,
     "providers": [
         "Modules\\EventManagement\\Providers\\EventManagementServiceProvider"

@@ -63,7 +63,10 @@ return [
 
     'migration_parameters' => [
         '--force' => true,
-        '--path' => [database_path('migrations/tenant')],
+        '--path' => [
+            database_path('migrations/tenant'),
+            base_path('modules/EventManagement/Database/Migrations/tenant'),
+        ],
         '--realpath' => true,
     ],
 

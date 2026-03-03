@@ -27,8 +27,8 @@ class IncidentController extends Controller
         $this->auditService = $auditService;
 
         // Apply middleware for staff access
-        $this->middleware(['auth:sanctum', 'rbac:staff,admin']);
-        $this->middleware('throttle:incident_management')->only([
+        $this->middleware(['auth:sanctum', 'rbac.event_management']);
+        $this->middleware('rate_limit:incident_management')->only([
             'createIncident',
             'updateIncident',
             'resolveIncident'

@@ -196,6 +196,53 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
+    title: 'Event Management',
+    href: '/event-management',
+    icon: 'solar:calendar-bold-duotone',
+    children: [
+      {
+        title: 'My Events',
+        href: '/event-management/dashboard',
+        icon: 'solar:calendar-mark-bold-duotone',
+      },
+      {
+        title: 'Browse Events',
+        href: '/event-management/browse',
+        icon: 'solar:ticket-sale-bold-duotone',
+      },
+      {
+        title: 'Staff Operations',
+        href: '/event-management/staff',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
+        title: 'Live Operations',
+        href: '/event-management/operations',
+        icon: 'solar:monitor-bold-duotone',
+      },
+      {
+        title: 'My Bookings',
+        href: '/event-management/bookings',
+        icon: 'solar:bookmark-bold-duotone',
+      },
+      {
+        title: 'My Tickets',
+        href: '/event-management/tickets',
+        icon: 'solar:ticket-bold-duotone',
+      },
+      {
+        title: 'Feedback',
+        href: '/event-management/feedback',
+        icon: 'solar:chat-round-bold-duotone',
+      },
+      {
+        title: 'Event Portal',
+        href: '/event-portal',
+        icon: 'solar:global-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'OCR Documents',
     href: '/ocr/documents',
     icon: 'solar:document-add-bold-duotone',

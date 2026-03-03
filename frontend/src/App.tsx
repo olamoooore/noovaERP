@@ -85,6 +85,16 @@ const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingP
 // AI Module Pages
 const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ default: m.AIChatPage })))
 
+// Event Management Module Pages
+const StaffManagementPage = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.StaffManagementPage })))
+const LiveOperationsDashboard = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.LiveOperationsDashboard })))
+const BrowseEventsPage = lazy(() => import('@/pages/EventManagement/BrowseEventsPage'))
+const MyEventsDashboard = lazy(() => import('@/pages/EventManagement/MyEventsDashboard'))
+const MyBookingsPage = lazy(() => import('@/pages/EventManagement/MyBookingsPage'))
+const MyTicketsPage = lazy(() => import('@/pages/EventManagement/MyTicketsPage'))
+const FeedbackSystem = lazy(() => import('@/pages/EventManagement/FeedbackSystem'))
+const EventPortalPage = lazy(() => import('@/pages/EventPortal').then(m => ({ default: m.EventPortalPage })))
+
 // Loyalty Module Pages
 const LoyaltyDashboardPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyDashboardPage })))
 const LoyaltyCustomersPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyCustomersPage })))
@@ -292,6 +302,17 @@ function App() {
                 
                 {/* AI Module Routes */}
                 <Route path="/ai/chat" element={<AIChatPage />} />
+
+                {/* Event Management Module Routes */}
+                <Route path="/event-management" element={<MyEventsDashboard />} />
+                <Route path="/event-management/browse" element={<BrowseEventsPage />} />
+                <Route path="/event-management/dashboard" element={<MyEventsDashboard />} />
+                <Route path="/event-management/staff" element={<StaffManagementPage />} />
+                <Route path="/event-management/operations" element={<LiveOperationsDashboard />} />
+                <Route path="/event-management/bookings" element={<MyBookingsPage />} />
+                <Route path="/event-management/tickets" element={<MyTicketsPage />} />
+                <Route path="/event-management/feedback" element={<FeedbackSystem />} />
+                <Route path="/event-portal" element={<EventPortalPage />} />
                 
                 {/* Web Shop Routes - inside MainLayout for admin access too */}
                 {/* NOTE: Checkout accessible publicly below, outside ProtectedRoute */}

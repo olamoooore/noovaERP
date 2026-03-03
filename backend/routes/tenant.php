@@ -32,6 +32,11 @@ Route::middleware([
         Route::get('/products/{id}', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'show']);
         Route::get('/categories', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'categories']);
         Route::get('/tags', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'tags']);
+
+        // Public event routes — no auth required (storefront /store/events)
+        Route::get('/events', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'index']);
+        Route::get('/events/{id}', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'show']);
+        Route::post('/events/{id}/book', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'book']);
     });
 
     // Guest checkout (no login required for buying)

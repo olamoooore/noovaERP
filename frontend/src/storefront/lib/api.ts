@@ -109,6 +109,56 @@ export interface CheckoutPayload {
   loyalty_points_to_redeem?: number;
 }
 
+// ---- Public Events API ----
+
+export interface ApiEvent {
+  id: number;
+  title: string;
+  description: string;
+  start_date: string;
+  end_date: string;
+  event_date: string;
+  venue: string;
+  price: number;
+  image_url: string;
+  total_capacity: number;
+  available_capacity: number;
+  spots_left: number;
+  total_spots: number;
+  status: string;
+  is_sold_out: boolean;
+}
+
+export interface BookEventPayload {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export interface BookEventResponse {
+  booking_id: number;
+  booking_reference: string;
+  queue_number: string;
+  event_title: string;
+  email: string;
+}
+
+export async function fetchPublicEvents(): Promise<ApiEvent[]> {
+  const { data } = await storefrontApi.get('/website-public/events');
+  // API returns { data: [...], message: '' }
+  return Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+}
+
+export async function fetchPublicEvent(id: number): Promise<ApiEvent> {
+  const { data } = await storefrontApi.get(`/website-public/events/${id}`);
+  return data.data ?? data;
+}
+
+export async function bookPublicEvent(eventId: number, payload: BookEventPayload): Promise<BookEventResponse> {
+  const { data } = await storefrontApi.post(`/website-public/events/${eventId}/book`, payload);
+  return data.data ?? data;
+}
+
 export interface CheckoutResponse {
   success: boolean;
   order_id: number;

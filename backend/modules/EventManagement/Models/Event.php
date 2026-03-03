@@ -19,6 +19,8 @@ class Event extends Model
         'title',
         'description',
         'event_date',
+        'start_date',
+        'end_date',
         'venue',
         'total_capacity',
         'available_capacity',
@@ -32,6 +34,8 @@ class Event extends Model
 
     protected $casts = [
         'event_date' => 'datetime',
+        'start_date' => 'datetime',
+        'end_date' => 'datetime',
         'total_capacity' => 'integer',
         'available_capacity' => 'integer',
         'sale_start_date' => 'datetime',
@@ -68,6 +72,14 @@ class Event extends Model
     public function bids(): HasMany
     {
         return $this->hasMany(Bid::class);
+    }
+
+    /**
+     * Get the artist events (artist-event associations) for this event
+     */
+    public function artistEvents(): HasMany
+    {
+        return $this->hasMany(ArtistEvent::class);
     }
 
     /**

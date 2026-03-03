@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '@iconify/react';
-import { EVENTS } from '@/storefront/data/events';
+import { useStorefrontEvents } from '@/storefront/hooks/useEvents';
 import { Button } from '@/storefront/components/ui/button';
 import { Badge } from '@/storefront/components/ui/badge';
 import { storefrontRoutes, storefrontPath } from '@/storefront/lib/paths';
@@ -50,6 +50,8 @@ const Countdown = ({ targetDate }: CountdownProps) => {
 };
 
 export const EventsSection = () => {
+  const { data: events = [], isLoading } = useStorefrontEvents();
+
   return (
     <section className="py-24 bg-white relative overflow-hidden">
       {/* Background decoration */}
@@ -76,7 +78,10 @@ export const EventsSection = () => {
 
         {/* Events Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {EVENTS.map((event, index) => (
+          {isLoading && [1, 2, 3].map((i) => (
+            <div key={i} className="rounded-3xl overflow-hidden bg-muted/30 animate-pulse h-96 border border-border/20" />
+          ))}
+          {!isLoading && events.map((event, index) => (
             <div
               key={event.id}
               className="group relative rounded-3xl overflow-hidden bg-white border border-border/40 hover:border-border hover:shadow-xl transition-all duration-500 hover:-translate-y-1 animate-fade-in-up"

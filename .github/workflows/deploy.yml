@@ -138,6 +138,9 @@ jobs:
             php artisan migrate --force
             php artisan tenants:migrate --force || true
             
+            # Seed event data for all tenants (idempotent - skips if events already exist)
+            php artisan tenants:seed --class=EventManagementTestSeeder --force || true
+            
             # Clear all caches to ensure fresh config from .env
             php artisan config:clear
             php artisan cache:clear

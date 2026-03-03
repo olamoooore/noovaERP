@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, MapPin, Users, Ticket } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
-import { EVENTS, Event } from '@/storefront/data/events';
+import { Event } from '@/storefront/data/events';
 import { Button } from '@/storefront/components/ui/button';
 import { Badge } from '@/storefront/components/ui/badge';
 import {
@@ -13,6 +13,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { useStorefrontEvents } from '@/storefront/hooks/useEvents';
+import { bookPublicEvent } from '@/storefront/lib/api';
 
 interface CountdownProps {
   targetDate: Date;
@@ -67,23 +69,33 @@ const Countdown = ({ targetDate, large }: CountdownProps) => {
 };
 
 const Events = () => {
+  const { data: events = [], isLoading } = useStorefrontEvents();
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showRegistration, setShowRegistration] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
-  const [queueNumber, setQueueNumber] = useState<number | null>(null);
+  const [queueNumber, setQueueNumber] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Get next queue number from localStorage
-    const currentQueue = parseInt(localStorage.getItem('eventQueueNumber') || '0');
-    const newQueueNumber = currentQueue + 1;
-    localStorage.setItem('eventQueueNumber', newQueueNumber.toString());
-    
-    setQueueNumber(newQueueNumber);
-    toast.success('Registration successful!', {
-      description: `Your queue number is #${newQueueNumber.toString().padStart(4, '0')}`,
-    });
+    if (!selectedEvent) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await bookPublicEvent(parseInt(selectedEvent.id), formData);
+      const formatted = response.queue_number
+        ? String(response.queue_number).padStart(4, '0')
+        : String(Math.floor(Math.random() * 9000) + 1000);
+      setQueueNumber(formatted);
+      toast.success('Registration successful!', {
+        description: `Your queue number is #${formatted}`,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Registration failed. Please try again.';
+      toast.error('Registration failed', { description: msg });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const closeModal = () => {
@@ -108,7 +120,14 @@ const Events = () => {
 
         {/* Events List */}
         <div className="space-y-8">
-          {EVENTS.map((event, index) => (
+          {isLoading ? (
+            <div className="space-y-8">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="glass-strong rounded-2xl overflow-hidden h-64 animate-pulse bg-muted/30" />
+              ))}
+            </div>
+          ) : null}
+          {!isLoading && events.map((event, index) => (
             <div
               key={event.id}
               className="group glass-strong rounded-2xl overflow-hidden card-hover animate-fade-in"
@@ -214,7 +233,7 @@ const Events = () => {
               </div>
               <p className="text-muted-foreground mb-2">Your queue number is</p>
               <p className="text-4xl font-display font-bold gradient-text mb-4">
-                #{queueNumber.toString().padStart(4, '0')}
+                #{queueNumber}
               </p>
               <p className="text-sm text-muted-foreground mb-6">
                 A confirmation email has been sent to {formData.email}
@@ -261,8 +280,8 @@ const Events = () => {
                 <span className="font-display font-bold text-lg">
                   {selectedEvent?.price === 0 ? 'FREE' : `SGD ${selectedEvent?.price.toFixed(2)}`}
                 </span>
-                <Button variant="neon" type="submit">
-                  Complete Registration
+                <Button variant="neon" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Registering...' : 'Complete Registration'}
                 </Button>
               </div>
             </form>

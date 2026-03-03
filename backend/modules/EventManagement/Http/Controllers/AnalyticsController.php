@@ -34,8 +34,8 @@ class AnalyticsController extends Controller
         $this->auditService = $auditService;
 
         // Apply middleware for admin-only access
-        $this->middleware(['auth:sanctum', 'rbac:admin']);
-        $this->middleware('throttle:analytics')->only([
+        $this->middleware(['auth:sanctum', 'rbac.event_management']);
+        $this->middleware('rate_limit:analytics')->only([
             'generateReport',
             'exportReport'
         ]);

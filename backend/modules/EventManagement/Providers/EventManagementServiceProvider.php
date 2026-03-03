@@ -21,6 +21,7 @@ use Modules\EventManagement\Console\Commands\CleanupAuditLogsCommand;
 use Modules\EventManagement\Console\Commands\ValidateMigrationTimestampsCommand;
 use Modules\EventManagement\Console\Commands\SafeMigrateCommand;
 use Modules\EventManagement\Console\Commands\MigrateExistingEventsCommand;
+use Modules\EventManagement\Console\Commands\SecurityAuditCommand;
 
 class EventManagementServiceProvider extends ServiceProvider
 {
@@ -47,11 +48,11 @@ class EventManagementServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Load migrations
+        // Load migrations (central context)
         $this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
 
-        // Load routes
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Routes are loaded via tenant.php (ModuleManager::tenantApiRouteFiles)
+        // Do NOT use loadRoutesFrom here to avoid double-prefix registration
 
         // Register middleware
         $this->app['router']->aliasMiddleware('feature.event_management', FeatureFlagMiddleware::class);
@@ -71,6 +72,7 @@ class EventManagementServiceProvider extends ServiceProvider
                 ValidateMigrationTimestampsCommand::class,
                 SafeMigrateCommand::class,
                 MigrateExistingEventsCommand::class,
+                SecurityAuditCommand::class,
             ]);
         }
     }

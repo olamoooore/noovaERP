@@ -31,8 +31,8 @@ class StaffController extends Controller
         $this->auditService = $auditService;
 
         // Apply middleware for admin/manager access
-        $this->middleware(['auth:sanctum', 'rbac:admin,manager']);
-        $this->middleware('throttle:staff_management')->only([
+        $this->middleware(['auth:sanctum', 'rbac.event_management']);
+        $this->middleware('rate_limit:staff_management')->only([
             'assignStaff',
             'updateAssignment',
             'removeAssignment'
@@ -503,6 +503,63 @@ class StaffController extends Controller
                 'success' => false,
                 'message' => 'Failed to retrieve staff assignment',
                 'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get an aggregate performance report for all staff across all events.
+     *
+     * @return JsonResponse
+     */
+    public function getPerformanceReport(): JsonResponse
+    {
+        try {
+            if (!\Schema::hasTable('staff_assignments')) {
+                return response()->json([
+                    'success' => true,
+                    'data'    => [],
+                    'message' => 'No staff performance data available yet.',
+                ]);
+            }
+
+            $tenantId = auth()->user()->tenant_id ?? null;
+
+            $hasPerfRating = \Schema::hasColumn('staff_assignments', 'performance_rating');
+            $hasStatus     = \Schema::hasColumn('staff_assignments', 'status');
+            $hasDeletedAt  = \Schema::hasColumn('staff_assignments', 'deleted_at');
+
+            $query = \DB::table('staff_assignments as sa')
+                ->select(array_filter([
+                    'sa.staff_user_id',
+                    \DB::raw('COUNT(DISTINCT sa.event_id) as total_events'),
+                    $hasPerfRating ? \DB::raw('AVG(NULLIF(sa.performance_rating, 0)) as avg_rating') : \DB::raw('NULL as avg_rating'),
+                    $hasStatus ? \DB::raw("SUM(CASE WHEN sa.status = 'completed' THEN 1 ELSE 0 END) as completed_assignments") : \DB::raw('0 as completed_assignments'),
+                    $hasStatus ? \DB::raw("SUM(CASE WHEN sa.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_assignments") : \DB::raw('0 as cancelled_assignments'),
+                    \DB::raw('COUNT(sa.id) as total_assignments'),
+                ]));
+
+            if ($hasDeletedAt) {
+                $query->whereNull('sa.deleted_at');
+            }
+
+            if ($tenantId && \Schema::hasColumn('staff_assignments', 'tenant_id')) {
+                $query->where('sa.tenant_id', $tenantId);
+            }
+
+            $rows = $query->groupBy('sa.staff_user_id')->get();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $rows,
+                'message' => 'Staff performance report retrieved successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve performance report',
+                'error'   => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }

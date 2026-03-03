@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
@@ -17,13 +17,21 @@ import {
   MessageSquare, 
   Camera,
   Send,
-  Filter,
-  SortAsc,
-  AlertCircle,
-  CheckCircle,
   Heart
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { eventManagementAPI, FeedbackData } from '@/lib/event-management-api';
+import { 
+  EventManagementErrorHandler, 
+  ErrorSeverity
+} from '@/lib/error-handling';
+import { 
+  useEventLoadingStates, 
+  EVENT_LOADING_KEYS 
+} from '@/lib/loading-states';
+import { 
+  EventLoading
+} from '@/components/ui/event-loading';
 
 interface FeedbackType {
   name: string;
@@ -35,57 +43,6 @@ interface RatingCategory {
   name: string;
   description: string;
   required: boolean;
-}
-
-interface FeedbackSubmission {
-  id: number;
-  event: {
-    id: number;
-    title: string;
-    start_date: string;
-    venue: {
-      name: string;
-    };
-  };
-  feedback_type: string;
-  overall_rating?: number;
-  venue_rating?: number;
-  organization_rating?: number;
-  value_rating?: number;
-  title?: string;
-  comment?: string;
-  media_attachments?: Array<{
-    type: string;
-    original_name: string;
-    path: string;
-  }>;
-  status: string;
-  created_at: string;
-  helpful_votes: number;
-  total_votes: number;
-  is_featured: boolean;
-}
-
-interface EventFeedback {
-  id: number;
-  customer_id: string;
-  feedback_type: string;
-  overall_rating?: number;
-  venue_rating?: number;
-  organization_rating?: number;
-  value_rating?: number;
-  title?: string;
-  comment?: string;
-  media_attachments?: Array<{
-    type: string;
-    original_name: string;
-    path: string;
-  }>;
-  is_anonymous: boolean;
-  helpful_votes: number;
-  total_votes: number;
-  is_featured: boolean;
-  created_at: string;
 }
 
 interface FeedbackStats {
@@ -111,11 +68,16 @@ const FeedbackSystem: React.FC = () => {
   const [activeTab, setActiveTab] = useState('submit');
   const [feedbackTypes, setFeedbackTypes] = useState<Record<string, FeedbackType>>({});
   const [ratingCategories, setRatingCategories] = useState<Record<string, RatingCategory>>({});
-  const [myFeedback, setMyFeedback] = useState<FeedbackSubmission[]>([]);
-  const [eventFeedback, setEventFeedback] = useState<EventFeedback[]>([]);
+  const [myFeedback, setMyFeedback] = useState<FeedbackData[]>([]);
+  const [eventFeedback, setEventFeedback] = useState<FeedbackData[]>([]);
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
-  const [loading, setLoading] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  
+  // Use standardized loading states
+  const {
+    isEventLoading,
+    setEventLoading
+  } = useEventLoadingStates();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -132,7 +94,6 @@ const FeedbackSystem: React.FC = () => {
     allow_public_display: true,
   });
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchFeedbackTypes();
@@ -148,134 +109,160 @@ const FeedbackSystem: React.FC = () => {
   }, [selectedEventId]);
 
   const fetchFeedbackTypes = async () => {
-    try {
-      const response = await fetch('/api/customer/feedback/types');
-      const result = await response.json();
-      if (result.success) {
-        setFeedbackTypes(result.data);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const response = await eventManagementAPI.getFeedbackTypes();
+        const types = response.data?.data ?? response.data;
+        if (types && typeof types === 'object' && !Array.isArray(types)) {
+          setFeedbackTypes(types);
+        }
+        return types;
+      },
+      {
+        errorMessage: 'Failed to load feedback types.',
+        errorOptions: {
+          severity: ErrorSeverity.LOW,
+          showToast: false
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch feedback types:', err);
-    }
+    );
   };
 
   const fetchRatingCategories = async () => {
-    try {
-      const response = await fetch('/api/customer/feedback/rating-categories');
-      const result = await response.json();
-      if (result.success) {
-        setRatingCategories(result.data);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const response = await eventManagementAPI.getRatingCategories();
+        const cats = response.data?.data ?? response.data;
+        if (cats && typeof cats === 'object' && !Array.isArray(cats)) {
+          setRatingCategories(cats);
+        }
+        return cats;
+      },
+      {
+        errorMessage: 'Failed to load rating categories.',
+        errorOptions: {
+          severity: ErrorSeverity.LOW,
+          showToast: false
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch rating categories:', err);
-    }
+    );
   };
 
   const fetchMyFeedback = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/customer/feedback/my-feedback', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'X-Tenant-ID': localStorage.getItem('tenantId') || '',
-        },
-      });
-      const result = await response.json();
-      if (result.success) {
-        setMyFeedback(result.data);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const response = await eventManagementAPI.getMyFeedback();
+        const payload = response.data?.data ?? response.data;
+        setMyFeedback(Array.isArray(payload) ? payload : []);
+        return payload;
+      },
+      {
+        loadingState: (loading) => setEventLoading(EVENT_LOADING_KEYS.FEEDBACK_LOAD, loading),
+        errorMessage: 'Failed to load your feedback history. Please try again.',
+        errorOptions: {
+          severity: ErrorSeverity.MEDIUM,
+          retryable: true
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch my feedback:', err);
-    } finally {
-      setLoading(false);
-    }
+    );
   };
 
   const fetchEventFeedback = async (eventId: number) => {
-    try {
-      const response = await fetch(`/api/events/${eventId}/feedback`);
-      const result = await response.json();
-      if (result.success) {
-        setEventFeedback(result.data);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const response = await eventManagementAPI.getEventFeedback(eventId);
+        const payload = response.data?.data ?? response.data;
+        setEventFeedback(Array.isArray(payload) ? payload : []);
+        return payload;
+      },
+      {
+        errorMessage: 'Failed to load event reviews. Please try again.',
+        errorOptions: {
+          severity: ErrorSeverity.MEDIUM,
+          retryable: true
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch event feedback:', err);
-    }
+    );
   };
 
   const fetchFeedbackStats = async (eventId: number) => {
-    try {
-      const response = await fetch(`/api/events/${eventId}/feedback/stats`);
-      const result = await response.json();
-      if (result.success) {
-        setFeedbackStats(result.data);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const response = await eventManagementAPI.getEventFeedbackStats(eventId);
+        const stats = response.data?.data ?? response.data;
+        if (stats) {
+          setFeedbackStats(stats);
+        }
+        return stats;
+      },
+      {
+        errorMessage: 'Failed to load feedback statistics.',
+        errorOptions: {
+          severity: ErrorSeverity.LOW,
+          showToast: false
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch feedback stats:', err);
-    }
+    );
   };
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const formDataToSend = new FormData();
-      
-      // Add form fields
-      Object.entries(formData).forEach(([key, value]) => {
-        if (value !== '' && value !== 0) {
-          formDataToSend.append(key, value.toString());
-        }
-      });
-
-      // Add media files
-      mediaFiles.forEach((file, index) => {
-        formDataToSend.append(`media_files[${index}]`, file);
-      });
-
-      const response = await fetch('/api/customer/feedback', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'X-Tenant-ID': localStorage.getItem('tenantId') || '',
-        },
-        body: formDataToSend,
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Feedback submitted successfully!');
-        // Reset form
-        setFormData({
-          event_id: '',
-          booking_id: '',
-          feedback_type: 'review',
-          overall_rating: 0,
-          venue_rating: 0,
-          organization_rating: 0,
-          value_rating: 0,
-          title: '',
-          comment: '',
-          is_anonymous: false,
-          allow_public_display: true,
+    
+    const success = await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        const formDataToSend = new FormData();
+        
+        // Add form fields
+        Object.entries(formData).forEach(([key, value]) => {
+          if (value !== '' && value !== 0) {
+            formDataToSend.append(key, value.toString());
+          }
         });
-        setMediaFiles([]);
-        fetchMyFeedback();
-      } else {
-        alert(`Failed to submit feedback: ${result.message}`);
+
+        // Add media files
+        mediaFiles.forEach((file, index) => {
+          formDataToSend.append(`media_files[${index}]`, file);
+        });
+
+        const response = await eventManagementAPI.submitFeedbackWithFiles(formDataToSend);
+        
+        // APIResponse<FeedbackData> has structure { data: FeedbackData, status: number }
+        // No need to check .success property
+        return response.data;
+      },
+      {
+        loadingState: (loading) => setEventLoading(EVENT_LOADING_KEYS.FEEDBACK_SUBMIT, loading),
+        successMessage: 'Feedback submitted successfully!',
+        errorMessage: 'Failed to submit feedback. Please try again.',
+        errorOptions: {
+          severity: ErrorSeverity.HIGH,
+          retryable: true
+        }
       }
-    } catch (err) {
-      console.error('Failed to submit feedback:', err);
-      alert('Failed to submit feedback. Please try again.');
-    } finally {
-      setSubmitting(false);
+    );
+
+    if (success) {
+      // Reset form
+      setFormData({
+        event_id: '',
+        booking_id: '',
+        feedback_type: 'review',
+        overall_rating: 0,
+        venue_rating: 0,
+        organization_rating: 0,
+        value_rating: 0,
+        title: '',
+        comment: '',
+        is_anonymous: false,
+        allow_public_display: true,
+      });
+      setMediaFiles([]);
+      fetchMyFeedback();
     }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []) as File[];
     if (mediaFiles.length + files.length > 5) {
       alert('Maximum 5 files allowed');
       return;
@@ -288,25 +275,24 @@ const FeedbackSystem: React.FC = () => {
   };
 
   const handleVoteFeedback = async (feedbackId: number, isHelpful: boolean) => {
-    try {
-      const response = await fetch(`/api/customer/feedback/${feedbackId}/vote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'X-Tenant-ID': localStorage.getItem('tenantId') || '',
-        },
-        body: JSON.stringify({ is_helpful: isHelpful }),
-      });
-
-      if (response.ok) {
-        // Refresh feedback data
-        if (selectedEventId) {
-          fetchEventFeedback(selectedEventId);
+    await EventManagementErrorHandler.handleAsyncOperation(
+      async () => {
+        await eventManagementAPI.voteFeedback(feedbackId, isHelpful);
+        return true;
+      },
+      {
+        successMessage: 'Thank you for your vote!',
+        errorMessage: 'Failed to record your vote. Please try again.',
+        errorOptions: {
+          severity: ErrorSeverity.LOW,
+          retryable: true
         }
       }
-    } catch (err) {
-      console.error('Failed to vote on feedback:', err);
+    );
+
+    // Refresh feedback data
+    if (selectedEventId) {
+      fetchEventFeedback(selectedEventId);
     }
   };
 
@@ -510,8 +496,8 @@ const FeedbackSystem: React.FC = () => {
                   </div>
                 </div>
 
-                <Button type="submit" disabled={submitting} className="w-full">
-                  {submitting ? (
+                <Button type="submit" disabled={isEventLoading(EVENT_LOADING_KEYS.FEEDBACK_SUBMIT)} className="w-full">
+                  {isEventLoading(EVENT_LOADING_KEYS.FEEDBACK_SUBMIT) ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Submitting...
@@ -530,10 +516,8 @@ const FeedbackSystem: React.FC = () => {
 
         {/* My Feedback Tab */}
         <TabsContent value="my-feedback" className="space-y-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
+          {isEventLoading(EVENT_LOADING_KEYS.FEEDBACK_LOAD) ? (
+            <EventLoading pattern="SECTION" message="Loading your feedback..." />
           ) : myFeedback.length === 0 ? (
             <Card>
               <CardContent className="pt-6">
@@ -554,9 +538,9 @@ const FeedbackSystem: React.FC = () => {
                   <CardContent className="pt-6">
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900">{feedback.event.title}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">{feedback.event?.title || 'Event'}</h3>
                         <p className="text-sm text-gray-600">
-                          {format(new Date(feedback.event.start_date), 'PPP')} • {feedback.event.venue.name}
+                          {feedback.event?.start_date ? format(new Date(feedback.event.start_date), 'PPP') : 'Date TBD'} • {feedback.event?.venue?.name || 'Venue TBD'}
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -565,7 +549,7 @@ const FeedbackSystem: React.FC = () => {
                           feedback.status === 'pending' ? 'secondary' :
                           feedback.status === 'rejected' ? 'destructive' : 'outline'
                         }>
-                          {feedback.status}
+                          {feedback.status || 'pending'}
                         </Badge>
                         {feedback.is_featured && (
                           <Badge variant="outline">
@@ -611,10 +595,10 @@ const FeedbackSystem: React.FC = () => {
                     )}
 
                     <div className="flex items-center justify-between text-sm text-gray-600">
-                      <span>Submitted {format(new Date(feedback.created_at), 'PPp')}</span>
+                      <span>Submitted {feedback.created_at ? format(new Date(feedback.created_at), 'PPp') : 'Recently'}</span>
                       <div className="flex items-center space-x-4">
-                        <span>{feedback.helpful_votes} helpful votes</span>
-                        <span>Type: {feedback.feedback_type}</span>
+                        <span>{feedback.helpful_votes || 0} helpful votes</span>
+                        <span>Type: {feedback.feedback_type || 'review'}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -694,7 +678,7 @@ const FeedbackSystem: React.FC = () => {
                                 {feedback.is_anonymous ? 'Anonymous' : 'Customer'}
                               </p>
                               <p className="text-sm text-gray-600">
-                                {format(new Date(feedback.created_at), 'PPP')}
+                                {feedback.created_at ? format(new Date(feedback.created_at), 'PPP') : 'Recently'}
                               </p>
                             </div>
                           </div>
@@ -745,17 +729,17 @@ const FeedbackSystem: React.FC = () => {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleVoteFeedback(feedback.id, true)}
+                              onClick={() => handleVoteFeedback(feedback.id || 0, true)}
                             >
                               <ThumbsUp className="h-4 w-4 mr-1" />
-                              Helpful ({feedback.helpful_votes})
+                              Helpful ({feedback.helpful_votes || 0})
                             </Button>
                             <span className="text-sm text-gray-600">
-                              {feedback.total_votes} votes
+                              {feedback.total_votes || 0} votes
                             </span>
                           </div>
                           <Badge variant="outline">
-                            {feedback.feedback_type}
+                            {feedback.feedback_type || 'review'}
                           </Badge>
                         </div>
                       </CardContent>

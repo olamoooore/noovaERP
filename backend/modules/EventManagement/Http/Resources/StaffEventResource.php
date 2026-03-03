@@ -41,10 +41,13 @@ class StaffEventResource extends JsonResource
         
         return [
             'id' => $this->id,
+            'name' => $this->title,   // alias for frontend compatibility
             'title' => $this->title,
             'description' => $this->description,
             'venue' => $this->venue,
             'event_date' => $this->event_date?->toIso8601String(),
+            'start_date' => $this->start_date?->toIso8601String(),
+            'end_date' => $this->end_date?->toIso8601String(),
             'event_type' => [
                 'name' => $this->eventType?->name,
                 'slug' => $this->eventType?->slug,
