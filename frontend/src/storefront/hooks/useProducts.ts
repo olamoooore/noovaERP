@@ -37,6 +37,11 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     mappedTags.push('preorder');
   }
 
+  const primaryImage = apiProduct.image || PLACEHOLDER_PRODUCT_URL;
+  const galleryImages = apiProduct.gallery && apiProduct.gallery.length > 0
+    ? [primaryImage, ...apiProduct.gallery.filter(g => g !== primaryImage)]
+    : [primaryImage];
+
   return {
     id: String(apiProduct.id),
     title: apiProduct.name,
@@ -47,9 +52,12 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     ) || 'Regular',
     price: apiProduct.price,
     memberPrice: Math.round(apiProduct.price * 0.9 * 100) / 100, // 10% member discount
-    image: apiProduct.image || PLACEHOLDER_PRODUCT_URL,
+    image: primaryImage,
+    images: galleryImages,
     tags: mappedTags,
     description: apiProduct.description || undefined,
+    shortDescription: apiProduct.description ? apiProduct.description.split('.')[0] + '.' : undefined,
+    sku: apiProduct.sku || undefined,
     inStock: apiProduct.in_stock,
     stockQuantity: apiProduct.stock_quantity,
   };

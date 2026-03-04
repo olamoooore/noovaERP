@@ -24,3 +24,10 @@ export const storefrontRoutes = {
   account: `${STOREFRONT_BASE}/account`,
   login: `${STOREFRONT_BASE}/login`,
 } as const;
+
+/**
+ * Generate the full URL for a product detail page.
+ */
+export function productRoute(id: string | number): string {
+  return `${STOREFRONT_BASE}/product/${id}`;
+}

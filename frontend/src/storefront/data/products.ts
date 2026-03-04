@@ -1,3 +1,12 @@
+export interface ProductReview {
+  id: string;
+  author: string;
+  rating: number;
+  date: string;
+  comment: string;
+  verified: boolean;
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -7,10 +16,18 @@ export interface Product {
   price: number;
   memberPrice?: number;
   image: string;
+  images?: string[];
   tags: ('limited' | 'preorder' | 'new' | 'bestseller')[];
   description?: string;
+  shortDescription?: string;
+  fullDescription?: string;
+  rating?: number;
+  reviewCount?: number;
+  reviews?: ProductReview[];
+  sku?: string;
   inStock?: boolean;
   stockQuantity?: number;
+  specs?: { label: string; value: string }[];
 }
 
 export const PRODUCTS: Product[] = [
