@@ -841,7 +841,7 @@ const ProductDetail = () => {
         {relatedProducts.length > 0 && (
           <div className="pt-12 border-t border-border">
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-display font-bold">You May Also Like</h2>
+              <h2 className="text-lg sm:text-2xl font-display font-bold whitespace-nowrap">You May Also Like</h2>
               <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
                 <Link to={`${storefrontRoutes.shop}?brand=${product.brand}`}>
                   View All
