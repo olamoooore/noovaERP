@@ -98,15 +98,15 @@ const Shop = () => {
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
         case 'name-asc':
-          return String(a.name || '').localeCompare(String(b.name || ''));
+          return String(a.title || '').localeCompare(String(b.title || ''));
         case 'name-desc':
-          return String(b.name || '').localeCompare(String(a.name || ''));
+          return String(b.title || '').localeCompare(String(a.title || ''));
         case 'price-low':
           return (a.price || 0) - (b.price || 0);
         case 'price-high':
           return (b.price || 0) - (a.price || 0);
         case 'newest':
-          return (b.id || 0) - (a.id || 0);
+          return Number(b.id || 0) - Number(a.id || 0);
         default:
           return 0;
       }
