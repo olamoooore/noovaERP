@@ -129,7 +129,7 @@ export const Footer = () => {
         <div className="mt-16 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>&copy; {new Date().getFullYear()} InfinitiKpop. All rights reserved.</p>
           <Link to={storefrontRoutes.home} className="inline-flex items-center gap-2 hover:text-primary transition-colors">
-            <img src={STOREFRONT_LOGO_URL} alt="InfinitiKPOP" className="h-7 w-auto object-contain" />
+            <img src={STOREFRONT_LOGO_URL} alt="InfinitiKPOP" className="h-12 md:h-14 w-auto object-contain" />
           </Link>
         </div>
       </div>

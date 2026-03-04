@@ -5,7 +5,6 @@ import { Button } from '@/storefront/components/ui/button';
 import { useCart } from '@/storefront/context/CartContext';
 import { useWishlist } from '@/storefront/context/WishlistContext';
 import { useCustomerAuth } from '@/storefront/context/CustomerAuthContext';
-import { useMembership, MembershipTier } from '@/storefront/context/MembershipContext';
 import { cn } from '@/lib/utils';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 import { STOREFRONT_LOGO_URL } from '@/storefront/lib/assets';
@@ -21,48 +20,16 @@ const navLinks = [
   { href: `${STOREFRONT_BASE}/membership`, label: 'Membership' },
 ];
 
-const tierOptions: MembershipTier[] = ['free', 'bronze', 'silver', 'gold'];
-
 export const Header = () => {
   const location = useLocation();
   const { totalItems, setIsOpen: setCartOpen } = useCart();
   const { totalItems: wishlistCount } = useWishlist();
   const { isAuthenticated } = useCustomerAuth();
-  const { tier, setTier } = useMembership();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <>
-      {/* Membership Preview Bar */}
-      <div className="bg-gradient-to-r from-primary/10 via-white to-secondary/10 border-b border-border/40 py-1.5 px-4 backdrop-blur-sm">
-        <div className="container flex items-center justify-between text-xs font-medium tracking-wide">
-          <span className="text-muted-foreground uppercase tracking-widest text-[10px]">Membership Preview</span>
-          <div className="flex items-center gap-2">
-            {tierOptions.map((t) => (
-              <button
-                key={t}
-                onClick={() => setTier(t)}
-                className={cn(
-                  "px-3 py-0.5 rounded-full text-[10px] uppercase tracking-wider transition-all duration-300 border",
-                  tier === t
-                    ? t === 'free'
-                      ? 'bg-foreground text-background border-foreground'
-                      : t === 'bronze'
-                      ? 'bg-amber-100 text-amber-800 border-amber-200'
-                      : t === 'silver'
-                      ? 'bg-slate-100 text-slate-800 border-slate-200'
-                      : 'bg-yellow-50 text-yellow-800 border-yellow-200'
-                    : 'bg-transparent text-muted-foreground border-transparent hover:border-border'
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm">
         <div className="container">
           <div className="flex items-center justify-between h-16 md:h-20">
@@ -71,7 +38,7 @@ export const Header = () => {
               <img 
                 src={STOREFRONT_LOGO_URL} 
                 alt="InfinitiKPOP" 
-                className="h-10 md:h-12 w-auto object-contain transition-transform group-hover:scale-105"
+                className="h-12 md:h-14 w-auto object-contain transition-transform group-hover:scale-105"
               />
             </Link>
 
