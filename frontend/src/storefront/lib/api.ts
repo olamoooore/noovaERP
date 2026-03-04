@@ -19,6 +19,7 @@ export interface ApiProduct {
   slug: string;
   sku: string | null;
   description: string | null;
+  short_description: string | null;
   price: number;
   image: string | null;
   gallery: string[];

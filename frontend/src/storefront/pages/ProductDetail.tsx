@@ -167,10 +167,15 @@ const StarPicker = ({
   );
 };
 
-/** Generate a demo full description when none is provided */
-function buildDescription(title: string, brand: string, description?: string): string {
+/** Generate a demo full description when none is provided (returns HTML) */
+function buildDescriptionHtml(title: string, brand: string, description?: string): string {
   if (description) return description;
-  return `${title} is an officially licensed item from ${brand}. It has been crafted with premium materials to ensure a high-quality experience for every fan.\n\nThis item is perfect for collectors and casual fans alike. Whether you want to display it, use it daily, or gift it to a fellow fan, it is sure to impress.\n\nAll products are 100% official and sourced directly from authorised distributors. Every purchase comes securely packaged to arrive in perfect condition.`;
+  return `<p>${title} is an officially licensed item from ${brand}. It has been crafted with premium materials to ensure a high-quality experience for every fan.</p><p>This item is perfect for collectors and casual fans alike. Whether you want to display it, use it daily, or gift it to a fellow fan, it is sure to impress.</p><p>All products are 100% official and sourced directly from authorised distributors. Every purchase comes securely packaged to arrive in perfect condition.</p>`;
+}
+
+/** Strip HTML tags and truncate to plain-text fallback */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /* ── page ──────────────────────────────────────────────── */
@@ -331,7 +336,11 @@ const ProductDetail = () => {
   }
 
   const isOutOfStock = product.inStock === false || product.stockQuantity === 0;
-  const fullDesc = buildDescription(product.title, product.brand, product.fullDescription || product.description);
+  const fullDescHtml = buildDescriptionHtml(product.title, product.brand, product.fullDescription || product.description);
+  // Short description: prefer HTML short_description, fall back to plain text
+  const shortDescHtml = product.shortDescription
+    ? product.shortDescription
+    : null;
 
   /* ── render ── */
   return (
@@ -487,9 +496,18 @@ const ProductDetail = () => {
             )}
 
             {/* Short description */}
-            <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-              {product.shortDescription || product.description || 'Official licensed K-pop merchandise.'}
-            </p>
+            {shortDescHtml ? (
+              <div
+                className="text-muted-foreground text-sm leading-relaxed mb-6 rich-content
+                  [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2
+                  [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_a]:text-primary [&_a]:underline"
+                dangerouslySetInnerHTML={{ __html: shortDescHtml }}
+              />
+            ) : (
+              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                {product.description ? stripHtml(product.description).slice(0, 200) : 'Official licensed K-pop merchandise.'}
+              </p>
+            )}
 
             <hr className="border-border mb-6" />
 
@@ -619,13 +637,26 @@ const ProductDetail = () => {
           {/* Tab content */}
           <div className="max-w-4xl">
             {activeTab === 'description' && (
-              <div>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {fullDesc.split('\n\n').map((para, i) => (
-                    <p key={i} className="text-muted-foreground leading-relaxed mb-4">{para}</p>
-                  ))}
-                </div>
-              </div>
+              <div
+                className="rich-content text-sm leading-relaxed
+                  [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4 [&_h1]:mt-2
+                  [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-3 [&_h2]:mt-4
+                  [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-3
+                  [&_p]:mb-3 [&_p]:text-muted-foreground
+                  [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-3 [&_ul]:text-muted-foreground
+                  [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-3 [&_ol]:text-muted-foreground
+                  [&_li]:mb-1
+                  [&_strong]:font-semibold [&_strong]:text-foreground
+                  [&_em]:italic
+                  [&_a]:text-primary [&_a]:underline hover:[&_a]:text-primary/80
+                  [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:mb-3 [&_blockquote]:text-muted-foreground
+                  [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs
+                  [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:mb-3 [&_pre]:overflow-x-auto
+                  [&_hr]:border-border [&_hr]:my-6
+                  [&_img]:max-w-full [&_img]:rounded-xl [&_img]:my-4
+                  [&_iframe]:w-full [&_iframe]:rounded-xl [&_iframe]:my-4"
+                dangerouslySetInnerHTML={{ __html: fullDescHtml }}
+              />
             )}
 
             {activeTab === 'specs' && (

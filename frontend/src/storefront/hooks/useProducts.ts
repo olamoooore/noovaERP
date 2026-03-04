@@ -56,7 +56,7 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     images: galleryImages,
     tags: mappedTags,
     description: apiProduct.description || undefined,
-    shortDescription: apiProduct.description ? apiProduct.description.split('.')[0] + '.' : undefined,
+    shortDescription: apiProduct.short_description || (apiProduct.description ? apiProduct.description.replace(/<[^>]*>/g, '').split('.')[0] + '.' : undefined),
     sku: apiProduct.sku || undefined,
     inStock: apiProduct.in_stock,
     stockQuantity: apiProduct.stock_quantity,

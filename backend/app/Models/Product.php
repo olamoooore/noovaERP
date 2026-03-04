@@ -46,6 +46,7 @@ class Product extends Model
         'barcode',
         'barcodes',
         'description',
+        'short_description',
         'category_id',
         'brand_id',
         'type',

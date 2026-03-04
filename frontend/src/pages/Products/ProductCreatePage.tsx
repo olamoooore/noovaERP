@@ -37,6 +37,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { AnimatedDropzone } from '@/components/react-bits/AnimatedDropzone'
+import { RichTextEditor } from '@/components/ui/RichTextEditor'
 
 type TaxMode = 'default' | 'none' | 'custom' | 'tax'
 
@@ -162,6 +163,7 @@ export function ProductCreatePage() {
     preorder_available_at: '',
     stock_quantity: '',
     description: '',
+    short_description: '',
 
     // New ERP fields
     status: 'draft' as ProductStatus,
@@ -534,6 +536,7 @@ export function ProductCreatePage() {
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
       stock_quantity: baseStock,
       description: formData.description || null,
+      short_description: formData.short_description || null,
       image: formData.image || null,
       gallery: formData.gallery || [],
 
@@ -911,16 +914,28 @@ export function ProductCreatePage() {
                     </Popover>
                     <div className="text-xs text-muted-foreground">Pulled from Product Settings → Units</div>
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Input
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Short description"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="short_description">Short Description</Label>
+                  <p className="text-xs text-muted-foreground">Displayed beside the product image in the storefront. Keep it concise (1–3 lines).</p>
+                  <RichTextEditor
+                    value={formData.short_description}
+                    onChange={(html) => setFormData({ ...formData, short_description: html })}
+                    placeholder="Brief product summary shown beside the product image…"
+                    minHeight="120px"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Full Description</Label>
+                  <p className="text-xs text-muted-foreground">Appears in the Description tab on the product page. Supports rich formatting, images, and videos.</p>
+                  <RichTextEditor
+                    value={formData.description}
+                    onChange={(html) => setFormData({ ...formData, description: html })}
+                    placeholder="Full product description with details, features, and media…"
+                    minHeight="260px"
+                  />
                 </div>
 
                 <Separator />

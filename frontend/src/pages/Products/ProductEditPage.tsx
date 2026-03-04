@@ -32,6 +32,7 @@ import api from '@/lib/api'
 import { useSettingsStore } from '@/store/settingsStore'
 import { formatCurrency } from '@/lib/utils'
 import { AnimatedDropzone } from '@/components/react-bits/AnimatedDropzone'
+import { RichTextEditor } from '@/components/ui/RichTextEditor'
 
 type TaxMode = 'default' | 'none' | 'custom' | 'tax'
 
@@ -143,6 +144,7 @@ export function ProductEditPage() {
     preorder_available_at: '',
     stock_quantity: '',
     description: '',
+    short_description: '',
 
     unit: '',
 
@@ -307,6 +309,7 @@ export function ProductEditPage() {
       preorder_available_at: product.preorder_available_at ? String(product.preorder_available_at).slice(0, 10) : '',
       stock_quantity: product.stock_quantity != null ? String(product.stock_quantity) : '',
       description: product.description || '',
+      short_description: product.short_description || '',
       image: product.image || '',
       gallery: Array.isArray(product.gallery) ? product.gallery : [],
       unit: product.unit || '',
@@ -545,6 +548,7 @@ export function ProductEditPage() {
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
       stock_quantity: formData.track_inventory ? parseInt(formData.stock_quantity) : null,
       description: formData.description || null,
+      short_description: formData.short_description || null,
       image: formData.image || null,
       gallery: formData.gallery || [],
 
@@ -870,16 +874,28 @@ export function ProductEditPage() {
                     </Popover>
                     <div className="text-xs text-muted-foreground">Pulled from Product Settings → Units</div>
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Input
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Short description"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="short_description">Short Description</Label>
+                  <p className="text-xs text-muted-foreground">Displayed beside the product image in the storefront. Keep it concise (1–3 lines).</p>
+                  <RichTextEditor
+                    value={formData.short_description}
+                    onChange={(html) => setFormData({ ...formData, short_description: html })}
+                    placeholder="Brief product summary shown beside the product image…"
+                    minHeight="120px"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Full Description</Label>
+                  <p className="text-xs text-muted-foreground">Appears in the Description tab on the product page. Supports rich formatting, images, and videos.</p>
+                  <RichTextEditor
+                    value={formData.description}
+                    onChange={(html) => setFormData({ ...formData, description: html })}
+                    placeholder="Full product description with details, features, and media…"
+                    minHeight="260px"
+                  />
                 </div>
 
                 <Separator />
