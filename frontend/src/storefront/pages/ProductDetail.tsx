@@ -615,20 +615,20 @@ const ProductDetail = () => {
         {/* ─── Tabs: Description / Specs / Reviews ─── */}
         <div className="mb-16 lg:mb-24">
           {/* Tab bar */}
-          <div className="flex border-b border-border mb-8 gap-0 overflow-x-auto">
+          <div className="grid grid-cols-3 border-b border-border mb-8">
             {(['description', 'specs', 'reviews'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  'px-6 py-4 text-sm font-semibold transition-all whitespace-nowrap border-b-2 -mb-px',
+                  'py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all text-center border-b-2 -mb-px',
                   activeTab === tab
                     ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
                 )}
               >
                 {tab === 'description' && 'Description'}
-                {tab === 'specs' && 'Specifications'}
+                {tab === 'specs' && 'Specs'}
                 {tab === 'reviews' && `Reviews (${reviewCount})`}
               </button>
             ))}
