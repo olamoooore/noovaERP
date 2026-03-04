@@ -110,9 +110,24 @@ export function ProductViewPage() {
                       : 'Disabled'}
                   </div>
                 </div>
+                {product.short_description && (
+                  <div className="md:col-span-2">
+                    <div className="text-xs text-muted-foreground">Short Description</div>
+                    <div
+                      className="text-sm [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-1 [&_strong]:font-semibold [&_em]:italic"
+                      dangerouslySetInnerHTML={{ __html: product.short_description }}
+                    />
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <div className="text-xs text-muted-foreground">Description</div>
-                  <div className="text-sm">{product.description || '-'}</div>
+                  {product.description
+                    ? <div
+                        className="text-sm [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-1 [&_strong]:font-semibold [&_em]:italic"
+                        dangerouslySetInnerHTML={{ __html: product.description }}
+                      />
+                    : <div className="text-sm">-</div>
+                  }
                 </div>
               </div>
             )}
