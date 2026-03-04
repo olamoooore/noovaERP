@@ -17,7 +17,7 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax', 'brand'])
-            ->orderBy('name');
+            ->orderBy('created_at', 'desc');
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -105,8 +105,8 @@ class ProductController extends Controller
         }
 
         $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at', 'sku', 'status'];
-        $sortBy = (string) $request->input('sort_by', 'name');
-        $sortDir = strtolower((string) $request->input('sort_dir', 'asc'));
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortDir = strtolower((string) $request->input('sort_dir', 'desc'));
         if (!in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'name';
         }

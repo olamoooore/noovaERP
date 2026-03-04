@@ -21,7 +21,7 @@ class WebsiteProductController extends Controller
         $query = Product::query()
             ->where('is_active', true)
             ->with(['category', 'brand'])
-            ->orderBy('name');
+            ->orderBy('created_at', 'desc');
 
         // Filter by category
         if ($request->filled('category_id')) {
@@ -66,8 +66,8 @@ class WebsiteProductController extends Controller
         }
 
         // Sorting
-        $sortBy = $request->input('sort_by', 'name');
-        $sortDir = strtolower($request->input('sort_dir', 'asc'));
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDir = strtolower($request->input('sort_dir', 'desc'));
         $allowedSorts = ['name', 'price', 'created_at'];
         
         if (in_array($sortBy, $allowedSorts)) {
