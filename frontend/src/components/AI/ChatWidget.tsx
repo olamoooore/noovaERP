@@ -521,7 +521,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-lg z-[9999] ${className}`}
+        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-lg z-[99999] ${className}`}
         size="icon"
       >
         <Icon icon="mdi:robot" className="h-6 w-6" />
@@ -530,7 +530,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
   }
 
   return (
-    <Card className={`fixed inset-0 sm:inset-auto sm:bottom-6 sm:right-6 w-full sm:w-96 h-full sm:h-[600px] sm:rounded-lg shadow-2xl flex flex-col z-[9999] ${className}`}>
+    <Card className={`fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-2xl sm:inset-auto sm:bottom-6 sm:right-6 sm:w-96 sm:h-[600px] sm:rounded-lg shadow-2xl flex flex-col z-[99999] ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground rounded-t-lg">
         <div className="flex items-center gap-2 flex-1 min-w-0">
