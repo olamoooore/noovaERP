@@ -36,8 +36,8 @@ export function ProductsPage() {
   const [type, setType] = useState<TypeFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [categoryId, setCategoryId] = useState<string>('all')
-  const [sortBy, setSortBy] = useState<SortBy>('name')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [sortBy, setSortBy] = useState<SortBy>('created_at')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [page, setPage] = useState(1)
 
@@ -46,8 +46,8 @@ export function ProductsPage() {
     setType('all')
     setStatus('all')
     setCategoryId('all')
-    setSortBy('name')
-    setSortDir('asc')
+    setSortBy('created_at')
+    setSortDir('desc')
     setPage(1)
   }
 

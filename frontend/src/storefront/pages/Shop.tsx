@@ -17,7 +17,7 @@ const Shop = () => {
   
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const searchQuery = searchParams.get('search') || '';
-  const sortBy = searchParams.get('sort') || 'name-asc';
+  const sortBy = searchParams.get('sort') || 'newest';
 
   // Local search input state
   const [searchInput, setSearchInput] = useState(searchQuery);
