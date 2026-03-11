@@ -26,15 +26,19 @@ const TEMPLATE_COLUMNS = [
   { name: 'name', required: true, description: 'Product name (required)' },
   { name: 'sku', required: false, description: 'Stock Keeping Unit - auto-generated if empty' },
   { name: 'barcode', required: false, description: 'Product barcode (EAN, UPC, etc.)' },
-  { name: 'description', required: false, description: 'Product description' },
-  { name: 'secondary_name', required: false, description: 'Alternative name (e.g., local language)' },
+  { name: 'description', required: false, description: 'Product description (also used as short description if not provided)' },
+  { name: 'short_description', required: false, description: 'Short description - defaults to description if empty' },
+  { name: 'secondary_name', required: false, description: 'Alternative name (e.g., artist name)' },
   { name: 'type', required: false, description: 'product or service (default: product)' },
   { name: 'category_id', required: false, description: 'Category ID (number) or Category Name (text) - new categories will be auto-created' },
-  { name: 'cost', required: true, description: 'Purchase/cost price (required)' },
-  { name: 'price', required: true, description: 'Selling price (required)' },
+  { name: 'cost', required: false, description: 'Purchase/cost price (default: 0)' },
+  { name: 'price', required: false, description: 'Selling price (default: 0)' },
   { name: 'stock_quantity', required: false, description: 'Initial stock quantity' },
   { name: 'track_inventory', required: false, description: 'true/false - whether to track stock' },
   { name: 'is_active', required: false, description: 'true/false - product visibility' },
+  { name: 'image_url', required: false, description: 'URL to product image or product page (images will be downloaded)' },
+  { name: 'manufacturer', required: false, description: 'Manufacturer or brand name' },
+  { name: 'unit', required: false, description: 'Unit of measure (e.g., PCS, BOX)' },
 ]
 
 export function ProductImportPage() {
@@ -132,6 +136,7 @@ export function ProductImportPage() {
       'SAMPLE-001',
       '1234567890123',
       'This is a sample product description',
+      'Short description text',
       '',
       'product',
       '',
@@ -140,6 +145,9 @@ export function ProductImportPage() {
       '100',
       'true',
       'true',
+      '',
+      '',
+      'PCS',
     ].join(',')
     
     const csvContent = `${headers}\n${sampleRow}`

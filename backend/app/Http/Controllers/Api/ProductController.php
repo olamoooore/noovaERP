@@ -631,13 +631,35 @@ class ProductController extends Controller
             return response()->json(['message' => 'Unable to read file'], 400);
         }
 
-        $header = fgetcsv($handle);
-        if (!is_array($header) || count($header) === 0) {
+        $rawHeader = fgetcsv($handle);
+        if (!is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
-        $header = array_map(fn ($h) => Str::snake(trim((string) $h)), $header);
+        // Normalize headers: lowercase, non-alphanumeric → underscore, collapse
+        $header = array_map(function ($h) {
+            $h = strtolower(trim((string) $h));
+            $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+            return trim($h, '_');
+        }, $rawHeader);
+
+        // Column aliases to map various CSV formats to product fields
+        $columnAliases = [
+            'item_description' => 'name',
+            'item_barcode'     => 'barcode',
+            'stock_code'       => 'sku',
+            'unit_cost_sgd'    => 'cost',
+            'selling_price_sgd'=> 'price',
+            'quantity'         => 'stock_quantity',
+            'product_type'     => 'category_id',
+            'artist'           => 'secondary_name',
+            'artist_group'     => 'manufacturer',
+            'weblink_for_the_image' => 'image_url',
+        ];
+
+        $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
+
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
             if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
@@ -645,7 +667,9 @@ class ProductController extends Controller
             }
             $row = [];
             foreach ($header as $idx => $key) {
-                $row[$key] = $data[$idx] ?? null;
+                if ($key !== '') {
+                    $row[$key] = $data[$idx] ?? null;
+                }
             }
             $rows[] = $row;
         }
@@ -657,47 +681,76 @@ class ProductController extends Controller
 
         $created = 0;
         $errors = [];
-        $categoriesCache = []; // Cache for category name -> ID lookups
+        $categoriesCache = [];
 
-        DB::beginTransaction();
-        try {
-            foreach ($rows as $index => $row) {
-                $name = trim((string) ($row['name'] ?? ''));
-                $price = $row['price'] ?? null;
-                $cost = $row['cost'] ?? null;
+        foreach ($rows as $index => $row) {
+            $name = trim((string) ($row['name'] ?? ''));
 
-                if ($name === '' || $price === null || $cost === null) {
+                if ($name === '') {
                     $errors[] = [
                         'row' => $index + 2,
-                        'message' => 'Missing required fields: name, cost, price',
+                        'message' => 'Missing required field: name',
                     ];
                     continue;
                 }
 
+                // Parse price/cost – strip currency symbols ($) and non-numeric chars
+                $cost = $this->parseNumericValue($row['cost'] ?? null);
+                $price = $this->parseNumericValue($row['price'] ?? null);
+
                 $sku = trim((string) ($row['sku'] ?? ''));
-                if ($sku === '') {
+                if ($sku === '' || $sku === '-') {
                     $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
                     $base = $base !== '' ? $base : 'SKU';
                     $sku = $base . '-' . Str::upper(Str::random(6));
                 }
 
-                // Resolve category_id - handle both numeric IDs and category names
+                // Resolve category_id – handle both numeric IDs and category names
                 $categoryId = $this->resolveCategoryId($row['category_id'] ?? null, $categoriesCache);
+
+                // Build description from variant fields when no explicit description
+                $description = trim((string) ($row['description'] ?? ''));
+                if ($description === '') {
+                    $variantParts = [];
+                    foreach (['variant_edition', 'variant_theme', 'variant_format', 'variant_region', 'variant_colour'] as $vf) {
+                        $val = trim((string) ($row[$vf] ?? ''));
+                        if ($val !== '' && $val !== '-') {
+                            $label = ucfirst(str_replace('variant_', '', $vf));
+                            $variantParts[] = "{$label}: {$val}";
+                        }
+                    }
+                    if (count($variantParts) > 0) {
+                        $description = implode(' | ', $variantParts);
+                    }
+                }
+
+                // Image URL from weblink
+                $imageUrl = trim((string) ($row['image_url'] ?? ''));
+                $imageValue = ($imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL)) ? $imageUrl : null;
+
+                $barcode = isset($row['barcode']) ? trim((string) $row['barcode']) : '';
+                $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
+                $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
+                $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
 
                 try {
                     Product::create([
-                        'name' => $name,
-                        'secondary_name' => $row['secondary_name'] ? trim((string) $row['secondary_name']) : null,
-                        'sku' => $sku,
-                        'barcode' => $row['barcode'] ? trim((string) $row['barcode']) : null,
-                        'description' => $row['description'] ? trim((string) $row['description']) : null,
-                        'category_id' => $categoryId,
-                        'type' => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
-                        'cost' => (float) $cost,
-                        'price' => (float) $price,
-                        'track_inventory' => isset($row['track_inventory']) ? filter_var($row['track_inventory'], FILTER_VALIDATE_BOOLEAN) : true,
-                        'stock_quantity' => isset($row['stock_quantity']) && $row['stock_quantity'] !== '' ? (int) $row['stock_quantity'] : null,
-                        'is_active' => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
+                        'name'             => $name,
+                        'secondary_name'   => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
+                        'sku'              => $sku,
+                        'barcode'          => $barcode !== '' ? $barcode : null,
+                        'description'      => $description !== '' ? $description : null,
+                        'short_description'=> $row['short_description'] ?? ($description !== '' ? $description : null),
+                        'category_id'      => $categoryId,
+                        'type'             => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
+                        'cost'             => $cost,
+                        'price'            => $price,
+                        'track_inventory'  => isset($row['track_inventory']) ? filter_var($row['track_inventory'], FILTER_VALIDATE_BOOLEAN) : true,
+                        'stock_quantity'   => isset($row['stock_quantity']) && $row['stock_quantity'] !== '' ? (int) $row['stock_quantity'] : 0,
+                        'is_active'        => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
+                        'image'            => $imageValue,
+                        'manufacturer'     => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
+                        'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
                     ]);
                     $created++;
                 } catch (\Throwable $e) {
@@ -707,17 +760,24 @@ class ProductController extends Controller
                     ];
                 }
             }
-
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Import failed', 'error' => $e->getMessage()], 500);
         }
 
         return response()->json([
             'created' => $created,
             'errors' => $errors,
         ]);
+    }
+
+    /**
+     * Parse a numeric value from CSV, stripping currency symbols and non-numeric chars.
+     */
+    private function parseNumericValue($value): float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return 0;
+        }
+        $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+        return $cleaned !== '' ? (float) $cleaned : 0;
     }
 
     /**
@@ -754,7 +814,8 @@ class ProductController extends Controller
                 'stock_movements', 'product_variants', 'product_relationships',
                 'product_feature_values', 'product_custom_field_values', 'stock_levels',
                 'product_price_tiers', 'product_batches', 'product_serials',
-                'product_audit_logs', 'product_documents',
+                'product_audit_logs', 'product_documents', 'invoice_lines',
+                'purchase_order_items', 'pos_order_items',
             ];
             foreach ($fkTables as $table) {
                 try { DB::table($table)->delete(); } catch (\Throwable $e) {}
