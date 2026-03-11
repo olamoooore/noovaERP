@@ -136,6 +136,13 @@ function generateSku(name: string): string {
   return `${base}-${rand}`
 }
 
+function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
+  if (path.startsWith('/storage/')) return path
+  return `/storage/${path.replace(/^\//, '')}`
+}
+
 export function ProductCreatePage() {
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -2292,7 +2299,7 @@ export function ProductCreatePage() {
 
               {formData.image ? (
                 <div className="rounded-md border p-2">
-                  <img src={formData.image} alt="Main" className="h-40 w-full object-cover rounded" />
+                  <img src={resolveImageUrl(formData.image)} alt="Main" className="h-40 w-full object-cover rounded" />
                   <Button
                     type="button"
                     variant="ghost"

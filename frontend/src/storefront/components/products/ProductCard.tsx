@@ -119,7 +119,9 @@ export const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
 
       {/* ── Text content – title is a clickable link ── */}
       <div className="p-4">
-        <p className="text-xs text-muted-foreground mb-1">{product.brand}</p>
+        {product.brand && product.brand !== 'Unknown' && (
+          <p className="text-xs text-muted-foreground mb-1">{product.brand}</p>
+        )}
         <Link to={productRoute(product.id)} className="block hover:no-underline">
           <h3 className="font-medium text-sm mb-2 line-clamp-2 group-hover:text-primary transition-colors">
             {product.title}

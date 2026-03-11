@@ -29,6 +29,13 @@ type SortDir = 'asc' | 'desc'
 type StatusFilter = 'all' | 'active' | 'inactive' | 'new_arrival' | 'preorder' | 'out_of_stock'
 type TypeFilter = 'all' | 'product' | 'service'
 
+function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
+  if (path.startsWith('/storage/')) return path
+  return `/storage/${path.replace(/^\//, '')}`
+}
+
 export function ProductsPage() {
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -377,7 +384,7 @@ export function ProductsPage() {
                         <div className="h-10 w-10 rounded-md border bg-muted overflow-hidden flex items-center justify-center">
                           {product.image ? (
                             <img
-                              src={product.image}
+                              src={resolveImageUrl(product.image)}
                               alt={product.name}
                               className="h-full w-full object-cover"
                             />
@@ -476,7 +483,7 @@ export function ProductsPage() {
                   <div className="h-40 w-full bg-muted border-b overflow-hidden relative">
                     {product.image ? (
                       <img
-                        src={product.image}
+                        src={resolveImageUrl(product.image)}
                         alt={product.name}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />

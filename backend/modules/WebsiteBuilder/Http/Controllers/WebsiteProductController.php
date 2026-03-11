@@ -116,6 +116,7 @@ class WebsiteProductController extends Controller
                 'in_stock' => $product->stock_quantity > 0,
                 'stock_quantity' => $product->stock_quantity,
                 'unit' => $product->unit,
+                'manufacturer' => $product->manufacturer,
             ];
         });
 
@@ -179,6 +180,7 @@ class WebsiteProductController extends Controller
             'in_stock' => $product->stock_quantity > 0,
             'stock_quantity' => $product->stock_quantity,
             'unit' => $product->unit,
+            'manufacturer' => $product->manufacturer,
             'attributes' => $product->attributes ?? [],
             'variants' => $product->variants ? $product->variants->map(function ($variant) {
                 return [

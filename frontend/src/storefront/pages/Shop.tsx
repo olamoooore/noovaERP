@@ -60,6 +60,15 @@ const Shop = () => {
   const products = data?.products || [];
   const totalProducts = data?.total || 0;
   const lastPage = data?.lastPage || 1;
+
+  // Derive available brands from actual product data
+  const availableBrands = useMemo(() => {
+    const brands = new Set<string>();
+    products.forEach(p => {
+      if (p.brand && p.brand !== 'Unknown') brands.add(p.brand);
+    });
+    return Array.from(brands).sort();
+  }, [products]);
   
   const filteredProducts = useMemo(() => {
     let filtered = products.filter((product) => {
@@ -223,6 +232,7 @@ const Shop = () => {
                 onCollectionChange={setSelectedCollections}
                 onTagChange={setSelectedTags}
                 onClearAll={clearAllFilters}
+                availableBrands={availableBrands}
               />
             </div>
           </aside>
@@ -434,6 +444,7 @@ const Shop = () => {
               onCollectionChange={setSelectedCollections}
               onTagChange={setSelectedTags}
               onClearAll={clearAllFilters}
+              availableBrands={availableBrands}
               isMobile
               onClose={() => setShowMobileFilters(false)}
             />

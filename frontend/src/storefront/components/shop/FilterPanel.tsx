@@ -1,6 +1,6 @@
 import { X, Loader2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import { BRANDS, COLLECTIONS, Brand, ProductType, Collection } from '@/storefront/data/products';
+import { COLLECTIONS, Brand, ProductType, Collection } from '@/storefront/data/products';
 import { Button } from '@/storefront/components/ui/button';
 import { useCategories } from '@/storefront/hooks/useProducts';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ interface FilterPanelProps {
   onCollectionChange: (collections: Collection[]) => void;
   onTagChange: (tags: string[]) => void;
   onClearAll: () => void;
+  availableBrands?: string[];
   isMobile?: boolean;
   onClose?: () => void;
 }
@@ -29,6 +30,7 @@ export const FilterPanel = ({
   onCollectionChange,
   onTagChange,
   onClearAll,
+  availableBrands,
   isMobile,
   onClose,
 }: FilterPanelProps) => {
@@ -248,11 +250,12 @@ export const FilterPanel = ({
         </div>
       </div>
 
-      {/* Brands */}
+      {/* Brands / Artists */}
+      {availableBrands && availableBrands.length > 0 && (
       <div>
-        <h4 className="font-medium mb-3">Brands</h4>
+        <h4 className="font-medium mb-3">Artists</h4>
         <div className="flex flex-wrap gap-2">
-          {BRANDS.map((brand) => (
+          {availableBrands.map((brand) => (
             <button
               key={brand}
               onClick={() => toggleBrand(brand)}
@@ -268,6 +271,7 @@ export const FilterPanel = ({
           ))}
         </div>
       </div>
+      )}
 
       {/* Mobile Apply Button */}
       {isMobile && (

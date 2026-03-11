@@ -117,6 +117,18 @@ interface ProductSupplierData {
 type ProductStatus = 'draft' | 'pending_approval' | 'active' | 'discontinued' | 'archived'
 type TrackingMethod = 'none' | 'quantity' | 'batch' | 'serial'
 
+/**
+ * Resolve a product image path to a displayable URL.
+ * Handles: full URLs (http/https), storage URLs (/storage/...), and raw storage paths (products/...).
+ */
+function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
+  if (path.startsWith('/storage/')) return path
+  // Raw storage path like "products/5913_abc.png" — prepend /storage/
+  return `/storage/${path.replace(/^\//, '')}`
+}
+
 export function ProductEditPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -1919,7 +1931,7 @@ export function ProductEditPage() {
 
               {formData.image ? (
                 <div className="rounded-md border p-2">
-                  <img src={formData.image} alt="Main" className="h-40 w-full object-cover rounded" />
+                  <img src={resolveImageUrl(formData.image)} alt="Main" className="h-40 w-full object-cover rounded" />
                   <Button
                     type="button"
                     variant="ghost"
@@ -1953,7 +1965,7 @@ export function ProductEditPage() {
                       onClick={() => setFormData((p) => ({ ...p, gallery: p.gallery.filter((g) => g !== url) }))}
                       title="Remove"
                     >
-                      <img src={url} alt="Gallery" className="h-20 w-full object-cover rounded" />
+                      <img src={resolveImageUrl(url)} alt="Gallery" className="h-20 w-full object-cover rounded" />
                     </button>
                   ))}
                 </div>

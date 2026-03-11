@@ -19,6 +19,13 @@ interface StockLevel {
   }
 }
 
+function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
+  if (path.startsWith('/storage/')) return path
+  return `/storage/${path.replace(/^\//, '')}`
+}
+
 export function ProductViewPage() {
   const { id } = useParams()
   const productId = Number(id)
@@ -140,7 +147,7 @@ export function ProductViewPage() {
           </CardHeader>
           <CardContent>
             {product?.image ? (
-              <img src={product.image} alt={product.name} className="w-full h-48 object-cover rounded-md border" />
+              <img src={resolveImageUrl(product.image)} alt={product.name} className="w-full h-48 object-cover rounded-md border" />
             ) : (
               <div className="h-48 rounded-md border bg-muted flex items-center justify-center text-muted-foreground">
                 <Icon icon="solar:gallery-bold" className="h-10 w-10" />

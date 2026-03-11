@@ -759,7 +759,6 @@ class ProductController extends Controller
                         'message' => $e->getMessage(),
                     ];
                 }
-            }
         }
 
         return response()->json([

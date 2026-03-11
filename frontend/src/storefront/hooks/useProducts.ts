@@ -4,6 +4,19 @@ import { Product } from '@/storefront/data/products';
 import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 /**
+ * Check if a URL points directly to an image file.
+ */
+function isDirectImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const ext = parsed.pathname.split('.').pop()?.toLowerCase() || '';
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Map backend API product to the storefront Product interface.
  * Keeps the original UI design working with real data.
  */
@@ -37,7 +50,9 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     mappedTags.push('preorder');
   }
 
-  const primaryImage = apiProduct.image || PLACEHOLDER_PRODUCT_URL;
+  const primaryImage = apiProduct.image && (
+    !apiProduct.image.startsWith('http') || isDirectImageUrl(apiProduct.image)
+  ) ? apiProduct.image : PLACEHOLDER_PRODUCT_URL;
   const galleryImages = apiProduct.gallery && apiProduct.gallery.length > 0
     ? [primaryImage, ...apiProduct.gallery.filter(g => g !== primaryImage)]
     : [primaryImage];
@@ -45,7 +60,7 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
   return {
     id: String(apiProduct.id),
     title: apiProduct.name,
-    brand: apiProduct.brand?.name || 'Unknown',
+    brand: apiProduct.secondary_name || apiProduct.manufacturer || apiProduct.brand?.name || 'Unknown',
     type: (apiProduct.category?.name as Product['type']) || 'Merchandise',
     collection: apiProduct.tags.find(t =>
       ['comeback 2025', 'limited edition', 'pre-order', 'regular'].includes(t.toLowerCase())

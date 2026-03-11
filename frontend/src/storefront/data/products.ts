@@ -229,6 +229,6 @@ export const BRANDS = ['SEVENTEEN', 'BTS', 'BLACKPINK', 'TXT', 'IVE'] as const;
 export const TYPES = ['Album', 'DVD', "Season's Greetings", 'Lightstick', 'Merchandise', 'Photocard', 'Miscellaneous'] as const;
 export const COLLECTIONS = ['Comeback 2025', 'Limited Edition', 'Pre-Order', 'Regular'] as const;
 
-export type Brand = typeof BRANDS[number];
+export type Brand = string;
 export type ProductType = typeof TYPES[number];
 export type Collection = typeof COLLECTIONS[number];

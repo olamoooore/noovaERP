@@ -31,6 +31,7 @@ export interface ApiProduct {
   in_stock: boolean;
   stock_quantity: number;
   unit: string | null;
+  manufacturer: string | null;
 }
 
 export interface ApiCategory {
