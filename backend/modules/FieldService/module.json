@@ -1,0 +1,8 @@
+{
+  "key": "field-service",
+  "name": "Field Service",
+  "type": "core",
+  "providers": [
+    "Modules\\FieldService\\Providers\\FieldServiceServiceProvider"
+  ]
+}

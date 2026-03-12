@@ -300,6 +300,54 @@ const baseNavItems: NavItem[] = [
     featureKey: 'ai',
   },
   {
+    title: 'Field Service',
+    href: '/field-service',
+    icon: 'solar:wrench-bold-duotone',
+    featureKey: 'field-service',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/field-service',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Work Orders',
+        href: '/field-service/work-orders',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Schedule',
+        href: '/field-service/schedule',
+        icon: 'solar:calendar-bold-duotone',
+      },
+      {
+        title: 'Technicians',
+        href: '/field-service/technicians',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+      },
+      {
+        title: 'Teams',
+        href: '/field-service/teams',
+        icon: 'solar:people-nearby-bold-duotone',
+      },
+      {
+        title: 'Gantt',
+        href: '/field-service/gantt',
+        icon: 'solar:chart-bold-duotone',
+      },
+      {
+        title: 'Analytics',
+        href: '/field-service/analytics',
+        icon: 'solar:graph-bold-duotone',
+      },
+      {
+        title: 'Worksheets',
+        href: '/field-service/worksheet-templates',
+        icon: 'solar:document-text-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',

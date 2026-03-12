@@ -85,6 +85,18 @@ const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingP
 // AI Module Pages
 const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ default: m.AIChatPage })))
 
+// Field Service Module Pages
+const FieldServiceDashboard = lazy(() => import('@/pages/FieldService/FieldServiceDashboard').then(m => ({ default: m.FieldServiceDashboard })))
+const WorkOrdersPage = lazy(() => import('@/pages/FieldService/WorkOrdersPage').then(m => ({ default: m.WorkOrdersPage })))
+const WorkOrderCreatePage = lazy(() => import('@/pages/FieldService/WorkOrderCreatePage').then(m => ({ default: m.WorkOrderCreatePage })))
+const WorkOrderViewPage = lazy(() => import('@/pages/FieldService/WorkOrderViewPage').then(m => ({ default: m.WorkOrderViewPage })))
+const SchedulePage = lazy(() => import('@/pages/FieldService/SchedulePage').then(m => ({ default: m.SchedulePage })))
+const FSTechniciansPage = lazy(() => import('@/pages/FieldService/TechniciansPage').then(m => ({ default: m.TechniciansPage })))
+const FSTeamsPage = lazy(() => import('@/pages/FieldService/TeamsPage').then(m => ({ default: m.TeamsPage })))
+const FSGanttPage = lazy(() => import('@/pages/FieldService/GanttPage'))
+const FSWorksheetTemplatesPage = lazy(() => import('@/pages/FieldService/WorksheetTemplatesPage'))
+const FSAnalyticsPage = lazy(() => import('@/pages/FieldService/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
+
 // Event Management Module Pages
 const StaffManagementPage = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.StaffManagementPage })))
 const LiveOperationsDashboard = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.LiveOperationsDashboard })))
@@ -302,6 +314,18 @@ function App() {
                 
                 {/* AI Module Routes */}
                 <Route path="/ai/chat" element={<AIChatPage />} />
+
+                {/* Field Service Module Routes */}
+                <Route path="/field-service" element={<FieldServiceDashboard />} />
+                <Route path="/field-service/work-orders" element={<WorkOrdersPage />} />
+                <Route path="/field-service/work-orders/new" element={<WorkOrderCreatePage />} />
+                <Route path="/field-service/work-orders/:id" element={<WorkOrderViewPage />} />
+                <Route path="/field-service/schedule" element={<SchedulePage />} />
+                <Route path="/field-service/technicians" element={<FSTechniciansPage />} />
+                <Route path="/field-service/teams" element={<FSTeamsPage />} />
+                <Route path="/field-service/gantt" element={<FSGanttPage />} />
+                <Route path="/field-service/worksheet-templates" element={<FSWorksheetTemplatesPage />} />
+                <Route path="/field-service/analytics" element={<FSAnalyticsPage />} />
 
                 {/* Event Management Module Routes */}
                 <Route path="/event-management" element={<MyEventsDashboard />} />

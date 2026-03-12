@@ -39,6 +39,7 @@
             "Modules\\Loyalty\\": "modules/Loyalty/src/",
             "Modules\\Ecommerce\\": "modules/Ecommerce/src/",
             "Modules\\Communication\\": "modules/Communication/src/",
+            "Modules\\FieldService\\": "modules/FieldService/src/",
             "Modules\\": "modules/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
