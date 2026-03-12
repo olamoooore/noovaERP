@@ -22,10 +22,7 @@ class DownloadProductImages extends Command
 
     private const WITHMUU_CDN_BASE = 'https://godomall.speedycdn.net/c03670ee9f741fa0343b16321feede3e';
 
-    // Cache: goodsNo => CDN image URL (avoids re-scanning for products sharing same withmuu page)
     private array $withmuu_cache = [];
-
-    private ?string $netfunnelCookie = null;
 
     public function handle()
     {
@@ -33,12 +30,6 @@ class DownloadProductImages extends Command
         if ($tenantId) {
             tenancy()->initialize($tenantId);
             $this->info("Running under tenant: {$tenantId}");
-        }
-
-        // Acquire NetFunnel cookie for withmuu.com
-        $this->netfunnelCookie = $this->option('netfunnel-cookie') ?: $this->acquireNetfunnelCookie();
-        if ($this->netfunnelCookie) {
-            $this->info('NetFunnel cookie acquired for withmuu.com');
         }
 
         $query = Product::whereNotNull('image')
@@ -71,6 +62,12 @@ class DownloadProductImages extends Command
         foreach ($products as $product) {
             $url = $product->image;
 
+            if ($this->option('skip-existing') && !str_starts_with($url, 'http')) {
+                $skipped++;
+                $bar->advance();
+                continue;
+            }
+
             if ($dryRun) {
                 $this->line("\n  [{$product->id}] {$product->name} → {$url}");
                 $bar->advance();
@@ -93,7 +90,7 @@ class DownloadProductImages extends Command
                     $failed++;
                 }
             } catch (\Throwable $e) {
-                $this->error("\n  Error for {$product->name}: {$e->getMessage()}");
+                $this->error("\n  Error [{$product->id}] {$product->name}: {$e->getMessage()}");
                 $failed++;
             }
 
@@ -110,24 +107,22 @@ class DownloadProductImages extends Command
 
     private function extractImageUrl(string $pageUrl): ?string
     {
-        // Route to site-specific handlers
         if (str_contains($pageUrl, 'withmuu.com')) {
             return $this->extractWithmuuImage($pageUrl);
         }
 
         if (str_contains($pageUrl, 'withdrama.')) {
-            return $this->extractDirectCdnUrl($pageUrl, 'withdrama');
+            return $this->extractDirectCdnUrl($pageUrl);
         }
 
-        // For all other sites (ktown4u, weverse, smtown, jypshop, etc.) use og:image
         return $this->extractOgImage($pageUrl);
     }
 
     /**
-     * withmuu.com: JS-rendered site behind NetFunnel queue.
-     * Strategy: Use a NetFunnel cookie to fetch the full page HTML,
-     * then extract the CDN image URL from the inline detailKeyID JS array.
-     * Falls back to CDN pattern scanning if page fetch fails.
+     * withmuu.com: JS-rendered site behind NetFunnel queue — page fetch doesn't work.
+     * Strategy: CDN pattern scan with smart sentinel approach.
+     * Handles mismatched goodsNo (folder vs filename ID differ by ±1)
+     * and both .jpg and .jpeg extensions.
      */
     private function extractWithmuuImage(string $url): ?string
     {
@@ -136,18 +131,11 @@ class DownloadProductImages extends Command
         }
         $goodsNo = $m[1];
 
-        // Check cache first (many products share same withmuu page)
         if (isset($this->withmuu_cache[$goodsNo])) {
             return $this->withmuu_cache[$goodsNo];
         }
 
-        // Primary: fetch page with NetFunnel cookie and extract CDN URL from inline JS
-        $imageUrl = $this->fetchWithmuuPageImage($goodsNo);
-
-        // Fallback: CDN pattern scanning
-        if (!$imageUrl) {
-            $imageUrl = $this->findWithmuuCdnImage($goodsNo);
-        }
+        $imageUrl = $this->findWithmuuCdnImage($goodsNo);
 
         if ($imageUrl) {
             $this->withmuu_cache[$goodsNo] = $imageUrl;
@@ -157,165 +145,132 @@ class DownloadProductImages extends Command
     }
 
     /**
-     * Fetch the withmuu product page using the NetFunnel cookie to bypass the queue,
-     * then extract the CDN image URL from the inline detailKeyID JavaScript array.
+     * Smart CDN pattern scan for withmuu/Godo Mall products.
+     * Phase 1: Check legacy + sentinel positions (15 URLs per extension per ID variant)
+     * Phase 2: Fill remaining ranges in small batches if sentinel missed
+     * Also tries goodsNo±1 for mismatched internal IDs.
      */
-    private function fetchWithmuuPageImage(string $goodsNo): ?string
-    {
-        if (!$this->netfunnelCookie) {
-            return null;
-        }
-
-        $ch = curl_init("https://withmuu.com/goods/goods_view.php?goodsNo={$goodsNo}");
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTPHEADER => [
-                'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                "Cookie: NetFunnel_ID={$this->netfunnelCookie}",
-            ],
-        ]);
-        $html = curl_exec($ch);
-        curl_close($ch);
-
-        if (!$html) {
-            return null;
-        }
-
-        // Extract CDN URL from the detailKeyID inline JS array
-        if (preg_match('/detailKeyID\[0\]\s*=\s*"[^"]*src=\\\\"(https?:\/\/godomall\.speedycdn\.net[^\\\\]+)\\\\"/', $html, $m)) {
-            return $m[1];
-        }
-
-        // Fallback: try to find any godomall CDN URL in the page for the detail image
-        if (preg_match('/https:\/\/godomall\.speedycdn\.net\/[^"\'\\s]+\/image\/detail\/[^"\'\\s]+\.jpg/', $html, $m)) {
-            return $m[0];
-        }
-
-        return null;
-    }
-
-    /**
-     * Acquire a NetFunnel cookie by calling the NHN Commerce NetFunnel service.
-     * The cookie can be reused across multiple product page requests.
-     */
-    private function acquireNetfunnelCookie(): ?string
-    {
-        $ch = curl_init('https://netfunnel.nhn-commerce.com/ts.wseq?opcode=5101&nfid=0&prefix=NetFunnel.gRtype%3D5101%3B&sid=service_1&aid=intro_09&js=yes');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_HTTPHEADER => [
-                'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                'Referer: https://withmuu.com/',
-            ],
-        ]);
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        if ($response && preg_match("/5002:200:([^']+)/", $response, $m)) {
-            return urlencode($m[1]);
-        }
-
-        return null;
-    }
-
     private function findWithmuuCdnImage(string $goodsNo): ?string
     {
-        $goodsBase = self::WITHMUU_CDN_BASE . "/goods/{$goodsNo}/image";
-
-        // Check ALL patterns in a single parallel batch for speed
-        $urls = [];
-        // Legacy patterns (old-style products)
-        $urls['legacy_detail'] = "{$goodsBase}/detail/{$goodsNo}_Detail0.jpg";
-        $urls['legacy_main'] = "{$goodsBase}/main/{$goodsNo}_Main.jpg";
-
-        // Numeric detail patterns: _detail_001 .. _detail_100
-        for ($i = 1; $i <= 100; $i++) {
-            $num = str_pad($i, 3, '0', STR_PAD_LEFT);
-            $urls["detail_{$num}"] = "{$goodsBase}/detail/{$goodsNo}_detail_{$num}.jpg";
+        // Try the exact goodsNo first, then ±1 for mismatched IDs
+        $idsToTry = [$goodsNo];
+        if (is_numeric($goodsNo)) {
+            $idsToTry[] = (string) ((int) $goodsNo - 1);
+            $idsToTry[] = (string) ((int) $goodsNo + 1);
         }
 
-        // Also check magnify folder (same product, sometimes different numbering)
-        for ($i = 1; $i <= 100; $i++) {
-            $num = str_pad($i, 3, '0', STR_PAD_LEFT);
-            $urls["magnify_{$num}"] = "{$goodsBase}/magnify/{$goodsNo}_magnify_{$num}.jpg";
+        foreach ($idsToTry as $fileId) {
+            $result = $this->scanCdnPatterns($goodsNo, $fileId);
+            if ($result) {
+                return $result;
+            }
         }
 
-        return $this->parallelHeadCheck($urls);
-    }
-
-    private function headCheck(string $url): bool
-    {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_NOBODY => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 5,
-            CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        ]);
-        curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        return $code === 200;
+        return null;
     }
 
     /**
-     * Use curl_multi to do parallel HEAD requests and find the first URL returning HTTP 200.
+     * Scan CDN patterns for a given folder goodsNo and filename ID.
      */
-    private function parallelHeadCheck(array $urls): ?string
+    private function scanCdnPatterns(string $folderGoodsNo, string $fileId): ?string
+    {
+        $goodsBase = self::WITHMUU_CDN_BASE . "/goods/{$folderGoodsNo}/image";
+        $extensions = ['jpg', 'jpeg'];
+
+        // Phase 1: sentinel positions (quick check ~30 URLs)
+        $sentinels = [1, 10, 20, 25, 30, 40, 50, 60, 64, 70, 80, 89, 90, 93, 100];
+
+        $urls = [];
+        foreach ($extensions as $ext) {
+            $urls["main_Main_{$ext}"] = "{$goodsBase}/main/{$fileId}_Main.{$ext}";
+            $urls["Detail0_{$ext}"] = "{$goodsBase}/detail/{$fileId}_Detail0.{$ext}";
+            foreach ($sentinels as $n) {
+                $num = str_pad($n, 3, '0', STR_PAD_LEFT);
+                $urls["d{$num}_{$ext}"] = "{$goodsBase}/detail/{$fileId}_detail_{$num}.{$ext}";
+            }
+        }
+
+        $found = $this->batchHeadCheck($urls);
+        if ($found) {
+            // Prefer main/legacy (smaller) over detail
+            foreach ($found as $label => $info) {
+                if (str_contains($label, 'main_Main') || str_contains($label, 'Detail0')) {
+                    return $info['url'];
+                }
+            }
+            return reset($found)['url'];
+        }
+
+        // Phase 2: scan remaining detail numbers in batches of 15
+        $checked = array_flip($sentinels);
+        for ($batchStart = 1; $batchStart <= 100; $batchStart += 15) {
+            $urls = [];
+            for ($i = $batchStart; $i < min($batchStart + 15, 101); $i++) {
+                if (isset($checked[$i])) continue;
+                $num = str_pad($i, 3, '0', STR_PAD_LEFT);
+                foreach ($extensions as $ext) {
+                    $urls["d{$num}_{$ext}"] = "{$goodsBase}/detail/{$fileId}_detail_{$num}.{$ext}";
+                }
+            }
+            if (empty($urls)) continue;
+
+            $found = $this->batchHeadCheck($urls);
+            if ($found) {
+                return reset($found)['url'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parallel HEAD check with small batch size to avoid CDN rate-limiting.
+     * Returns array of found URLs with their sizes, or empty array.
+     */
+    private function batchHeadCheck(array $urls): array
     {
         $mh = curl_multi_init();
-        curl_multi_setopt($mh, CURLMOPT_MAXCONNECTS, 20);
+        curl_multi_setopt($mh, CURLMOPT_MAXCONNECTS, 15);
         $handles = [];
 
-        foreach ($urls as $num => $url) {
+        foreach ($urls as $label => $url) {
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_NOBODY => true,
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 5,
-                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_CONNECTTIMEOUT => 5,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
             ]);
             curl_multi_add_handle($mh, $ch);
-            $handles[(int) $ch] = ['url' => $url, 'handle' => $ch];
+            $handles[(int) $ch] = ['label' => $label, 'url' => $url, 'handle' => $ch];
         }
 
-        // Execute all requests in parallel
         do {
             $status = curl_multi_exec($mh, $active);
             if ($active) {
-                curl_multi_select($mh);
+                curl_multi_select($mh, 0.1);
             }
         } while ($active && $status === CURLM_OK);
 
-        $foundUrl = null;
+        $found = [];
         foreach ($handles as $info) {
             $httpCode = curl_getinfo($info['handle'], CURLINFO_HTTP_CODE);
-            if ($httpCode === 200 && !$foundUrl) {
-                $foundUrl = $info['url'];
+            if ($httpCode === 200) {
+                $size = (int) curl_getinfo($info['handle'], CURLINFO_CONTENT_LENGTH_DOWNLOAD);
+                $found[$info['label']] = ['url' => $info['url'], 'size' => $size];
             }
             curl_multi_remove_handle($mh, $info['handle']);
             curl_close($info['handle']);
         }
 
         curl_multi_close($mh);
-        return $foundUrl;
+        return $found;
     }
 
-    /**
-     * Handle URLs that contain a direct CDN image URL as a query parameter or in the CSV data.
-     */
-    private function extractDirectCdnUrl(string $url, string $type): ?string
+    private function extractDirectCdnUrl(string $url): ?string
     {
-        // withdrama URLs are often direct image links
         if (preg_match('/\.(jpg|jpeg|png|webp|gif)(\?|$)/i', $url)) {
             return $url;
         }
@@ -339,24 +294,19 @@ class DownloadProductImages extends Command
 
         $html = $response->body();
 
-        // Try og:image (property before content)
         if (preg_match('/<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']/i', $html, $matches)) {
             return $matches[1];
         }
 
-        // Try og:image (content before property)
         if (preg_match('/<meta\s+content=["\']([^"\']+)["\']\s+(?:property|name)=["\']og:image["\']/i', $html, $matches)) {
             return $matches[1];
         }
 
-        // Fallback: try to find first large product image in img tags
         if (preg_match_all('/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i', $html, $imgMatches)) {
             foreach ($imgMatches[1] as $imgSrc) {
-                // Skip tiny icons, logos, tracking pixels
                 if (preg_match('/(logo|icon|pixel|tracking|banner|badge|flag|avatar)/i', $imgSrc)) {
                     continue;
                 }
-                // Only accept common image CDN patterns
                 if (preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $imgSrc)) {
                     if (str_starts_with($imgSrc, '//')) {
                         $imgSrc = 'https:' . $imgSrc;
@@ -369,32 +319,51 @@ class DownloadProductImages extends Command
         return null;
     }
 
+    /**
+     * Download image with retry support and increased timeout for large CDN images.
+     */
     private function downloadImage(string $imageUrl, int $productId): ?string
     {
         if (str_starts_with($imageUrl, '//')) {
             $imageUrl = 'https:' . $imageUrl;
         }
 
-        $response = Http::timeout(30)
-            ->withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            ])
-            ->get($imageUrl);
+        $isCdnUrl = str_contains($imageUrl, 'godomall.speedycdn.net');
+        $timeout = $isCdnUrl ? 60 : 30;
+        $maxRetries = $isCdnUrl ? 2 : 1;
 
-        if (!$response->successful()) {
+        $response = null;
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                $response = Http::timeout($timeout)
+                    ->withHeaders([
+                        'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    ])
+                    ->get($imageUrl);
+
+                if ($response->successful()) {
+                    break;
+                }
+                $response = null;
+            } catch (\Throwable $e) {
+                if ($attempt < $maxRetries - 1) {
+                    sleep(2);
+                    continue;
+                }
+                throw $e;
+            }
+        }
+
+        if (!$response || !$response->successful()) {
             return null;
         }
 
-        // Verify it's actually an image
         $contentType = $response->header('Content-Type') ?? '';
-        $isCdnUrl = str_contains($imageUrl, 'godomall.speedycdn.net');
 
-        // Some CDNs (like Godo Mall) return wrong content-type; fall back to URL extension
         if (!str_contains($contentType, 'image') && !$isCdnUrl) {
             return null;
         }
 
-        // Determine extension from content-type first, then URL
         $extension = 'jpg';
         if (str_contains($contentType, 'image')) {
             if (str_contains($contentType, 'png')) {
