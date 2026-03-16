@@ -192,18 +192,21 @@ return new class extends Migration
                     $table->unsignedBigInteger('confirmed_by_user_id')->nullable()->after('confirmed_at');
                 }
                 
-                // Add remaining indexes for new columns
-                $table->index(['created_at', 'association_status']);
             });
 
-            // Add composite indexes after all columns exist
-            Schema::table('artist_events', function (Blueprint $table) {
-                $table->index(['is_historical', 'historical_date']);
-                $table->index(['is_public', 'is_featured']);
-            });
+            // Add remaining indexes only if they don't already exist
+            $indexChecks = [
+                'artist_events_created_at_association_status_index' => 'CREATE INDEX IF NOT EXISTS "artist_events_created_at_association_status_index" ON "artist_events" ("created_at", "association_status")',
+                'artist_events_is_historical_historical_date_index' => 'CREATE INDEX IF NOT EXISTS "artist_events_is_historical_historical_date_index" ON "artist_events" ("is_historical", "historical_date")',
+                'artist_events_is_public_is_featured_index' => 'CREATE INDEX IF NOT EXISTS "artist_events_is_public_is_featured_index" ON "artist_events" ("is_public", "is_featured")',
+            ];
+            foreach ($indexChecks as $sql) {
+                \DB::statement($sql);
+            }
         }
         
         // Create artist performance history tracking table
+        if (!Schema::hasTable('artist_performance_history'))
         Schema::create('artist_performance_history', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('canonical_artist_id');
@@ -265,6 +268,7 @@ return new class extends Migration
         });
         
         // Create artist collaboration tracking table
+        if (!Schema::hasTable('artist_collaborations'))
         Schema::create('artist_collaborations', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('primary_artist_id');
@@ -308,6 +312,7 @@ return new class extends Migration
         });
         
         // Create artist event roles table for complex role assignments
+        if (!Schema::hasTable('artist_event_roles'))
         Schema::create('artist_event_roles', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('artist_event_id');

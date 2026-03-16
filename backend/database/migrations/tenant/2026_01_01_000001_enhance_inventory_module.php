@@ -22,6 +22,7 @@ return new class extends Migration
         }
 
         // Brands table
+        if (!Schema::hasTable('brands'))
         Schema::create('brands', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -42,6 +43,7 @@ return new class extends Migration
         }
 
         // Stock levels per warehouse
+        if (!Schema::hasTable('stock_levels'))
         Schema::create('stock_levels', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_id')->constrained()->onDelete('cascade');
@@ -58,6 +60,7 @@ return new class extends Migration
         });
 
         // Suppliers table
+        if (!Schema::hasTable('suppliers'))
         Schema::create('suppliers', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -79,6 +82,7 @@ return new class extends Migration
         });
 
         // Purchase orders table
+        if (!Schema::hasTable('purchase_orders'))
         Schema::create('purchase_orders', function (Blueprint $table) {
             $table->id();
             $table->string('po_number')->unique();
@@ -109,6 +113,7 @@ return new class extends Migration
         });
 
         // Purchase order items
+        if (!Schema::hasTable('purchase_order_items'))
         Schema::create('purchase_order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('purchase_order_id')->constrained()->onDelete('cascade');
@@ -127,6 +132,7 @@ return new class extends Migration
         });
 
         // Warehouse transfers
+        if (!Schema::hasTable('warehouse_transfers'))
         Schema::create('warehouse_transfers', function (Blueprint $table) {
             $table->id();
             $table->string('transfer_number')->unique();
@@ -145,6 +151,7 @@ return new class extends Migration
         });
 
         // Warehouse transfer items
+        if (!Schema::hasTable('warehouse_transfer_items'))
         Schema::create('warehouse_transfer_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('warehouse_transfer_id')->constrained()->onDelete('cascade');
@@ -157,6 +164,7 @@ return new class extends Migration
         });
 
         // Stock adjustment reasons
+        if (!Schema::hasTable('stock_adjustment_reasons'))
         Schema::create('stock_adjustment_reasons', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -182,6 +190,7 @@ return new class extends Migration
         }
 
         // Inventory settings
+        if (!Schema::hasTable('inventory_settings'))
         Schema::create('inventory_settings', function (Blueprint $table) {
             $table->id();
             $table->boolean('allow_negative_stock')->default(false);
@@ -197,6 +206,7 @@ return new class extends Migration
         });
 
         // Seed default adjustment reasons
+        if (\DB::table('stock_adjustment_reasons')->count() === 0)
         \DB::table('stock_adjustment_reasons')->insert([
             ['name' => 'Damaged Goods', 'code' => 'DAMAGED', 'type' => 'decrease', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'Expired Stock', 'code' => 'EXPIRED', 'type' => 'decrease', 'requires_approval' => DB::raw('false'), 'is_active' => DB::raw('true'), 'created_at' => now(), 'updated_at' => now()],
@@ -208,6 +218,7 @@ return new class extends Migration
         ]);
 
         // Seed default inventory settings
+        if (\DB::table('inventory_settings')->count() === 0)
         \DB::table('inventory_settings')->insert([
             'allow_negative_stock' => DB::raw('false'),
             'auto_generate_sku' => DB::raw('true'),
