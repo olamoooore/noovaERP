@@ -82,7 +82,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/, /^\/storage/, /^\/w\//, /^\/store/],
       },
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
         navigateFallback: 'index.html',
       },

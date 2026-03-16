@@ -4,7 +4,7 @@ import { WishlistProvider } from '@/storefront/context/WishlistContext';
 import { CustomerAuthProvider } from '@/storefront/context/CustomerAuthContext';
 import { MembershipProvider } from '@/storefront/context/MembershipContext';
 import { Toaster } from '@/storefront/components/ui/sonner';
-import { FloatingChatButton } from '@/components/AI/FloatingChatButton';
+import { StorefrontChatWidget } from '@/storefront/components/chat/StorefrontChatWidget';
 import '@/storefront/storefront.css';
 
 // Lazy load storefront pages
@@ -19,6 +19,7 @@ const StorefrontAccount = lazy(() => import('@/storefront/pages/Account'));
 const StorefrontLogin = lazy(() => import('@/storefront/pages/Login'));
 const StorefrontNotFound = lazy(() => import('@/storefront/pages/NotFound'));
 const StorefrontProductDetail = lazy(() => import('@/storefront/pages/ProductDetail'));
+const StorefrontFAQ = lazy(() => import('@/storefront/pages/FAQ'));
 
 function StorefrontLoading() {
   return (
@@ -45,11 +46,12 @@ export default function StorefrontApp() {
                   <Route path="/checkout" element={<StorefrontCheckout />} />
                   <Route path="/account" element={<StorefrontAccount />} />
                   <Route path="/login" element={<StorefrontLogin />} />
+                  <Route path="/faq" element={<StorefrontFAQ />} />
                   <Route path="*" element={<StorefrontNotFound />} />
                 </Routes>
               </Suspense>
               <Toaster />
-              <FloatingChatButton />
+              <StorefrontChatWidget />
             </WishlistProvider>
           </CartProvider>
         </MembershipProvider>
