@@ -7,6 +7,7 @@ use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
 use App\Services\FiscalPeriodValidator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -292,7 +293,7 @@ class OcrPostingService
             'reference' => $document->document_reference ?? "OCR-{$document->uuid}",
             'description' => "OCR Document: {$document->vendor_name} - {$document->file_name}",
             'status' => 'draft',
-            'created_by' => auth()->id(),
+            'created_by' => TenantUserHelper::getTenantUserId(),
         ]);
 
         // Create journal entry lines
@@ -447,7 +448,7 @@ class OcrPostingService
             'reference_id' => $document->id,
             'notes' => "Inventory receipt from OCR document: {$document->vendor_name} - {$document->document_reference}",
             'balance_after' => $newQuantity,
-            'created_by' => $document->posted_by ?? auth()->id(),
+            'created_by' => $document->posted_by ?? TenantUserHelper::getTenantUserId(),
         ]);
 
         Log::info("WAC updated for product", [

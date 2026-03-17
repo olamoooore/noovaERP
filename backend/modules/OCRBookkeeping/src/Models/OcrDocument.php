@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use App\Models\Customer;
 use App\Models\JournalEntry;
 use App\Models\User;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * OCR Document Model
@@ -331,7 +332,7 @@ class OcrDocument extends Model
             'status' => 'POSTED',
             'journal_entry_id' => $journalEntry->id,
             'posted_at' => now(),
-            'posted_by' => auth()->id(),
+            'posted_by' => TenantUserHelper::getTenantUserId(),
         ]);
     }
 

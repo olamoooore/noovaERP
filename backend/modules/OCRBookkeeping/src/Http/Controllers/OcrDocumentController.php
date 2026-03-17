@@ -3,33 +3,16 @@
 namespace Modules\OCRBookkeeping\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class OcrDocumentController extends Controller
 {
-    /**
-     * Resolve the tenant user ID from the currently authenticated (central) user.
-     * The central and tenant user tables may have different IDs for the same person.
-     */
-    private function getTenantUserId(): ?int
-    {
-        $authUser = auth()->user();
-        if (!$authUser) {
-            return null;
-        }
-
-        // Look up the matching user in the current tenant schema by email
-        $tenantUser = DB::table('users')->where('email', $authUser->email)->first();
-
-        return $tenantUser?->id ?? $authUser->id;
-    }
     /**
      * Upload a single document
      * POST /api/ocr/documents/upload
@@ -79,7 +62,7 @@ class OcrDocumentController extends Controller
                 'file_size' => $file->getSize(),
                 'mime_type' => $file->getMimeType(),
                 'status' => 'PENDING',
-                'created_by' => $this->getTenantUserId(),
+                'created_by' => TenantUserHelper::getTenantUserId(),
             ]);
 
             // Process OCR synchronously so it runs with tenant context
@@ -169,7 +152,7 @@ class OcrDocumentController extends Controller
                     'file_size' => $file->getSize(),
                     'mime_type' => $file->getMimeType(),
                     'status' => 'PENDING',
-                    'created_by' => $this->getTenantUserId(),
+                    'created_by' => TenantUserHelper::getTenantUserId(),
                 ]);
 
                 // Process OCR synchronously
@@ -346,7 +329,7 @@ class OcrDocumentController extends Controller
             }
             
             $document->update([
-                'reviewed_by' => auth()->id(),
+                'reviewed_by' => TenantUserHelper::getTenantUserId(),
                 'reviewed_at' => now(),
             ]);
 
