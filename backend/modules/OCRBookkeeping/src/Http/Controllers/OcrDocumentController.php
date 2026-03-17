@@ -64,11 +64,14 @@ class OcrDocumentController extends Controller
                 'created_by' => auth()->id(),
             ]);
 
-            // Dispatch OCR processing job (don't fail upload if job fails)
+            // Process OCR synchronously so it runs with tenant context
             try {
-                ProcessOcrDocument::dispatch($document->id);
+                ProcessOcrDocument::dispatchSync($document->id);
+                $document->refresh();
             } catch (\Exception $e) {
-                \Log::warning("Failed to dispatch OCR job for document {$document->uuid}: " . $e->getMessage());
+                \Log::warning("OCR processing failed for document {$document->uuid}: " . $e->getMessage());
+                // Document will be marked as EXTRACTION_FAILED by the job's failed() handler
+                $document->refresh();
             }
 
             return response()->json([
@@ -145,11 +148,13 @@ class OcrDocumentController extends Controller
                     'created_by' => auth()->id(),
                 ]);
 
-                // Dispatch OCR processing job (don't fail upload if job fails)
+                // Process OCR synchronously
                 try {
-                    ProcessOcrDocument::dispatch($document->id);
+                    ProcessOcrDocument::dispatchSync($document->id);
+                    $document->refresh();
                 } catch (\Exception $jobError) {
-                    \Log::warning("Failed to dispatch OCR job for document {$document->uuid}: " . $jobError->getMessage());
+                    \Log::warning("OCR processing failed for document {$document->uuid}: " . $jobError->getMessage());
+                    $document->refresh();
                 }
 
                 $uploadedDocuments[] = [

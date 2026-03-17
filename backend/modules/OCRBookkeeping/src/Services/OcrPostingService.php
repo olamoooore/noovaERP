@@ -193,15 +193,15 @@ class OcrPostingService
             ];
         }
 
-        // Credit: Tax account (Sales Tax Payable is a liability)
+        // Debit: Input Tax account (for purchases, tax paid is a recoverable asset)
         if ($document->tax_amount && $document->tax_amount > 0) {
             $taxAccount = $this->getTaxAccount();
             
             $lines[] = [
                 'account_id' => $taxAccount->id,
-                'debit' => 0,
-                'credit' => round($document->tax_amount * $exchangeRate, 2),
-                'description' => 'Tax',
+                'debit' => round($document->tax_amount * $exchangeRate, 2),
+                'credit' => 0,
+                'description' => 'Input Tax',
                 'reference' => $document->document_reference,
                 'dimensions' => $document->dimensions,
             ];

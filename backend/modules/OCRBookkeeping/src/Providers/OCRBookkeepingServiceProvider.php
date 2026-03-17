@@ -20,10 +20,8 @@ class OCRBookkeepingServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Load routes with API v1 prefix for tenant context (without forcing auth middleware)
-        Route::middleware(['api'])
-            ->prefix('api/v1')
-            ->group(__DIR__ . '/../../routes/api.php');
+        // Routes are loaded via ModuleManager in tenant.php with proper tenant middleware.
+        // Do NOT load routes here to avoid bypassing tenant context.
 
         // Load migrations
         $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');

@@ -48,7 +48,8 @@ class ProcessOcrDocument implements ShouldQueue
     public function __construct(int $documentId)
     {
         $this->documentId = $documentId;
-        $this->onQueue('ocr-processing'); // Use dedicated queue for OCR
+        // Queue is only used when dispatched async; dispatchSync bypasses this
+        $this->onQueue('ocr-processing');
     }
 
     /**
@@ -82,24 +83,21 @@ class ProcessOcrDocument implements ShouldQueue
 
                 Log::error("OCR processing failed", [
                     'document_id' => $this->documentId,
-                    'document_uuid' => $document->uuid,
+                    'document_uuid' => $document->uuid ?? 'unknown',
                     'attempt' => $this->attempts(),
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
                 ]);
+
+                // When running synchronously (dispatchSync), mark failed immediately
+                // and don't re-throw — the upload should still succeed
+                if ($this->job === null) {
+                    $document->markAsExtractionFailed($e->getMessage());
+                    return;
+                }
 
                 // If this is the last attempt, mark as failed
                 if ($this->attempts() >= $this->tries) {
                     $document->markAsExtractionFailed($e->getMessage());
-
-                    Log::error("OCR processing failed after all retries", [
-                        'document_id' => $this->documentId,
-                        'document_uuid' => $document->uuid,
-                        'total_attempts' => $this->attempts(),
-                    ]);
-
-                    // TODO: Send notification to user about failed extraction
-                    // This can be implemented later with notification service
                 }
             }
 
