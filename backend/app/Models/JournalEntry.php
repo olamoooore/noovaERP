@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Journal Entry - Immutable once posted
@@ -132,7 +133,7 @@ class JournalEntry extends Model
         $this->update([
             'status' => 'posted',
             'posted_at' => now(),
-            'posted_by' => auth()->id(),
+            'posted_by' => TenantUserHelper::getTenantUserId(),
         ]);
     }
 
@@ -164,8 +165,8 @@ class JournalEntry extends Model
             'description' => 'REVERSAL: ' . ($reason ?? $this->description),
             'status' => 'posted',
             'posted_at' => now(),
-            'posted_by' => auth()->id(),
-            'created_by' => auth()->id(),
+            'posted_by' => TenantUserHelper::getTenantUserId(),
+            'created_by' => TenantUserHelper::getTenantUserId(),
             'reversed_entry_id' => $this->id,
             'is_reversal' => true,
         ]);
