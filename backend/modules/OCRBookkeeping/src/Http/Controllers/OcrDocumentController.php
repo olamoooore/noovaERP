@@ -85,6 +85,12 @@ class OcrDocumentController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            \Log::error('OCR document upload failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => auth()->id(),
+            ]);
             return response()->json([
                 'message' => 'Upload failed',
                 'error' => $e->getMessage(),
