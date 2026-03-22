@@ -111,7 +111,7 @@ class DownloadProductImages extends Command
             return $this->extractWithmuuImage($pageUrl);
         }
 
-        if (str_contains($pageUrl, 'withdrama.')) {
+        if (str_contains($pageUrl, 'withdrama.') || str_contains($pageUrl, 'img.app.fans')) {
             return $this->extractDirectCdnUrl($pageUrl);
         }
 
