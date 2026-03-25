@@ -12,6 +12,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('products', 'show_on_website')) {
+            return;
+        }
         Schema::table('products', function (Blueprint $table) {
             $table->boolean('show_on_website')->default(false)->after('is_new_arrival');
             $table->index('show_on_website');

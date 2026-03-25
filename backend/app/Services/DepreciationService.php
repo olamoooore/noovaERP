@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\FixedAsset;
 use App\Models\DepreciationSchedule;
 use App\Models\JournalEntry;
@@ -16,10 +19,14 @@ use Illuminate\Support\Facades\DB;
 class DepreciationService
 {
     protected $accountingService;
+    protected $postingEngine;
 
-    public function __construct(AccountingService $accountingService)
-    {
+    public function __construct(
+        AccountingService $accountingService,
+        PostingEngineInterface $postingEngine,
+    ) {
         $this->accountingService = $accountingService;
+        $this->postingEngine = $postingEngine;
     }
 
     /**
@@ -254,66 +261,70 @@ class DepreciationService
         $bookValue = $asset->calculateBookValue();
         $gainLoss = $disposalAmount - $bookValue;
 
-        // Create disposal journal entry
+        // Build posting lines via PostingEngine
+        $lines = [];
+
         // DR: Cash/Bank (disposal amount)
-        // DR: Accumulated Depreciation (accumulated depreciation)
-        // DR/CR: Gain/Loss on Disposal (difference)
-        // CR: Asset Account (original cost)
-
-        $cashAccount = ChartOfAccount::where('code', '1010')->first(); // Cash
-        $gainLossAccount = ChartOfAccount::where('code', '7100')->first(); // Other Income/Expense
-
-        $lines = [
-            [
-                'account_id' => $cashAccount->id,
-                'debit' => $disposalAmount,
-                'credit' => 0,
-                'description' => "Proceeds from disposal of {$asset->name}",
-            ],
-            [
-                'account_id' => $asset->accumulated_depreciation_account_id,
-                'debit' => $asset->accumulated_depreciation,
-                'credit' => 0,
-                'description' => "Remove accumulated depreciation - {$asset->name}",
-            ],
-        ];
-
-        // Add gain or loss line
-        if ($gainLoss > 0) {
-            // Gain - credit
-            $lines[] = [
-                'account_id' => $gainLossAccount->id,
-                'debit' => 0,
-                'credit' => abs($gainLoss),
-                'description' => "Gain on disposal of {$asset->name}",
-            ];
-        } else if ($gainLoss < 0) {
-            // Loss - debit
-            $lines[] = [
-                'account_id' => $gainLossAccount->id,
-                'debit' => abs($gainLoss),
-                'credit' => 0,
-                'description' => "Loss on disposal of {$asset->name}",
-            ];
+        if ($disposalAmount > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'cash',
+                accountId: null,
+                debit: $disposalAmount,
+                credit: 0,
+                description: "Proceeds from disposal of {$asset->name}",
+            );
         }
 
-        // Credit asset account
-        $lines[] = [
-            'account_id' => $asset->asset_account_id,
-            'debit' => 0,
-            'credit' => $asset->purchase_cost,
-            'description' => "Remove asset - {$asset->name}",
-        ];
+        // DR: Accumulated Depreciation (remove)
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'accumulated_depreciation',
+            accountId: $asset->accumulated_depreciation_account_id,
+            debit: (float) $asset->accumulated_depreciation,
+            credit: 0,
+            description: "Remove accumulated depreciation - {$asset->name}",
+        );
 
-        $journalEntry = $this->accountingService->createJournalEntry([
-            'entry_date' => $disposalDate->format('Y-m-d'),
-            'type' => 'asset_disposal',
-            'reference' => $asset->asset_number,
-            'description' => "Disposal of {$asset->name} - {$disposalMethod}" . ($notes ? " - {$notes}" : ''),
-            'status' => 'posted',
-            'posted_at' => now(),
-            'posted_by' => auth()->id(),
-        ], $lines);
+        // Gain/Loss
+        if ($gainLoss > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'gain_loss_disposal',
+                accountId: null,
+                debit: 0,
+                credit: abs($gainLoss),
+                description: "Gain on disposal of {$asset->name}",
+            );
+        } elseif ($gainLoss < 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'gain_loss_disposal',
+                accountId: null,
+                debit: abs($gainLoss),
+                credit: 0,
+                description: "Loss on disposal of {$asset->name}",
+            );
+        }
+
+        // CR: Asset Account (original cost)
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'inventory', // fallback key, overridden by accountId
+            accountId: $asset->asset_account_id,
+            debit: 0,
+            credit: (float) $asset->purchase_cost,
+            description: "Remove asset - {$asset->name}",
+        );
+
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'asset_disposal',
+            documentId: $asset->id,
+            postingDate: $disposalDate->format('Y-m-d'),
+            description: "Disposal of {$asset->name} - {$disposalMethod}" . ($notes ? " - {$notes}" : ''),
+            lines: $lines,
+            reference: $asset->asset_number,
+            userId: auth()->id(),
+        ));
+
+        if (!$result->success) {
+            throw new \Exception($result->error);
+        }
 
         // Update asset
         $asset->update([
@@ -326,7 +337,7 @@ class DepreciationService
 
         return [
             'gain_loss' => $gainLoss,
-            'journal_entry' => $journalEntry,
+            'journal_entry' => $result->journalEntry,
         ];
     }
 }

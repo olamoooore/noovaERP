@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Payment;
@@ -15,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 class InvoiceService
 {
     public function __construct(
-        private AccountingService $accountingService
+        private AccountingService $accountingService,
+        private PostingEngineInterface $postingEngine,
     ) {}
 
     /**
@@ -62,7 +66,7 @@ class InvoiceService
     }
 
     /**
-     * Post invoice (creates journal entry, reduces inventory)
+     * Post invoice (creates journal entry with COGS, reduces inventory)
      */
     public function postInvoice(Invoice $invoice): Invoice
     {
@@ -73,13 +77,90 @@ class InvoiceService
         DB::beginTransaction();
         
         try {
-            // Post to accounting ledger
-            $journalEntry = $this->accountingService->postInvoice($invoice);
-            
+            // ── Build posting lines ──────────────────────────
+            $lines = [];
+
+            // DR Accounts Receivable (total)
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_receivable',
+                accountId: null,
+                debit: (float) $invoice->total,
+                credit: 0,
+                description: "Invoice {$invoice->invoice_number}",
+            );
+
+            // CR Sales Revenue (subtotal)
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: 0,
+                credit: (float) $invoice->subtotal,
+                description: "Sales - Invoice {$invoice->invoice_number}",
+            );
+
+            // CR Sales Tax Payable
+            if ((float) $invoice->tax_amount > 0) {
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'sales_tax_payable',
+                    accountId: null,
+                    debit: 0,
+                    credit: (float) $invoice->tax_amount,
+                    description: "Tax - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            // ── COGS lines for inventory items ───────────────
+            $totalCogs = 0;
+            foreach ($invoice->lines as $line) {
+                if ($line->product && $line->product->track_inventory) {
+                    $unitCost = (float) ($line->product->cost_price ?? 0);
+                    $lineCogs = $unitCost * $line->quantity;
+
+                    if ($lineCogs > 0) {
+                        $totalCogs += $lineCogs;
+                    }
+                }
+            }
+
+            if ($totalCogs > 0) {
+                // DR Cost of Goods Sold
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'cogs',
+                    accountId: null,
+                    debit: $totalCogs,
+                    credit: 0,
+                    description: "COGS - Invoice {$invoice->invoice_number}",
+                );
+
+                // CR Inventory
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'inventory',
+                    accountId: null,
+                    debit: 0,
+                    credit: $totalCogs,
+                    description: "Inventory - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            // ── Post via PostingEngine ───────────────────────
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'invoice',
+                documentId: $invoice->id,
+                postingDate: $invoice->invoice_date->toDateString(),
+                description: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
+                lines: $lines,
+                reference: $invoice->invoice_number,
+                userId: auth()->id(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
+            }
+
             $invoice->update([
                 'status' => 'sent',
                 'sent_at' => now(),
-                'journal_entry_id' => $journalEntry->id,
+                'journal_entry_id' => $result->journalEntryId,
             ]);
 
             // Reduce inventory for product lines

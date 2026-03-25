@@ -161,6 +161,64 @@ const baseNavItems: NavItem[] = [
     href: '/accounting',
     icon: 'solar:chart-2-bold-duotone',
     featureKey: 'accounting',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/accounting/dashboard',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Chart of Accounts',
+        href: '/accounting/core/chart-of-accounts',
+        icon: 'solar:notebook-bold-duotone',
+      },
+      {
+        title: 'Journal Entries',
+        href: '/accounting/core/journal-entries',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Customer Invoices',
+        href: '/accounting/customers/bills',
+        icon: 'solar:bill-list-bold-duotone',
+      },
+      {
+        title: 'Vendor Bills',
+        href: '/accounting/vendors/bills',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Bank Reconciliation',
+        href: '/accounting/core/reconciliation',
+        icon: 'solar:safe-2-bold-duotone',
+      },
+      {
+        title: 'Fixed Assets',
+        href: '/accounting/core/assets',
+        icon: 'solar:buildings-bold-duotone',
+      },
+      {
+        title: 'Multi-Currency',
+        href: '/accounting/core/multi-currency',
+        icon: 'solar:dollar-bold-duotone',
+      },
+      {
+        title: 'Reports',
+        href: '/accounting/reporting/trial-balance',
+        icon: 'solar:file-text-bold-duotone',
+      },
+      {
+        title: 'Configuration',
+        href: '/accounting/configuration/company',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ],
+  },
+  {
+    title: 'OCR Documents',
+    href: '/ocr/documents',
+    icon: 'solar:document-add-bold-duotone',
+    featureKey: 'accounting',
   },
   {
     title: 'Loyalty',
@@ -243,12 +301,6 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
-    title: 'OCR Documents',
-    href: '/ocr/documents',
-    icon: 'solar:document-add-bold-duotone',
-    featureKey: 'accounting',
-  },
-  {
     title: 'Website',
     href: '/website-builder',
     icon: 'solar:global-bold-duotone',
@@ -262,28 +314,6 @@ const baseNavItems: NavItem[] = [
         title: 'Online Shop',
         href: '/store',
         icon: 'solar:bag-4-bold-duotone',
-      },
-    ],
-  },
-  {
-    title: 'Dashboards',
-    href: '/dashboards/executive',
-    icon: 'solar:chart-square-bold-duotone',
-    children: [
-      {
-        title: 'Executive',
-        href: '/dashboards/executive',
-        icon: 'solar:graph-new-bold-duotone',
-      },
-      {
-        title: 'Sales',
-        href: '/dashboards/sales',
-        icon: 'solar:cart-large-2-bold-duotone',
-      },
-      {
-        title: 'Inventory',
-        href: '/dashboards/inventory',
-        icon: 'solar:box-bold-duotone',
       },
     ],
   },
@@ -353,6 +383,11 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:document-text-bold-duotone',
     children: [
       {
+        title: 'Executive Dashboard',
+        href: '/dashboards/executive',
+        icon: 'solar:graph-new-bold-duotone',
+      },
+      {
         title: 'Financial Reports',
         href: '/reports/financial',
         icon: 'solar:dollar-bold-duotone',
@@ -405,6 +440,8 @@ export function Sidebar() {
 
   const navItems = baseNavItems.filter(item => {
     if (!item.featureKey) return true
+    // If features haven't loaded yet, show all items
+    if (!features) return true
     return enabledFeatures.has(item.featureKey)
   })
 
@@ -419,10 +456,19 @@ export function Sidebar() {
   const isItemActive = (item: NavItem): boolean => {
     if (location.pathname === item.href) return true
     if (item.children) {
-      return item.children.some(child => location.pathname === child.href)
+      return item.children.some(child => 
+        location.pathname === child.href || location.pathname.startsWith(child.href + '/')
+      )
     }
     return false
   }
+
+  // Auto-expand parent items when a child route is active
+  const activeParents = navItems
+    .filter(item => item.children && isItemActive(item))
+    .map(item => item.title)
+
+  const effectiveExpanded = [...new Set([...expandedItems, ...activeParents])]
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-card">
@@ -436,7 +482,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = isItemActive(item)
-          const isExpanded = expandedItems.includes(item.title)
+          const isExpanded = effectiveExpanded.includes(item.title)
           const hasChildren = item.children && item.children.length > 0
 
           return (

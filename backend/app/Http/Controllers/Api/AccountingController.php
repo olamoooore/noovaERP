@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\FxRevaluationService;
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
@@ -318,5 +319,32 @@ class AccountingController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ==================== Period-End Processes ====================
+
+    public function fxRevaluation(Request $request, FxRevaluationService $fxService)
+    {
+        $validated = $request->validate([
+            'revaluation_date' => 'required|date',
+            'base_currency'    => 'required|string|size:3',
+            'account_ids'      => 'nullable|array',
+            'account_ids.*'    => 'integer|exists:chart_of_accounts,id',
+        ]);
+
+        $results = $fxService->revalue(
+            $validated['revaluation_date'],
+            strtoupper($validated['base_currency']),
+            $validated['account_ids'] ?? null,
+        );
+
+        $posted = collect($results)->filter(fn ($r) => $r->success);
+        $failed = collect($results)->filter(fn ($r) => !$r->success);
+
+        return response()->json([
+            'message'        => $posted->count() . ' revaluation entries posted',
+            'posted_entries' => $posted->map(fn ($r) => $r->journalEntryId)->values(),
+            'failures'       => $failed->map(fn ($r) => $r->error)->values(),
+        ]);
     }
 }

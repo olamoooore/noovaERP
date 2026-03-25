@@ -20,9 +20,9 @@ export const authApi = axios.create({
   withCredentials: true,
 })
 
-// Accounting API (direct /api routes without /v1 prefix)
+// Accounting API (tenant routes with /v1 prefix)
 export const accountingApi = axios.create({
-  baseURL: '/api',
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

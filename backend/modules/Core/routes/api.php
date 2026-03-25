@@ -215,12 +215,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
         Route::get('/ledger/{account}', [AccountingController::class, 'ledger']);
         
+        // Period-End Processes
+        Route::post('/fx-revaluation', [AccountingController::class, 'fxRevaluation']);
+        
         // Vendor Bills (with tenant context)
         Route::get('/vendor-bills', [VendorBillsController::class, 'index']);
         Route::get('/vendor-bills/{id}', [VendorBillsController::class, 'show']);
         Route::post('/vendor-bills', [VendorBillsController::class, 'store']);
         Route::put('/vendor-bills/{id}', [VendorBillsController::class, 'update']);
         Route::delete('/vendor-bills/{id}', [VendorBillsController::class, 'destroy']);
+        Route::post('/vendor-bills/{id}/post', [VendorBillsController::class, 'post']);
         
         // Aged Receivables Report - moved outside auth temporarily
         // Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);

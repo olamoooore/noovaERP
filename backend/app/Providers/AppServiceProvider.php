@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\PostingEngine;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 
@@ -12,7 +14,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(PostingEngineInterface::class, PostingEngine::class);
     }
 
     /**

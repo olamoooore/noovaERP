@@ -225,12 +225,17 @@ class OcrDocument extends Model
             throw new \Exception("Cannot unpost document. Current status: {$this->status}");
         }
 
-        // Delete the associated journal entry and its lines
+        // Reverse the journal entry via PostingEngine (immutable audit trail)
         if ($this->journal_entry_id && $this->journalEntry) {
-            // Delete journal entry lines first
-            $this->journalEntry->lines()->delete();
-            // Delete the journal entry
-            $this->journalEntry->delete();
+            $postingEngine = app(\App\Accounting\Contracts\PostingEngineInterface::class);
+            $result = $postingEngine->reverse(
+                $this->journal_entry_id,
+                "Unpost OCR document {$this->uuid}"
+            );
+
+            if (!$result->success) {
+                throw new \Exception("Failed to reverse journal entry: {$result->error}");
+            }
         }
 
         // Reset document to needs review

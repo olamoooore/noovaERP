@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class AccountingPoliciesController extends Controller
@@ -13,10 +13,7 @@ class AccountingPoliciesController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $policies = DB::table('public.accounting_policies')->first();
-            if (!$policies) {
-                $policies = $this->getDefaultPolicies();
-            }
+            $policies = AccountingPolicy::current();
             return response()->json(['success' => true, 'data' => $policies]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch accounting policies', ['error' => $e->getMessage()]);
@@ -45,53 +42,28 @@ class AccountingPoliciesController extends Controller
         }
 
         try {
-            $policies = DB::table('public.accounting_policies')->first();
-            
-            $data = array_filter([
-                'depreciation_method' => $request->depreciation_method,
-                'inventory_valuation_method' => $request->inventory_valuation_method,
-                'revenue_recognition_policy' => $request->revenue_recognition_policy,
-                'expense_recognition_policy' => $request->expense_recognition_policy,
-                'bad_debt_policy' => $request->bad_debt_policy,
-                'capitalization_threshold' => $request->capitalization_threshold,
-                'notes' => $request->notes,
-                'updated_at' => now(),
-            ], function ($value) {
-                return $value !== null;
-            });
+            $policies = AccountingPolicy::current();
 
-            if ($policies) {
-                DB::table('public.accounting_policies')->update($data);
-            } else {
-                $data['created_at'] = now();
-                DB::table('public.accounting_policies')->insert($data);
-            }
+            $data = array_filter($request->only([
+                'depreciation_method',
+                'inventory_valuation_method',
+                'revenue_recognition_policy',
+                'expense_recognition_policy',
+                'bad_debt_policy',
+                'capitalization_threshold',
+                'notes',
+            ]), fn ($value) => $value !== null);
 
-            $updated = DB::table('public.accounting_policies')->first();
+            $policies->update($data);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Accounting policies updated successfully',
-                'data' => $updated
+                'data' => $policies->fresh()
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to update accounting policies', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Failed to update policies'], 500);
         }
-    }
-
-    private function getDefaultPolicies()
-    {
-        return (object) [
-            'id' => null,
-            'depreciation_method' => 'straight_line',
-            'inventory_valuation_method' => 'fifo',
-            'revenue_recognition_policy' => 'accrual',
-            'expense_recognition_policy' => 'matching',
-            'bad_debt_policy' => 'allowance_method',
-            'capitalization_threshold' => 1000.00,
-            'notes' => null,
-            'created_at' => null,
-            'updated_at' => null,
-        ];
     }
 }

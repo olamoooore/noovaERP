@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withProviders([
+        \App\Providers\AppServiceProvider::class,
         \App\Providers\DatabaseQueryServiceProvider::class,
         \App\Providers\ModuleServiceProvider::class,
         \App\Providers\TenantDatabaseServiceProvider::class,

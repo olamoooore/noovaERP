@@ -356,29 +356,10 @@ class OcrDocumentController extends Controller
         $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
         try {
-            // If document is posted, automatically unpost it first
+            // If document is posted, automatically unpost (reverse) it first
             if ($document->isPosted()) {
-                \Log::info("Document {$uuid} is posted. Auto-unposting before deletion.");
-                
-                // Delete the journal entry and its lines
-                if ($document->journal_entry_id && $document->journalEntry) {
-                    $document->journalEntry->lines()->delete();
-                    $document->journalEntry->delete();
-                }
-                
-                // Update document status to allow deletion
-                $document->update([
-                    'status' => 'NEEDS_REVIEW',
-                    'journal_entry_id' => null,
-                    'posted_at' => null,
-                    'posted_by' => null,
-                ]);
-            }
-
-            // Extra safety: Check again if there's still a journal entry linked
-            if ($document->journal_entry_id && $document->journalEntry) {
-                $document->journalEntry->lines()->delete();
-                $document->journalEntry->delete();
+                \Log::info("Document {$uuid} is posted. Reversing journal entry before deletion.");
+                $document->unpost();
             }
 
             // Delete the document

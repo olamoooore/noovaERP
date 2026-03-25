@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerCreditNoteLine;
-use App\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -14,7 +16,8 @@ use Illuminate\Support\Facades\DB;
 class CustomerCreditNoteService
 {
     public function __construct(
-        private AccountingService $accountingService
+        private AccountingService $accountingService,
+        private PostingEngineInterface $postingEngine,
     ) {}
 
     /**
@@ -93,55 +96,56 @@ class CustomerCreditNoteService
         DB::beginTransaction();
         
         try {
-            // Get GL accounts
-            $arAccount = ChartOfAccount::where('code', '1100')->first(); // A/R
-            $revenueAccount = ChartOfAccount::where('code', '4100')->first(); // Sales
-            $taxAccount = ChartOfAccount::where('code', '2200')->first(); // Tax Payable
+            $lines = [];
 
-            if (!$arAccount || !$revenueAccount || !$taxAccount) {
-                throw new \Exception('Required GL accounts not found. Please configure chart of accounts.');
+            // DR Sales Revenue (subtotal)
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: (float) $creditNote->subtotal,
+                credit: 0,
+                description: "Credit Note {$creditNote->credit_note_number}",
+            );
+
+            // DR Sales Tax Payable
+            if ((float) $creditNote->tax_amount > 0) {
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'sales_tax_payable',
+                    accountId: null,
+                    debit: (float) $creditNote->tax_amount,
+                    credit: 0,
+                    description: "Tax - Credit Note {$creditNote->credit_note_number}",
+                );
             }
 
-            // Create journal entry lines
-            $lines = [
-                [
-                    'account_id' => $revenueAccount->id,
-                    'debit' => $creditNote->subtotal,
-                    'credit' => 0,
-                    'description' => "Credit Note {$creditNote->credit_note_number}",
-                ],
-            ];
+            // CR Accounts Receivable (total)
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_receivable',
+                accountId: null,
+                debit: 0,
+                credit: (float) $creditNote->total_amount,
+                description: "Credit Note {$creditNote->credit_note_number}",
+            );
 
-            if ($creditNote->tax_amount > 0) {
-                $lines[] = [
-                    'account_id' => $taxAccount->id,
-                    'debit' => $creditNote->tax_amount,
-                    'credit' => 0,
-                    'description' => "Tax - Credit Note {$creditNote->credit_note_number}",
-                ];
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'credit_note',
+                documentId: $creditNote->id,
+                postingDate: $creditNote->credit_note_date->toDateString(),
+                description: "Credit Note #{$creditNote->credit_note_number} - {$creditNote->customer->name}",
+                lines: $lines,
+                reference: $creditNote->credit_note_number,
+                userId: auth()->id(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
             }
-
-            $lines[] = [
-                'account_id' => $arAccount->id,
-                'debit' => 0,
-                'credit' => $creditNote->total_amount,
-                'description' => "Credit Note {$creditNote->credit_note_number}",
-            ];
-
-            // Post to accounting ledger
-            $journalEntry = $this->accountingService->createJournalEntry([
-                'entry_date' => $creditNote->credit_note_date,
-                'type' => 'credit_note',
-                'reference' => $creditNote->credit_note_number,
-                'description' => "Credit Note #{$creditNote->credit_note_number} - {$creditNote->customer->name}",
-                'status' => 'posted',
-            ], $lines);
             
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
                 'posted_by' => auth()->id(),
-                'journal_entry_id' => $journalEntry->id,
+                'journal_entry_id' => $result->journalEntryId,
             ]);
 
             // Update invoice balance

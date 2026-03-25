@@ -2,8 +2,11 @@
 
 namespace Modules\OCRBookkeeping\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\Services\AccountMappingService;
 use App\Models\JournalEntry;
-use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
 use App\Services\FiscalPeriodValidator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
@@ -22,7 +25,9 @@ class OcrPostingService
     public function __construct(
         private FiscalPeriodValidator $fiscalValidator,
         private DimensionValidationService $dimensionValidator,
-        private ExchangeRateService $exchangeRateService
+        private ExchangeRateService $exchangeRateService,
+        private PostingEngineInterface $postingEngine,
+        private AccountMappingService $accountMapper,
     ) {}
 
     /**
@@ -68,17 +73,40 @@ class OcrPostingService
 
         try {
             // Build journal entry lines (NO currency conversion)
-            $lines = $this->buildExpenseLines($document, $exchangeRate);
-
-            // NO exchange gain/loss entries needed (no conversion)
+            $rawLines = $this->buildExpenseLines($document, $exchangeRate);
 
             // Validate balance
-            $this->validateBalance($lines);
+            $this->validateBalance($rawLines);
 
-            // Create journal entry
-            $journalEntry = $this->createJournalEntry($document, $lines);
+            // Convert raw lines to PostingRequestLine DTOs
+            $postingLines = array_map(fn(array $line) => new PostingRequestLine(
+                accountMappingKey: 'general_expense', // fallback key, overridden by accountId
+                accountId: $line['account_id'],
+                debit: (float) $line['debit'],
+                credit: (float) $line['credit'],
+                description: $line['description'] ?? null,
+                reference: $line['reference'] ?? null,
+                departmentId: $line['dimensions']['department_id'] ?? null,
+                projectId: $line['dimensions']['project_id'] ?? null,
+                locationId: $line['dimensions']['location_id'] ?? null,
+            ), $rawLines);
 
-            // NO currency amount storage needed (keeping original currency)
+            // Post via PostingEngine (handles lock-date + fiscal validation)
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'ocr_document',
+                documentId: $document->id,
+                postingDate: $document->document_date->toDateString(),
+                description: "OCR Document: {$document->vendor_name} - {$document->file_name}",
+                lines: $postingLines,
+                reference: $document->document_reference ?? "OCR-{$document->uuid}",
+                userId: TenantUserHelper::getTenantUserId(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
+            }
+
+            $journalEntry = $result->journalEntry;
 
             // Update inventory if applicable
             $this->updateInventory($document, $journalEntry);
@@ -274,48 +302,6 @@ class OcrPostingService
     }
 
     /**
-     * Create journal entry with lines
-     * 
-     * @param OcrDocument $document
-     * @param array $lines
-     * @return JournalEntry
-     */
-    private function createJournalEntry(OcrDocument $document, array $lines): JournalEntry
-    {
-        // Generate entry number
-        $entryNumber = $this->generateEntryNumber();
-
-        // Create journal entry header
-        $journalEntry = JournalEntry::create([
-            'entry_number' => $entryNumber,
-            'entry_date' => $document->document_date,
-            'type' => 'invoice', // Valid types: manual, invoice, payment, adjustment, opening
-            'reference' => $document->document_reference ?? "OCR-{$document->uuid}",
-            'description' => "OCR Document: {$document->vendor_name} - {$document->file_name}",
-            'status' => 'draft',
-            'created_by' => TenantUserHelper::getTenantUserId(),
-        ]);
-
-        // Create journal entry lines
-        foreach ($lines as $line) {
-            JournalEntryLine::create([
-                'journal_entry_id' => $journalEntry->id,
-                'account_id' => $line['account_id'],
-                'debit' => $line['debit'],
-                'credit' => $line['credit'],
-                'description' => $line['description'],
-                'reference' => $line['reference'],
-                'dimensions' => $line['dimensions'],
-            ]);
-        }
-
-        // Post the journal entry
-        $journalEntry->post();
-
-        return $journalEntry;
-    }
-
-    /**
      * Update inventory for matched SKUs
      * 
      * @param OcrDocument $document
@@ -502,15 +488,7 @@ class OcrPostingService
      */
     private function getDefaultExpenseAccount(): ChartOfAccount
     {
-        $account = ChartOfAccount::where('code', '5000')
-            ->where('is_active', true)
-            ->first();
-
-        if (!$account) {
-            throw new \Exception('Default expense account (5000) not found');
-        }
-
-        return $account;
+        return $this->accountMapper->resolve('general_expense', 'ocr_document');
     }
 
     /**
@@ -521,30 +499,7 @@ class OcrPostingService
      */
     private function getTaxAccount(): ChartOfAccount
     {
-        // For purchases, we should use Input Tax / Tax Recoverable account (asset)
-        // Try to find Input Tax account first (typically 1xxx for assets)
-        $account = ChartOfAccount::where('code', 'LIKE', '1%')
-            ->where(function($query) {
-                $query->where('name', 'LIKE', '%input%tax%')
-                      ->orWhere('name', 'LIKE', '%tax%recoverable%')
-                      ->orWhere('name', 'LIKE', '%tax%receivable%');
-            })
-            ->where('is_active', true)
-            ->first();
-
-        if (!$account) {
-            // Fallback to Sales Tax Payable (2200) if no input tax account exists
-            // Note: This is not ideal but maintains backward compatibility
-            $account = ChartOfAccount::where('code', '2200')
-                ->where('is_active', true)
-                ->first();
-        }
-
-        if (!$account) {
-            throw new \Exception('Tax account not found. Please configure an Input Tax account (1xxx) or Sales Tax Payable account (2200)');
-        }
-
-        return $account;
+        return $this->accountMapper->resolve('input_tax', 'ocr_document');
     }
 
     /**
@@ -555,47 +510,7 @@ class OcrPostingService
      */
     private function getAccountsPayableAccount(): ChartOfAccount
     {
-        $account = ChartOfAccount::where('code', '2100')
-            ->where('is_active', true)
-            ->first();
-
-        if (!$account) {
-            throw new \Exception('Accounts Payable account (2100) not found');
-        }
-
-        return $account;
-    }
-
-    /**
-     * Generate unique entry number
-     * 
-     * @return string
-     */
-    private function generateEntryNumber(): string
-    {
-        $prefix = 'JE';
-        $date = date('Ymd');
-        
-        // Get all entries for today and extract sequence numbers
-        $entries = JournalEntry::where('entry_number', 'like', "{$prefix}-{$date}-%")
-            ->pluck('entry_number')
-            ->toArray();
-        
-        $maxSequence = 0;
-        
-        foreach ($entries as $entryNumber) {
-            // Extract the last 4 digits (sequence number)
-            if (preg_match('/(\d{4})$/', $entryNumber, $matches)) {
-                $sequence = (int)$matches[1];
-                if ($sequence > $maxSequence) {
-                    $maxSequence = $sequence;
-                }
-            }
-        }
-        
-        $count = $maxSequence + 1;
-        
-        return sprintf('%s-%s-%04d', $prefix, $date, $count);
+        return $this->accountMapper->resolve('accounts_payable', 'ocr_document');
     }
 
     /**

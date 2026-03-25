@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillLine;
+use App\Services\VendorBillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -309,6 +310,41 @@ class VendorBillsController extends Controller
             return response()->json([
                 'message' => 'Failed to update vendor bill',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Post a vendor bill to the general ledger
+     *
+     * @param int $id
+     * @param VendorBillService $billService
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function post($id, VendorBillService $billService)
+    {
+        try {
+            $bill = Bill::with(['vendor', 'lines'])->find($id);
+
+            if (!$bill) {
+                return response()->json(['message' => 'Vendor bill not found'], 404);
+            }
+
+            $result = $billService->postBill($bill);
+
+            if (!$result->success) {
+                return response()->json(['message' => $result->error], 422);
+            }
+
+            return response()->json([
+                'message' => 'Vendor bill posted successfully',
+                'data' => $bill->fresh(['vendor', 'lines.account', 'journalEntry']),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to post vendor bill: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to post vendor bill',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

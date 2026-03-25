@@ -2,17 +2,22 @@
 
 namespace Modules\Ecommerce\Services;
 
-use App\Models\ChartOfAccount;
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\JournalEntry;
-use App\Models\JournalEntryLine;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\JournalEntryLink;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
 
 class WebOrderPostingService
 {
+    public function __construct(
+        private readonly PostingEngineInterface $postingEngine,
+    ) {}
     /**
      * Deduct stock for web order items
      */
@@ -81,166 +86,131 @@ class WebOrderPostingService
         }
         
         // Check if already posted
-        $existingEntry = JournalEntry::where('reference', $order->order_number)
-            ->where('type', 'payment')
+        $existingLink = JournalEntryLink::where('source_document_type', 'web_order')
+            ->where('source_document_id', $order->id)
+            ->where('relation_type', 'post')
             ->first();
             
-        if ($existingEntry) {
+        if ($existingLink) {
             Log::info('Web order already posted', [
                 'order_id' => $order->id,
-                'entry_id' => $existingEntry->id,
+                'entry_id' => $existingLink->journal_entry_id,
             ]);
-            return $existingEntry;
+            return JournalEntry::find($existingLink->journal_entry_id);
         }
         
         // Deduct stock first
         $this->deductStock($order);
-        
-        return DB::transaction(function () use ($order, $totalPaid, $paymentMethod) {
-            // Get accounts
-            $cashAccount = ChartOfAccount::query()->where('code', '1010')->first();
-            $salesAccount = ChartOfAccount::query()->where('code', '4100')->first();
-            $taxAccount = ChartOfAccount::query()->where('code', '2200')->first();
-            $inventoryAccount = ChartOfAccount::query()->where('code', '1200')->first();
-            $cogsAccount = ChartOfAccount::query()->where('code', '5100')->first();
-            $discountAccount = ChartOfAccount::query()->where('code', '4200')->first(); // Sales discounts
-            
-            if (!$cashAccount || !$salesAccount) {
-                throw new \Exception('Required accounts not found. Please ensure chart of accounts is set up.');
+
+        $subtotal = (float) $order->subtotal;
+        $taxAmount = (float) $order->tax_amount;
+        $loyaltyDiscount = (float) ($order->loyalty_discount ?? 0);
+        $regularDiscount = (float) ($order->discount_amount ?? 0);
+        $totalDiscounts = $loyaltyDiscount + $regularDiscount;
+
+        $lines = [];
+
+        // DR Cash
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'cash',
+            accountId: null,
+            debit: $totalPaid,
+            credit: 0,
+            description: 'Web payment received',
+            reference: $order->order_number,
+        );
+
+        // CR Sales Revenue
+        if ($subtotal > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: 0,
+                credit: $subtotal,
+                description: 'Web sales revenue',
+                reference: $order->order_number,
+            );
+        }
+
+        // CR Tax
+        if ($taxAmount > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_tax_payable',
+                accountId: null,
+                debit: 0,
+                credit: $taxAmount,
+                description: 'Web sales tax',
+                reference: $order->order_number,
+            );
+        }
+
+        // DR Discounts (contra-revenue)
+        if ($totalDiscounts > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_discount',
+                accountId: null,
+                debit: $totalDiscounts,
+                credit: 0,
+                description: "Sales discount (loyalty: {$loyaltyDiscount}, regular: {$regularDiscount})",
+                reference: $order->order_number,
+            );
+        }
+
+        // COGS / Inventory
+        $totalCost = 0.0;
+        foreach ($order->items as $item) {
+            $cost = 0.0;
+            if ($item->product) {
+                $cost = (float) $item->product->cost;
             }
+            $totalCost += $cost * (int) $item->quantity;
+        }
 
-            $entry = JournalEntry::create([
-                'entry_number' => $this->makeEntryNumber($order),
-                'entry_date' => $order->paid_at?->toDateString() ?? now()->toDateString(),
-                'type' => 'payment',
-                'reference' => $order->order_number,
-                'description' => 'Web sale (' . $paymentMethod . ')',
-                'status' => 'draft',
-                'created_by' => auth()->id() ?? 1,
-            ]);
+        if ($totalCost > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'cogs',
+                accountId: null,
+                debit: $totalCost,
+                credit: 0,
+                description: 'Cost of goods sold',
+                reference: $order->order_number,
+            );
 
-            // Calculate totals
-            $subtotal = (float) $order->subtotal;
-            $taxAmount = (float) $order->tax_amount;
-            $loyaltyDiscount = (float) ($order->loyalty_discount ?? 0);
-            $regularDiscount = (float) ($order->discount_amount ?? 0);
-            $totalDiscounts = $loyaltyDiscount + $regularDiscount;
-            
-            // Debit cash/bank account (actual amount received)
-            JournalEntryLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $cashAccount->id,
-                'debit' => $totalPaid,
-                'credit' => 0,
-                'description' => 'Web payment received',
-                'reference' => $order->order_number,
-            ]);
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'inventory',
+                accountId: null,
+                debit: 0,
+                credit: $totalCost,
+                description: 'Inventory reduction',
+                reference: $order->order_number,
+            );
+        }
 
-            // Credit sales revenue
-            if ($subtotal > 0) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $salesAccount->id,
-                    'debit' => 0,
-                    'credit' => $subtotal,
-                    'description' => 'Web sales revenue',
-                    'reference' => $order->order_number,
-                ]);
-            }
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'web_order',
+            documentId: $order->id,
+            postingDate: $order->paid_at?->toDateString() ?? now()->toDateString(),
+            description: "Web sale ({$paymentMethod})",
+            lines: $lines,
+            reference: $order->order_number,
+            userId: auth()->id() ?? 1,
+        ));
 
-            // Credit tax payable
-            if ($taxAmount > 0 && $taxAccount) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $taxAccount->id,
-                    'debit' => 0,
-                    'credit' => $taxAmount,
-                    'description' => 'Web sales tax',
-                    'reference' => $order->order_number,
-                ]);
-            }
-            
-            // Debit discount account for all discounts (to balance the entry)
-            // If discount account doesn't exist, use sales account (contra revenue)
-            $discountAccountId = $discountAccount?->id ?? $salesAccount->id;
-            
-            if ($totalDiscounts > 0) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $discountAccountId,
-                    'debit' => $totalDiscounts,
-                    'credit' => 0,
-                    'description' => 'Sales discount (loyalty: ' . $loyaltyDiscount . ', regular: ' . $regularDiscount . ')',
-                    'reference' => $order->order_number,
-                ]);
-            }
-
-            // Calculate and post COGS
-            $totalCost = 0.0;
-            foreach ($order->items as $item) {
-                $cost = 0.0;
-                if ($item->product) {
-                    $cost = (float) $item->product->cost;
-                }
-                $totalCost += $cost * (int) $item->quantity;
-            }
-
-            if ($totalCost > 0 && $cogsAccount && $inventoryAccount) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $cogsAccount->id,
-                    'debit' => $totalCost,
-                    'credit' => 0,
-                    'description' => 'Cost of goods sold',
-                    'reference' => $order->order_number,
-                ]);
-
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $inventoryAccount->id,
-                    'debit' => 0,
-                    'credit' => $totalCost,
-                    'description' => 'Inventory reduction',
-                    'reference' => $order->order_number,
-                ]);
-            }
-
-            // Verify the entry balances before posting
-            $totalDebits = $entry->lines->sum('debit');
-            $totalCredits = $entry->lines->sum('credit');
-            
-            Log::info('Journal entry balance check', [
-                'order_number' => $order->order_number,
-                'total_debits' => $totalDebits,
-                'total_credits' => $totalCredits,
-                'difference' => abs($totalDebits - $totalCredits),
-            ]);
-            
-            if (abs($totalDebits - $totalCredits) > 0.01) {
-                // Entry doesn't balance - log and save as draft
-                Log::warning('Journal entry does not balance, saving as draft', [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'total_debits' => $totalDebits,
-                    'total_credits' => $totalCredits,
-                    'difference' => $totalDebits - $totalCredits,
-                ]);
-                
-                return $entry; // Return without posting
-            }
-            
-            // Post the entry
-            $entry->post();
-            
-            Log::info('Web order posted to accounting', [
+        if (!$result->success) {
+            Log::warning('Web order posting failed', [
                 'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'entry_id' => $entry->id,
-                'entry_number' => $entry->entry_number,
+                'error' => $result->error,
             ]);
+            return null;
+        }
 
-            return $entry;
-        });
+        Log::info('Web order posted to accounting', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'entry_id' => $result->journalEntryId,
+        ]);
+
+        return $result->journalEntry;
     }
     
     /**
@@ -249,62 +219,43 @@ class WebOrderPostingService
      */
     public function reverseOrderPosting(WebOrder $order, string $reason = 'Order cancelled/refunded'): ?JournalEntry
     {
-        // Find the original entry
-        $originalEntry = JournalEntry::where('reference', $order->order_number)
-            ->where('type', 'payment')
+        // Find the original entry via link
+        $link = JournalEntryLink::where('source_document_type', 'web_order')
+            ->where('source_document_id', $order->id)
+            ->where('relation_type', 'post')
             ->first();
-            
-        if (!$originalEntry) {
+
+        if (!$link) {
             Log::info('No journal entry found to reverse for web order', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
             ]);
             return null;
         }
-        
+
         // Restore stock first
         $this->restoreStock($order);
-        
-        return DB::transaction(function () use ($order, $originalEntry, $reason) {
-            // Create reversal entry
-            $entry = JournalEntry::create([
-                'entry_number' => 'JE-WEB-REV-' . now()->format('YmdHis') . '-' . $order->id,
-                'entry_date' => now()->toDateString(),
-                'type' => 'adjustment',
-                'reference' => $order->order_number . '-REV',
-                'description' => $reason,
-                'status' => 'draft',
-                'created_by' => auth()->id() ?? 1,
-            ]);
-            
-            // Reverse all lines from original entry
-            foreach ($originalEntry->lines as $line) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $line->account_id,
-                    'debit' => $line->credit, // Swap debit/credit
-                    'credit' => $line->debit,
-                    'description' => 'Reversal: ' . $line->description,
-                    'reference' => $order->order_number,
-                ]);
-            }
-            
-            // Post the reversal entry
-            $entry->post();
-            
-            Log::info('Web order posting reversed', [
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'reversal_entry_id' => $entry->id,
-            ]);
-            
-            return $entry;
-        });
-    }
 
-    private function makeEntryNumber(WebOrder $order): string
-    {
-        $stamp = now()->format('YmdHis');
-        return 'JE-WEB-' . $stamp . '-' . $order->id;
+        $result = $this->postingEngine->reverse(
+            journalEntryId: $link->journal_entry_id,
+            reason: $reason,
+            approvedBy: auth()->id(),
+        );
+
+        if (!$result->success) {
+            Log::warning('Web order reversal failed', [
+                'order_id' => $order->id,
+                'error' => $result->error,
+            ]);
+            return null;
+        }
+
+        Log::info('Web order posting reversed', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'reversal_entry_id' => $result->journalEntryId,
+        ]);
+
+        return $result->journalEntry;
     }
 }
