@@ -24,9 +24,16 @@ class ProductCustomFieldController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        $slug = Str::slug($validated['name']);
+        $baseSlug = $slug;
+        $counter = 1;
+        while (ProductCustomField::where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter++;
+        }
+
         $field = ProductCustomField::create([
             'name' => $validated['name'],
-            'slug' => Str::slug($validated['name']),
+            'slug' => $slug,
             'type' => $validated['type'],
             'is_required' => $validated['is_required'] ?? false,
             'default_value' => $validated['default_value'],
@@ -36,8 +43,10 @@ class ProductCustomFieldController extends Controller
         return response()->json($field, 201);
     }
 
-    public function update(Request $request, ProductCustomField $productCustomField)
+    public function update(Request $request, int $id)
     {
+        $productCustomField = ProductCustomField::findOrFail($id);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'type' => 'string|in:text,number,date,boolean',
@@ -46,20 +55,29 @@ class ProductCustomFieldController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $productCustomField->update([
+        $updateData = [
             'name' => $validated['name'] ?? $productCustomField->name,
-            'slug' => isset($validated['name']) ? Str::slug($validated['name']) : $productCustomField->slug,
             'type' => $validated['type'] ?? $productCustomField->type,
             'is_required' => $validated['is_required'] ?? $productCustomField->is_required,
-            'default_value' => $validated['default_value'] ?? $productCustomField->default_value,
+            'default_value' => array_key_exists('default_value', $validated) ? $validated['default_value'] : $productCustomField->default_value,
             'is_active' => $validated['is_active'] ?? $productCustomField->is_active,
-        ]);
+        ];
 
-        return response()->json($productCustomField);
+        if (isset($validated['name'])) {
+            $newSlug = Str::slug($validated['name']);
+            if ($newSlug !== $productCustomField->slug && !ProductCustomField::where('slug', $newSlug)->where('id', '!=', $productCustomField->id)->exists()) {
+                $updateData['slug'] = $newSlug;
+            }
+        }
+
+        $productCustomField->update($updateData);
+
+        return response()->json($productCustomField->fresh());
     }
 
-    public function destroy(ProductCustomField $productCustomField)
+    public function destroy(int $id)
     {
+        $productCustomField = ProductCustomField::findOrFail($id);
         $productCustomField->delete();
         return response()->json(['message' => 'Custom field deleted successfully']);
     }

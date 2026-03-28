@@ -332,7 +332,7 @@ export function ProductEditPage() {
       // New ERP fields
       status: (product.status || 'draft') as ProductStatus,
       tracking_method: (product.tracking_method || 'quantity') as TrackingMethod,
-      reorder_point: product.reorder_point != null ? String(product.reorder_point) : '',
+      reorder_point: product.reorder_level != null ? String(product.reorder_level) : '',
       reorder_quantity: product.reorder_quantity != null ? String(product.reorder_quantity) : '',
       weight: product.weight != null ? String(product.weight) : '',
       weight_unit: product.weight_unit || 'kg',
@@ -408,8 +408,12 @@ export function ProductEditPage() {
       toast({ title: 'Product updated successfully' })
       navigate(`/products/${productId}`)
     },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Failed to update product' })
+    onError: (error: any) => {
+      const errors = error?.response?.data?.errors
+      const detail = errors
+        ? Object.values(errors).flat().slice(0, 3).join('; ')
+        : error?.response?.data?.message || 'Unknown error'
+      toast({ variant: 'destructive', title: 'Failed to update product', description: detail })
     },
   })
 
@@ -578,14 +582,12 @@ export function ProductEditPage() {
       // New ERP fields
       status: formData.status,
       tracking_method: formData.tracking_method,
-      reorder_point: formData.reorder_point ? parseInt(formData.reorder_point) : null,
+      reorder_level: formData.reorder_point ? parseInt(formData.reorder_point) : null,
       reorder_quantity: formData.reorder_quantity ? parseInt(formData.reorder_quantity) : null,
       weight: formData.weight ? parseFloat(formData.weight) : null,
-      weight_unit: formData.weight_unit || null,
       length: formData.length ? parseFloat(formData.length) : null,
       width: formData.width ? parseFloat(formData.width) : null,
       height: formData.height ? parseFloat(formData.height) : null,
-      dimension_unit: formData.dimension_unit || null,
 
       // Suppliers
       suppliers: productSuppliers.filter(s => s.supplier_id).map(s => ({
@@ -748,8 +750,10 @@ export function ProductEditPage() {
                           )}
                         >
                           {formData.category_parent_id
-                            ? categoryOptions.find((cat) => String(cat.id) === formData.category_parent_id)?.name ||
-                              categoryPath(categoryOptions.find((cat) => String(cat.id) === formData.category_parent_id)!)
+                            ? (() => {
+                                const found = categoryOptions.find((cat) => String(cat.id) === formData.category_parent_id)
+                                return found ? categoryPath(found) : 'Select category'
+                              })()
                             : 'Select category'}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>

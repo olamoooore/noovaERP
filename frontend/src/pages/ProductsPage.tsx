@@ -66,7 +66,7 @@ export function ProductsPage() {
     },
   })
 
-  const { data: productsResponse } = useQuery({
+  const { data: productsResponse, isLoading: productsLoading } = useQuery({
     queryKey: ['products', search, type, status, categoryId, sortBy, sortDir, page],
     queryFn: async () => {
       const params: Record<string, any> = {
@@ -89,6 +89,7 @@ export function ProductsPage() {
       const response = await api.get('/products', { params })
       return response.data
     },
+    placeholderData: (prev) => prev,
   })
 
   const products = productsResponse?.data || []
@@ -463,7 +464,14 @@ export function ProductsPage() {
                 {(!products || products.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
-                      No products found
+                      {productsLoading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                          Loading products…
+                        </div>
+                      ) : (
+                        'No products found'
+                      )}
                     </TableCell>
                   </TableRow>
                 )}
@@ -570,7 +578,14 @@ export function ProductsPage() {
               ))}
               {(!products || products.length === 0) && (
                 <div className="col-span-full text-center py-10 text-muted-foreground">
-                  No products found
+                  {productsLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                      Loading products…
+                    </div>
+                  ) : (
+                    'No products found'
+                  )}
                 </div>
               )}
             </div>

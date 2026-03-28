@@ -122,16 +122,12 @@ class InitializeTenantForPublicAccess
             // Auth failed silently - this is expected for public access
         }
 
-        // 3. If we still don't have a tenant, try finding the first available tenant
-        // This is a fallback for development environments
+        // 3. No tenant resolved — log warning but don't fall back to Tenant::first()
+        // as that causes cross-tenant data leakage
         if (!tenancy()->initialized) {
-            $firstTenant = \App\Models\Tenant::first();
-            if ($firstTenant) {
-                Log::info('InitializeTenantForPublicAccess: Using default tenant', [
-                    'tenant_id' => $firstTenant->id,
-                ]);
-                $this->tenancy->initialize($firstTenant);
-            }
+            Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved', [
+                'host' => $request->getHost(),
+            ]);
         }
 
         return $next($request);

@@ -541,13 +541,15 @@ class ProductController extends Controller
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
             'sku' => 'string|unique:products,sku,' . $product->id,
-            'barcode' => 'nullable|string|unique:products,barcode,' . $product->id,
+            'barcode' => 'nullable|string',
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
             'type' => 'in:product,service',
-            'cost' => 'numeric|min:0',
-            'price' => 'numeric|min:0',
+            'cost' => 'nullable|numeric|min:0',
+            'price' => 'nullable|numeric|min:0',
+            'wholesale_price' => 'nullable|numeric|min:0',
+            'msrp' => 'nullable|numeric|min:0',
             'tax_rate' => 'nullable|numeric|min:0|max:100',
             'tax_mode' => 'nullable|in:default,none,custom,tax',
             'tax_included' => 'nullable|boolean',
@@ -556,10 +558,19 @@ class ProductController extends Controller
             'income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'expense_account_id' => 'nullable|exists:chart_of_accounts,id',
             'track_inventory' => 'boolean',
+            'stock_quantity' => 'nullable|integer|min:0',
             'is_preorder' => 'boolean',
             'preorder_available_at' => 'nullable|date',
             'reorder_level' => 'nullable|integer|min:0',
+            'reorder_quantity' => 'nullable|integer|min:0',
             'unit' => 'nullable|string',
+            'status' => 'nullable|string|in:draft,pending_approval,active,discontinued,archived',
+            'tracking_method' => 'nullable|string|in:none,quantity,batch,serial',
+            'show_on_website' => 'boolean',
+            'weight' => 'nullable|numeric|min:0',
+            'length' => 'nullable|numeric|min:0',
+            'width' => 'nullable|numeric|min:0',
+            'height' => 'nullable|numeric|min:0',
             'image' => 'nullable|string',
             'gallery' => 'nullable|array',
             'gallery.*' => 'nullable|string',
@@ -574,15 +585,17 @@ class ProductController extends Controller
             'custom_field_values' => 'nullable|array',
             'custom_field_values.*.product_custom_field_id' => 'required|exists:product_custom_fields,id',
             'custom_field_values.*.value' => 'nullable|string',
+            'suppliers' => 'nullable|array',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
         ]);
 
         $featureValues = $validated['feature_values'] ?? null;
         $customFieldValues = $validated['custom_field_values'] ?? null;
-        unset($validated['feature_values'], $validated['custom_field_values']);
+        $suppliersData = $validated['suppliers'] ?? null;
+        unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers']);
 
-        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues) {
+        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData) {
             $product->update($validated);
 
             if (is_array($featureValues)) {

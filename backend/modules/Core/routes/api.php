@@ -140,8 +140,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::apiResource('product-features', ProductFeatureController::class);
     Route::apiResource('product-custom-fields', ProductCustomFieldController::class);
     Route::post('/product-categories', [ProductCategoryController::class, 'store']);
-    Route::put('/product-categories/{productCategory}', [ProductCategoryController::class, 'update']);
-    Route::delete('/product-categories/{productCategory}', [ProductCategoryController::class, 'destroy']);
+    Route::put('/product-categories/{id}', [ProductCategoryController::class, 'update']);
+    Route::delete('/product-categories/{id}', [ProductCategoryController::class, 'destroy']);
 
     // Product variants
     Route::get('/products/{product}/variants', [ProductVariantController::class, 'index']);

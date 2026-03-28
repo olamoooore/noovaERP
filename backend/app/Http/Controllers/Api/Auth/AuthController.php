@@ -36,11 +36,12 @@ class AuthController extends Controller
             ->first();
 
         if (!$defaultCompany) {
-            // Fall back to first tenant for development
-            $tenant = \App\Models\Tenant::first();
-        } else {
-            $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+            throw ValidationException::withMessages([
+                'email' => ['No tenant configured for this user. Please contact your administrator.'],
+            ]);
         }
+
+        $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
         
         if (!$tenant) {
             throw ValidationException::withMessages([

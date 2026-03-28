@@ -38,6 +38,24 @@ class TenantController extends Controller
                 'domain' => $validated['subdomain'] . '.' . config('app.domain', 'localhost'),
             ]);
 
+            // Create user in public schema (for authentication)
+            \DB::statement('SET search_path TO public');
+            $publicUser = \App\Models\User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            // Link user to tenant
+            \DB::table('user_company_access')->insert([
+                'user_id' => $publicUser->id,
+                'tenant_id' => $tenant->id,
+                'role' => 'owner',
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
             // Initialize tenant (run migrations)
             tenancy()->initialize($tenant);
 

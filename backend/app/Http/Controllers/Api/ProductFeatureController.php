@@ -24,9 +24,16 @@ class ProductFeatureController extends Controller
             'values.*.value' => 'required|string',
         ]);
 
+        $slug = Str::slug($validated['name']);
+        $baseSlug = $slug;
+        $counter = 1;
+        while (ProductFeature::where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter++;
+        }
+
         $feature = ProductFeature::create([
             'name' => $validated['name'],
-            'slug' => Str::slug($validated['name']),
+            'slug' => $slug,
             'type' => $validated['type'],
             'is_active' => $validated['is_active'] ?? true,
         ]);
@@ -40,23 +47,30 @@ class ProductFeatureController extends Controller
         return response()->json($feature->load('values'), 201);
     }
 
-    public function update(Request $request, ProductFeature $productFeature)
+    public function update(Request $request, int $id)
     {
+        $productFeature = ProductFeature::findOrFail($id);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'type' => 'string|in:text,select,toggle',
             'is_active' => 'boolean',
             'values' => 'nullable|array',
-            'values.*.id' => 'nullable|exists:product_feature_options,id',
+            'values.*.id' => 'nullable|integer',
             'values.*.value' => 'required|string',
         ]);
 
-        $productFeature->update([
-            'name' => $validated['name'] ?? $productFeature->name,
-            'slug' => isset($validated['name']) ? Str::slug($validated['name']) : $productFeature->slug,
-            'type' => $validated['type'] ?? $productFeature->type,
-            'is_active' => $validated['is_active'] ?? $productFeature->is_active,
-        ]);
+        $updateData = [];
+        if (isset($validated['name'])) {
+            $updateData['name'] = $validated['name'];
+            $newSlug = Str::slug($validated['name']);
+            if ($newSlug !== $productFeature->slug && !ProductFeature::where('slug', $newSlug)->where('id', '!=', $productFeature->id)->exists()) {
+                $updateData['slug'] = $newSlug;
+            }
+        }
+        if (isset($validated['type'])) $updateData['type'] = $validated['type'];
+        if (isset($validated['is_active'])) $updateData['is_active'] = $validated['is_active'];
+        if (!empty($updateData)) $productFeature->update($updateData);
 
         if (isset($validated['values'])) {
             $currentIds = collect($validated['values'])->pluck('id')->filter()->toArray();
@@ -78,8 +92,9 @@ class ProductFeatureController extends Controller
         return response()->json($productFeature->load('values'));
     }
 
-    public function destroy(ProductFeature $productFeature)
+    public function destroy(int $id)
     {
+        $productFeature = ProductFeature::findOrFail($id);
         $productFeature->delete();
         return response()->json(['message' => 'Feature deleted successfully']);
     }

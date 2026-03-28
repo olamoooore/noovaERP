@@ -31,8 +31,10 @@ class ProductCategoryController extends Controller
         return response()->json($category, 201);
     }
 
-    public function update(Request $request, ProductCategory $productCategory)
+    public function update(Request $request, int $id)
     {
+        $productCategory = ProductCategory::findOrFail($id);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'parent_id' => 'nullable|exists:product_categories,id',
@@ -44,8 +46,9 @@ class ProductCategoryController extends Controller
         return response()->json($productCategory->fresh());
     }
 
-    public function destroy(ProductCategory $productCategory)
+    public function destroy(int $id)
     {
+        $productCategory = ProductCategory::findOrFail($id);
         $productCategory->delete();
 
         return response()->json(['message' => 'Category deleted successfully']);

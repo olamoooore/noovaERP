@@ -26,8 +26,10 @@ class ProductUnitController extends Controller
         return response()->json($unit, 201);
     }
 
-    public function update(Request $request, ProductUnit $productUnit)
+    public function update(Request $request, int $id)
     {
+        $productUnit = ProductUnit::findOrFail($id);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'short_name' => 'nullable|string|max:50',
@@ -39,8 +41,9 @@ class ProductUnitController extends Controller
         return response()->json($productUnit);
     }
 
-    public function destroy(ProductUnit $productUnit)
+    public function destroy(int $id)
     {
+        $productUnit = ProductUnit::findOrFail($id);
         $productUnit->delete();
         return response()->json(['message' => 'Unit deleted successfully']);
     }

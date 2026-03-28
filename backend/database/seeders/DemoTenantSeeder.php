@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Models\Feature;
 use App\Models\TenantFeature;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DemoTenantSeeder extends Seeder
@@ -28,6 +30,21 @@ class DemoTenantSeeder extends Seeder
                 'domain' => 'demo.localhost',
             ]);
         }
+
+        // Ensure public schema user + user_company_access exist (for login)
+        DB::statement('SET search_path TO public');
+        $publicUser = User::where('email', 'admin@demo.com')->first();
+        if (!$publicUser) {
+            $publicUser = User::create([
+                'name' => 'Admin User',
+                'email' => 'admin@demo.com',
+                'password' => Hash::make('password'),
+            ]);
+        }
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $publicUser->id, 'tenant_id' => $tenant->id],
+            ['role' => 'admin', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]
+        );
 
         $tenant->run(function () {
             $user = User::where('email', 'admin@demo.com')->first();

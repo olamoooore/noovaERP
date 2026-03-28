@@ -39,6 +39,14 @@ class FixJournalEntriesSequence extends Command
             'payments',
             'web_orders',
             'web_order_items',
+            'products',
+            'product_attributes',
+            'product_attribute_values',
+            'product_features',
+            'product_feature_options',
+            'product_custom_fields',
+            'product_categories',
+            'product_units',
         ];
         
         foreach ($tenants as $tenant) {

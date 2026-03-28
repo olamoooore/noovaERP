@@ -28,20 +28,33 @@ class SetTenantFromUserPreference
                 ->where('is_default', true)
                 ->first();
 
-            if ($defaultCompany) {
-                // Find the tenant
-                $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
-                
-                if ($tenant) {
-                    Log::info('SetTenantFromUserPreference: Initializing tenant', [
-                        'user_id' => $user->id,
-                        'tenant_id' => $tenant->id,
-                    ]);
-                    
-                    // Initialize tenancy
-                    $this->tenancy->initialize($tenant);
-                }
+            if (!$defaultCompany) {
+                Log::warning('SetTenantFromUserPreference: No tenant mapping for user', [
+                    'user_id' => $user->id,
+                ]);
+                return response()->json([
+                    'message' => 'No tenant configured for this user.',
+                ], 403);
             }
+
+            $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+            
+            if (!$tenant) {
+                Log::error('SetTenantFromUserPreference: Tenant not found', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $defaultCompany->tenant_id,
+                ]);
+                return response()->json([
+                    'message' => 'Tenant not found.',
+                ], 403);
+            }
+
+            Log::info('SetTenantFromUserPreference: Initializing tenant', [
+                'user_id' => $user->id,
+                'tenant_id' => $tenant->id,
+            ]);
+            
+            $this->tenancy->initialize($tenant);
         }
 
         return $next($request);
