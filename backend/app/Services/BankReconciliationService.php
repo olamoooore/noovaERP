@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankReconciliation;
 use App\Models\ReconciliationItem;
 use App\Models\JournalEntry;
@@ -16,6 +19,9 @@ use Carbon\Carbon;
  */
 class BankReconciliationService
 {
+    public function __construct(
+        private PostingEngineInterface $postingEngine,
+    ) {}
     /**
      * Get unreconciled transactions for a bank account
      * 
@@ -183,12 +189,10 @@ class BankReconciliationService
             // Get bank account
             $bankAccount = ChartOfAccount::findOrFail($bankAccountId);
             
-            // Determine contra account (typically a bank fees or miscellaneous expense account)
-            // For now, we'll use a generic expense account or allow it to be specified
+            // Determine contra account
             $contraAccountId = $data['contra_account_id'] ?? null;
             
             if (!$contraAccountId) {
-                // Try to find a bank fees or miscellaneous expense account
                 $contraAccount = ChartOfAccount::where('type', 'expense')
                     ->where('name', 'ILIKE', '%bank%fee%')
                     ->orWhere('name', 'ILIKE', '%miscellaneous%')
@@ -201,62 +205,65 @@ class BankReconciliationService
                 $contraAccountId = $contraAccount->id;
             }
             
-            // Create journal entry
-            $journalEntry = JournalEntry::create([
-                'entry_number' => 'ADJ-' . now()->format('YmdHis'),
-                'entry_date' => $date,
-                'type' => 'adjusting',
-                'reference' => $data['reference'] ?? null,
-                'description' => $description,
-                'status' => 'draft',
-                'created_by' => auth()->id(),
-            ]);
-            
-            // Create journal entry lines
+            // Build posting lines
+            $lines = [];
+
             if ($type === 'debit') {
-                // Debit bank account, credit contra account
-                $bankLine = JournalEntryLine::create([
-                    'journal_entry_id' => $journalEntry->id,
-                    'account_id' => $bankAccountId,
-                    'debit' => $amount,
-                    'credit' => 0,
-                    'description' => $description,
-                    'reference' => $data['reference'] ?? null,
-                ]);
-                
-                JournalEntryLine::create([
-                    'journal_entry_id' => $journalEntry->id,
-                    'account_id' => $contraAccountId,
-                    'debit' => 0,
-                    'credit' => $amount,
-                    'description' => $description,
-                    'reference' => $data['reference'] ?? null,
-                ]);
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'bank',
+                    accountId: $bankAccountId,
+                    debit: $amount,
+                    credit: 0,
+                    description: $description,
+                    reference: $data['reference'] ?? null,
+                );
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'general_expense',
+                    accountId: $contraAccountId,
+                    debit: 0,
+                    credit: $amount,
+                    description: $description,
+                    reference: $data['reference'] ?? null,
+                );
             } else {
-                // Credit bank account, debit contra account
-                $bankLine = JournalEntryLine::create([
-                    'journal_entry_id' => $journalEntry->id,
-                    'account_id' => $bankAccountId,
-                    'debit' => 0,
-                    'credit' => $amount,
-                    'description' => $description,
-                    'reference' => $data['reference'] ?? null,
-                ]);
-                
-                JournalEntryLine::create([
-                    'journal_entry_id' => $journalEntry->id,
-                    'account_id' => $contraAccountId,
-                    'debit' => $amount,
-                    'credit' => 0,
-                    'description' => $description,
-                    'reference' => $data['reference'] ?? null,
-                ]);
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'bank',
+                    accountId: $bankAccountId,
+                    debit: 0,
+                    credit: $amount,
+                    description: $description,
+                    reference: $data['reference'] ?? null,
+                );
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'general_expense',
+                    accountId: $contraAccountId,
+                    debit: $amount,
+                    credit: 0,
+                    description: $description,
+                    reference: $data['reference'] ?? null,
+                );
             }
+
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'bank_adjustment',
+                documentId: $bankAccountId,
+                postingDate: $date->format('Y-m-d'),
+                description: $description,
+                lines: $lines,
+                reference: $data['reference'] ?? 'ADJ-' . now()->format('YmdHis'),
+                userId: auth()->id(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
+            }
+
+            // Return the bank account line from the posted entry
+            $bankLine = $result->journalEntry->lines
+                ->where('account_id', $bankAccountId)
+                ->first();
             
-            // Post the journal entry
-            $journalEntry->post();
-            
-            return $bankLine->fresh();
+            return $bankLine;
         });
     }
     

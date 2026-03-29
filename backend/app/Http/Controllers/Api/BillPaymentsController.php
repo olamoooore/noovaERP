@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BillPayment;
 use App\Models\Bill;
 use App\Models\Vendor;
@@ -12,18 +15,14 @@ use Illuminate\Support\Facades\Auth;
 
 class BillPaymentsController extends Controller
 {
+    public function __construct(
+        private PostingEngineInterface $postingEngine,
+    ) {}
     /**
      * Display a listing of bill payments
      */
     public function index(Request $request)
     {
-        // Debug: Log current search path
-        $searchPath = DB::select("SHOW search_path");
-        \Log::info('BillPayments index - search_path', [
-            'search_path' => $searchPath[0]->search_path ?? 'unknown',
-            'user_id' => Auth::id(),
-        ]);
-
         $query = BillPayment::with(['vendor', 'bill', 'journalEntry']);
 
         // Filter by vendor
@@ -60,12 +59,6 @@ class BillPaymentsController extends Controller
         $payments = $query->orderBy('payment_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage);
-
-        // Debug: Log count
-        \Log::info('BillPayments index - result', [
-            'count' => $payments->total(),
-            'search_path' => $searchPath[0]->search_path ?? 'unknown',
-        ]);
 
         return response()->json($payments);
     }
@@ -124,6 +117,42 @@ class BillPaymentsController extends Controller
                 'memo' => $validated['memo'] ?? null,
                 'created_by' => Auth::id(),
             ]);
+
+            // Post to accounting ledger via PostingEngine
+            // DR Accounts Payable, CR Cash/Bank
+            $lines = [];
+
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_payable',
+                accountId: null,
+                debit: (float) $validated['amount'],
+                credit: 0,
+                description: "Bill payment {$paymentNumber}",
+            );
+
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'cash',
+                accountId: null,
+                debit: 0,
+                credit: (float) $validated['amount'],
+                description: "Bill payment {$paymentNumber} - {$vendor->name}",
+            );
+
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'bill_payment',
+                documentId: $payment->id,
+                postingDate: $validated['payment_date'],
+                description: "Bill Payment #{$paymentNumber} - {$vendor->name}",
+                lines: $lines,
+                reference: $paymentNumber,
+                userId: Auth::id(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
+            }
+
+            $payment->update(['journal_entry_id' => $result->journalEntryId]);
 
             // Update bill if bill_id provided
             if (!empty($validated['bill_id'])) {

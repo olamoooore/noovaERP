@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\JournalEntry;
 use App\Models\Journal;
 use App\Models\LockDate;
-use App\Services\AccountingService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +16,6 @@ use Illuminate\Support\Facades\DB;
 class JournalEntriesController extends Controller
 {
     public function __construct(
-        private AccountingService $accountingService,
         private LockDateValidationService $lockDateService
     ) {}
 
@@ -118,14 +116,51 @@ class JournalEntriesController extends Controller
         }
 
         try {
-            $entry = $this->accountingService->createJournalEntry([
+            DB::beginTransaction();
+
+            // Validate balance
+            $totalDebit = collect($validated['lines'])->sum('debit');
+            $totalCredit = collect($validated['lines'])->sum('credit');
+
+            if (abs($totalDebit - $totalCredit) > 0.01) {
+                return response()->json([
+                    'message' => "Journal entry must balance. Debit: {$totalDebit}, Credit: {$totalCredit}",
+                ], 422);
+            }
+
+            // Generate entry number
+            $lastEntry = JournalEntry::orderBy('id', 'desc')->first();
+            $nextNum = $lastEntry ? ((int) substr($lastEntry->entry_number, 3)) + 1 : 1;
+            $entryNumber = 'JE-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
+
+            $entry = JournalEntry::create([
                 'journal_id' => $validated['journal_id'] ?? null,
+                'entry_number' => $entryNumber,
                 'entry_date' => $validated['entry_date'],
                 'type' => 'manual',
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'],
                 'status' => 'draft',
-            ], $validated['lines']);
+                'created_by' => auth()->id(),
+            ]);
+
+            foreach ($validated['lines'] as $line) {
+                $entry->lines()->create([
+                    'account_id' => $line['account_id'],
+                    'debit' => $line['debit'] ?? 0,
+                    'credit' => $line['credit'] ?? 0,
+                    'description' => $line['description'] ?? null,
+                    'reference' => $line['reference'] ?? null,
+                    'currency_code' => $line['currency_code'] ?? null,
+                    'original_amount' => $line['original_amount'] ?? null,
+                    'exchange_rate' => $line['exchange_rate'] ?? null,
+                    'department_id' => $line['department_id'] ?? null,
+                    'project_id' => $line['project_id'] ?? null,
+                    'location_id' => $line['location_id'] ?? null,
+                ]);
+            }
+
+            DB::commit();
 
             return response()->json([
                 'message' => 'Journal entry created successfully',
@@ -133,6 +168,7 @@ class JournalEntriesController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'message' => 'Error creating journal entry',
                 'error' => $e->getMessage(),

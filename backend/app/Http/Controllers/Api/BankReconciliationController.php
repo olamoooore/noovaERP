@@ -32,8 +32,7 @@ class BankReconciliationController extends Controller
                 ->where('is_active', true)
                 ->where(function($query) {
                     $query->where('subtype', 'ILIKE', '%bank%')
-                          ->orWhere('name', 'ILIKE', '%bank%')
-                          ->orWhere('code', 'ILIKE', '1020%'); // Common bank account code range
+                          ->orWhere('name', 'ILIKE', '%bank%');
                 })
                 ->get();
 

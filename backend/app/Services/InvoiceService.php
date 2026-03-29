@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\DB;
 class InvoiceService
 {
     public function __construct(
-        private AccountingService $accountingService,
         private PostingEngineInterface $postingEngine,
     ) {}
 
@@ -202,11 +201,45 @@ class InvoiceService
 
             $payment = Payment::create($paymentData);
 
-            // Post to accounting ledger
-            $journalEntry = $this->accountingService->postPayment($payment);
-            
+            // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
+            $lines = [];
+
+            // DR Cash/Bank
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'cash',
+                accountId: null,
+                debit: (float) $payment->amount,
+                credit: 0,
+                description: "Payment {$payment->payment_number}",
+            );
+
+            // CR Accounts Receivable
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_receivable',
+                accountId: null,
+                debit: 0,
+                credit: (float) $payment->amount,
+                description: "Payment received - {$payment->payment_number}",
+            );
+
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'payment',
+                documentId: $payment->id,
+                postingDate: $payment->payment_date instanceof \DateTimeInterface
+                    ? $payment->payment_date->format('Y-m-d')
+                    : (string) $payment->payment_date,
+                description: "Payment #{$payment->payment_number} - {$invoice->customer->name}",
+                lines: $lines,
+                reference: $payment->payment_number,
+                userId: auth()->id(),
+            ));
+
+            if (!$result->success) {
+                throw new \Exception($result->error);
+            }
+
             $payment->update([
-                'journal_entry_id' => $journalEntry->id,
+                'journal_entry_id' => $result->journalEntryId,
             ]);
 
             // Update invoice paid amount and balance

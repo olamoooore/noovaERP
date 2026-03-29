@@ -277,11 +277,11 @@ class PostingEngine implements PostingEngineInterface
         return match ($documentType) {
             'invoice', 'credit_note'       => 'sales',
             'bill', 'vendor_credit_note'   => 'purchases',
-            'payment', 'receipt'           => 'payments',
+            'payment', 'receipt', 'bill_payment' => 'payments',
             'pos_order'                    => 'sales',
             'ocr_document'                 => 'purchases',
             'web_order'                    => 'sales',
-            'fx_revaluation', 'depreciation', 'asset_disposal' => 'journal_entries',
+            'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment' => 'journal_entries',
             default                        => 'journal_entries',
         };
     }
