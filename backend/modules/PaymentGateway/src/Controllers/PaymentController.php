@@ -12,7 +12,6 @@ use Illuminate\Validation\Rule;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
-use App\Services\AccountingService;
 use Modules\POS\Models\PosOrder;
 
 class PaymentController extends Controller

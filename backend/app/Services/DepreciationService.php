@@ -8,7 +8,6 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\FixedAsset;
 use App\Models\DepreciationSchedule;
 use App\Models\JournalEntry;
-use App\Models\ChartOfAccount;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -18,14 +17,11 @@ use Illuminate\Support\Facades\DB;
  */
 class DepreciationService
 {
-    protected $accountingService;
     protected $postingEngine;
 
     public function __construct(
-        AccountingService $accountingService,
         PostingEngineInterface $postingEngine,
     ) {
-        $this->accountingService = $accountingService;
         $this->postingEngine = $postingEngine;
     }
 
@@ -220,29 +216,37 @@ class DepreciationService
         Carbon $periodDate
     ): JournalEntry {
         $lines = [
-            [
-                'account_id' => $asset->depreciation_account_id,
-                'debit' => $schedule->depreciation_amount,
-                'credit' => 0,
-                'description' => "Depreciation - {$asset->name}",
-            ],
-            [
-                'account_id' => $asset->accumulated_depreciation_account_id,
-                'debit' => 0,
-                'credit' => $schedule->depreciation_amount,
-                'description' => "Accumulated Depreciation - {$asset->name}",
-            ],
+            new PostingRequestLine(
+                accountMappingKey: 'depreciation_expense',
+                accountId: $asset->depreciation_account_id,
+                debit: (float) $schedule->depreciation_amount,
+                credit: 0,
+                description: "Depreciation - {$asset->name}",
+            ),
+            new PostingRequestLine(
+                accountMappingKey: 'accumulated_depreciation',
+                accountId: $asset->accumulated_depreciation_account_id,
+                debit: 0,
+                credit: (float) $schedule->depreciation_amount,
+                description: "Accumulated Depreciation - {$asset->name}",
+            ),
         ];
 
-        return $this->accountingService->createJournalEntry([
-            'entry_date' => $periodDate->format('Y-m-d'),
-            'type' => 'depreciation',
-            'reference' => $asset->asset_number,
-            'description' => "Depreciation for {$asset->name} - " . $periodDate->format('M Y'),
-            'status' => 'posted',
-            'posted_at' => now(),
-            'posted_by' => auth()->id(),
-        ], $lines);
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'depreciation',
+            documentId: $asset->id,
+            postingDate: $periodDate->format('Y-m-d'),
+            description: "Depreciation for {$asset->name} - " . $periodDate->format('M Y'),
+            lines: $lines,
+            reference: $asset->asset_number,
+            userId: auth()->id(),
+        ));
+
+        if (!$result->success) {
+            throw new \Exception($result->error);
+        }
+
+        return $result->journalEntry;
     }
 
     /**

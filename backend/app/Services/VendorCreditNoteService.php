@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\DB;
 class VendorCreditNoteService
 {
     public function __construct(
-        private AccountingService $accountingService,
         private PostingEngineInterface $postingEngine,
     ) {}
 

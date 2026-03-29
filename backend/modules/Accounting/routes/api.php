@@ -11,7 +11,6 @@
  */
 
 use Illuminate\Support\Facades\Route;
-use App\Services\AccountingService;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 
@@ -32,64 +31,13 @@ Route::middleware('auth:sanctum')->group(function () {
         ];
     });
 
-    // Accounting Dashboard Stats
-    Route::get('/accounting/dashboard', function () {
-        $thisMonth = now()->startOfMonth();
-        $lastMonth = now()->subMonth()->startOfMonth();
+    // RETIRED — see EDR-ACC-ARCH-2026-03-29
+    // Dashboard route moved to Core module (AccountingDashboardController)
+    // Route::get('/accounting/dashboard', function () { ... });
 
-        // Get revenue/expense totals
-        $revenueAccounts = ChartOfAccount::where('type', 'revenue')->pluck('id');
-        $expenseAccounts = ChartOfAccount::where('type', 'expense')->pluck('id');
-
-        return response()->json([
-            'accounts' => [
-                'total' => ChartOfAccount::where('is_active', true)->count(),
-                'by_type' => ChartOfAccount::where('is_active', true)
-                    ->selectRaw('type, COUNT(*) as count')
-                    ->groupBy('type')
-                    ->pluck('count', 'type'),
-            ],
-            'journal_entries' => [
-                'this_month' => JournalEntry::where('entry_date', '>=', $thisMonth)->where('status', 'posted')->count(),
-                'pending' => JournalEntry::where('status', 'draft')->count(),
-            ],
-            'quick_stats' => [
-                'cash_balance' => ChartOfAccount::where('code', '1010')->first()?->getBalance() ?? 0,
-                'bank_balance' => ChartOfAccount::where('code', '1020')->first()?->getBalance() ?? 0,
-                'ar_balance' => ChartOfAccount::where('code', '1100')->first()?->getBalance() ?? 0,
-                'ap_balance' => ChartOfAccount::where('code', '2100')->first()?->getBalance() ?? 0,
-            ],
-        ]);
-    });
-
-    // Create manual journal entry
-    Route::post('/accounting/journal-entries', function () {
-        $validated = request()->validate([
-            'entry_date' => 'required|date',
-            'description' => 'required|string',
-            'reference' => 'nullable|string',
-            'lines' => 'required|array|min:2',
-            'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
-            'lines.*.debit' => 'required|numeric|min:0',
-            'lines.*.credit' => 'required|numeric|min:0',
-            'lines.*.description' => 'nullable|string',
-        ]);
-
-        $accountingService = app(AccountingService::class);
-
-        try {
-            $entry = $accountingService->createJournalEntry([
-                'entry_date' => $validated['entry_date'],
-                'type' => 'manual',
-                'reference' => $validated['reference'] ?? null,
-                'description' => $validated['description'],
-            ], $validated['lines']);
-
-            return response()->json($entry->load('lines.account'), 201);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        }
-    });
+    // RETIRED — see EDR-ACC-ARCH-2026-03-29
+    // Journal entry creation moved to Core module (JournalEntriesController::store)
+    // Route::post('/accounting/journal-entries', function () { ... });
 
     // Post draft journal entry
     Route::post('/accounting/journal-entries/{journalEntry}/post', function (JournalEntry $journalEntry) {

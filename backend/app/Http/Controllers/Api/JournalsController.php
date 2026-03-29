@@ -177,4 +177,27 @@ class JournalsController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get next entry number for a journal
+     */
+    public function getNextEntryNumber(int $id): JsonResponse
+    {
+        try {
+            $journal = Journal::findOrFail($id);
+            $nextNumber = $journal->getNextEntryNumber();
+
+            return response()->json([
+                'data' => [
+                    'entry_number' => $nextNumber,
+                    'journal_id' => $journal->id,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to generate next entry number',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
