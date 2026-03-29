@@ -23,5 +23,7 @@ class PostingRequest
         public readonly ?string $overrideReason = null,
         public readonly ?int $approvedBy = null,
         public readonly array $metadata = [],
+        public readonly ?int $legalEntityId = null,
+        public readonly ?int $entityBookId = null,
     ) {}
 }

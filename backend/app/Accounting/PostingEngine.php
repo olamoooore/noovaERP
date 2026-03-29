@@ -71,6 +71,8 @@ class PostingEngine implements PostingEngineInterface
                     'posted_at'    => now(),
                     'posted_by'    => $userId,
                     'created_by'   => $userId,
+                    'legal_entity_id' => $request->legalEntityId,
+                    'entity_book_id'  => $request->entityBookId,
                 ]);
 
                 foreach ($resolvedLines as $line) {
