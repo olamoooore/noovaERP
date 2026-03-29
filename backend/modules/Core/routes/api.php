@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
+use App\Http\Controllers\Api\OnboardingSessionsController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -229,6 +230,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/account-roles', [AccountRolesController::class, 'index']);
         Route::post('/account-roles/assign', [AccountRolesController::class, 'assign']);
         Route::delete('/account-roles/{roleId}/unassign', [AccountRolesController::class, 'unassign']);
+
+        // Onboarding (Phase 3 — onboarding engine)
+        Route::get('/onboarding/steps', [OnboardingSessionsController::class, 'steps']);
+        Route::get('/onboarding/sessions', [OnboardingSessionsController::class, 'index']);
+        Route::post('/onboarding/sessions', [OnboardingSessionsController::class, 'store']);
+        Route::get('/onboarding/sessions/{id}', [OnboardingSessionsController::class, 'show']);
+        Route::post('/onboarding/sessions/{id}/advance', [OnboardingSessionsController::class, 'advance']);
+        Route::post('/onboarding/sessions/{id}/resume', [OnboardingSessionsController::class, 'resume']);
+        Route::post('/onboarding/sessions/{id}/abandon', [OnboardingSessionsController::class, 'abandon']);
+        Route::post('/onboarding/sessions/{id}/skip', [OnboardingSessionsController::class, 'skip']);
 
         // Currencies
         Route::get('/currencies', [CurrenciesController::class, 'index']);
