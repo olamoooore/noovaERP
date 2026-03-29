@@ -49,7 +49,7 @@ class AccountRoleResolver
      */
     public function isRoleBased(): bool
     {
-        return config('accounting.account_resolution', env('ACCOUNT_RESOLUTION', 'legacy')) === 'roles';
+        return config('accounting.account_resolution', env('ACCOUNT_RESOLUTION', 'roles')) === 'roles';
     }
 
     /**

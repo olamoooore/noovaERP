@@ -6,7 +6,9 @@ use App\Accounting\Services\FxRevaluationService;
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
-use App\Services\AccountingService;
+use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
+use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -14,7 +16,8 @@ use Illuminate\Validation\Rule;
 class AccountingController extends Controller
 {
     public function __construct(
-        private AccountingService $accountingService
+        private TrialBalanceService $trialBalanceService,
+        private GeneralLedgerService $generalLedgerService,
     ) {}
 
     // ==================== Chart of Accounts CRUD ====================
@@ -301,17 +304,33 @@ class AccountingController extends Controller
 
     public function trialBalance()
     {
-        $trialBalance = $this->accountingService->getTrialBalance();
+        $filter = new ReportFilter(asOfDate: now());
+        $reportData = $this->trialBalanceService->generate($filter);
 
-        return response()->json($trialBalance);
+        return response()->json([
+            'accounts' => $reportData->data,
+            'total_debit' => $reportData->summary['total_debits'],
+            'total_credit' => $reportData->summary['total_credits'],
+            'is_balanced' => $reportData->summary['is_balanced'],
+        ]);
     }
 
     public function ledger($accountId)
     {
         try {
-            $ledger = $this->accountingService->getAccountLedger((int) $accountId);
+            $filter = new ReportFilter(
+                startDate: now()->startOfYear(),
+                endDate: now(),
+                accountId: (int) $accountId,
+            );
+            $reportData = $this->generalLedgerService->generate($filter);
 
-            return response()->json($ledger);
+            return response()->json([
+                'account' => $reportData->data['account'] ?? null,
+                'opening_balance' => $reportData->data['opening_balance'] ?? 0,
+                'transactions' => $reportData->data['transactions'] ?? [],
+                'closing_balance' => $reportData->data['closing_balance'] ?? 0,
+            ]);
 
         } catch (\Exception $e) {
             return response()->json([

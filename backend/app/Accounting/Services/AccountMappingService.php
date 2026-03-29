@@ -15,8 +15,9 @@ class AccountMappingService
     private array $cache = [];
 
     /**
-     * Well-known fallback codes used when no mapping row exists.
-     * Tenants should configure account_mappings to override these.
+     * Well-known fallback codes — DEPRECATED.
+     * Kept only for seedDefaults() migration tool; resolve() no longer uses these.
+     * @deprecated Will be removed after all tenants have account_mappings configured.
      */
     private const FALLBACKS = [
         'cash'                      => '1010',
@@ -75,23 +76,12 @@ class AccountMappingService
             return $this->cache[$cacheKey] = $mapping->account;
         }
 
-        // 3. Fallback to well-known code
-        $fallbackCode = self::FALLBACKS[$key] ?? null;
-
-        if ($fallbackCode) {
-            $account = ChartOfAccount::where('code', $fallbackCode)
-                ->where('is_active', true)
-                ->first();
-
-            if ($account) {
-                return $this->cache[$cacheKey] = $account;
-            }
-        }
-
+        // Fallback codes have been removed — tenant must configure account_mappings
+        // or use AccountRoleResolver (ACCOUNT_RESOLUTION=roles).
         throw new \RuntimeException(
             "Cannot resolve GL account for mapping key '{$key}'" .
             ($documentType ? " (document type: {$documentType})" : '') .
-            ". Please configure account_mappings or ensure a chart-of-accounts entry exists."
+            ". Please configure account_mappings or assign an account role."
         );
     }
 

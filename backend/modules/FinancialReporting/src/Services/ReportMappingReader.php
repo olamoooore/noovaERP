@@ -17,7 +17,7 @@ class ReportMappingReader
      */
     public function isMapped(): bool
     {
-        return config('app.report_classification', env('REPORT_CLASSIFICATION', 'legacy')) === 'mapped';
+        return config('app.report_classification', env('REPORT_CLASSIFICATION', 'mapped')) === 'mapped';
     }
 
     // ─── Tag-based resolution ───────────────────────────────────────────
