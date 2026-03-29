@@ -107,7 +107,6 @@ class TrialBalanceService extends BaseReportService
         if ($filter?->entityBookId) {
             $query->where('je.entity_book_id', $filter->entityBookId);
         }
-        }
 
         $accounts = $query->select([
                 'coa.id',
