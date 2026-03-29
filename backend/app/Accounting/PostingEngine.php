@@ -7,6 +7,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\Services\AccountMappingService;
+use App\Accounting\Services\AccountRoleResolver;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
@@ -20,6 +21,7 @@ class PostingEngine implements PostingEngineInterface
 {
     public function __construct(
         private readonly AccountMappingService $accountMapper,
+        private readonly AccountRoleResolver $roleResolver,
         private readonly LockDateValidationService $lockDateValidator,
         private readonly FiscalPeriodValidator $fiscalValidator,
     ) {}
@@ -249,7 +251,9 @@ class PostingEngine implements PostingEngineInterface
 
             // Resolve account: explicit ID wins, otherwise map by key
             $accountId = $line->accountId
-                ?? $this->accountMapper->resolveId($line->accountMappingKey, $documentType);
+                ?? ($this->roleResolver->isRoleBased()
+                    ? $this->roleResolver->resolveId($line->accountMappingKey, $documentType)
+                    : $this->accountMapper->resolveId($line->accountMappingKey, $documentType));
 
             $resolved[] = [
                 'account_id'      => $accountId,

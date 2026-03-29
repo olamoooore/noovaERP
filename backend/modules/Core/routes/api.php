@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\AccountingDashboardController;
+use App\Http\Controllers\Api\AccountRolesController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -224,6 +225,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
         Route::get('/lock-dates/overrides/history', [LockDatesController::class, 'overrides']);
         
+        // Account Roles (Phase 2 — role-based account resolution)
+        Route::get('/account-roles', [AccountRolesController::class, 'index']);
+        Route::post('/account-roles/assign', [AccountRolesController::class, 'assign']);
+        Route::delete('/account-roles/{roleId}/unassign', [AccountRolesController::class, 'unassign']);
+
         // Currencies
         Route::get('/currencies', [CurrenciesController::class, 'index']);
         Route::get('/currencies/active', [CurrenciesController::class, 'active']);
