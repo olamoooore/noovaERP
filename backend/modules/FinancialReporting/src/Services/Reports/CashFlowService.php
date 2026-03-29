@@ -3,6 +3,7 @@
 namespace Modules\FinancialReporting\Services\Reports;
 
 use Modules\FinancialReporting\Services\BaseReportService;
+use Modules\FinancialReporting\Services\ReportMappingReader;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,13 @@ use Carbon\Carbon;
 
 class CashFlowService extends BaseReportService
 {
+    protected ReportMappingReader $mappingReader;
+
+    public function __construct(ReportMappingReader $mappingReader)
+    {
+        parent::__construct();
+        $this->mappingReader = $mappingReader;
+    }
     /**
      * Generate Cash Flow Statement
      */
@@ -319,13 +327,15 @@ class CashFlowService extends BaseReportService
      */
     protected function getCashBalance(Carbon $date): float
     {
-        return DB::table('journal_entry_lines as jel')
+        $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
-            ->where('je.entry_date', '<=', $date)
-            ->whereBetween('coa.code', ['1000', '1099']) // Cash accounts
-            ->sum(DB::raw('jel.debit - jel.credit'));
+            ->where('je.entry_date', '<=', $date);
+
+        $this->mappingReader->applyFilter($query, 'CF_CASH');
+
+        return $query->sum(DB::raw('jel.debit - jel.credit'));
     }
 
     /**
@@ -351,7 +361,7 @@ class CashFlowService extends BaseReportService
         $changes = [];
 
         // Accounts Receivable change (increase = negative, decrease = positive)
-        $arChange = $this->getAccountBalanceChange($filter, '1100', '1199');
+        $arChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AR');
         if ($arChange != 0) {
             $changes[] = [
                 'description' => 'Change in Accounts Receivable',
@@ -360,7 +370,7 @@ class CashFlowService extends BaseReportService
         }
 
         // Inventory change (increase = negative, decrease = positive)
-        $inventoryChange = $this->getAccountBalanceChange($filter, '1200', '1299');
+        $inventoryChange = $this->getAccountBalanceChangeByTag($filter, 'CF_INVENTORY');
         if ($inventoryChange != 0) {
             $changes[] = [
                 'description' => 'Change in Inventory',
@@ -369,7 +379,7 @@ class CashFlowService extends BaseReportService
         }
 
         // Accounts Payable change (increase = positive, decrease = negative)
-        $apChange = $this->getAccountBalanceChange($filter, '2000', '2099');
+        $apChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AP');
         if ($apChange != 0) {
             $changes[] = [
                 'description' => 'Change in Accounts Payable',
@@ -412,7 +422,7 @@ class CashFlowService extends BaseReportService
     {
         // Revenue + decrease in AR (or - increase in AR)
         $revenue = $this->getAmountByType($filter, 'revenue');
-        $arChange = $this->getAccountBalanceChange($filter, '1100', '1199');
+        $arChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AR');
         
         return $revenue - $arChange;
     }
@@ -423,9 +433,9 @@ class CashFlowService extends BaseReportService
     protected function getCashToSuppliers(ReportFilter $filter): float
     {
         // COGS + increase in inventory - increase in AP
-        $cogs = $this->getAmountByCodeRange($filter, '5000', '5099');
-        $inventoryChange = $this->getAccountBalanceChange($filter, '1200', '1299');
-        $apChange = $this->getAccountBalanceChange($filter, '2000', '2099');
+        $cogs = $this->getAmountByTag($filter, 'PL_COGS');
+        $inventoryChange = $this->getAccountBalanceChangeByTag($filter, 'CF_INVENTORY');
+        $apChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AP');
         
         return $cogs + $inventoryChange - $apChange;
     }
@@ -436,7 +446,7 @@ class CashFlowService extends BaseReportService
     protected function getCashForOperatingExpenses(ReportFilter $filter): float
     {
         // Operating expenses (excluding depreciation)
-        return $this->getAmountByCodeRange($filter, '5100', '5199');
+        return $this->getAmountByTag($filter, 'PL_OPERATING_EXPENSES');
     }
 
     /**
@@ -445,7 +455,7 @@ class CashFlowService extends BaseReportService
     protected function getAssetPurchases(ReportFilter $filter): float
     {
         // Increase in fixed assets (debit to fixed asset accounts)
-        return $this->getAccountBalanceChange($filter, '1300', '1899');
+        return $this->getAccountBalanceChangeByTag($filter, 'CF_FIXED_ASSETS');
     }
 
     /**
@@ -463,7 +473,7 @@ class CashFlowService extends BaseReportService
     protected function getLoanProceeds(ReportFilter $filter): float
     {
         // Increase in long-term liabilities
-        $change = $this->getAccountBalanceChange($filter, '2100', '2999');
+        $change = $this->getAccountBalanceChangeByTag($filter, 'CF_LONG_TERM_LIABILITIES');
         return $change > 0 ? $change : 0;
     }
 
@@ -473,7 +483,7 @@ class CashFlowService extends BaseReportService
     protected function getLoanRepayments(ReportFilter $filter): float
     {
         // Decrease in long-term liabilities
-        $change = $this->getAccountBalanceChange($filter, '2100', '2999');
+        $change = $this->getAccountBalanceChangeByTag($filter, 'CF_LONG_TERM_LIABILITIES');
         return $change < 0 ? abs($change) : 0;
     }
 
@@ -483,7 +493,7 @@ class CashFlowService extends BaseReportService
     protected function getOwnerContributions(ReportFilter $filter): float
     {
         // Increase in capital accounts
-        $change = $this->getAccountBalanceChange($filter, '3000', '3099');
+        $change = $this->getAccountBalanceChangeByTag($filter, 'CF_CAPITAL');
         return $change > 0 ? $change : 0;
     }
 
@@ -493,7 +503,7 @@ class CashFlowService extends BaseReportService
     protected function getOwnerWithdrawals(ReportFilter $filter): float
     {
         // Drawings/withdrawals
-        return $this->getAmountByCodeRange($filter, '3200', '3299');
+        return $this->getAmountByTag($filter, 'CF_DRAWINGS');
     }
 
     /**
@@ -517,6 +527,7 @@ class CashFlowService extends BaseReportService
 
     /**
      * Get amount by code range
+     * @deprecated Use getAmountByTag() instead
      */
     protected function getAmountByCodeRange(ReportFilter $filter, string $codeStart, string $codeEnd): float
     {
@@ -527,5 +538,48 @@ class CashFlowService extends BaseReportService
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
             ->whereBetween('coa.code', [$codeStart, $codeEnd])
             ->sum('jel.debit');
+    }
+
+    /**
+     * Get amount for a report tag (mapped or legacy code-range).
+     */
+    protected function getAmountByTag(ReportFilter $filter, string $tagCode): float
+    {
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->where('je.status', 'posted')
+            ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
+
+        $this->mappingReader->applyFilter($query, $tagCode);
+
+        return $query->sum('jel.debit');
+    }
+
+    /**
+     * Get account balance change between start and end date using report tag.
+     */
+    protected function getAccountBalanceChangeByTag(ReportFilter $filter, string $tagCode): float
+    {
+        $startBalance = $this->getAccountBalanceAtDateByTag($filter->startDate->copy()->subDay(), $tagCode);
+        $endBalance = $this->getAccountBalanceAtDateByTag($filter->endDate, $tagCode);
+
+        return $endBalance - $startBalance;
+    }
+
+    /**
+     * Get account balance at a specific date using report tag.
+     */
+    protected function getAccountBalanceAtDateByTag(Carbon $date, string $tagCode): float
+    {
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->where('je.status', 'posted')
+            ->where('je.entry_date', '<=', $date);
+
+        $this->mappingReader->applyFilter($query, $tagCode);
+
+        return $query->sum(DB::raw('jel.debit - jel.credit'));
     }
 }

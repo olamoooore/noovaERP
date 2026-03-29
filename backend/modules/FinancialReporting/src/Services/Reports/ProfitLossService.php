@@ -3,6 +3,7 @@
 namespace Modules\FinancialReporting\Services\Reports;
 
 use Modules\FinancialReporting\Services\BaseReportService;
+use Modules\FinancialReporting\Services\ReportMappingReader;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,13 @@ use Carbon\Carbon;
 
 class ProfitLossService extends BaseReportService
 {
+    protected ReportMappingReader $mappingReader;
+
+    public function __construct(ReportMappingReader $mappingReader)
+    {
+        parent::__construct();
+        $this->mappingReader = $mappingReader;
+    }
     /**
      * Generate Profit & Loss report
      */
@@ -37,10 +45,10 @@ class ProfitLossService extends BaseReportService
 
         // Get detailed breakdown
         $revenueDetails = $this->getAccountDetails($filter, 'revenue', $useSummary);
-        $cogsDetails = $this->getAccountDetails($filter, 'expense', $useSummary, '5000-5099');
-        $opexDetails = $this->getAccountDetails($filter, 'expense', $useSummary, '5100-5199');
-        $otherIncomeDetails = $this->getAccountDetails($filter, 'revenue', $useSummary, '4100-4999');
-        $otherExpenseDetails = $this->getAccountDetails($filter, 'expense', $useSummary, '5200-5999');
+        $cogsDetails = $this->getAccountDetails($filter, 'expense', $useSummary, 'PL_COGS');
+        $opexDetails = $this->getAccountDetails($filter, 'expense', $useSummary, 'PL_OPERATING_EXPENSES');
+        $otherIncomeDetails = $this->getAccountDetails($filter, 'revenue', $useSummary, 'PL_OTHER_INCOME');
+        $otherExpenseDetails = $this->getAccountDetails($filter, 'expense', $useSummary, 'PL_OTHER_EXPENSES');
 
         // Build report data
         $data = [
@@ -128,10 +136,10 @@ class ProfitLossService extends BaseReportService
     protected function getCostOfGoodsSold(ReportFilter $filter, bool $useSummary): float
     {
         if ($useSummary) {
-            return $this->getAmountFromSummary($filter, 'expense', '5000-5099');
+            return $this->getAmountFromSummary($filter, 'expense', 'PL_COGS');
         }
 
-        return $this->getAmountFromJournal($filter, 'expense', '5000-5099');
+        return $this->getAmountFromJournal($filter, 'expense', 'PL_COGS');
     }
 
     /**
@@ -140,10 +148,10 @@ class ProfitLossService extends BaseReportService
     protected function getOperatingExpenses(ReportFilter $filter, bool $useSummary): float
     {
         if ($useSummary) {
-            return $this->getAmountFromSummary($filter, 'expense', '5100-5199');
+            return $this->getAmountFromSummary($filter, 'expense', 'PL_OPERATING_EXPENSES');
         }
 
-        return $this->getAmountFromJournal($filter, 'expense', '5100-5199');
+        return $this->getAmountFromJournal($filter, 'expense', 'PL_OPERATING_EXPENSES');
     }
 
     /**
@@ -152,10 +160,10 @@ class ProfitLossService extends BaseReportService
     protected function getOtherIncome(ReportFilter $filter, bool $useSummary): float
     {
         if ($useSummary) {
-            return $this->getAmountFromSummary($filter, 'revenue', '4100-4999');
+            return $this->getAmountFromSummary($filter, 'revenue', 'PL_OTHER_INCOME');
         }
 
-        return $this->getAmountFromJournal($filter, 'revenue', '4100-4999');
+        return $this->getAmountFromJournal($filter, 'revenue', 'PL_OTHER_INCOME');
     }
 
     /**
@@ -164,25 +172,24 @@ class ProfitLossService extends BaseReportService
     protected function getOtherExpenses(ReportFilter $filter, bool $useSummary): float
     {
         if ($useSummary) {
-            return $this->getAmountFromSummary($filter, 'expense', '5200-5999');
+            return $this->getAmountFromSummary($filter, 'expense', 'PL_OTHER_EXPENSES');
         }
 
-        return $this->getAmountFromJournal($filter, 'expense', '5200-5999');
+        return $this->getAmountFromJournal($filter, 'expense', 'PL_OTHER_EXPENSES');
     }
 
     /**
      * Get amount from summary table
      */
-    protected function getAmountFromSummary(ReportFilter $filter, string $accountType, ?string $codeRange = null): float
+    protected function getAmountFromSummary(ReportFilter $filter, string $accountType, ?string $tagCode = null): float
     {
         $query = DB::table('daily_ledger_summaries as dls')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
             ->where('coa.type', $accountType)
             ->whereBetween('dls.summary_date', [$filter->startDate, $filter->endDate]);
 
-        if ($codeRange) {
-            [$start, $end] = explode('-', $codeRange);
-            $query->whereBetween('coa.code', [$start, $end]);
+        if ($tagCode) {
+            $this->mappingReader->applyFilter($query, $tagCode);
         }
 
         // Apply dimension filters
@@ -197,7 +204,7 @@ class ProfitLossService extends BaseReportService
     /**
      * Get amount from journal entries
      */
-    protected function getAmountFromJournal(ReportFilter $filter, string $accountType, ?string $codeRange = null): float
+    protected function getAmountFromJournal(ReportFilter $filter, string $accountType, ?string $tagCode = null): float
     {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -206,9 +213,8 @@ class ProfitLossService extends BaseReportService
             ->where('coa.type', $accountType)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
 
-        if ($codeRange) {
-            [$start, $end] = explode('-', $codeRange);
-            $query->whereBetween('coa.code', [$start, $end]);
+        if ($tagCode) {
+            $this->mappingReader->applyFilter($query, $tagCode);
         }
 
         // Apply dimension filters
@@ -224,7 +230,7 @@ class ProfitLossService extends BaseReportService
     /**
      * Get account details
      */
-    protected function getAccountDetails(ReportFilter $filter, string $accountType, bool $useSummary, ?string $codeRange = null): array
+    protected function getAccountDetails(ReportFilter $filter, string $accountType, bool $useSummary, ?string $tagCode = null): array
     {
         if ($useSummary) {
             $query = DB::table('daily_ledger_summaries as dls')
@@ -254,9 +260,8 @@ class ProfitLossService extends BaseReportService
                 ->groupBy('coa.id', 'coa.code', 'coa.name');
         }
 
-        if ($codeRange) {
-            [$start, $end] = explode('-', $codeRange);
-            $query->whereBetween('coa.code', [$start, $end]);
+        if ($tagCode) {
+            $this->mappingReader->applyFilter($query, $tagCode);
         }
 
         return $query->orderBy('coa.code')

@@ -3,6 +3,7 @@
 namespace Modules\FinancialReporting\Services\Reports;
 
 use Modules\FinancialReporting\Services\BaseReportService;
+use Modules\FinancialReporting\Services\ReportMappingReader;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,13 @@ use Carbon\Carbon;
 
 class BalanceSheetService extends BaseReportService
 {
+    protected ReportMappingReader $mappingReader;
+
+    public function __construct(ReportMappingReader $mappingReader)
+    {
+        parent::__construct();
+        $this->mappingReader = $mappingReader;
+    }
     /**
      * Generate Balance Sheet report
      */
@@ -201,15 +209,10 @@ class BalanceSheetService extends BaseReportService
                 ->groupBy('coa.id', 'coa.code', 'coa.name');
         }
 
-        // Filter by category using account code ranges
-        $codeRanges = $this->getCategoryCodeRanges($type, $category);
-        if ($codeRanges) {
-            $query->where(function ($q) use ($codeRanges) {
-                foreach ($codeRanges as $range) {
-                    [$start, $end] = explode('-', $range);
-                    $q->orWhereBetween('coa.code', [$start, $end]);
-                }
-            });
+        // Filter by category using report tag mappings
+        $tagCode = $this->getCategoryTagCode($type, $category);
+        if ($tagCode) {
+            $this->mappingReader->applyFilter($query, $tagCode);
         }
 
         return $query->orderBy('coa.code')
@@ -224,7 +227,28 @@ class BalanceSheetService extends BaseReportService
     }
 
     /**
-     * Get category code ranges
+     * Get category tag code for report mapping
+     */
+    protected function getCategoryTagCode(string $type, string $category): ?string
+    {
+        $map = [
+            'asset' => [
+                'current_asset' => 'BS_CURRENT_ASSETS',
+                'fixed_asset' => 'BS_NON_CURRENT_ASSETS',
+                'other_asset' => 'BS_OTHER_ASSETS',
+            ],
+            'liability' => [
+                'current_liability' => 'BS_CURRENT_LIABILITIES',
+                'long_term_liability' => 'BS_NON_CURRENT_LIABILITIES',
+            ],
+        ];
+
+        return $map[$type][$category] ?? null;
+    }
+
+    /**
+     * Get category code ranges (legacy, delegated to ReportMappingReader)
+     * @deprecated Use getCategoryTagCode() + ReportMappingReader instead
      */
     protected function getCategoryCodeRanges(string $type, string $category): ?array
     {
@@ -235,8 +259,8 @@ class BalanceSheetService extends BaseReportService
                 'other_asset' => ['1900-1999'],
             ],
             'liability' => [
-                'current_liability' => ['2000-2199'],  // Changed from 2099 to 2199 to include AP (2100)
-                'long_term_liability' => ['2200-2999'],  // Changed from 2100 to 2200
+                'current_liability' => ['2000-2199'],
+                'long_term_liability' => ['2200-2999'],
             ],
         ];
 
@@ -248,12 +272,14 @@ class BalanceSheetService extends BaseReportService
      */
     protected function getEquityFromSummary(ReportFilter $filter): float
     {
-        return DB::table('daily_ledger_summaries as dls')
+        $query = DB::table('daily_ledger_summaries as dls')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
             ->where('coa.type', 'equity')
-            ->where('dls.summary_date', '<=', $filter->asOfDate)
-            ->whereBetween('coa.code', ['3000', '3099']) // Exclude retained earnings
-            ->sum('dls.net_amount');
+            ->where('dls.summary_date', '<=', $filter->asOfDate);
+
+        $this->mappingReader->applyFilter($query, 'BS_EQUITY');
+
+        return $query->sum('dls.net_amount');
     }
 
     /**
@@ -261,14 +287,16 @@ class BalanceSheetService extends BaseReportService
      */
     protected function getEquityFromJournal(ReportFilter $filter): float
     {
-        return DB::table('journal_entry_lines as jel')
+        $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
             ->where('coa.type', 'equity')
-            ->where('je.entry_date', '<=', $filter->asOfDate)
-            ->whereBetween('coa.code', ['3000', '3099']) // Exclude retained earnings
-            ->sum(DB::raw('jel.credit - jel.debit'));
+            ->where('je.entry_date', '<=', $filter->asOfDate);
+
+        $this->mappingReader->applyFilter($query, 'BS_EQUITY');
+
+        return $query->sum(DB::raw('jel.credit - jel.debit'));
     }
 
     /**
