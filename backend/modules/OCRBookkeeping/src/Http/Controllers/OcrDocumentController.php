@@ -559,4 +559,50 @@ class OcrDocumentController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Promote OCR document to canonical vendor bill draft.
+     * POST /api/ocr/documents/{uuid}/promote/bill
+     */
+    public function promoteToBill(string $uuid): JsonResponse
+    {
+        $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
+
+        try {
+            $promotionService = app(\App\Services\OcrPromotionService::class);
+            $result = $promotionService->promoteToBill($document->id);
+
+            return response()->json([
+                'message' => 'Document promoted to bill draft.',
+                'data'    => $result,
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Promotion failed: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Promote OCR document to canonical customer invoice draft.
+     * POST /api/ocr/documents/{uuid}/promote/invoice
+     */
+    public function promoteToInvoice(string $uuid): JsonResponse
+    {
+        $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
+
+        try {
+            $promotionService = app(\App\Services\OcrPromotionService::class);
+            $result = $promotionService->promoteToInvoice($document->id);
+
+            return response()->json([
+                'message' => 'Document promoted to invoice draft.',
+                'data'    => $result,
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Promotion failed: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
 }

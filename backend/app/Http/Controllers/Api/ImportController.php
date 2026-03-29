@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
+/**
+ * @deprecated Phase 3 — Use MigrationWorkbench routes instead.
+ * This controller will be removed after one release cycle.
+ * See docs/architecture/IMPLEMENTATION-PLAN-ACCOUNTING-CONVERGENCE.md Task 3.17.
+ */
 class ImportController extends Controller
 {
     /**
