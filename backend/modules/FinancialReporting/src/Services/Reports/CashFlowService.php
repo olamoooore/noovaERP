@@ -62,8 +62,8 @@ class CashFlowService extends BaseReportService
                        $financingActivities['net_cash'];
 
         // Get beginning and ending cash
-        $beginningCash = $this->getCashBalance($filter->startDate->copy()->subDay());
-        $endingCash = $this->getCashBalance($filter->endDate);
+        $beginningCash = $this->getCashBalance($filter->startDate->copy()->subDay(), $filter);
+        $endingCash = $this->getCashBalance($filter->endDate, $filter);
 
         $data = [
             'method' => 'indirect',
@@ -119,8 +119,8 @@ class CashFlowService extends BaseReportService
                        $financingActivities['net_cash'];
 
         // Get beginning and ending cash
-        $beginningCash = $this->getCashBalance($filter->startDate->copy()->subDay());
-        $endingCash = $this->getCashBalance($filter->endDate);
+        $beginningCash = $this->getCashBalance($filter->startDate->copy()->subDay(), $filter);
+        $endingCash = $this->getCashBalance($filter->endDate, $filter);
 
         $data = [
             'method' => 'direct',
@@ -325,7 +325,7 @@ class CashFlowService extends BaseReportService
     /**
      * Get cash balance at a specific date
      */
-    protected function getCashBalance(Carbon $date): float
+    protected function getCashBalance(Carbon $date, ?ReportFilter $filter = null): float
     {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -335,6 +335,13 @@ class CashFlowService extends BaseReportService
 
         $this->mappingReader->applyFilter($query, 'CF_CASH');
 
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         return $query->sum(DB::raw('jel.debit - jel.credit'));
     }
 
@@ -343,14 +350,21 @@ class CashFlowService extends BaseReportService
      */
     protected function getDepreciation(ReportFilter $filter): float
     {
-        // Look for depreciation expense accounts (typically 5300-5399)
-        return DB::table('journal_entry_lines as jel')
+        $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
-            ->where('coa.name', 'like', '%depreciation%')
-            ->sum('jel.debit');
+            ->where('coa.name', 'like', '%depreciation%');
+
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
+        return $query->sum('jel.debit');
     }
 
     /**
@@ -518,6 +532,13 @@ class CashFlowService extends BaseReportService
             ->where('coa.type', $type)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
 
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         if ($type === 'revenue') {
             return $query->sum('jel.credit');
         } else {
@@ -553,6 +574,13 @@ class CashFlowService extends BaseReportService
 
         $this->mappingReader->applyFilter($query, $tagCode);
 
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         return $query->sum('jel.debit');
     }
 
@@ -561,8 +589,8 @@ class CashFlowService extends BaseReportService
      */
     protected function getAccountBalanceChangeByTag(ReportFilter $filter, string $tagCode): float
     {
-        $startBalance = $this->getAccountBalanceAtDateByTag($filter->startDate->copy()->subDay(), $tagCode);
-        $endBalance = $this->getAccountBalanceAtDateByTag($filter->endDate, $tagCode);
+        $startBalance = $this->getAccountBalanceAtDateByTag($filter->startDate->copy()->subDay(), $tagCode, $filter);
+        $endBalance = $this->getAccountBalanceAtDateByTag($filter->endDate, $tagCode, $filter);
 
         return $endBalance - $startBalance;
     }
@@ -570,7 +598,7 @@ class CashFlowService extends BaseReportService
     /**
      * Get account balance at a specific date using report tag.
      */
-    protected function getAccountBalanceAtDateByTag(Carbon $date, string $tagCode): float
+    protected function getAccountBalanceAtDateByTag(Carbon $date, string $tagCode, ?ReportFilter $filter = null): float
     {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -579,6 +607,13 @@ class CashFlowService extends BaseReportService
             ->where('je.entry_date', '<=', $date);
 
         $this->mappingReader->applyFilter($query, $tagCode);
+
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
 
         return $query->sum(DB::raw('jel.debit - jel.credit'));
     }

@@ -192,6 +192,14 @@ class ProfitLossService extends BaseReportService
             $this->mappingReader->applyFilter($query, $tagCode);
         }
 
+        // Apply entity filters
+        if ($filter->legalEntityId) {
+            $query->where('dls.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('dls.entity_book_id', $filter->entityBookId);
+        }
+
         // Apply dimension filters
         $this->applyDimensionFilters($query, $filter, 'dls');
 
@@ -215,6 +223,14 @@ class ProfitLossService extends BaseReportService
 
         if ($tagCode) {
             $this->mappingReader->applyFilter($query, $tagCode);
+        }
+
+        // Apply entity filters
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
         }
 
         // Apply dimension filters
@@ -262,6 +278,23 @@ class ProfitLossService extends BaseReportService
 
         if ($tagCode) {
             $this->mappingReader->applyFilter($query, $tagCode);
+        }
+
+        // Apply entity filters
+        if ($useSummary) {
+            if ($filter->legalEntityId) {
+                $query->where('dls.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('dls.entity_book_id', $filter->entityBookId);
+            }
+        } else {
+            if ($filter->legalEntityId) {
+                $query->where('je.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('je.entity_book_id', $filter->entityBookId);
+            }
         }
 
         return $query->orderBy('coa.code')

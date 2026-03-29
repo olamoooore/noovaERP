@@ -21,17 +21,18 @@ class MigrationWorkbench
     /**
      * Create a new migration job.
      */
-    public function createJob(string $type, ?int $sessionId = null, ?int $createdBy = null): int
+    public function createJob(string $type, ?int $sessionId = null, ?int $createdBy = null, ?int $legalEntityId = null): int
     {
         $this->validatePrerequisites();
 
         return DB::table('migration_jobs')->insertGetId([
-            'session_id' => $sessionId,
-            'type'       => $type,
-            'status'     => 'pending',
-            'created_by' => $createdBy,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'session_id'      => $sessionId,
+            'type'            => $type,
+            'status'          => 'pending',
+            'created_by'      => $createdBy,
+            'legal_entity_id' => $legalEntityId,
+            'created_at'      => now(),
+            'updated_at'      => now(),
         ]);
     }
 

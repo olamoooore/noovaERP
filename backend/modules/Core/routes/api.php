@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
+use App\Http\Controllers\Api\EntityManagementController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -240,6 +241,28 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/onboarding/sessions/{id}/resume', [OnboardingSessionsController::class, 'resume']);
         Route::post('/onboarding/sessions/{id}/abandon', [OnboardingSessionsController::class, 'abandon']);
         Route::post('/onboarding/sessions/{id}/skip', [OnboardingSessionsController::class, 'skip']);
+
+        // Entity Management (Phase 4 — Multi-Entity)
+        Route::get('/groups', [EntityManagementController::class, 'indexGroups']);
+        Route::post('/groups', [EntityManagementController::class, 'storeGroup']);
+        Route::get('/groups/{id}', [EntityManagementController::class, 'showGroup']);
+        Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup']);
+
+        Route::get('/legal-entities', [EntityManagementController::class, 'indexEntities']);
+        Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity']);
+        Route::get('/legal-entities/{id}', [EntityManagementController::class, 'showEntity']);
+        Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity']);
+
+        Route::get('/branches', [EntityManagementController::class, 'indexBranches']);
+        Route::post('/branches', [EntityManagementController::class, 'storeBranch']);
+
+        Route::get('/entity-books', [EntityManagementController::class, 'indexBooks']);
+        Route::post('/entity-books', [EntityManagementController::class, 'storeBook']);
+
+        Route::get('/legal-entities/{entityId}/modules', [EntityManagementController::class, 'indexModules']);
+        Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule']);
+        Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule']);
+        Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack']);
 
         // Currencies
         Route::get('/currencies', [CurrenciesController::class, 'index']);

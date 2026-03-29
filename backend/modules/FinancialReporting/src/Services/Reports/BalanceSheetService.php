@@ -153,12 +153,16 @@ class BalanceSheetService extends BaseReportService
         // Retained earnings = Revenue - Expenses (cumulative)
         $revenueFilter = new ReportFilter(
             asOfDate: $filter->asOfDate,
-            accountType: 'revenue'
+            accountType: 'revenue',
+            legalEntityId: $filter->legalEntityId,
+            entityBookId: $filter->entityBookId,
         );
 
         $expenseFilter = new ReportFilter(
             asOfDate: $filter->asOfDate,
-            accountType: 'expense'
+            accountType: 'expense',
+            legalEntityId: $filter->legalEntityId,
+            entityBookId: $filter->entityBookId,
         );
 
         if ($useSummary) {
@@ -213,6 +217,23 @@ class BalanceSheetService extends BaseReportService
         $tagCode = $this->getCategoryTagCode($type, $category);
         if ($tagCode) {
             $this->mappingReader->applyFilter($query, $tagCode);
+        }
+
+        // Apply entity filters
+        if ($useSummary) {
+            if ($filter->legalEntityId) {
+                $query->where('dls.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('dls.entity_book_id', $filter->entityBookId);
+            }
+        } else {
+            if ($filter->legalEntityId) {
+                $query->where('je.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('je.entity_book_id', $filter->entityBookId);
+            }
         }
 
         return $query->orderBy('coa.code')
@@ -279,6 +300,13 @@ class BalanceSheetService extends BaseReportService
 
         $this->mappingReader->applyFilter($query, 'BS_EQUITY');
 
+        if ($filter->legalEntityId) {
+            $query->where('dls.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('dls.entity_book_id', $filter->entityBookId);
+        }
+
         return $query->sum('dls.net_amount');
     }
 
@@ -296,6 +324,13 @@ class BalanceSheetService extends BaseReportService
 
         $this->mappingReader->applyFilter($query, 'BS_EQUITY');
 
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         return $query->sum(DB::raw('jel.credit - jel.debit'));
     }
 
@@ -304,13 +339,19 @@ class BalanceSheetService extends BaseReportService
      */
     protected function getTotalFromSummary(ReportFilter $filter, string $accountType): float
     {
-        $result = DB::table('daily_ledger_summaries as dls')
+        $query = DB::table('daily_ledger_summaries as dls')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
             ->where('coa.type', $accountType)
-            ->where('dls.summary_date', '<=', $filter->asOfDate)
-            ->sum('dls.net_amount');
+            ->where('dls.summary_date', '<=', $filter->asOfDate);
 
-        return abs($result);
+        if ($filter->legalEntityId) {
+            $query->where('dls.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('dls.entity_book_id', $filter->entityBookId);
+        }
+
+        return abs($query->sum('dls.net_amount'));
     }
 
     /**
@@ -318,22 +359,24 @@ class BalanceSheetService extends BaseReportService
      */
     protected function getTotalFromJournal(ReportFilter $filter, string $accountType): float
     {
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->where('je.status', 'posted')
+            ->where('coa.type', $accountType)
+            ->where('je.entry_date', '<=', $filter->asOfDate);
+
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         if ($accountType === 'revenue') {
-            return DB::table('journal_entry_lines as jel')
-                ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-                ->where('je.status', 'posted')
-                ->where('coa.type', 'revenue')
-                ->where('je.entry_date', '<=', $filter->asOfDate)
-                ->sum('jel.credit');
+            return $query->sum('jel.credit');
         } else {
-            return DB::table('journal_entry_lines as jel')
-                ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-                ->where('je.status', 'posted')
-                ->where('coa.type', 'expense')
-                ->where('je.entry_date', '<=', $filter->asOfDate)
-                ->sum('jel.debit');
+            return $query->sum('jel.debit');
         }
     }
 

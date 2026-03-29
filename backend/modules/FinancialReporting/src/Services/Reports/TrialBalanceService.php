@@ -39,7 +39,7 @@ class TrialBalanceService extends BaseReportService
         ]);
 
         // Get all account balances
-        $accounts = $this->getTrialBalanceAccounts($asOfDate, $accountType);
+        $accounts = $this->getTrialBalanceAccounts($asOfDate, $accountType, $filter);
 
         \Log::info('TrialBalanceService accounts retrieved', [
             'count' => $accounts->count(),
@@ -87,7 +87,7 @@ class TrialBalanceService extends BaseReportService
     /**
      * Get account balances as of a specific date for trial balance
      */
-    protected function getTrialBalanceAccounts(Carbon $asOfDate, ?string $accountType = null)
+    protected function getTrialBalanceAccounts(Carbon $asOfDate, ?string $accountType = null, ?ReportFilter $filter = null)
     {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -98,6 +98,15 @@ class TrialBalanceService extends BaseReportService
         // Apply account type filter if provided
         if ($accountType) {
             $query->where('coa.type', $accountType);
+        }
+
+        // Apply entity filters
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
         }
 
         $accounts = $query->select([

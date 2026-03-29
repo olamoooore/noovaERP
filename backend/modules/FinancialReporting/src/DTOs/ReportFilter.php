@@ -24,6 +24,8 @@ class ReportFilter
         public ?string $interval = 'day', // day, week, month, quarter, year
         public int $page = 1,
         public int $perPage = 50,
+        public ?int $legalEntityId = null,
+        public ?int $entityBookId = null,
     ) {
     }
 
@@ -50,6 +52,8 @@ class ReportFilter
             interval: $data['interval'] ?? 'day',
             page: (int) ($data['page'] ?? 1),
             perPage: (int) ($data['per_page'] ?? 50),
+            legalEntityId: isset($data['legal_entity_id']) ? (int) $data['legal_entity_id'] : null,
+            entityBookId: isset($data['entity_book_id']) ? (int) $data['entity_book_id'] : null,
         );
     }
 
@@ -73,6 +77,8 @@ class ReportFilter
             $this->productId,
             $this->categoryId,
             $this->interval,
+            $this->legalEntityId,
+            $this->entityBookId,
         ];
 
         return md5(implode(':', array_filter($parts)));

@@ -38,10 +38,10 @@ class GeneralLedgerService extends BaseReportService
         }
 
         // Get opening balance (before start date)
-        $openingBalance = $this->getOpeningBalance($accountId, $startDate);
+        $openingBalance = $this->getOpeningBalance($accountId, $startDate, $filter);
 
         // Get transactions with pagination
-        $transactions = $this->getTransactions($accountId, $startDate, $endDate, $page, $perPage);
+        $transactions = $this->getTransactions($accountId, $startDate, $endDate, $page, $perPage, $filter);
 
         // Calculate running balances
         $transactionsWithBalance = $this->calculateRunningBalances(
@@ -51,7 +51,7 @@ class GeneralLedgerService extends BaseReportService
         );
 
         // Get closing balance
-        $closingBalance = $this->getClosingBalance($accountId, $endDate);
+        $closingBalance = $this->getClosingBalance($accountId, $endDate, $filter);
 
         return new ReportData(
             title: 'General Ledger',
@@ -99,18 +99,26 @@ class GeneralLedgerService extends BaseReportService
     /**
      * Get opening balance (balance before start date)
      */
-    protected function getOpeningBalance(int $accountId, ?Carbon $startDate): float
+    protected function getOpeningBalance(int $accountId, ?Carbon $startDate, ?ReportFilter $filter = null): float
     {
         if (!$startDate) {
             return 0.0;
         }
 
-        $result = DB::table('journal_entry_lines as jel')
+        $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('jel.account_id', $accountId)
             ->where('je.entry_date', '<', $startDate)
-            ->where('je.status', 'posted')
-            ->select([
+            ->where('je.status', 'posted');
+
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
+        $result = $query->select([
                 DB::raw('SUM(jel.debit) as total_debit'),
                 DB::raw('SUM(jel.credit) as total_credit'),
             ])
@@ -122,7 +130,7 @@ class GeneralLedgerService extends BaseReportService
     /**
      * Get closing balance (balance up to end date)
      */
-    protected function getClosingBalance(int $accountId, ?Carbon $endDate): float
+    protected function getClosingBalance(int $accountId, ?Carbon $endDate, ?ReportFilter $filter = null): float
     {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -131,6 +139,13 @@ class GeneralLedgerService extends BaseReportService
 
         if ($endDate) {
             $query->where('je.entry_date', '<=', $endDate);
+        }
+
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
         }
 
         $result = $query->select([
@@ -150,7 +165,8 @@ class GeneralLedgerService extends BaseReportService
         ?Carbon $startDate,
         ?Carbon $endDate,
         int $page,
-        int $perPage
+        int $perPage,
+        ?ReportFilter $filter = null
     ): LengthAwarePaginator {
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -163,6 +179,14 @@ class GeneralLedgerService extends BaseReportService
         }
         if ($endDate) {
             $query->where('je.entry_date', '<=', $endDate);
+        }
+
+        // Apply entity filters
+        if ($filter?->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter?->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
         }
 
         return $query->select([

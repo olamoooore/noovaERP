@@ -100,6 +100,14 @@ abstract class BaseReportService
             $query->where('coa.type', $filter->accountType);
         }
 
+        // Apply entity filters
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
         // Apply dimension filters
         if ($filter->departmentId || $filter->projectId || $filter->locationId) {
             $query->where(function ($q) use ($filter) {
@@ -153,6 +161,14 @@ abstract class BaseReportService
         }
         if ($filter->accountType) {
             $query->where('coa.type', $filter->accountType);
+        }
+
+        // Apply entity filters (summary table uses legal_entity_id if present)
+        if ($filter->legalEntityId) {
+            $query->where('dls.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('dls.entity_book_id', $filter->entityBookId);
         }
 
         return $query->get()->toArray();
