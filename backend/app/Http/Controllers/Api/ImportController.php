@@ -106,15 +106,6 @@ class ImportController extends Controller
 
             DB::beginTransaction();
 
-            // Ensure search_path is set for tenant isolation
-            $searchPath = config('database.connections.pgsql.search_path');
-            if ($searchPath && $searchPath !== 'public') {
-                DB::statement("SET search_path TO {$searchPath}");
-                Log::info('Import: Set search_path for tenant isolation', [
-                    'search_path' => $searchPath
-                ]);
-            }
-
             foreach ($dataRows as $rowIndex => $row) {
                 $actualRowNumber = $headerRow + $rowIndex + 2; // +2 for header and 0-index
                 
@@ -485,15 +476,6 @@ class ImportController extends Controller
             ];
 
             DB::beginTransaction();
-
-            // Ensure search_path is set for tenant isolation
-            $searchPath = config('database.connections.pgsql.search_path');
-            if ($searchPath && $searchPath !== 'public') {
-                DB::statement("SET search_path TO {$searchPath}");
-                Log::info('Import: Set search_path for tenant isolation', [
-                    'search_path' => $searchPath
-                ]);
-            }
 
             foreach ($dataRows as $rowIndex => $row) {
                 $actualRowNumber = $headerRow + $rowIndex + 2;

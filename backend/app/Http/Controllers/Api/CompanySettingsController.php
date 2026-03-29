@@ -13,7 +13,7 @@ class CompanySettingsController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             if (!$settings) {
                 $settings = $this->getDefaultSettings();
             }
@@ -33,15 +33,15 @@ class CompanySettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $data = ['company_name' => $request->company_name, 'updated_at' => now()];
             if ($settings) {
-                DB::table('public.company_settings')->update($data);
+                DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
-                DB::table('public.company_settings')->insert($data);
+                DB::table('company_settings')->insert($data);
             }
-            $updated = DB::table('public.company_settings')->first();
+            $updated = DB::table('company_settings')->first();
             return response()->json(['success' => true, 'message' => 'Settings updated successfully', 'data' => $updated]);
         } catch (\Exception $e) {
             \Log::error('Failed to update company settings', ['error' => $e->getMessage()]);
@@ -52,7 +52,7 @@ class CompanySettingsController extends Controller
     public function fiscalYear(): JsonResponse
     {
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $fiscalYear = [
                 'fiscal_year_start' => ($settings->fiscal_year_start_month ?? 1) . '-' . ($settings->fiscal_year_start_day ?? 1),
                 'fiscal_year_end' => null,
@@ -75,14 +75,14 @@ class CompanySettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $startDate = \Carbon\Carbon::parse($request->fiscal_year_start);
             $data = ['fiscal_year_start_month' => $startDate->month, 'fiscal_year_start_day' => $startDate->day, 'updated_at' => now()];
             if ($settings) {
-                DB::table('public.company_settings')->update($data);
+                DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
-                DB::table('public.company_settings')->insert($data);
+                DB::table('company_settings')->insert($data);
             }
             return response()->json(['success' => true, 'message' => 'Fiscal year settings updated successfully', 'data' => ['fiscal_year_start' => $request->fiscal_year_start, 'fiscal_year_end' => $request->fiscal_year_end, 'lock_date' => $request->lock_date]]);
         } catch (\Exception $e) {
@@ -94,7 +94,7 @@ class CompanySettingsController extends Controller
     public function currencies(): JsonResponse
     {
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $currencies = [
                 'base_currency' => $settings->base_currency ?? 'USD',
                 'date_format' => $settings->date_format ?? 'MM/DD/YYYY',
@@ -123,13 +123,13 @@ class CompanySettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $data = ['base_currency' => $request->base_currency, 'date_format' => $request->date_format, 'number_format' => $request->number_format, 'updated_at' => now()];
             if ($settings) {
-                DB::table('public.company_settings')->update($data);
+                DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
-                DB::table('public.company_settings')->insert($data);
+                DB::table('company_settings')->insert($data);
             }
             return response()->json(['success' => true, 'message' => 'Currency settings updated successfully', 'data' => ['base_currency' => $request->base_currency, 'date_format' => $request->date_format, 'number_format' => $request->number_format, 'decimal_places' => $request->decimal_places, 'thousand_separator' => $request->thousand_separator, 'decimal_separator' => $request->decimal_separator]]);
         } catch (\Exception $e) {
@@ -141,7 +141,7 @@ class CompanySettingsController extends Controller
     public function accounts(): JsonResponse
     {
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $accounts = [
                 'accounts_receivable' => $settings->default_receivable_account_id ?? null,
                 'accounts_payable' => $settings->default_payable_account_id ?? null,
@@ -173,7 +173,7 @@ class CompanySettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
         try {
-            $settings = DB::table('public.company_settings')->first();
+            $settings = DB::table('company_settings')->first();
             $data = [
                 'default_receivable_account_id' => $request->accounts_receivable,
                 'default_payable_account_id' => $request->accounts_payable,
@@ -183,10 +183,10 @@ class CompanySettingsController extends Controller
                 'updated_at' => now(),
             ];
             if ($settings) {
-                DB::table('public.company_settings')->update($data);
+                DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
-                DB::table('public.company_settings')->insert($data);
+                DB::table('company_settings')->insert($data);
             }
             return response()->json(['success' => true, 'message' => 'Default accounts updated successfully', 'data' => ['accounts_receivable' => $request->accounts_receivable, 'accounts_payable' => $request->accounts_payable, 'sales_revenue' => $request->sales_revenue, 'sales_tax' => $request->sales_tax, 'purchase_expense' => $request->purchase_expense]]);
         } catch (\Exception $e) {

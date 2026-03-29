@@ -26,14 +26,6 @@ class JournalEntriesController extends Controller
      */
     public function index(Request $request)
     {
-        // CRITICAL FIX: Ensure search_path is set for this connection
-        $tenant = tenancy()->tenant;
-        if ($tenant) {
-            $schemaName = $tenant->getSchemaName();
-            \Log::info("JournalEntriesController: Setting search_path to {$schemaName}");
-            DB::statement("SET search_path TO \"{$schemaName}\", public");
-        }
-
         $query = JournalEntry::with(['lines.account', 'journal', 'createdBy', 'postedBy']);
 
         // Filter by status
@@ -76,13 +68,6 @@ class JournalEntriesController extends Controller
      */
     public function show($id)
     {
-        // CRITICAL FIX: Ensure search_path is set for this connection
-        $tenant = tenancy()->tenant;
-        if ($tenant) {
-            $schemaName = $tenant->getSchemaName();
-            DB::statement("SET search_path TO \"{$schemaName}\", public");
-        }
-
         $entry = JournalEntry::with([
             'lines.account',
             'lines.currency',

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 
 class ChartOfAccountsController extends Controller
 {
@@ -16,14 +15,6 @@ class ChartOfAccountsController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            // CRITICAL FIX: Ensure search_path is set for this connection
-            $tenant = tenancy()->tenant;
-            if ($tenant) {
-                $schemaName = $tenant->getSchemaName();
-                \Log::info("ChartOfAccountsController: Setting search_path to {$schemaName}");
-                DB::statement("SET search_path TO \"{$schemaName}\", public");
-            }
-
             $query = ChartOfAccount::with(['parent', 'children']);
 
             // Filter by type
@@ -70,13 +61,6 @@ class ChartOfAccountsController extends Controller
     public function tree(): JsonResponse
     {
         try {
-            // CRITICAL FIX: Ensure search_path is set for this connection
-            $tenant = tenancy()->tenant;
-            if ($tenant) {
-                $schemaName = $tenant->getSchemaName();
-                DB::statement("SET search_path TO \"{$schemaName}\", public");
-            }
-
             // Get Level 1 parents (X00000)
             $parents = ChartOfAccount::whereRaw("code LIKE '%00000'")
                 ->orderBy('code')
@@ -130,13 +114,6 @@ class ChartOfAccountsController extends Controller
     public function show(int $id): JsonResponse
     {
         try {
-            // CRITICAL FIX: Ensure search_path is set for this connection
-            $tenant = tenancy()->tenant;
-            if ($tenant) {
-                $schemaName = $tenant->getSchemaName();
-                DB::statement("SET search_path TO \"{$schemaName}\", public");
-            }
-
             $account = ChartOfAccount::with(['parent', 'children'])->findOrFail($id);
             $account->balance = $account->getBalance();
 

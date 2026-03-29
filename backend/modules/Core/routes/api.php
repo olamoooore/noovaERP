@@ -54,46 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
 });
 
-// TEST ENDPOINT - NO AUTH REQUIRED
-Route::get('/test-credit-notes', function() {
-    $creditNotes = \Illuminate\Support\Facades\DB::table('customer_credit_notes')->limit(5)->get();
-    return response()->json([
-        'count' => $creditNotes->count(),
-        'data' => $creditNotes
-    ]);
-});
-
-// TEMPORARY: Credit notes and transactions without auth (for development only)
-Route::prefix('accounting')->group(function () {
-    Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
-    Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
-    Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
-    Route::get('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'show']);
-    
-    // AR/AP Transactions
-    Route::get('/customers/transactions', [ARTransactionsController::class, 'index']);
-    Route::get('/customers/{customerId}/balance', [ARTransactionsController::class, 'getBalance']);
-    Route::get('/customers/transactions/export', [ARTransactionsController::class, 'export']);
-    Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
-    Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
-    Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
-    
-    // Customers and Vendors lists
-    Route::get('/customers', [CustomersController::class, 'index']);
-    Route::get('/customers/{id}', [CustomersController::class, 'show']);
-    Route::post('/customers/import', [CustomersController::class, 'import']);
-    Route::get('/vendors', [VendorsController::class, 'index']);
-    Route::get('/vendors/{id}', [VendorsController::class, 'show']);
-    Route::post('/vendors/import', [VendorsController::class, 'import']);
-    
-    // Vendor Bills - MOVED TO AUTH SECTION BELOW
-    
-    // Aged Receivables and Payables Reports
-    Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
-    Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
-    Route::get('/reports/aged-payables', [AgedPayablesController::class, 'index']);
-    Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
-});
+// All accounting routes require authentication — see EDR-ACC-ARCH-2026-03-29 §7
 
 // Protected routes (with tenant context)
 Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class])->group(function () {
@@ -226,13 +187,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/vendor-bills/{id}', [VendorBillsController::class, 'destroy']);
         Route::post('/vendor-bills/{id}/post', [VendorBillsController::class, 'post']);
         
-        // Aged Receivables Report - moved outside auth temporarily
-        // Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
-        // Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
+        // Aged Receivables Report
+        Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
+        Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
         
-        // Aged Payables Report - moved outside auth temporarily
-        // Route::get('/reports/aged-payables', [AgedPayablesController::class, 'index']);
-        // Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
+        // Aged Payables Report
+        Route::get('/reports/aged-payables', [AgedPayablesController::class, 'index']);
+        Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
         
         // Bank Reconciliation
         Route::get('/reconciliation/bank-accounts', [BankReconciliationController::class, 'getBankAccounts']);
@@ -342,12 +303,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/tax-rates/{id}', [TaxRatesController::class, 'destroy']);
         Route::post('/tax-rates/calculate', [TaxRatesController::class, 'calculateTax']);
         
-        // Customers List - moved outside auth temporarily
-        // Route::get('/customers', [CustomersController::class, 'index']);
-        // Route::get('/customers/{id}', [CustomersController::class, 'show']);
+        // Customers List
+        Route::get('/customers', [CustomersController::class, 'index']);
+        Route::get('/customers/{id}', [CustomersController::class, 'show']);
+        Route::post('/customers/import', [CustomersController::class, 'import']);
         
-        // Customer Credit Notes - WRITE operations still require auth
-        // GET operations moved outside auth middleware temporarily
+        // Customer Credit Notes
+        Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
+        Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
         Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store']);
         Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update']);
         Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy']);
@@ -355,12 +318,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validate']);
         
-        // Vendors List - moved outside auth temporarily
-        // Route::get('/vendors', [VendorsController::class, 'index']);
-        // Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        // Vendors List
+        Route::get('/vendors', [VendorsController::class, 'index']);
+        Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        Route::post('/vendors/import', [VendorsController::class, 'import']);
         
-        // Vendor Credit Notes - WRITE operations still require auth
-        // GET operations moved outside auth middleware temporarily
+        // Vendor Credit Notes
+        Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
+        Route::get('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'show']);
         Route::post('/vendors/credit-notes', [VendorCreditNotesController::class, 'store']);
         Route::put('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'update']);
         Route::delete('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'destroy']);
@@ -368,14 +333,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/vendors/bills/{billId}/credit-notes', [VendorCreditNotesController::class, 'getByBill']);
         Route::post('/vendors/credit-notes/validate', [VendorCreditNotesController::class, 'validate']);
         
-        // AR Transactions Ledger - moved outside auth temporarily
-        // Route::get('/customers/transactions', [ARTransactionsController::class, 'index']);
-        // Route::get('/customers/{customerId}/balance', [ARTransactionsController::class, 'getBalance']);
-        // Route::get('/customers/transactions/export', [ARTransactionsController::class, 'export']);
+        // AR Transactions Ledger
+        Route::get('/customers/transactions', [ARTransactionsController::class, 'index']);
+        Route::get('/customers/{customerId}/balance', [ARTransactionsController::class, 'getBalance']);
+        Route::get('/customers/transactions/export', [ARTransactionsController::class, 'export']);
         
-        // AP Transactions Ledger - moved outside auth temporarily
-        // Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
-        // Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
-        // Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
+        // AP Transactions Ledger
+        Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
+        Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
+        Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
     });
 });
