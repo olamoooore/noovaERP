@@ -1,17 +1,13 @@
 <?php
 
+// FROZEN — see EDR-ACC-ARCH-2026-03-29 — no new routes
+// All new accounting routes must be added to backend/modules/Core/routes/api.php
+// This file is monitored by CI: any non-comment change will fail the build.
+
 /**
- * PHASE 1 - Accounting Module Routes
- * 
- * Double-Entry Accounting System:
- * - Chart of Accounts (COA)
- * - Journal Entries with balance validation
- * - Trial Balance
- * - Account Ledger
- * - Auto-posting from Invoices/Payments/POS
- * 
- * Note: Core accounting routes are in Core module for now
- * This file contains accounting-specific extensions
+ * @deprecated EDR-ACC-ARCH-2026-03-29 — Legacy accounting module routes.
+ * Core accounting routes live in Core module now.
+ * These routes are frozen and will be retired in a future phase.
  */
 
 use Illuminate\Support\Facades\Route;

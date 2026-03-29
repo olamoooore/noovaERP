@@ -8,13 +8,15 @@ use App\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Accounting Service - Double-Entry Ledger Core
- * Handles all journal entry creation and posting
- * Enforces debit = credit rule
+ * @deprecated EDR-ACC-ARCH-2026-03-29 — No new methods or callers.
+ * All posting logic must use PostingEngine (backend/app/Accounting/PostingEngine.php).
+ * Existing callers will be migrated in Phase 1.
+ * Read methods (getTrialBalance, getAccountLedger) will move to FinancialReporting in Phase 2.
  */
 class AccountingService
 {
     /**
+     * @deprecated EDR-ACC-ARCH-2026-03-29 — Use ManualJournalService via PostingEngine instead.
      * Create journal entry (auto-balancing validation)
      */
     public function createJournalEntry(array $data, array $lines): JournalEntry
@@ -58,6 +60,7 @@ class AccountingService
     }
 
     /**
+     * @deprecated EDR-ACC-ARCH-2026-03-29 — Replaced by InvoiceService::postInvoice() via PostingEngine.
      * Post invoice to ledger
      * DR: Accounts Receivable
      * CR: Sales Revenue
@@ -105,6 +108,7 @@ class AccountingService
     }
 
     /**
+     * @deprecated EDR-ACC-ARCH-2026-03-29 — Will be replaced by PostingEngine payment flow in Phase 1.
      * Post payment to ledger
      * DR: Cash/Bank
      * CR: Accounts Receivable
@@ -141,6 +145,7 @@ class AccountingService
     }
 
     /**
+     * @deprecated EDR-ACC-ARCH-2026-03-29 — Will move to FinancialReporting/TrialBalanceService in Phase 2.
      * Get trial balance (all accounts with balances)
      */
     public function getTrialBalance(): array
@@ -184,6 +189,7 @@ class AccountingService
     }
 
     /**
+     * @deprecated EDR-ACC-ARCH-2026-03-29 — Will move to FinancialReporting/GeneralLedgerService in Phase 2.
      * Get account ledger (transaction history)
      */
     public function getAccountLedger(int $accountId): array

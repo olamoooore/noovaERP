@@ -1,0 +1,94 @@
+name: EDR Compliance Guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/src/pages/accounting/**'
+
+jobs:
+  edr-compliance:
+    name: EDR-ACC-ARCH-2026-03-29 Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check frozen Accounting module routes
+        run: |
+          # R2: No non-comment changes to frozen route file
+          CHANGED=$(git diff origin/main...HEAD -- backend/modules/Accounting/routes/api.php | grep '^[+-]' | grep -v '^[+-][+-][+-]' | grep -v '^[+-]\s*//' | grep -v '^[+-]\s*$' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "::error::FROZEN FILE MODIFIED: backend/modules/Accounting/routes/api.php"
+            echo "This file is frozen per EDR-ACC-ARCH-2026-03-29 (Rule R2)."
+            echo "Add new accounting routes to backend/modules/Core/routes/api.php instead."
+            echo ""
+            echo "Changed lines:"
+            echo "$CHANGED"
+            exit 1
+          fi
+          echo "✓ Frozen route file unchanged"
+
+      - name: Check for new AccountingService callers
+        run: |
+          # R1 + R11: No new callers or methods in AccountingService
+          BASELINE=5
+          CURRENT=$(grep -rl "AccountingService" backend/app backend/modules --include="*.php" 2>/dev/null | grep -v "AccountingService.php$" | wc -l | tr -d ' ')
+          echo "Baseline caller files: $BASELINE"
+          echo "Current caller files: $CURRENT"
+          if [ "$CURRENT" -gt "$BASELINE" ]; then
+            echo "::error::New AccountingService callers detected ($CURRENT > baseline $BASELINE)"
+            echo "AccountingService is deprecated per EDR-ACC-ARCH-2026-03-29 (Rules R1, R11)."
+            echo "Use PostingEngine instead."
+            grep -rl "AccountingService" backend/app backend/modules --include="*.php" | grep -v "AccountingService.php$"
+            exit 1
+          fi
+          echo "✓ No new AccountingService callers"
+
+      - name: Check for new controller SET search_path
+        run: |
+          # R4: No new controller-level SET search_path
+          NEW_SEARCH_PATH=$(git diff origin/main...HEAD -- backend/app/Http/Controllers/ | grep '^\+.*SET search_path' || true)
+          if [ -n "$NEW_SEARCH_PATH" ]; then
+            echo "::error::New SET search_path in controllers detected"
+            echo "Controller-level search_path is forbidden per EDR-ACC-ARCH-2026-03-29 (Rule R4)."
+            echo "Use EnsureTenantSearchPath middleware instead."
+            echo ""
+            echo "$NEW_SEARCH_PATH"
+            exit 1
+          fi
+          echo "✓ No new controller SET search_path"
+
+      - name: Check for new public.company_settings writes
+        run: |
+          # R7: No new writes to public.company_settings
+          NEW_PUBLIC_SETTINGS=$(git diff origin/main...HEAD -- backend/ | grep '^\+.*public\.company_settings' || true)
+          if [ -n "$NEW_PUBLIC_SETTINGS" ]; then
+            echo "::error::New public.company_settings reference detected"
+            echo "Writing to public.company_settings is forbidden per EDR-ACC-ARCH-2026-03-29 (Rule R7)."
+            echo "Use tenant-scoped company_settings instead."
+            echo ""
+            echo "$NEW_PUBLIC_SETTINGS"
+            exit 1
+          fi
+          echo "✓ No new public.company_settings writes"
+
+      - name: Check for new direct JournalEntry::create outside PostingEngine
+        run: |
+          # R6: No posting bypass outside PostingEngine
+          NEW_DIRECT_POSTING=$(git diff origin/main...HEAD -- backend/app/Services/ backend/app/Http/Controllers/ backend/modules/ | grep '^\+.*JournalEntry::create\|^\+.*journal_entry_lines.*create' | grep -v 'PostingEngine\|test\|Test' || true)
+          if [ -n "$NEW_DIRECT_POSTING" ]; then
+            echo "::error::Direct JournalEntry creation detected outside PostingEngine"
+            echo "All posting must go through PostingEngine per EDR-ACC-ARCH-2026-03-29 (Rule R6)."
+            echo ""
+            echo "$NEW_DIRECT_POSTING"
+            exit 1
+          fi
+          echo "✓ No posting bypass detected"
+
+      - name: Summary
+        run: |
+          echo "All EDR compliance checks passed ✓"
