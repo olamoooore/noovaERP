@@ -37,7 +37,7 @@ class BankReconciliation extends Model
      */
     public function bankAccount(): BelongsTo
     {
-        return $this->belongsTo(ChartOfAccount::class, 'bank_account_id');
+        return $this->belongsTo(BankAccount::class, 'bank_account_id');
     }
 
     /**

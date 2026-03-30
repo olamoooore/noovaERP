@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Closure;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -22,6 +23,11 @@ class EnsureAccountingWriteAccess
      */
     private const WRITE_PERMISSION = 'accounting.write';
 
+    /**
+     * Central tenant access roles that can write accounting data.
+     */
+    private const WRITE_TENANT_ACCESS_ROLES = ['owner', 'admin', 'accountant'];
+
     public function handle(Request $request, Closure $next): Response
     {
         // Read operations are allowed for all authenticated users
@@ -35,6 +41,10 @@ class EnsureAccountingWriteAccess
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        if ($user->is_super_admin ?? false) {
+            return $next($request);
+        }
+
         // Check role-based access
         if (method_exists($user, 'hasRole')) {
             foreach (self::WRITE_ROLES as $role) {
@@ -42,6 +52,10 @@ class EnsureAccountingWriteAccess
                     return $next($request);
                 }
             }
+        }
+
+        if ($this->hasCentralTenantWriteAccess($user->id)) {
+            return $next($request);
         }
 
         // Check permission-based access
@@ -59,5 +73,24 @@ class EnsureAccountingWriteAccess
         return response()->json([
             'message' => 'You do not have permission to perform accounting write operations.',
         ], 403);
+    }
+
+    private function hasCentralTenantWriteAccess(int $userId): bool
+    {
+        $tenantId = tenant('id');
+
+        if (!$tenantId) {
+            return false;
+        }
+
+        $accessTable = DB::connection()->getDriverName() === 'pgsql'
+            ? 'public.user_company_access'
+            : 'user_company_access';
+
+        return DB::table($accessTable)
+            ->where('user_id', $userId)
+            ->where('tenant_id', $tenantId)
+            ->whereIn('role', self::WRITE_TENANT_ACCESS_ROLES)
+            ->exists();
     }
 }

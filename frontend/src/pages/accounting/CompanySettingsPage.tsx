@@ -66,6 +66,9 @@ export default function CompanySettingsPage() {
     queryFn: () => chartOfAccountsApi.getAccounts(),
   });
 
+  const getAccountsByType = (type: string) =>
+    accounts.filter((account: any) => account.type === type);
+
   // Mutation for updating company info
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -517,7 +520,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'asset').map((acc: any) => (
+                      {getAccountsByType('asset').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -533,7 +536,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'liability').map((acc: any) => (
+                      {getAccountsByType('liability').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -549,7 +552,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'revenue').map((acc: any) => (
+                      {getAccountsByType('revenue').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -565,7 +568,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'liability').map((acc: any) => (
+                      {getAccountsByType('liability').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -581,7 +584,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'expense').map((acc: any) => (
+                      {getAccountsByType('expense').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -597,7 +600,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'asset').map((acc: any) => (
+                      {getAccountsByType('asset').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -613,7 +616,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'asset').map((acc: any) => (
+                      {getAccountsByType('asset').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -629,7 +632,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'expense').map((acc: any) => (
+                      {getAccountsByType('expense').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -645,7 +648,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'equity').map((acc: any) => (
+                      {getAccountsByType('equity').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>
@@ -661,7 +664,7 @@ export default function CompanySettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {accounts.filter((acc: any) => acc.account_type === 'expense').map((acc: any) => (
+                      {getAccountsByType('expense').map((acc: any) => (
                         <SelectItem key={acc.id} value={acc.id.toString()}>
                           {acc.code} - {acc.name}
                         </SelectItem>

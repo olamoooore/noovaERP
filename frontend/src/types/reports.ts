@@ -52,46 +52,75 @@ export interface ProfitLossData {
 export interface BalanceSheetData {
   assets: {
     current: Array<{
-      id: number;
+      id?: number;
+      account_id?: number;
       name: string;
       code: string;
       balance: number;
+      account_group?: string;
+      group_name?: string;
     }>;
     non_current: Array<{
-      id: number;
+      id?: number;
+      account_id?: number;
       name: string;
       code: string;
       balance: number;
+      account_group?: string;
+      group_name?: string;
     }>;
     total: number;
   };
   liabilities: {
     current: Array<{
-      id: number;
+      id?: number;
+      account_id?: number;
       name: string;
       code: string;
       balance: number;
+      account_group?: string;
+      group_name?: string;
     }>;
     non_current: Array<{
-      id: number;
+      id?: number;
+      account_id?: number;
       name: string;
       code: string;
       balance: number;
+      account_group?: string;
+      group_name?: string;
     }>;
     total: number;
   };
   equity: {
-    accounts: Array<{
-      id: number;
+    accounts?: Array<{
+      id?: number;
+      account_id?: number;
       name: string;
       code: string;
       balance: number;
+      account_group?: string;
+      group_name?: string;
     }>;
+    groups?: Array<{
+      code: string;
+      name: string;
+      total: number;
+      accounts: Array<{
+        id?: number;
+        account_id?: number;
+        name: string;
+        code: string;
+        balance: number;
+      }>;
+    }>;
+    current_year_earnings?: number;
     total: number;
   };
   total_assets: number;
   total_liabilities: number;
   total_equity: number;
+  total_liabilities_and_equity?: number;
   working_capital: number;
   balance_check: number;
 }

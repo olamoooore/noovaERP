@@ -7,9 +7,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Recreate AR Transactions View - fix payment status to match both 'sent' and 'posted' invoices
+        DB::statement('DROP VIEW IF EXISTS ar_transactions');
+
         DB::statement("
-            CREATE OR REPLACE VIEW ar_transactions AS
+            CREATE VIEW ar_transactions AS
             SELECT 
                 'invoice' as transaction_type,
                 i.id as transaction_id,
@@ -22,7 +23,7 @@ return new class extends Migration
                 0 as credit,
                 i.total as amount,
                 i.status,
-                'USD' as currency_code,
+                CAST('USD' AS varchar(3)) as currency_code,
                 i.created_at,
                 i.updated_at
             FROM invoices i
@@ -41,8 +42,8 @@ return new class extends Migration
                 0 as debit,
                 p.amount as credit,
                 -p.amount as amount,
-                'posted' as status,
-                'USD' as currency_code,
+                CAST('posted' AS varchar(255)) as status,
+                CAST('USD' AS varchar(3)) as currency_code,
                 p.created_at,
                 p.updated_at
             FROM payments p
@@ -71,9 +72,10 @@ return new class extends Migration
             ORDER BY transaction_date DESC, created_at DESC
         ");
 
-        // Recreate AP Transactions View - add bill_payments UNION
+        DB::statement('DROP VIEW IF EXISTS ap_transactions');
+
         DB::statement("
-            CREATE OR REPLACE VIEW ap_transactions AS
+            CREATE VIEW ap_transactions AS
             SELECT 
                 'bill' as transaction_type,
                 b.id as transaction_id,
@@ -86,7 +88,7 @@ return new class extends Migration
                 0 as credit,
                 b.total as amount,
                 b.status,
-                'USD' as currency_code,
+                CAST('USD' AS varchar(3)) as currency_code,
                 b.created_at,
                 b.updated_at
             FROM bills b
@@ -105,8 +107,8 @@ return new class extends Migration
                 0 as debit,
                 bp.amount as credit,
                 -bp.amount as amount,
-                'posted' as status,
-                'USD' as currency_code,
+                CAST('posted' AS varchar(255)) as status,
+                CAST('USD' AS varchar(3)) as currency_code,
                 bp.created_at,
                 bp.updated_at
             FROM bill_payments bp
@@ -138,9 +140,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Restore original views
+        DB::statement('DROP VIEW IF EXISTS ar_transactions');
+
         DB::statement("
-            CREATE OR REPLACE VIEW ar_transactions AS
+            CREATE VIEW ar_transactions AS
             SELECT 
                 'invoice' as transaction_type,
                 i.id as transaction_id,
@@ -153,7 +156,7 @@ return new class extends Migration
                 0 as credit,
                 i.total as amount,
                 i.status,
-                'USD' as currency_code,
+                CAST('USD' AS varchar(3)) as currency_code,
                 i.created_at,
                 i.updated_at
             FROM invoices i
@@ -172,8 +175,8 @@ return new class extends Migration
                 0 as debit,
                 p.amount as credit,
                 -p.amount as amount,
-                'posted' as status,
-                'USD' as currency_code,
+                CAST('posted' AS varchar(255)) as status,
+                CAST('USD' AS varchar(3)) as currency_code,
                 p.created_at,
                 p.updated_at
             FROM payments p
@@ -202,8 +205,10 @@ return new class extends Migration
             ORDER BY transaction_date DESC, created_at DESC
         ");
 
+        DB::statement('DROP VIEW IF EXISTS ap_transactions');
+
         DB::statement("
-            CREATE OR REPLACE VIEW ap_transactions AS
+            CREATE VIEW ap_transactions AS
             SELECT 
                 'bill' as transaction_type,
                 b.id as transaction_id,
@@ -216,7 +221,7 @@ return new class extends Migration
                 0 as credit,
                 b.total as amount,
                 b.status,
-                'USD' as currency_code,
+                CAST('USD' AS varchar(3)) as currency_code,
                 b.created_at,
                 b.updated_at
             FROM bills b

@@ -80,8 +80,9 @@ class FinancialReportController extends Controller
 
             \Log::info('P&L Response', [
                 'revenue_total' => $response['revenue']['total'],
-                'expenses_total' => $response['expenses']['total'],
-                'net_profit' => $response['net_profit'],
+                'cogs_total' => $response['cost_of_goods_sold']['total'],
+                'opex_total' => $response['operating_expenses']['total'],
+                'net_profit' => $response['net_profit']['amount'],
             ]);
 
             // Add comparison if available
@@ -132,11 +133,9 @@ class FinancialReportController extends Controller
             // TEMPORARILY DISABLE CACHING - Generate fresh data every time
             $reportData = $this->balanceSheetService->generate($filter);
 
-            // Map to frontend expected structure with AccountGroup[] format
             $currentAssets = $reportData->data['assets']['current_assets']['accounts'] ?? [];
             $fixedAssets = $reportData->data['assets']['fixed_assets']['accounts'] ?? [];
             $otherAssets = $reportData->data['assets']['other_assets']['accounts'] ?? [];
-
             $currentLiabilities = $reportData->data['liabilities']['current_liabilities']['accounts'] ?? [];
             $longTermLiabilities = $reportData->data['liabilities']['long_term_liabilities']['accounts'] ?? [];
 
@@ -144,45 +143,50 @@ class FinancialReportController extends Controller
             $totalLiabilities = $reportData->summary['total_liabilities'] ?? 0;
             $totalEquity = $reportData->summary['total_equity'] ?? 0;
 
-            $currentYearEarnings = ($reportData->data['equity']['current_year_earnings'] ?? null)
-                ?? (($totalAssets) - ($totalLiabilities) - ($reportData->data['equity']['capital'] ?? 0) - ($reportData->data['equity']['retained_earnings'] ?? 0));
+            $capital = (float) ($reportData->data['equity']['capital'] ?? 0);
+            $retainedEarnings = (float) ($reportData->data['equity']['retained_earnings'] ?? 0);
+            $currentYearEarnings = round((float) ($totalAssets - $totalLiabilities - $capital - $retainedEarnings), 2);
 
             $response = [
                 'assets' => [
-                    'groups' => [
+                    'current' => [
                         [
                             'code' => '1000',
                             'name' => 'Current Assets',
-                            'accounts' => $currentAssets,
+                            'accounts' => $this->normalizeBalanceSheetAccounts($currentAssets),
                             'total' => $reportData->data['assets']['current_assets']['total'] ?? array_sum(array_column($currentAssets, 'balance')),
                         ],
+                    ],
+                    'non_current' => [
                         [
                             'code' => '1500',
                             'name' => 'Fixed Assets',
-                            'accounts' => $fixedAssets,
+                            'accounts' => $this->normalizeBalanceSheetAccounts($fixedAssets),
                             'total' => $reportData->data['assets']['fixed_assets']['total'] ?? array_sum(array_column($fixedAssets, 'balance')),
                         ],
                         [
                             'code' => '1800',
                             'name' => 'Other Assets',
-                            'accounts' => $otherAssets,
+                            'accounts' => $this->normalizeBalanceSheetAccounts($otherAssets),
                             'total' => $reportData->data['assets']['other_assets']['total'] ?? array_sum(array_column($otherAssets, 'balance')),
                         ],
                     ],
                     'total' => $totalAssets,
                 ],
                 'liabilities' => [
-                    'groups' => [
+                    'current' => [
                         [
                             'code' => '2000',
                             'name' => 'Current Liabilities',
-                            'accounts' => $currentLiabilities,
+                            'accounts' => $this->normalizeBalanceSheetAccounts($currentLiabilities),
                             'total' => $reportData->data['liabilities']['current_liabilities']['total'] ?? array_sum(array_column($currentLiabilities, 'balance')),
                         ],
+                    ],
+                    'non_current' => [
                         [
                             'code' => '2500',
                             'name' => 'Long-Term Liabilities',
-                            'accounts' => $longTermLiabilities,
+                            'accounts' => $this->normalizeBalanceSheetAccounts($longTermLiabilities),
                             'total' => $reportData->data['liabilities']['long_term_liabilities']['total'] ?? array_sum(array_column($longTermLiabilities, 'balance')),
                         ],
                     ],
@@ -195,23 +199,28 @@ class FinancialReportController extends Controller
                             'name' => 'Equity',
                             'accounts' => [
                                 [
-                                    'id' => 0,
+                                    'account_id' => 0,
                                     'code' => '3000',
                                     'name' => 'Capital',
-                                    'balance' => $reportData->data['equity']['capital'] ?? 0,
+                                    'balance' => $capital,
                                 ],
                                 [
-                                    'id' => 0,
+                                    'account_id' => 0,
                                     'code' => '3100',
                                     'name' => 'Retained Earnings',
-                                    'balance' => $reportData->data['equity']['retained_earnings'] ?? 0,
+                                    'balance' => $retainedEarnings,
+                                ],
+                                [
+                                    'account_id' => 0,
+                                    'code' => '3200',
+                                    'name' => 'Current Year Earnings',
+                                    'balance' => $currentYearEarnings,
                                 ],
                             ],
                             'total' => $totalEquity,
                         ],
                     ],
                     'total' => $totalEquity,
-                    'current_year_earnings' => round((float) $currentYearEarnings, 2),
                 ],
                 'total_assets' => $totalAssets,
                 'total_liabilities' => $totalLiabilities,
@@ -243,6 +252,18 @@ class FinancialReportController extends Controller
                 'error' => 'Failed to generate report. Please try again.'
             ], 500);
         }
+    }
+
+    private function normalizeBalanceSheetAccounts(array $accounts): array
+    {
+        return array_map(function (array $account) {
+            return [
+                'account_id' => $account['account_id'] ?? $account['id'] ?? 0,
+                'code' => $account['code'] ?? '',
+                'name' => $account['name'] ?? '',
+                'balance' => (float) ($account['balance'] ?? 0),
+            ];
+        }, $accounts);
     }
 
     /**

@@ -24,9 +24,10 @@ class SetTenantSearchPath
         
         // Get the default connection name
         $connectionName = DB::getDefaultConnection();
+        $searchPath = $this->resolveSearchPath($schemaName);
         
         // Update the config so new connections will use this search_path
-        config(["database.connections.{$connectionName}.search_path" => "\"{$schemaName}\", public"]);
+        config(["database.connections.{$connectionName}.search_path" => $searchPath]);
         
         // CRITICAL: Set the PDO init command to run SET search_path on EVERY new connection
         // This ensures that even if Laravel creates a new connection, it will have the correct search_path
@@ -42,17 +43,17 @@ class SetTenantSearchPath
         DB::reconnect($connectionName);
         
         // Set search_path explicitly on the current connection
-        DB::statement("SET search_path TO \"{$schemaName}\", public");
+        DB::statement("SET search_path TO {$searchPath}");
         
         // Register a macro to ensure search_path is set before every query
         // This is a fallback in case a new connection is created
         if (!DB::hasMacro('ensureSearchPath')) {
-            DB::macro('ensureSearchPath', function () use ($schemaName) {
+            DB::macro('ensureSearchPath', function () use ($searchPath, $schemaName) {
                 static $checked = [];
                 $connectionId = spl_object_id(DB::connection()->getPdo());
                 
                 if (!in_array($connectionId, $checked)) {
-                    DB::statement("SET search_path TO \"{$schemaName}\", public");
+                    DB::statement("SET search_path TO {$searchPath}");
                     $checked[] = $connectionId;
                     Log::debug("SetTenantSearchPath: Ensured search_path on connection", [
                         'connection_id' => $connectionId,
@@ -66,6 +67,10 @@ class SetTenantSearchPath
         $result = DB::select("SHOW search_path");
         $currentPath = $result[0]->search_path ?? 'unknown';
         Log::info("SetTenantSearchPath: Current search_path is {$currentPath}");
+
+        if ($this->isTenantMigrationCommand()) {
+            return;
+        }
         
         // Test query to verify data is accessible
         $testCount = DB::table('journal_entries')->count();
@@ -74,6 +79,29 @@ class SetTenantSearchPath
         // Reload mail configuration from tenant settings
         // This is critical for queued jobs that send emails
         $this->loadTenantMailConfig();
+    }
+
+    protected function resolveSearchPath(string $schemaName): string
+    {
+        $quotedSchema = "\"{$schemaName}\"";
+
+        if (!$this->isTenantMigrationCommand()) {
+            return "{$quotedSchema}, public";
+        }
+
+        return $quotedSchema;
+    }
+
+    protected function isTenantMigrationCommand(): bool
+    {
+        if (!app()->runningInConsole()) {
+            return false;
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        $command = implode(' ', $argv);
+
+        return str_contains($command, 'tenants:migrate');
     }
 
     /**

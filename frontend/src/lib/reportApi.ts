@@ -306,6 +306,18 @@ class ReportApiClient {
     }
   }
 
+  async getReconciliationHistory(bankAccountId: number): Promise<{ data: any[] }> {
+    try {
+      const response = await api.get<{ data: any[] }>(
+        `/accounting/reconciliation/history/${bankAccountId}`
+      );
+      return { data: response.data.data || [] };
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch reconciliation history');
+      throw error;
+    }
+  }
+
   // ==================== Inventory Reports ====================
 
   /**

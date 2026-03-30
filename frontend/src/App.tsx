@@ -60,10 +60,13 @@ const VendorPayments = lazy(() => import('@/pages/accounting/vendors/VendorPayme
 const AgedReceivablesPage = lazy(() => import('@/pages/accounting/reports/AgedReceivablesPage').then(m => ({ default: m.AgedReceivablesPage })))
 const AgedPayablesPage = lazy(() => import('@/pages/accounting/reports/AgedPayablesPage').then(m => ({ default: m.AgedPayablesPage })))
 const BankReconciliationPage = lazy(() => import('@/pages/accounting/BankReconciliationPage').then(m => ({ default: m.BankReconciliationPage })))
+const BankReconciliationHistoryPage = lazy(() => import('@/pages/accounting/BankReconciliationHistoryPage'))
 const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
 const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
 const MultiCurrencyPage = lazy(() => import('@/pages/accounting/MultiCurrencyPage'))
 const AnalyticAccountsPage = lazy(() => import('@/pages/accounting/AnalyticAccountsPage'))
+const AccountingOnboardingPage = lazy(() => import('@/pages/accounting/AccountingOnboardingPage'))
+const AccountingEntityManagementPage = lazy(() => import('@/pages/accounting/AccountingEntityManagementPage'))
 const CompanySettingsPage = lazy(() => import('@/pages/accounting/CompanySettingsPage'))
 const PaymentTermsPage = lazy(() => import('@/pages/accounting/PaymentTermsPage'))
 const ChartOfAccountsPage = lazy(() => import('@/pages/accounting/ChartOfAccountsPage'))
@@ -255,10 +258,13 @@ function App() {
                 <Route path="/accounting/core/journal-entries" element={<JournalEntriesPage />} />
                 <Route path="/accounting/core/journals" element={<JournalsPage />} />
                 <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
+                <Route path="/accounting/core/reconciliation/history" element={<BankReconciliationHistoryPage />} />
                 <Route path="/accounting/core/assets" element={<AssetsManagementPage />} />
                 <Route path="/accounting/core/lock-dates" element={<LockDatesPage />} />
                 <Route path="/accounting/core/multi-currency" element={<MultiCurrencyPage />} />
                 <Route path="/accounting/core/analytic-accounts" element={<AnalyticAccountsPage />} />
+                <Route path="/accounting/core/onboarding" element={<AccountingOnboardingPage />} />
+                <Route path="/accounting/core/entities" element={<AccountingEntityManagementPage />} />
                 
                 {/* Reporting Section */}
                 <Route path="/accounting/reporting/balance-sheet" element={<BalanceSheetPage />} />

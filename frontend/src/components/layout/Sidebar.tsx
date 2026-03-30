@@ -193,6 +193,16 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:safe-2-bold-duotone',
       },
       {
+        title: 'Onboarding',
+        href: '/accounting/core/onboarding',
+        icon: 'solar:clipboard-check-bold-duotone',
+      },
+      {
+        title: 'Entities',
+        href: '/accounting/core/entities',
+        icon: 'solar:buildings-2-bold-duotone',
+      },
+      {
         title: 'Fixed Assets',
         href: '/accounting/core/assets',
         icon: 'solar:buildings-bold-duotone',

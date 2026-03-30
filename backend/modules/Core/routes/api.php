@@ -142,12 +142,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
     Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
 
-    // Invoices
-    Route::apiResource('invoices', InvoiceController::class);
-    Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
+        Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
+            // Invoices
+            Route::apiResource('invoices', InvoiceController::class);
+            Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
 
-    // Payments
-    Route::apiResource('payments', PaymentController::class);
+            // Payments
+            Route::apiResource('payments', PaymentController::class);
+        });
 
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
@@ -204,10 +206,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         
         // Bank Reconciliation
         Route::get('/reconciliation/bank-accounts', [BankReconciliationController::class, 'getBankAccounts']);
-        Route::get('/reconciliation/transactions/{accountId}', [BankReconciliationController::class, 'getTransactions']);
+        Route::get('/reconciliation/transactions/{bankAccountId}', [BankReconciliationController::class, 'getTransactions']);
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
-        Route::get('/reconciliation/history/{accountId}', [BankReconciliationController::class, 'history']);
+        Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
         
         // Fixed Assets
         Route::get('/assets', [FixedAssetsController::class, 'index']);
@@ -389,5 +391,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Customer Statements
         Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
+        Route::get('/customers/statements/history', [CustomerStatementController::class, 'history']);
+        Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);
     });
 });

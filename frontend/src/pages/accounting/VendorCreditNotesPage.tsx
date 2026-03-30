@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useVendorCreditNotes, useDeleteVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import type { VendorCreditNoteFilters } from '@/types/vendorCreditNote';
 import CreateVendorCreditNoteDialog from './components/CreateVendorCreditNoteDialog';
@@ -19,8 +20,11 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function VendorCreditNotesPage() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<VendorCreditNoteFilters>({});
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
+  const [filters, setFilters] = useState<VendorCreditNoteFilters>({
+    search: searchParams.get('search') || undefined,
+  });
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
@@ -67,7 +71,11 @@ export default function VendorCreditNotesPage() {
                 type="text"
                 placeholder="Search credit notes..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchTerm(value);
+                  handleFilterChange('search', value || undefined);
+                }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>

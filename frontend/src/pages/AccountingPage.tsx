@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -34,6 +35,42 @@ export function AccountingPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Accounting</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Guided setup</div>
+              <div className="text-lg font-semibold">Onboarding</div>
+              <Link to="/accounting/core/onboarding" className="text-sm text-blue-600 hover:underline">
+                Open onboarding workspace
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Structure</div>
+              <div className="text-lg font-semibold">Multi-Entity</div>
+              <Link to="/accounting/core/entities" className="text-sm text-blue-600 hover:underline">
+                Review entities and books
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Cash controls</div>
+              <div className="text-lg font-semibold">Reconciliation History</div>
+              <Link to="/accounting/core/reconciliation/history" className="text-sm text-blue-600 hover:underline">
+                Review completed reconciliations
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs defaultValue="trial-balance" className="w-full">
         <TabsList>

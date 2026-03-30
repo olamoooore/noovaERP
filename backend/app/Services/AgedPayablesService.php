@@ -23,8 +23,12 @@ class AgedPayablesService
     {
         // Query all posted/overdue bills with outstanding balances
         $billsQuery = Bill::with('vendor')
-            ->whereIn('status', ['posted', 'overdue'])
+            ->whereIn('status', ['posted', 'partial', 'overdue'])
             ->where('balance', '>', 0);
+
+        if (!empty($filters['vendor_id'])) {
+            $billsQuery->where('vendor_id', (int) $filters['vendor_id']);
+        }
 
         // Apply search filter
         if (!empty($filters['search'])) {
@@ -176,7 +180,7 @@ class AgedPayablesService
     {
         $bills = Bill::with('vendor')
             ->where('vendor_id', $vendorId)
-            ->whereIn('status', ['posted', 'overdue'])
+            ->whereIn('status', ['posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)
             ->get();
 

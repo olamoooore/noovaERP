@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class AccountingDashboardController extends Controller
 {
@@ -81,13 +82,22 @@ class AccountingDashboardController extends Controller
      */
     private function getUnreconciledItems()
     {
-        // Count journal entry lines that haven't been reconciled
-        // Use raw SQL to avoid boolean type issues with PostgreSQL
-        $count = DB::selectOne(
-            "SELECT COUNT(*) as count 
-             FROM journal_entry_lines 
-             WHERE reconciled IS NULL OR reconciled = false"
-        )->count ?? 0;
+        $count = 0;
+
+        if (Schema::hasTable('journal_entry_lines')) {
+            if (Schema::hasColumn('journal_entry_lines', 'reconciliation_id')) {
+                $count = DB::table('journal_entry_lines')
+                    ->whereNull('reconciliation_id')
+                    ->count();
+            } elseif (Schema::hasColumn('journal_entry_lines', 'reconciled')) {
+                $count = DB::table('journal_entry_lines')
+                    ->where(function ($query) {
+                        $query->whereNull('reconciled')
+                            ->orWhere('reconciled', false);
+                    })
+                    ->count();
+            }
+        }
 
         return [
             'count' => $count,

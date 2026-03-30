@@ -311,7 +311,7 @@ export function BankReconciliationPage() {
           </p>
         </div>
         <Button
-          onClick={() => navigate('/accounting/reconciliation/history')}
+          onClick={() => navigate('/accounting/core/reconciliation/history')}
           variant="outline"
         >
           <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />

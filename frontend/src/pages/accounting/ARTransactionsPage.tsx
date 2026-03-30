@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useARTransactions, useCustomerBalance, useExportARTransactions } from '@/hooks/useTransactions';
 import type { TransactionFilters } from '@/types/transactions';
 import api from '@/lib/api';
@@ -39,6 +40,7 @@ function TransactionTypeBadge({ type }: { type: string }) {
 }
 
 export default function ARTransactionsPage() {
+  const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [page, setPage] = useState(1);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -52,6 +54,19 @@ export default function ARTransactionsPage() {
       .then(res => setCustomers(res.data.data || []))
       .catch(err => console.error('Failed to load customers:', err));
   }, []);
+
+  useEffect(() => {
+    const customerId = searchParams.get('customer_id');
+    const transactionType = searchParams.get('transaction_type');
+    const status = searchParams.get('status');
+
+    setFilters(prev => ({
+      ...prev,
+      customer_id: customerId ? Number(customerId) : prev.customer_id,
+      transaction_type: transactionType || prev.transaction_type,
+      status: status || prev.status,
+    }));
+  }, [searchParams]);
 
   const handleFilterChange = (key: keyof TransactionFilters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value || undefined }));
@@ -69,9 +84,9 @@ export default function ARTransactionsPage() {
 
   const handleRowClick = (transaction: any) => {
     const routes = {
-      invoice: `/accounting/customers/invoices/${transaction.transaction_id}`,
-      payment: `/accounting/customers/payments/${transaction.transaction_id}`,
-      credit_note: `/accounting/customers/credit-notes/${transaction.transaction_id}`,
+      invoice: `/accounting/customers/bills/${transaction.transaction_id}`,
+      payment: `/accounting/customers/payments?search=${encodeURIComponent(transaction.document_number || '')}`,
+      credit_note: `/accounting/customers/credit-notes?search=${encodeURIComponent(transaction.document_number || '')}`,
     };
     
     const route = routes[transaction.transaction_type as keyof typeof routes];

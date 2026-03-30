@@ -67,8 +67,7 @@ class BankAccount extends Model
         return JournalEntryLine::where('account_id', $this->gl_account_id)
             ->whereHas('journalEntry', fn($q) => $q->where('status', 'posted'))
             ->where(function ($q) {
-                $q->whereNull('is_reconciled')
-                    ->orWhere('is_reconciled', false);
+                $q->whereNull('reconciliation_id');
             })
             ->with('journalEntry')
             ->orderBy('created_at', 'desc')

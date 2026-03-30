@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
@@ -14,8 +15,9 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 
 export const VendorPayments: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [showRecordPayment, setShowRecordPayment] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 

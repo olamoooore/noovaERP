@@ -23,8 +23,12 @@ class AgedReceivablesService
     {
         // Query all posted/overdue invoices with outstanding balances
         $invoicesQuery = Invoice::with('customer')
-            ->whereIn('status', ['sent', 'overdue'])
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0);
+
+        if (!empty($filters['customer_id'])) {
+            $invoicesQuery->where('customer_id', (int) $filters['customer_id']);
+        }
 
         // Apply search filter
         if (!empty($filters['search'])) {
@@ -176,7 +180,7 @@ class AgedReceivablesService
     {
         $invoices = Invoice::with('customer')
             ->where('customer_id', $customerId)
-            ->whereIn('status', ['sent', 'overdue'])
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)
             ->get();
 

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\BankReconciliationService;
-use App\Models\ChartOfAccount;
+use App\Models\BankAccount;
 use App\Models\BankReconciliation;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -27,13 +27,8 @@ class BankReconciliationController extends Controller
     public function getBankAccounts(): JsonResponse
     {
         try {
-            // Get all bank accounts (asset accounts with 'bank' in name or subtype)
-            $bankAccounts = ChartOfAccount::where('type', 'asset')
+            $bankAccounts = BankAccount::with('glAccount')
                 ->where('is_active', true)
-                ->where(function($query) {
-                    $query->where('subtype', 'ILIKE', '%bank%')
-                          ->orWhere('name', 'ILIKE', '%bank%');
-                })
                 ->get();
 
             $data = [];
@@ -46,13 +41,16 @@ class BankReconciliationController extends Controller
 
                 $data[] = [
                     'id' => $account->id,
-                    'name' => $account->name,
-                    'account_number' => $account->code,
+                    'name' => $account->account_name,
+                    'account_number' => $account->account_number,
+                    'bank_name' => $account->bank_name,
+                    'gl_account_id' => $account->gl_account_id,
+                    'gl_account_name' => $account->glAccount?->name,
                     'last_reconciliation_date' => $lastReconciliation ? 
                         $lastReconciliation->statement_date->format('Y-m-d') : null,
                     'last_reconciliation_balance' => $lastReconciliation ? 
                         round((float) $lastReconciliation->statement_balance, 2) : null,
-                    'current_balance' => round($account->getBalance(), 2),
+                    'current_balance' => round($account->getCurrentBalance(), 2),
                 ];
             }
 
@@ -75,7 +73,7 @@ class BankReconciliationController extends Controller
      * @param int $accountId
      * @return JsonResponse
      */
-    public function getTransactions(Request $request, int $accountId): JsonResponse
+    public function getTransactions(Request $request, int $bankAccountId): JsonResponse
     {
         try {
             // Validate request parameters
@@ -86,7 +84,7 @@ class BankReconciliationController extends Controller
 
             // Get transactions
             $result = $this->bankReconciliationService->getUnreconciledTransactions(
-                $accountId,
+                $bankAccountId,
                 $validated
             );
 
@@ -122,9 +120,10 @@ class BankReconciliationController extends Controller
         try {
             // Validate request
             $validated = $request->validate([
-                'bank_account_id' => 'required|integer|exists:chart_of_accounts,id',
+                'bank_account_id' => 'required|integer|exists:bank_accounts,id',
                 'statement_date' => 'required|date',
                 'statement_balance' => 'required|numeric',
+                'opening_balance' => 'nullable|numeric',
                 'reconciled_transaction_ids' => 'required|array',
                 'reconciled_transaction_ids.*' => 'integer|exists:journal_entry_lines,id',
             ]);
@@ -172,7 +171,7 @@ class BankReconciliationController extends Controller
         try {
             // Validate request
             $validated = $request->validate([
-                'bank_account_id' => 'required|integer|exists:chart_of_accounts,id',
+                'bank_account_id' => 'required|integer|exists:bank_accounts,id',
                 'date' => 'required|date',
                 'description' => 'required|string|max:255',
                 'amount' => 'required|numeric|min:0.01',
@@ -217,11 +216,11 @@ class BankReconciliationController extends Controller
      * @param int $accountId
      * @return JsonResponse
      */
-    public function history(int $accountId): JsonResponse
+    public function history(int $bankAccountId): JsonResponse
     {
         try {
-            // Get reconciliation history
-            $reconciliations = BankReconciliation::where('bank_account_id', $accountId)
+            $reconciliations = BankReconciliation::with('bankAccount')
+                ->where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
                 ->orderBy('statement_date', 'desc')
                 ->get();
@@ -235,6 +234,7 @@ class BankReconciliationController extends Controller
                     'opening_balance' => round((float) $reconciliation->opening_balance, 2),
                     'closing_balance' => round((float) $reconciliation->closing_balance, 2),
                     'difference' => round((float) $reconciliation->difference, 2),
+                    'bank_account_name' => $reconciliation->bankAccount?->account_name,
                     'reconciled_at' => $reconciliation->reconciled_at ? 
                         $reconciliation->reconciled_at->format('Y-m-d H:i:s') : null,
                     'reconciled_by' => $reconciliation->reconciledBy ? 

@@ -7,12 +7,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Add 'partial' to bills status enum
-        DB::statement("ALTER TABLE bills MODIFY COLUMN status ENUM('draft', 'posted', 'partial', 'paid', 'overdue', 'cancelled') DEFAULT 'draft'");
+        DB::statement("ALTER TABLE bills DROP CONSTRAINT IF EXISTS bills_status_check");
+        DB::statement("ALTER TABLE bills ALTER COLUMN status SET DEFAULT 'draft'");
+        DB::statement("ALTER TABLE bills ADD CONSTRAINT bills_status_check CHECK (status IN ('draft', 'posted', 'partial', 'paid', 'overdue', 'cancelled'))");
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE bills MODIFY COLUMN status ENUM('draft', 'posted', 'paid', 'overdue', 'cancelled') DEFAULT 'draft'");
+        DB::statement("UPDATE bills SET status = 'posted' WHERE status = 'partial'");
+        DB::statement("ALTER TABLE bills DROP CONSTRAINT IF EXISTS bills_status_check");
+        DB::statement("ALTER TABLE bills ALTER COLUMN status SET DEFAULT 'draft'");
+        DB::statement("ALTER TABLE bills ADD CONSTRAINT bills_status_check CHECK (status IN ('draft', 'posted', 'paid', 'overdue', 'cancelled'))");
     }
 };

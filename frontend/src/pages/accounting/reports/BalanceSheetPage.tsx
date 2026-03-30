@@ -35,17 +35,19 @@ interface AccountGroup {
 
 interface BalanceSheetData {
   assets: {
-    current: AccountGroup[];
-    non_current: AccountGroup[];
+    current: Array<AccountGroup | Account>;
+    non_current: Array<AccountGroup | Account>;
     total: number;
   };
   liabilities: {
-    current: AccountGroup[];
-    non_current: AccountGroup[];
+    current: Array<AccountGroup | Account>;
+    non_current: Array<AccountGroup | Account>;
     total: number;
   };
   equity: {
-    groups: AccountGroup[];
+    groups?: Array<AccountGroup | Account>;
+    accounts?: Array<AccountGroup | Account>;
+    current_year_earnings?: number;
     total: number;
   };
   total_assets: number;
@@ -73,6 +75,21 @@ export default function BalanceSheetPage() {
       style: 'currency',
       currency: 'USD',
     }).format(amount);
+  };
+
+  const normalizeGroups = (items: Array<AccountGroup | Account> = []): AccountGroup[] => {
+    return items.map((item, index) => {
+      if ('accounts' in item) {
+        return item;
+      }
+
+      return {
+        code: item.account_group || item.code || `GROUP-${index + 1}`,
+        name: item.group_name || item.name,
+        accounts: [item],
+        total: item.balance,
+      };
+    });
   };
 
   const renderAccountGroup = (group: AccountGroup) => {
@@ -233,14 +250,14 @@ export default function BalanceSheetPage() {
                 
                 {renderSection(
                   'Current Assets',
-                  balanceSheet.assets?.current || [],
-                  balanceSheet.assets?.current?.reduce((sum, g) => sum + g.total, 0) || 0
+                  normalizeGroups(balanceSheet.assets?.current || []),
+                  normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
                 {renderSection(
                   'Non-Current Assets',
-                  balanceSheet.assets?.non_current || [],
-                  balanceSheet.assets?.non_current?.reduce((sum, g) => sum + g.total, 0) || 0
+                  normalizeGroups(balanceSheet.assets?.non_current || []),
+                  normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
                 <TableRow className="font-bold border-t-4 bg-primary/20">
@@ -261,14 +278,14 @@ export default function BalanceSheetPage() {
 
                 {renderSection(
                   'Current Liabilities',
-                  balanceSheet.liabilities?.current || [],
-                  balanceSheet.liabilities?.current?.reduce((sum, g) => sum + g.total, 0) || 0
+                  normalizeGroups(balanceSheet.liabilities?.current || []),
+                  normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
                 {renderSection(
                   'Non-Current Liabilities',
-                  balanceSheet.liabilities?.non_current || [],
-                  balanceSheet.liabilities?.non_current?.reduce((sum, g) => sum + g.total, 0) || 0
+                  normalizeGroups(balanceSheet.liabilities?.non_current || []),
+                  normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
                 <TableRow className="font-bold border-t-4 bg-primary/20">
@@ -287,7 +304,7 @@ export default function BalanceSheetPage() {
                   <TableCell></TableCell>
                 </TableRow>
 
-                {balanceSheet.equity?.groups?.map((group) => renderAccountGroup(group))}
+                {normalizeGroups(balanceSheet.equity?.groups || balanceSheet.equity?.accounts || []).map((group) => renderAccountGroup(group))}
 
                 {/* Show Current Year Earnings as a separate line */}
                 {balanceSheet.equity?.current_year_earnings !== undefined && (
@@ -355,8 +372,8 @@ export default function BalanceSheetPage() {
                     <p className="text-sm font-semibold">Current Ratio</p>
                     <p className="text-lg font-mono">
                       {(() => {
-                        const currentAssets = balanceSheet.assets?.current?.reduce((sum, g) => sum + g.total, 0) || 0;
-                        const currentLiabilities = balanceSheet.liabilities?.current?.reduce((sum, g) => sum + g.total, 0) || 0;
+                        const currentAssets = normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0);
+                        const currentLiabilities = normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0);
                         return currentLiabilities > 0 ? (currentAssets / currentLiabilities).toFixed(2) : '∞';
                       })()}
                     </p>

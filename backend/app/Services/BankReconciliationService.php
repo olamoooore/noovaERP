@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Models\BankAccount;
 use App\Models\BankReconciliation;
 use App\Models\ReconciliationItem;
 use App\Models\JournalEntry;
@@ -31,8 +32,12 @@ class BankReconciliationService
      */
     public function getUnreconciledTransactions(int $bankAccountId, array $filters = []): array
     {
-        // Get the bank account
-        $bankAccount = ChartOfAccount::findOrFail($bankAccountId);
+        $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
+        $glAccount = $bankAccount->glAccount;
+
+        if (!$glAccount) {
+            throw new \RuntimeException('Bank account is not linked to a GL account.');
+        }
         
         // Get the last reconciliation for this account
         $lastReconciliation = BankReconciliation::where('bank_account_id', $bankAccountId)
@@ -40,11 +45,13 @@ class BankReconciliationService
             ->orderBy('statement_date', 'desc')
             ->first();
         
-        $openingBalance = $lastReconciliation ? (float) $lastReconciliation->statement_balance : (float) $bankAccount->opening_balance;
+        $openingBalance = $lastReconciliation
+            ? (float) $lastReconciliation->statement_balance
+            : (float) $glAccount->opening_balance;
         
         // Query journal entry lines for this bank account
         $query = JournalEntryLine::with(['journalEntry', 'account'])
-            ->where('account_id', $bankAccountId)
+            ->where('account_id', $bankAccount->gl_account_id)
             ->whereHas('journalEntry', function ($q) {
                 $q->where('status', 'posted');
             });
@@ -97,6 +104,8 @@ class BankReconciliationService
         return [
             'data' => $transactions,
             'opening_balance' => round($openingBalance, 2),
+            'bank_account_id' => $bankAccount->id,
+            'gl_account_id' => $bankAccount->gl_account_id,
         ];
     }
     
@@ -121,10 +130,18 @@ class BankReconciliationService
                 ->orderBy('statement_date', 'desc')
                 ->first();
             
-            $bankAccount = ChartOfAccount::findOrFail($bankAccountId);
-            $openingBalance = $lastReconciliation ? 
-                (float) $lastReconciliation->statement_balance : 
-                (float) $bankAccount->opening_balance;
+            $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
+            $glAccount = $bankAccount->glAccount;
+
+            if (!$glAccount) {
+                throw new \RuntimeException('Bank account is not linked to a GL account.');
+            }
+
+            $openingBalance = array_key_exists('opening_balance', $data)
+                ? (float) $data['opening_balance']
+                : ($lastReconciliation
+                    ? (float) $lastReconciliation->statement_balance
+                    : (float) $glAccount->opening_balance);
             
             // Calculate reconciled balance
             $reconciledBalance = $this->calculateReconciledBalance(
@@ -137,7 +154,7 @@ class BankReconciliationService
             
             // Create reconciliation record
             $reconciliation = BankReconciliation::create([
-                'bank_account_id' => $bankAccountId,
+                'bank_account_id' => $bankAccount->id,
                 'statement_date' => $statementDate,
                 'statement_balance' => $statementBalance,
                 'opening_balance' => $openingBalance,
@@ -187,7 +204,12 @@ class BankReconciliationService
             $type = $data['type']; // 'debit' or 'credit'
             
             // Get bank account
-            $bankAccount = ChartOfAccount::findOrFail($bankAccountId);
+            $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
+            $glAccount = $bankAccount->glAccount;
+
+            if (!$glAccount) {
+                throw new \RuntimeException('Bank account is not linked to a GL account.');
+            }
             
             // Determine contra account
             $contraAccountId = $data['contra_account_id'] ?? null;
@@ -211,7 +233,7 @@ class BankReconciliationService
             if ($type === 'debit') {
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'bank',
-                    accountId: $bankAccountId,
+                    accountId: $glAccount->id,
                     debit: $amount,
                     credit: 0,
                     description: $description,
@@ -228,7 +250,7 @@ class BankReconciliationService
             } else {
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'bank',
-                    accountId: $bankAccountId,
+                    accountId: $glAccount->id,
                     debit: 0,
                     credit: $amount,
                     description: $description,

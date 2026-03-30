@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('entity_account_mappings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('legal_entity_id')->constrained('legal_entities')->onDelete('cascade');
+            $table->unsignedBigInteger('legal_entity_id');
             $table->foreignId('chart_of_account_id')->constrained('chart_of_accounts')->onDelete('cascade');
             $table->foreignId('master_coa_node_id')->constrained('master_coa_nodes')->onDelete('cascade');
             $table->enum('mapping_type', ['one-to-one', 'one-to-many', 'many-to-one'])->default('one-to-one');
@@ -23,6 +23,10 @@ return new class extends Migration
 
             $table->index('legal_entity_id');
             $table->index(['chart_of_account_id', 'master_coa_node_id']);
+
+            if (Schema::hasTable('legal_entities')) {
+                $table->foreign('legal_entity_id')->references('id')->on('legal_entities')->onDelete('cascade');
+            }
         });
     }
 

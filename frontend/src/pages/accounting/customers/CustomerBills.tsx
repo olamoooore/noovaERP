@@ -41,11 +41,34 @@ export const CustomerBills: React.FC = () => {
   const { data: invoices, isLoading, refetch } = useQuery({
     queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter],
     queryFn: async () => {
+      if (customerFilter && agingBucketFilter) {
+        const response = await api.get('/accounting/reports/aged-receivables/details', {
+          params: {
+            customer_id: customerFilter,
+            aging_bucket: agingBucketFilter,
+          },
+        });
+
+        return (response.data.data || []).map((invoice: any) => ({
+          id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          invoice_date: invoice.invoice_date,
+          due_date: invoice.due_date,
+          customer: {
+            name: customerFilter,
+          },
+          total: invoice.total,
+          paid_amount: invoice.paid_amount,
+          balance: invoice.balance,
+          status: invoice.status,
+          is_aging_drilldown: true,
+        }));
+      }
+
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
       if (customerFilter) params.append('customer_id', customerFilter);
-      if (agingBucketFilter) params.append('aging_bucket', agingBucketFilter);
       
       const response = await api.get(`/invoices?${params.toString()}`);
       return response.data.data || [];

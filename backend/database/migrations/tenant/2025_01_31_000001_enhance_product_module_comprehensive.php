@@ -259,7 +259,7 @@ return new class extends Migration
                 $table->id();
                 $table->foreignId('bundle_product_id')->constrained('products')->cascadeOnDelete();
                 $table->foreignId('component_product_id')->constrained('products')->cascadeOnDelete();
-                $table->foreignId('component_variant_id')->nullable()->constrained('product_variants')->nullOnDelete();
+                $table->unsignedBigInteger('component_variant_id')->nullable();
                 $table->integer('quantity')->default(1);
                 $table->enum('discount_type', ['percentage', 'fixed'])->nullable();
                 $table->decimal('discount_value', 12, 2)->default(0);
@@ -268,6 +268,13 @@ return new class extends Migration
                 $table->timestamps();
                 
                 $table->unique(['bundle_product_id', 'component_product_id', 'component_variant_id'], 'bundle_component_unique');
+
+                if (Schema::hasTable('product_variants')) {
+                    $table->foreign('component_variant_id')
+                        ->references('id')
+                        ->on('product_variants')
+                        ->nullOnDelete();
+                }
             });
         }
         
@@ -312,7 +319,7 @@ return new class extends Migration
             Schema::create('product_batches', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('product_id')->constrained()->cascadeOnDelete();
-                $table->foreignId('warehouse_id')->nullable()->constrained()->nullOnDelete();
+                $table->unsignedBigInteger('warehouse_id')->nullable();
                 $table->string('batch_number', 100);
                 $table->string('lot_number', 100)->nullable();
                 $table->integer('quantity');
@@ -331,6 +338,13 @@ return new class extends Migration
                 $table->index(['product_id', 'status']);
                 $table->index(['expiry_date', 'status']);
                 $table->unique(['product_id', 'batch_number']);
+
+                if (Schema::hasTable('warehouses')) {
+                    $table->foreign('warehouse_id')
+                        ->references('id')
+                        ->on('warehouses')
+                        ->nullOnDelete();
+                }
             });
         }
         
@@ -339,9 +353,9 @@ return new class extends Migration
             Schema::create('product_serials', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('product_id')->constrained()->cascadeOnDelete();
-                $table->foreignId('product_variant_id')->nullable()->constrained()->nullOnDelete();
+                $table->unsignedBigInteger('product_variant_id')->nullable();
                 $table->foreignId('batch_id')->nullable()->constrained('product_batches')->nullOnDelete();
-                $table->foreignId('warehouse_id')->nullable()->constrained()->nullOnDelete();
+                $table->unsignedBigInteger('warehouse_id')->nullable();
                 $table->string('serial_number', 100)->unique();
                 $table->string('mac_address', 20)->nullable();
                 $table->string('imei', 20)->nullable();
@@ -360,6 +374,20 @@ return new class extends Migration
                 
                 $table->index(['product_id', 'status']);
                 $table->index(['warranty_end_date']);
+
+                if (Schema::hasTable('product_variants')) {
+                    $table->foreign('product_variant_id')
+                        ->references('id')
+                        ->on('product_variants')
+                        ->nullOnDelete();
+                }
+
+                if (Schema::hasTable('warehouses')) {
+                    $table->foreign('warehouse_id')
+                        ->references('id')
+                        ->on('warehouses')
+                        ->nullOnDelete();
+                }
             });
         }
         

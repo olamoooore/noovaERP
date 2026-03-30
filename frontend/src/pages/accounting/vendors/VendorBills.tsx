@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
@@ -8,21 +8,61 @@ import { Badge } from '@/components/ui/badge';
 import { DocumentUpload } from '@/components/ocr/DocumentUpload';
 import { ImportButton } from '@/components/ImportButton';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { accountingApi } from '@/lib/api';
 
 export const VendorBills: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showUpload, setShowUpload] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const vendorIdParam = searchParams.get('vendor_id');
+  const agingBucketParam = searchParams.get('aging_bucket');
+  const [vendorFilter, setVendorFilter] = useState<string | null>(vendorIdParam);
+  const [agingBucketFilter, setAgingBucketFilter] = useState<string | null>(agingBucketParam);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    setVendorFilter(vendorIdParam);
+    setAgingBucketFilter(agingBucketParam);
+  }, [vendorIdParam, agingBucketParam]);
+
   // Fetch vendor bills from both OCR documents and regular bills API
   const { data: bills, isLoading, refetch } = useQuery({
-    queryKey: ['vendor-bills', statusFilter, searchQuery],
+    queryKey: ['vendor-bills', statusFilter, searchQuery, vendorFilter, agingBucketFilter],
     queryFn: async () => {
+      if (vendorFilter && agingBucketFilter) {
+        const response = await api.get('/accounting/reports/aged-payables/details', {
+          params: {
+            vendor_id: vendorFilter,
+            aging_bucket: agingBucketFilter,
+          },
+        });
+
+        return (response.data.data || []).map((bill: any) => ({
+          uuid: bill.id,
+          source: 'aging-drilldown',
+          status: bill.status,
+          document_date: bill.bill_date,
+          due_date: bill.due_date,
+          vendor_name: vendorFilter,
+          total_amount: bill.total,
+          balance: bill.balance,
+          extracted_data: {
+            invoice_number: bill.bill_number,
+            vendor_name: vendorFilter,
+            invoice_date: bill.bill_date,
+            due_date: bill.due_date,
+            total_amount: bill.total,
+            total: bill.total,
+            amount: bill.total,
+          },
+          confidence_score: 1,
+        }));
+      }
+
       // Fetch OCR documents
       const ocrParams = new URLSearchParams();
       ocrParams.append('document_type', 'vendor_bill');
@@ -44,7 +84,12 @@ export const VendorBills: React.FC = () => {
       // Fetch regular bills from accounting API
       let regularBills = [];
       try {
-        const billsResponse = await accountingApi.get('/accounting/vendor-bills?per_page=1000');
+        const billsResponse = await accountingApi.get('/accounting/vendor-bills', {
+          params: {
+            per_page: 1000,
+            vendor_id: vendorFilter || undefined,
+          },
+        });
         const billsData = billsResponse.data.data || [];
         
         // Transform regular bills to match OCR bill structure
@@ -101,6 +146,24 @@ export const VendorBills: React.FC = () => {
     });
   };
 
+  const handleClearDrillDownFilters = () => {
+    setVendorFilter(null);
+    setAgingBucketFilter(null);
+    setSearchParams({});
+  };
+
+  const getAgingBucketLabel = (bucket: string) => {
+    const labels: Record<string, string> = {
+      current: 'Current',
+      days_1_30: '1-30 Days',
+      days_31_60: '31-60 Days',
+      days_61_90: '61-90 Days',
+      days_90_plus: '90+ Days',
+    };
+
+    return labels[bucket] || bucket;
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: any; label: string }> = {
       pending: { variant: 'secondary', label: 'Pending OCR' },
@@ -154,6 +217,42 @@ export const VendorBills: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {(vendorFilter || agingBucketFilter) && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon icon="solar:filter-bold-duotone" className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <span className="font-medium text-blue-900 dark:text-blue-100">
+                  Filtered from Aged Payables Report
+                </span>
+                <div className="flex gap-2 ml-4">
+                  {vendorFilter && (
+                    <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900">
+                      Vendor ID: {vendorFilter}
+                    </Badge>
+                  )}
+                  {agingBucketFilter && (
+                    <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900">
+                      Aging: {getAgingBucketLabel(agingBucketFilter)}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearDrillDownFilters}
+                className="text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-1" />
+                Clear Filters
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showUpload && (
         <Card>

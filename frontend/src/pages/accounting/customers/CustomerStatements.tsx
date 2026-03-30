@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -8,14 +8,35 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 
+interface StatementRecord {
+  id: number;
+  customer_id: number;
+  customer?: {
+    name: string;
+    email?: string;
+  };
+  period: {
+    start_date: string;
+    end_date: string;
+    type: string;
+  };
+  email_sent: boolean;
+  recipient_email?: string | null;
+  pdf_url?: string | null;
+  generated_at?: string;
+  closing_balance: number;
+}
+
 export const CustomerStatements: React.FC = () => {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [prefilledCustomerId, setPrefilledCustomerId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch customers with outstanding balances
   const { data: customers, isLoading } = useQuery({
@@ -29,6 +50,24 @@ export const CustomerStatements: React.FC = () => {
       return response.data.data || [];
     },
   });
+
+  const { data: history = [], isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['customer-statement-history'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/customers/statements/history');
+      return response.data.data || [];
+    },
+  });
+
+  const latestStatementByCustomer = useMemo(() => {
+    const latest = new Map<number, StatementRecord>();
+    (history as StatementRecord[]).forEach((statement) => {
+      if (!latest.has(statement.customer_id)) {
+        latest.set(statement.customer_id, statement);
+      }
+    });
+    return latest;
+  }, [history]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -69,8 +108,11 @@ export const CustomerStatements: React.FC = () => {
             </DialogHeader>
             <GenerateStatementForm
               customers={customers || []}
+              initialCustomerId={prefilledCustomerId}
               onSuccess={() => {
                 setShowGenerateDialog(false);
+                setPrefilledCustomerId('');
+                queryClient.invalidateQueries({ queryKey: ['customer-statement-history'] });
                 toast({ title: 'Statement generated successfully' });
               }}
             />
@@ -135,7 +177,10 @@ export const CustomerStatements: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customers.map((customer: any) => (
+                  {customers.map((customer: any) => {
+                    const latestStatement = latestStatementByCustomer.get(customer.id);
+
+                    return (
                     <TableRow key={customer.id} className="hover:bg-accent/50">
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -148,7 +193,7 @@ export const CustomerStatements: React.FC = () => {
                         {formatCurrency(customer.outstanding_balance || 0)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {customer.last_statement_date ? formatDate(customer.last_statement_date) : 'Never'}
+                        {latestStatement?.generated_at ? formatDate(latestStatement.generated_at) : 'Never'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
@@ -156,30 +201,84 @@ export const CustomerStatements: React.FC = () => {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setSelectedCustomer(customer);
+                              setPrefilledCustomerId(customer.id.toString());
                               setShowGenerateDialog(true);
                             }}
                           >
                             <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-1" />
                             Generate
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              // View previous statements
-                              toast({ title: 'View statements feature coming soon' });
-                            }}
-                          >
-                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
-                          </Button>
+                          {latestStatement?.pdf_url && (
+                            <Button size="sm" variant="ghost" asChild>
+                              <a href={latestStatement.pdf_url} target="_blank" rel="noreferrer">
+                                <Icon icon="solar:download-minimalistic-bold" className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Statement History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoadingHistory ? (
+            <div className="text-sm text-muted-foreground">Loading statement history...</div>
+          ) : !(history as StatementRecord[]).length ? (
+            <div className="text-sm text-muted-foreground">No statements generated yet.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Closing Balance</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Generated</TableHead>
+                  <TableHead className="text-right">PDF</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(history as StatementRecord[]).map((statement) => (
+                  <TableRow key={statement.id}>
+                    <TableCell className="font-medium">
+                      {statement.customer?.name || `Customer #${statement.customer_id}`}
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(statement.period.start_date)} to {formatDate(statement.period.end_date)}
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(statement.closing_balance)}</TableCell>
+                    <TableCell>
+                      {statement.email_sent ? (
+                        <Badge variant="outline">Sent{statement.recipient_email ? ` to ${statement.recipient_email}` : ''}</Badge>
+                      ) : (
+                        <Badge variant="secondary">Not sent</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{formatDate(statement.generated_at)}</TableCell>
+                    <TableCell className="text-right">
+                      {statement.pdf_url ? (
+                        <Button size="sm" variant="ghost" asChild>
+                          <a href={statement.pdf_url} target="_blank" rel="noreferrer">Download</a>
+                        </Button>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
@@ -241,10 +340,11 @@ export const CustomerStatements: React.FC = () => {
 // Generate Statement Form Component
 const GenerateStatementForm: React.FC<{
   customers: any[];
+  initialCustomerId?: string;
   onSuccess: () => void;
-}> = ({ customers, onSuccess }) => {
+}> = ({ customers, initialCustomerId, onSuccess }) => {
   const [formData, setFormData] = useState({
-    customer_id: '',
+    customer_id: initialCustomerId || '',
     period_type: 'monthly',
     start_date: '',
     end_date: new Date().toISOString().split('T')[0],
