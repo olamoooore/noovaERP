@@ -110,12 +110,25 @@ class APTransactionsController extends Controller
     public function getBalance($vendorId)
     {
         try {
-            // Calculate balance from posted transactions only
+            // Calculate balance from active transactions
             $balance = DB::table('ap_transactions')
                 ->where('vendor_id', $vendorId)
-                ->where('status', 'posted')
+                ->whereIn('status', ['posted', 'partial', 'overdue', 'paid'])
                 ->selectRaw('SUM(debit - credit) as balance')
                 ->value('balance');
+
+            // Get total bills amount
+            $totalBills = DB::table('ap_transactions')
+                ->where('vendor_id', $vendorId)
+                ->where('transaction_type', 'bill')
+                ->whereIn('status', ['posted', 'partial', 'overdue', 'paid'])
+                ->sum('debit');
+
+            // Get total payments amount
+            $totalPayments = DB::table('ap_transactions')
+                ->where('vendor_id', $vendorId)
+                ->whereIn('transaction_type', ['payment', 'bill_payment'])
+                ->sum('credit');
 
             // Get vendor info
             $vendor = DB::table('vendors')
@@ -132,7 +145,9 @@ class APTransactionsController extends Controller
                 'vendor_id' => $vendorId,
                 'vendor_name' => $vendor->name,
                 'balance' => round((float) ($balance ?? 0), 2),
-                'currency_code' => 'USD', // Default currency
+                'total_bills' => round((float) ($totalBills ?? 0), 2),
+                'total_payments' => round((float) ($totalPayments ?? 0), 2),
+                'currency_code' => 'USD',
             ]);
 
         } catch (\Exception $e) {

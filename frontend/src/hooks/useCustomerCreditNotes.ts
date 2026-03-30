@@ -1,15 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import api from '@/lib/api';
 import type { CustomerCreditNote, CreditNoteFilters, CreateCreditNotePayload } from '@/types/creditNote';
 
-const API_BASE = '/api/v1/accounting/customers/credit-notes';
+const API_BASE = '/accounting/customers/credit-notes';
 
 // List credit notes
 export function useCustomerCreditNotes(filters: CreditNoteFilters, page: number = 1) {
   return useQuery({
     queryKey: ['customer-credit-notes', filters, page],
     queryFn: async () => {
-      const { data } = await axios.get(API_BASE, {
+      const { data } = await api.get(API_BASE, {
         params: { ...filters, page, per_page: 20 },
       });
       return data;
@@ -22,7 +22,7 @@ export function useCustomerCreditNote(id: number) {
   return useQuery({
     queryKey: ['customer-credit-note', id],
     queryFn: async () => {
-      const { data } = await axios.get(`${API_BASE}/${id}`);
+      const { data } = await api.get(`${API_BASE}/${id}`);
       return data;
     },
     enabled: !!id,
@@ -35,7 +35,7 @@ export function useCreateCreditNote() {
   
   return useMutation({
     mutationFn: async (creditNote: CreateCreditNotePayload) => {
-      const { data } = await axios.post(API_BASE, creditNote);
+      const { data } = await api.post(API_BASE, creditNote);
       return data;
     },
     onSuccess: () => {
@@ -50,7 +50,7 @@ export function useUpdateCreditNote() {
   
   return useMutation({
     mutationFn: async ({ id, creditNote }: { id: number; creditNote: Partial<CreateCreditNotePayload> }) => {
-      const { data } = await axios.put(`${API_BASE}/${id}`, creditNote);
+      const { data } = await api.put(`${API_BASE}/${id}`, creditNote);
       return data;
     },
     onSuccess: () => {
@@ -65,7 +65,7 @@ export function usePostCreditNote() {
   
   return useMutation({
     mutationFn: async (id: number) => {
-      const { data } = await axios.post(`${API_BASE}/${id}/post`);
+      const { data } = await api.post(`${API_BASE}/${id}/post`);
       return data;
     },
     onSuccess: () => {
@@ -80,7 +80,7 @@ export function useDeleteCreditNote() {
   
   return useMutation({
     mutationFn: async (id: number) => {
-      await axios.delete(`${API_BASE}/${id}`);
+      await api.delete(`${API_BASE}/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-credit-notes'] });
@@ -93,7 +93,7 @@ export function useCreditNotesByInvoice(invoiceId: number) {
   return useQuery({
     queryKey: ['invoice-credit-notes', invoiceId],
     queryFn: async () => {
-      const { data } = await axios.get(`/api/v1/accounting/customers/invoices/${invoiceId}/credit-notes`);
+      const { data } = await api.get(`/accounting/customers/invoices/${invoiceId}/credit-notes`);
       return data;
     },
     enabled: !!invoiceId,

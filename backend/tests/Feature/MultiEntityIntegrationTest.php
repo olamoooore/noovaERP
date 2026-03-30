@@ -129,8 +129,9 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_create_group_via_api(): void
     {
-        $response = $this->postJson('/api/groups', [
+        $response = $this->postJson('/api/accounting/groups', [
             'name' => 'Test Group',
+            'code' => 'TG2',
             'base_currency' => 'USD',
         ]);
 
@@ -140,7 +141,7 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_create_entity_via_api(): void
     {
-        $response = $this->postJson('/api/legal-entities', [
+        $response = $this->postJson('/api/accounting/legal-entities', [
             'group_id' => $this->groupId,
             'name' => 'Test Entity C',
             'code' => 'ENT-C',
@@ -154,7 +155,7 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_list_entities_filtered_by_group(): void
     {
-        $response = $this->getJson("/api/legal-entities?group_id={$this->groupId}");
+        $response = $this->getJson("/api/accounting/legal-entities?group_id={$this->groupId}");
 
         $response->assertStatus(200);
         $this->assertGreaterThanOrEqual(2, count($response->json()));
@@ -166,8 +167,10 @@ class MultiEntityIntegrationTest extends TestCase
     {
         $this->groupId = DB::table('groups')->insertGetId([
             'name' => 'Test Group',
+            'code' => 'TG',
             'base_currency' => 'SGD',
-            'is_active' => true,
+            'fiscal_year_start' => '01-01',
+            'created_by' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -178,8 +181,8 @@ class MultiEntityIntegrationTest extends TestCase
             'code' => 'ENT-A',
             'country_code' => 'SG',
             'base_currency' => 'SGD',
-            'fiscal_year_start_month' => 1,
-            'is_active' => true,
+            'fiscal_year_start' => '01-01',
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -190,8 +193,8 @@ class MultiEntityIntegrationTest extends TestCase
             'code' => 'ENT-B',
             'country_code' => 'MY',
             'base_currency' => 'MYR',
-            'fiscal_year_start_month' => 1,
-            'is_active' => true,
+            'fiscal_year_start' => '01-01',
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -199,9 +202,10 @@ class MultiEntityIntegrationTest extends TestCase
         $this->bookAId = DB::table('entity_books')->insertGetId([
             'legal_entity_id' => $this->entityAId,
             'name' => 'Primary Book A',
-            'book_type' => 'primary',
-            'currency' => 'SGD',
-            'is_active' => true,
+            'book_type' => 'general',
+            'currency_code' => 'SGD',
+            'is_primary' => true,
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -209,9 +213,10 @@ class MultiEntityIntegrationTest extends TestCase
         $this->bookBId = DB::table('entity_books')->insertGetId([
             'legal_entity_id' => $this->entityBId,
             'name' => 'Primary Book B',
-            'book_type' => 'primary',
-            'currency' => 'MYR',
-            'is_active' => true,
+            'book_type' => 'general',
+            'currency_code' => 'MYR',
+            'is_primary' => true,
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]);

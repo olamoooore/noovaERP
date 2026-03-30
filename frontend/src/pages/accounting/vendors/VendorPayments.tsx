@@ -36,7 +36,7 @@ export const VendorPayments: React.FC = () => {
   const { data: unpaidBills } = useQuery({
     queryKey: ['unpaid-vendor-bills'],
     queryFn: async () => {
-      const response = await api.get('/ocr/documents?document_type=vendor_bill&status=posted');
+      const response = await api.get('/accounting/vendor-bills?status=posted,partial');
       return response.data.data || [];
     },
     enabled: showRecordPayment,
@@ -302,7 +302,7 @@ const RecordPaymentForm: React.FC<{
     recordPaymentMutation.mutate(formData);
   };
 
-  const selectedBill = unpaidBills.find((bill) => bill.uuid === formData.bill_id);
+  const selectedBill = unpaidBills.find((bill) => bill.id === parseInt(formData.bill_id));
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -312,12 +312,12 @@ const RecordPaymentForm: React.FC<{
           <Select
             value={formData.bill_id}
             onValueChange={(value) => {
-              const bill = unpaidBills.find((b) => b.uuid === value);
+              const bill = unpaidBills.find((b) => b.id === parseInt(value));
               setFormData({
                 ...formData,
                 bill_id: value,
                 vendor_id: bill?.vendor_id || '',
-                amount: bill?.extracted_data?.total_amount || '',
+                amount: bill?.balance || bill?.total || '',
               });
             }}
           >
@@ -326,8 +326,8 @@ const RecordPaymentForm: React.FC<{
             </SelectTrigger>
             <SelectContent>
               {unpaidBills.map((bill) => (
-                <SelectItem key={bill.uuid} value={bill.uuid}>
-                  {bill.extracted_data?.invoice_number || bill.uuid.slice(0, 8)} - {bill.extracted_data?.vendor_name} (${bill.extracted_data?.total_amount})
+                <SelectItem key={bill.id} value={bill.id.toString()}>
+                  {bill.bill_number} - {bill.vendor?.name} (${bill.balance || bill.total})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -346,7 +346,7 @@ const RecordPaymentForm: React.FC<{
           />
           {selectedBill && (
             <p className="text-xs text-muted-foreground">
-              Bill amount: ${selectedBill.extracted_data?.total_amount}
+              Bill balance: ${selectedBill.balance || selectedBill.total}
             </p>
           )}
         </div>

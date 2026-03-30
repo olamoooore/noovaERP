@@ -30,6 +30,8 @@ class JournalEntry extends Model
         'created_by',
         'reversed_entry_id',
         'is_reversal',
+        'legal_entity_id',
+        'entity_book_id',
     ];
 
     protected $casts = [
@@ -169,6 +171,8 @@ class JournalEntry extends Model
             'created_by' => TenantUserHelper::getTenantUserId(),
             'reversed_entry_id' => $this->id,
             'is_reversal' => true,
+            'legal_entity_id' => $this->legal_entity_id,
+            'entity_book_id' => $this->entity_book_id,
         ]);
 
         // Create reversed lines
@@ -192,10 +196,14 @@ class JournalEntry extends Model
     }
 
     /**
-     * Generate entry number
+     * Generate entry number — delegates to Journal if available, else fallback.
      */
     private function generateEntryNumber(): string
     {
+        if ($this->journal) {
+            return $this->journal->getNextEntryNumber();
+        }
+
         $latest = static::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
         return 'JE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);

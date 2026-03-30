@@ -46,8 +46,8 @@ class LockDateValidationService
             ];
         }
 
-        // Check if date is before lock date
-        if ($date->lt($lockDate->lock_date)) {
+        // Check if date is on or before lock date
+        if ($date->lte($lockDate->lock_date)) {
             return [
                 'is_locked' => true,
                 'lock_date' => $lockDate->lock_date->format('Y-m-d'),
@@ -137,9 +137,15 @@ class LockDateValidationService
      */
     public function canOverrideLockDate(int $userId): bool
     {
-        // In a real application, check user permissions/roles
-        // For now, return true for all authenticated users
-        return true;
+        $user = \App\Models\User::find($userId);
+        if (!$user) {
+            return false;
+        }
+
+        // Check for explicit lock date override permission or admin role
+        return $user->hasPermissionTo('accounting.lock_date_override')
+            || $user->hasRole('admin')
+            || $user->hasRole('super-admin');
     }
 
     /**

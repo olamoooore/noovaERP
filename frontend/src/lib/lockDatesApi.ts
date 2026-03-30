@@ -68,7 +68,7 @@ const lockDatesApi = {
   },
 
   getOverrides: async (params?: { user_id?: number; transaction_type?: string }) => {
-    const response = await api.get('/accounting/lock-dates/overrides', { params });
+    const response = await api.get('/accounting/lock-dates/overrides/history', { params });
     return response.data.data || response.data;
   },
 

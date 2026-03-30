@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
+use App\Models\Journal;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
@@ -62,7 +63,7 @@ class PostingEngine implements PostingEngineInterface
 
                 $entry = JournalEntry::create([
                     'journal_id'   => $request->journalId,
-                    'entry_number' => $this->generateEntryNumber(),
+                    'entry_number' => $this->generateEntryNumber($request->journalId),
                     'entry_date'   => $request->postingDate,
                     'type'         => $request->documentType,
                     'reference'    => $request->reference,
@@ -292,8 +293,15 @@ class PostingEngine implements PostingEngineInterface
         };
     }
 
-    private function generateEntryNumber(): string
+    private function generateEntryNumber(?int $journalId = null): string
     {
+        if ($journalId) {
+            $journal = Journal::find($journalId);
+            if ($journal) {
+                return $journal->getNextEntryNumber();
+            }
+        }
+
         $latest = JournalEntry::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
         return 'JE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);

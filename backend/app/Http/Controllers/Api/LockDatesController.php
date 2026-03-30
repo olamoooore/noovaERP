@@ -182,8 +182,11 @@ class LockDatesController extends Controller
         }
 
         // Check if user has override permission
-        // In a real application, you would check user permissions here
-        // For now, we'll allow all authenticated users to override
+        if (!$this->lockDateService->canOverrideLockDate(auth()->id())) {
+            return response()->json([
+                'message' => 'You do not have permission to override lock dates',
+            ], 403);
+        }
 
         $override = LockDateOverride::logOverride(
             auth()->id(),
@@ -191,7 +194,7 @@ class LockDatesController extends Controller
             $request->transaction_id,
             $request->transaction_date,
             $request->override_reason,
-            auth()->id() // Auto-approve for now
+            null // Requires separate approval
         );
 
         return response()->json([

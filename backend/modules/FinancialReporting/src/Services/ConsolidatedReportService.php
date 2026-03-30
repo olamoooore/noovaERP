@@ -155,7 +155,7 @@ class ConsolidatedReportService
     {
         return DB::table('legal_entities')
             ->where('group_id', $groupId)
-            ->where('is_active', true)
+            ->where('status', 'active')
             ->get()
             ->all();
     }
@@ -167,7 +167,7 @@ class ConsolidatedReportService
     {
         $entityIds = DB::table('legal_entities')
             ->where('group_id', $groupId)
-            ->where('is_active', true)
+            ->where('status', 'active')
             ->pluck('id');
 
         if ($entityIds->isEmpty()) {
@@ -205,7 +205,7 @@ class ConsolidatedReportService
     {
         $entityIds = DB::table('legal_entities')
             ->where('group_id', $groupId)
-            ->where('is_active', true)
+            ->where('status', 'active')
             ->pluck('id');
 
         if ($entityIds->isEmpty()) {
@@ -213,9 +213,12 @@ class ConsolidatedReportService
         }
 
         // Sum DUE_FROM balances (which should equal DUE_TO balances within the group)
-        $dueFromAccountIds = DB::table('entity_account_roles')
-            ->where('role_code', 'INTERCOMPANY_DUE_FROM')
-            ->pluck('account_id');
+        $dueFromAccountIds = DB::table('entity_account_roles as ear')
+            ->join('account_roles as ar', 'ar.id', '=', 'ear.account_role_id')
+            ->where('ar.code', 'INTERCOMPANY_DUE_FROM')
+            ->where('ear.is_active', true)
+            ->whereIn('ear.legal_entity_id', $entityIds)
+            ->pluck('ear.chart_of_account_id');
 
         if ($dueFromAccountIds->isEmpty()) {
             return 0;

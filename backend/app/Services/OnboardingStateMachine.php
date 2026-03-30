@@ -13,28 +13,24 @@ use Illuminate\Support\Facades\DB;
 class OnboardingStateMachine
 {
     /**
-     * Ordered step definitions: code → [label, prerequisites].
-     * Prerequisites are step_codes that must be 'completed' before this step.
+     * Get the step definitions from config.
      */
-    public const STEPS = [
-        'group_setup'       => ['label' => 'Group Setup',                'prerequisites' => []],
-        'entity_selection'  => ['label' => 'Entity Selection',           'prerequisites' => ['group_setup']],
-        'country_compliance'=> ['label' => 'Country & Compliance',       'prerequisites' => ['entity_selection']],
-        'coa_import'        => ['label' => 'Chart of Accounts Import',   'prerequisites' => ['country_compliance']],
-        'role_assignment'   => ['label' => 'Account Role Assignment',    'prerequisites' => ['coa_import']],
-        'validation'        => ['label' => 'Validation & Review',        'prerequisites' => ['role_assignment']],
-        'go_live'           => ['label' => 'Go Live',                    'prerequisites' => ['validation']],
-    ];
+    public function steps(): array
+    {
+        return config('onboarding.steps', []);
+    }
 
     /**
      * Create a new onboarding session with all step states initialized.
      */
     public function createSession(string $tenantId, string $mode = 'guided', ?string $createdBy = null): object
     {
+        $steps = $this->steps();
+
         $sessionId = DB::table('onboarding_sessions')->insertGetId([
             'tenant_id'   => $tenantId,
             'mode'        => $mode,
-            'current_step'=> array_key_first(self::STEPS),
+            'current_step'=> array_key_first($steps),
             'status'      => 'in_progress',
             'started_at'  => now(),
             'created_by'  => $createdBy,
@@ -42,11 +38,11 @@ class OnboardingStateMachine
             'updated_at'  => now(),
         ]);
 
-        foreach (self::STEPS as $code => $def) {
+        foreach ($steps as $code => $def) {
             DB::table('onboarding_step_states')->insert([
                 'session_id'   => $sessionId,
                 'step_code'    => $code,
-                'status'       => $code === array_key_first(self::STEPS) ? 'in_progress' : 'pending',
+                'status'       => $code === array_key_first($steps) ? 'in_progress' : 'pending',
                 'data'         => null,
                 'completed_at' => null,
                 'created_at'   => now(),
@@ -90,7 +86,8 @@ class OnboardingStateMachine
         }
 
         $currentStep = $session->current_step;
-        $stepCodes = array_keys(self::STEPS);
+        $steps = $this->steps();
+        $stepCodes = array_keys($steps);
         $currentIndex = array_search($currentStep, $stepCodes);
 
         if ($currentIndex === false) {
@@ -127,7 +124,7 @@ class OnboardingStateMachine
         $nextStep = $stepCodes[$nextIndex];
 
         // Verify prerequisites
-        $prereqs = self::STEPS[$nextStep]['prerequisites'];
+        $prereqs = $steps[$nextStep]['prerequisites'];
         foreach ($prereqs as $prereq) {
             $prereqState = DB::table('onboarding_step_states')
                 ->where('session_id', $sessionId)
@@ -224,7 +221,7 @@ class OnboardingStateMachine
     {
         $parts = [];
         $i = 0;
-        foreach (array_keys(self::STEPS) as $code) {
+        foreach (array_keys($this->steps()) as $code) {
             $parts[] = "WHEN '{$code}' THEN {$i}";
             $i++;
         }

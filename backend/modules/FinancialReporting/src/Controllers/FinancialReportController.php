@@ -67,25 +67,15 @@ class FinancialReportController extends Controller
                 'opex_total' => $reportData->data['operating_expenses']['total'] ?? 'missing',
             ]);
 
-            // Map to frontend expected structure
+            // Pass through the service's native structure which already matches frontend expectations
             $response = [
                 'revenue' => $reportData->data['revenue'] ?? ['total' => 0, 'accounts' => []],
-                'expenses' => [
-                    'cogs' => $reportData->data['cost_of_goods_sold']['total'] ?? 0,
-                    'operating' => $reportData->data['operating_expenses']['total'] ?? 0,
-                    'other' => $reportData->data['other_expenses']['total'] ?? 0,
-                    'total' => ($reportData->data['cost_of_goods_sold']['total'] ?? 0) + 
-                              ($reportData->data['operating_expenses']['total'] ?? 0) + 
-                              ($reportData->data['other_expenses']['total'] ?? 0),
-                    'accounts' => array_merge(
-                        $reportData->data['cost_of_goods_sold']['accounts'] ?? [],
-                        $reportData->data['operating_expenses']['accounts'] ?? [],
-                        $reportData->data['other_expenses']['accounts'] ?? []
-                    ),
-                ],
-                'gross_profit' => $reportData->data['gross_profit']['amount'] ?? 0,
-                'operating_profit' => $reportData->data['operating_profit']['amount'] ?? 0,
-                'net_profit' => $reportData->data['net_profit']['amount'] ?? 0,
+                'cost_of_goods_sold' => $reportData->data['cost_of_goods_sold'] ?? ['total' => 0, 'accounts' => []],
+                'operating_expenses' => $reportData->data['operating_expenses'] ?? ['total' => 0, 'accounts' => []],
+                'other_expenses' => $reportData->data['other_expenses'] ?? ['total' => 0, 'accounts' => []],
+                'gross_profit' => $reportData->data['gross_profit'] ?? ['amount' => 0],
+                'operating_profit' => $reportData->data['operating_profit'] ?? ['amount' => 0],
+                'net_profit' => $reportData->data['net_profit'] ?? ['amount' => 0],
             ];
 
             \Log::info('P&L Response', [
@@ -142,45 +132,93 @@ class FinancialReportController extends Controller
             // TEMPORARILY DISABLE CACHING - Generate fresh data every time
             $reportData = $this->balanceSheetService->generate($filter);
 
-            // Map to frontend expected structure
+            // Map to frontend expected structure with AccountGroup[] format
+            $currentAssets = $reportData->data['assets']['current_assets']['accounts'] ?? [];
+            $fixedAssets = $reportData->data['assets']['fixed_assets']['accounts'] ?? [];
+            $otherAssets = $reportData->data['assets']['other_assets']['accounts'] ?? [];
+
+            $currentLiabilities = $reportData->data['liabilities']['current_liabilities']['accounts'] ?? [];
+            $longTermLiabilities = $reportData->data['liabilities']['long_term_liabilities']['accounts'] ?? [];
+
+            $totalAssets = $reportData->summary['total_assets'] ?? 0;
+            $totalLiabilities = $reportData->summary['total_liabilities'] ?? 0;
+            $totalEquity = $reportData->summary['total_equity'] ?? 0;
+
+            $currentYearEarnings = ($reportData->data['equity']['current_year_earnings'] ?? null)
+                ?? (($totalAssets) - ($totalLiabilities) - ($reportData->data['equity']['capital'] ?? 0) - ($reportData->data['equity']['retained_earnings'] ?? 0));
+
             $response = [
                 'assets' => [
-                    'current' => $reportData->data['assets']['current_assets']['accounts'] ?? [],
-                    'non_current' => array_merge(
-                        $reportData->data['assets']['fixed_assets']['accounts'] ?? [],
-                        $reportData->data['assets']['other_assets']['accounts'] ?? []
-                    ),
-                    'total' => $reportData->data['assets']['total'] ?? 0,
-                ],
-                'liabilities' => [
-                    'current' => $reportData->data['liabilities']['current_liabilities']['accounts'] ?? [],
-                    'non_current' => $reportData->data['liabilities']['long_term_liabilities']['accounts'] ?? [],
-                    'total' => $reportData->data['liabilities']['total'] ?? 0,
-                ],
-                'equity' => [
-                    'accounts' => [
+                    'groups' => [
                         [
-                            'id' => 0,
-                            'code' => '3000',
-                            'name' => 'Capital',
-                            'balance' => $reportData->data['equity']['capital'] ?? 0,
+                            'code' => '1000',
+                            'name' => 'Current Assets',
+                            'accounts' => $currentAssets,
+                            'total' => $reportData->data['assets']['current_assets']['total'] ?? array_sum(array_column($currentAssets, 'balance')),
                         ],
                         [
-                            'id' => 0,
-                            'code' => '3100',
-                            'name' => 'Retained Earnings',
-                            'balance' => $reportData->data['equity']['retained_earnings'] ?? 0,
+                            'code' => '1500',
+                            'name' => 'Fixed Assets',
+                            'accounts' => $fixedAssets,
+                            'total' => $reportData->data['assets']['fixed_assets']['total'] ?? array_sum(array_column($fixedAssets, 'balance')),
+                        ],
+                        [
+                            'code' => '1800',
+                            'name' => 'Other Assets',
+                            'accounts' => $otherAssets,
+                            'total' => $reportData->data['assets']['other_assets']['total'] ?? array_sum(array_column($otherAssets, 'balance')),
                         ],
                     ],
-                    'total' => $reportData->data['equity']['total'] ?? 0,
+                    'total' => $totalAssets,
                 ],
-                'total_assets' => $reportData->summary['total_assets'] ?? 0,
-                'total_liabilities' => $reportData->summary['total_liabilities'] ?? 0,
-                'total_equity' => $reportData->summary['total_equity'] ?? 0,
+                'liabilities' => [
+                    'groups' => [
+                        [
+                            'code' => '2000',
+                            'name' => 'Current Liabilities',
+                            'accounts' => $currentLiabilities,
+                            'total' => $reportData->data['liabilities']['current_liabilities']['total'] ?? array_sum(array_column($currentLiabilities, 'balance')),
+                        ],
+                        [
+                            'code' => '2500',
+                            'name' => 'Long-Term Liabilities',
+                            'accounts' => $longTermLiabilities,
+                            'total' => $reportData->data['liabilities']['long_term_liabilities']['total'] ?? array_sum(array_column($longTermLiabilities, 'balance')),
+                        ],
+                    ],
+                    'total' => $totalLiabilities,
+                ],
+                'equity' => [
+                    'groups' => [
+                        [
+                            'code' => '3000',
+                            'name' => 'Equity',
+                            'accounts' => [
+                                [
+                                    'id' => 0,
+                                    'code' => '3000',
+                                    'name' => 'Capital',
+                                    'balance' => $reportData->data['equity']['capital'] ?? 0,
+                                ],
+                                [
+                                    'id' => 0,
+                                    'code' => '3100',
+                                    'name' => 'Retained Earnings',
+                                    'balance' => $reportData->data['equity']['retained_earnings'] ?? 0,
+                                ],
+                            ],
+                            'total' => $totalEquity,
+                        ],
+                    ],
+                    'total' => $totalEquity,
+                    'current_year_earnings' => round((float) $currentYearEarnings, 2),
+                ],
+                'total_assets' => $totalAssets,
+                'total_liabilities' => $totalLiabilities,
+                'total_equity' => $totalEquity,
+                'total_liabilities_and_equity' => round((float) ($totalLiabilities + $totalEquity), 2),
                 'working_capital' => $reportData->summary['working_capital'] ?? 0,
-                'balance_check' => ($reportData->summary['total_assets'] ?? 0) - 
-                                  (($reportData->summary['total_liabilities'] ?? 0) + 
-                                   ($reportData->summary['total_equity'] ?? 0)),
+                'balance_check' => round((float) ($totalAssets - $totalLiabilities - $totalEquity), 2),
             ];
 
             // Add no-cache headers to prevent browser caching

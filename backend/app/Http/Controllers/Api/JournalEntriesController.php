@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\JournalEntry;
 use App\Models\Journal;
 use App\Models\LockDate;
@@ -16,7 +19,8 @@ use Illuminate\Support\Facades\DB;
 class JournalEntriesController extends Controller
 {
     public function __construct(
-        private LockDateValidationService $lockDateService
+        private LockDateValidationService $lockDateService,
+        private PostingEngineInterface $postingEngine,
     ) {}
 
     /**
@@ -128,10 +132,14 @@ class JournalEntriesController extends Controller
                 ], 422);
             }
 
-            // Generate entry number
-            $lastEntry = JournalEntry::orderBy('id', 'desc')->first();
-            $nextNum = $lastEntry ? ((int) substr($lastEntry->entry_number, 3)) + 1 : 1;
-            $entryNumber = 'JE-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
+            // Generate entry number from journal or fallback
+            $journal = $validated['journal_id'] ? Journal::find($validated['journal_id']) : null;
+            $entryNumber = $journal
+                ? $journal->getNextEntryNumber()
+                : 'JE-' . date('Y') . '-' . str_pad(
+                    (JournalEntry::orderBy('id', 'desc')->value('id') ?? 0) + 1,
+                    4, '0', STR_PAD_LEFT
+                );
 
             $entry = JournalEntry::create([
                 'journal_id' => $validated['journal_id'] ?? null,
@@ -142,6 +150,8 @@ class JournalEntriesController extends Controller
                 'description' => $validated['description'],
                 'status' => 'draft',
                 'created_by' => auth()->id(),
+                'legal_entity_id' => $request->attributes->get('legal_entity_id'),
+                'entity_book_id' => $request->attributes->get('entity_book_id'),
             ]);
 
             foreach ($validated['lines'] as $line) {
@@ -263,7 +273,7 @@ class JournalEntriesController extends Controller
     }
 
     /**
-     * Post a journal entry
+     * Post a journal entry via PostingEngine
      */
     public function post($id, Request $request)
     {
@@ -279,7 +289,6 @@ class JournalEntriesController extends Controller
         $lockValidation = $this->lockDateService->validateTransactionDate('journal_entries', $entry->entry_date);
         
         if ($lockValidation['is_locked']) {
-            // Check if override is provided
             if (!$request->has('override_reason')) {
                 return response()->json([
                     'message' => $lockValidation['message'],
@@ -288,7 +297,6 @@ class JournalEntriesController extends Controller
                 ], 422);
             }
 
-            // Log the override
             $this->lockDateService->logOverride(
                 auth()->id(),
                 'journal_entry',
@@ -300,11 +308,55 @@ class JournalEntriesController extends Controller
         }
 
         try {
-            $entry->post();
+            // Build PostingRequestLines from existing draft lines
+            $postingLines = $entry->lines->map(fn ($line) => new PostingRequestLine(
+                accountMappingKey: 'general_expense',
+                accountId: $line->account_id,
+                debit: (float) $line->debit,
+                credit: (float) $line->credit,
+                description: $line->description,
+                reference: $line->reference,
+                departmentId: $line->department_id,
+                projectId: $line->project_id,
+                locationId: $line->location_id,
+            ))->toArray();
+
+            // Delete the draft entry (PostingEngine will create a posted one)
+            $draftData = [
+                'journal_id' => $entry->journal_id,
+                'entry_date' => $entry->entry_date->toDateString(),
+                'description' => $entry->description,
+                'reference' => $entry->reference,
+                'legal_entity_id' => $entry->legal_entity_id,
+                'entity_book_id' => $entry->entity_book_id,
+            ];
+            $entry->lines()->delete();
+            $entry->forceDelete();
+
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'manual',
+                documentId: $id,
+                postingDate: $draftData['entry_date'],
+                description: $draftData['description'],
+                lines: $postingLines,
+                reference: $draftData['reference'],
+                journalId: $draftData['journal_id'],
+                userId: auth()->id(),
+                overrideReason: $request->input('override_reason'),
+                legalEntityId: $draftData['legal_entity_id'],
+                entityBookId: $draftData['entity_book_id'],
+            ));
+
+            if (!$result->success) {
+                return response()->json([
+                    'message' => 'Error posting journal entry',
+                    'error' => $result->error,
+                ], 422);
+            }
 
             return response()->json([
                 'message' => 'Journal entry posted successfully',
-                'entry' => $entry->fresh('lines.account'),
+                'entry' => $result->journalEntry->load('lines.account'),
             ]);
 
         } catch (\Exception $e) {
@@ -316,22 +368,31 @@ class JournalEntriesController extends Controller
     }
 
     /**
-     * Reverse a journal entry
+     * Reverse a journal entry via PostingEngine
      */
     public function reverse($id, Request $request)
     {
-        $entry = JournalEntry::with('lines')->findOrFail($id);
-
         $validated = $request->validate([
             'reason' => 'nullable|string',
         ]);
 
         try {
-            $reversalEntry = $entry->reverse($validated['reason'] ?? null);
+            $result = $this->postingEngine->reverse(
+                journalEntryId: (int) $id,
+                reason: $validated['reason'] ?? 'Manual reversal',
+                approvedBy: auth()->id(),
+            );
+
+            if (!$result->success) {
+                return response()->json([
+                    'message' => 'Error reversing journal entry',
+                    'error' => $result->error,
+                ], 422);
+            }
 
             return response()->json([
                 'message' => 'Journal entry reversed successfully',
-                'reversal_entry' => $reversalEntry->load('lines.account'),
+                'reversal_entry' => $result->journalEntry->load('lines.account'),
             ]);
 
         } catch (\Exception $e) {

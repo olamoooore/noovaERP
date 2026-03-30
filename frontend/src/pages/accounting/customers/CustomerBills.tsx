@@ -52,15 +52,15 @@ export const CustomerBills: React.FC = () => {
     },
   });
 
-  // Post invoice mutation
+  // Send invoice mutation
   const postInvoiceMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await api.post(`/invoices/${id}/post`);
+      const response = await api.post(`/invoices/${id}/send`);
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-bills'] });
-      toast({ title: 'Invoice posted successfully' });
+      toast({ title: 'Invoice sent successfully' });
     },
     onError: (error: any) => {
       toast({ 

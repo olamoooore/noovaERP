@@ -194,6 +194,8 @@ class WebOrderPostingService
             lines: $lines,
             reference: $order->order_number,
             userId: auth()->id() ?? 1,
+            legalEntityId: request()->attributes->get('legal_entity_id'),
+            entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
         if (!$result->success) {

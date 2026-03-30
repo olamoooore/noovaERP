@@ -110,12 +110,25 @@ class ARTransactionsController extends Controller
     public function getBalance($customerId)
     {
         try {
-            // Calculate balance from posted transactions only
+            // Calculate balance from active transactions (invoices use 'sent' status, not 'posted')
             $balance = DB::table('ar_transactions')
                 ->where('customer_id', $customerId)
-                ->where('status', 'posted')
+                ->whereIn('status', ['sent', 'posted', 'partial', 'overdue', 'paid'])
                 ->selectRaw('SUM(debit - credit) as balance')
                 ->value('balance');
+
+            // Get total invoices amount
+            $totalInvoices = DB::table('ar_transactions')
+                ->where('customer_id', $customerId)
+                ->where('transaction_type', 'invoice')
+                ->whereIn('status', ['sent', 'posted', 'partial', 'overdue', 'paid'])
+                ->sum('debit');
+
+            // Get total payments amount
+            $totalPayments = DB::table('ar_transactions')
+                ->where('customer_id', $customerId)
+                ->where('transaction_type', 'payment')
+                ->sum('credit');
 
             // Get customer info
             $customer = DB::table('customers')
@@ -132,7 +145,9 @@ class ARTransactionsController extends Controller
                 'customer_id' => $customerId,
                 'customer_name' => $customer->name,
                 'balance' => round((float) ($balance ?? 0), 2),
-                'currency_code' => 'USD', // Default currency
+                'total_invoices' => round((float) ($totalInvoices ?? 0), 2),
+                'total_payments' => round((float) ($totalPayments ?? 0), 2),
+                'currency_code' => 'USD',
             ]);
 
         } catch (\Exception $e) {

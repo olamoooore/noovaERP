@@ -107,6 +107,6 @@ class OnboardingSessionsController extends Controller
      */
     public function steps(): JsonResponse
     {
-        return response()->json(['data' => OnboardingStateMachine::STEPS]);
+        return response()->json(['data' => $this->machine->steps()]);
     }
 }

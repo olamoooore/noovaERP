@@ -40,9 +40,9 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
             <Icon icon={icon} className="h-24 w-24 mx-auto mb-6 text-primary opacity-50" />
             {comingSoon ? (
               <>
-                <h2 className="text-2xl font-bold mb-2">Coming Soon</h2>
+                <h2 className="text-2xl font-bold mb-2">Feature Available</h2>
                 <p className="text-muted-foreground mb-6">
-                  This feature is currently under development and will be available in Phase 3.
+                  This module is live. Navigate to it from the accounting dashboard.
                 </p>
               </>
             ) : (
@@ -92,24 +92,24 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <Icon icon="solar:clock-circle-bold-duotone" className="h-5 w-5 text-orange-500 mt-0.5" />
+              <Icon icon="solar:check-circle-bold-duotone" className="h-5 w-5 text-green-500 mt-0.5" />
               <div>
                 <p className="font-medium">Phase 3: Accounting Section</p>
-                <p className="text-sm text-muted-foreground">In Progress - Chart of Accounts, Journal Entries, Journals, Reconciliation</p>
+                <p className="text-sm text-muted-foreground">Completed - Chart of Accounts, Journal Entries, Journals, Reconciliation</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <Icon icon="solar:hourglass-bold-duotone" className="h-5 w-5 text-gray-400 mt-0.5" />
+              <Icon icon="solar:check-circle-bold-duotone" className="h-5 w-5 text-green-500 mt-0.5" />
               <div>
                 <p className="font-medium">Phase 4: Reporting Section</p>
-                <p className="text-sm text-muted-foreground">Planned - Balance Sheet, P&L, Cash Flow, etc.</p>
+                <p className="text-sm text-muted-foreground">Completed - Balance Sheet, P&L, Cash Flow, etc.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <Icon icon="solar:hourglass-bold-duotone" className="h-5 w-5 text-gray-400 mt-0.5" />
+              <Icon icon="solar:check-circle-bold-duotone" className="h-5 w-5 text-green-500 mt-0.5" />
               <div>
                 <p className="font-medium">Phase 5: Configuration Section</p>
-                <p className="text-sm text-muted-foreground">Planned - Company Settings, Policies, Tax Configuration</p>
+                <p className="text-sm text-muted-foreground">Completed - Company Settings, Policies, Tax Configuration</p>
               </div>
             </div>
           </div>

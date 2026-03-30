@@ -185,7 +185,7 @@ export const AccountingDashboard: React.FC = () => {
               <Icon icon="solar:wallet-money-bold-duotone" className="h-8 w-8 text-primary" />
               <span className="text-sm font-medium">Record Payment</span>
             </button>
-            <button onClick={() => navigate('/accounting/journal-entries')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
+            <button onClick={() => navigate('/accounting/core/journal-entries')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
               <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-primary" />
               <span className="text-sm font-medium">Journal Entry</span>
             </button>

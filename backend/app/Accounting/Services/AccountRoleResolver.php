@@ -28,7 +28,7 @@ class AccountRoleResolver
         'sales_tax_payable'        => 'TAX_OUTPUT',
         'input_tax'                => 'TAX_INPUT',
         'unrealized_fx_gain_loss'  => 'FX_GAIN',
-        'realized_fx_gain_loss'    => 'FX_GAIN',
+        'realized_fx_gain_loss'    => 'FX_LOSS',
         'retained_earnings'        => 'RETAINED_EARNINGS',
         'general_expense'          => 'SUSPENSE',
         'sales_revenue'            => null, // no direct role — use AccountMappingService
@@ -55,13 +55,13 @@ class AccountRoleResolver
     /**
      * Resolve a ChartOfAccount by mapping key.
      */
-    public function resolve(string $key, ?string $documentType = null): ChartOfAccount
+    public function resolve(string $key, ?string $documentType = null, ?int $legalEntityId = null): ChartOfAccount
     {
         if (!$this->isRoleBased()) {
             return $this->legacyMapper->resolve($key, $documentType);
         }
 
-        $cacheKey = "{$key}:{$documentType}";
+        $cacheKey = "{$key}:{$documentType}:{$legalEntityId}";
         if (isset($this->cache[$cacheKey])) {
             return $this->cache[$cacheKey];
         }
@@ -69,7 +69,7 @@ class AccountRoleResolver
         // 1. Try entity_account_roles via role code mapping
         $roleCode = self::KEY_TO_ROLE[$key] ?? null;
         if ($roleCode) {
-            $account = $this->resolveByRole($roleCode);
+            $account = $this->resolveByRole($roleCode, $legalEntityId);
             if ($account) {
                 return $this->cache[$cacheKey] = $account;
             }
@@ -82,21 +82,26 @@ class AccountRoleResolver
     /**
      * Shorthand: resolve to account ID.
      */
-    public function resolveId(string $key, ?string $documentType = null): int
+    public function resolveId(string $key, ?string $documentType = null, ?int $legalEntityId = null): int
     {
-        return $this->resolve($key, $documentType)->id;
+        return $this->resolve($key, $documentType, $legalEntityId)->id;
     }
 
     /**
-     * Resolve by role code from entity_account_roles table.
+     * Resolve by role code from entity_account_roles table, scoped to a legal entity.
      */
-    private function resolveByRole(string $roleCode): ?ChartOfAccount
+    private function resolveByRole(string $roleCode, ?int $legalEntityId = null): ?ChartOfAccount
     {
-        $accountId = DB::table('entity_account_roles as ear')
+        $query = DB::table('entity_account_roles as ear')
             ->join('account_roles as ar', 'ar.id', '=', 'ear.account_role_id')
             ->where('ar.code', $roleCode)
-            ->where('ear.is_active', true)
-            ->value('ear.chart_of_account_id');
+            ->where('ear.is_active', true);
+
+        if ($legalEntityId) {
+            $query->where('ear.legal_entity_id', $legalEntityId);
+        }
+
+        $accountId = $query->value('ear.chart_of_account_id');
 
         if (!$accountId) {
             return null;
@@ -106,18 +111,22 @@ class AccountRoleResolver
     }
 
     /**
-     * Get all unassigned mandatory roles for the current tenant.
+     * Get all unassigned mandatory roles for a specific legal entity.
      */
-    public function getUnassignedMandatoryRoles(): array
+    public function getUnassignedMandatoryRoles(?int $legalEntityId = null): array
     {
         $mandatoryRoles = DB::table('account_roles')
             ->where('is_mandatory', true)
             ->pluck('code', 'id');
 
-        $assignedRoleIds = DB::table('entity_account_roles')
-            ->where('is_active', true)
-            ->pluck('account_role_id')
-            ->unique();
+        $query = DB::table('entity_account_roles')
+            ->where('is_active', true);
+
+        if ($legalEntityId) {
+            $query->where('legal_entity_id', $legalEntityId);
+        }
+
+        $assignedRoleIds = $query->pluck('account_role_id')->unique();
 
         $unassigned = [];
         foreach ($mandatoryRoles as $id => $code) {

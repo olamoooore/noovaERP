@@ -26,15 +26,20 @@ class ReportMappingReader
      * Return entity chart_of_accounts.id list for a given report tag code.
      * Chain: report_tags → account_report_mappings → master_coa_nodes → entity_account_mappings → chart_of_accounts
      */
-    public function accountIdsForTag(string $tagCode): array
+    public function accountIdsForTag(string $tagCode, ?int $legalEntityId = null): array
     {
-        return DB::table('report_tags as rt')
+        $query = DB::table('report_tags as rt')
             ->join('account_report_mappings as arm', 'arm.report_tag_id', '=', 'rt.id')
             ->join('master_coa_nodes as mcn', 'mcn.id', '=', 'arm.master_coa_node_id')
             ->join('entity_account_mappings as eam', 'eam.master_coa_node_id', '=', 'mcn.id')
             ->where('rt.code', $tagCode)
-            ->where('arm.is_active', true)
-            ->pluck('eam.chart_of_account_id')
+            ->where('arm.is_active', true);
+
+        if ($legalEntityId) {
+            $query->where('eam.legal_entity_id', $legalEntityId);
+        }
+
+        return $query->pluck('eam.chart_of_account_id')
             ->unique()
             ->values()
             ->toArray();
@@ -43,15 +48,20 @@ class ReportMappingReader
     /**
      * Return entity chart_of_accounts.id list for multiple tags at once.
      */
-    public function accountIdsForTags(array $tagCodes): array
+    public function accountIdsForTags(array $tagCodes, ?int $legalEntityId = null): array
     {
-        return DB::table('report_tags as rt')
+        $query = DB::table('report_tags as rt')
             ->join('account_report_mappings as arm', 'arm.report_tag_id', '=', 'rt.id')
             ->join('master_coa_nodes as mcn', 'mcn.id', '=', 'arm.master_coa_node_id')
             ->join('entity_account_mappings as eam', 'eam.master_coa_node_id', '=', 'mcn.id')
             ->whereIn('rt.code', $tagCodes)
-            ->where('arm.is_active', true)
-            ->pluck('eam.chart_of_account_id')
+            ->where('arm.is_active', true);
+
+        if ($legalEntityId) {
+            $query->where('eam.legal_entity_id', $legalEntityId);
+        }
+
+        return $query->pluck('eam.chart_of_account_id')
             ->unique()
             ->values()
             ->toArray();
@@ -99,10 +109,10 @@ class ReportMappingReader
      * @param string $tagCode   Report tag code, e.g. 'PL_COGS'
      * @param string $coaAlias  Table alias for chart_of_accounts (default 'coa')
      */
-    public function applyFilter($query, string $tagCode, string $coaAlias = 'coa'): void
+    public function applyFilter($query, string $tagCode, string $coaAlias = 'coa', ?int $legalEntityId = null): void
     {
         if ($this->isMapped()) {
-            $ids = $this->accountIdsForTag($tagCode);
+            $ids = $this->accountIdsForTag($tagCode, $legalEntityId);
             if (empty($ids)) {
                 $query->whereRaw('1=0'); // no accounts mapped → zero result
             } else {
@@ -161,10 +171,10 @@ class ReportMappingReader
      * Return account IDs for a tag. In mapped mode, uses tag chain.
      * In legacy mode, queries chart_of_accounts by code range.
      */
-    public function resolveAccountIds(string $tagCode): array
+    public function resolveAccountIds(string $tagCode, ?int $legalEntityId = null): array
     {
         if ($this->isMapped()) {
-            return $this->accountIdsForTag($tagCode);
+            return $this->accountIdsForTag($tagCode, $legalEntityId);
         }
 
         $ranges = self::LEGACY_RANGES[$tagCode] ?? null;

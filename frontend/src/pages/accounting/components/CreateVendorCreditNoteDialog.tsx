@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useCreateVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import type { CreateVendorCreditNotePayload } from '@/types/vendorCreditNote';
-import axios from 'axios';
+import api from '@/lib/api';
 
 interface CreateVendorCreditNoteDialogProps {
   onClose: () => void;
@@ -46,7 +46,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess }: Cre
 
   useEffect(() => {
     // Fetch posted bills
-    axios.get('/api/v1/accounting/vendors/bills', {
+    api.get('/accounting/vendor-bills', {
       params: { status: 'posted', per_page: 100 }
     })
       .then(res => setBills(res.data.data || []))

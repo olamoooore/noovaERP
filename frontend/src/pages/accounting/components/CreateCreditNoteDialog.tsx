@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useCreateCreditNote } from '@/hooks/useCustomerCreditNotes';
 import type { CreateCreditNotePayload } from '@/types/creditNote';
-import axios from 'axios';
+import api from '@/lib/api';
 
 interface CreateCreditNoteDialogProps {
   onClose: () => void;
@@ -46,8 +46,8 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess }: CreateCre
 
   useEffect(() => {
     // Fetch posted invoices
-    axios.get('/api/v1/accounting/customers/invoices', {
-      params: { status: 'posted', per_page: 100 }
+    api.get('/invoices', {
+      params: { status: 'sent,overdue', per_page: 100 }
     })
       .then(res => setInvoices(res.data.data || []))
       .catch(err => console.error('Failed to load invoices:', err));

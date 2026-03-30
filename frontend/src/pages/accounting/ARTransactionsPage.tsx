@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useARTransactions, useCustomerBalance, useExportARTransactions } from '@/hooks/useTransactions';
 import type { TransactionFilters } from '@/types/transactions';
-import axios from 'axios';
+import api from '@/lib/api';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -48,7 +48,7 @@ export default function ARTransactionsPage() {
   const exportMutation = useExportARTransactions();
 
   useEffect(() => {
-    axios.get('/api/v1/accounting/customers', { params: { per_page: 100 } })
+    api.get('/accounting/customers', { params: { per_page: 100 } })
       .then(res => setCustomers(res.data.data || []))
       .catch(err => console.error('Failed to load customers:', err));
   }, []);

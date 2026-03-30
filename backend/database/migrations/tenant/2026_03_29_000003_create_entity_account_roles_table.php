@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('entity_account_roles', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('legal_entity_id')->constrained('legal_entities')->onDelete('cascade');
             $table->foreignId('account_role_id')->constrained('account_roles')->onDelete('cascade');
             $table->foreignId('chart_of_account_id')->constrained('chart_of_accounts')->onDelete('cascade');
             $table->boolean('is_active')->default(true);
@@ -17,7 +18,8 @@ return new class extends Migration
             $table->timestamp('assigned_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['account_role_id', 'chart_of_account_id']);
+            $table->unique(['legal_entity_id', 'account_role_id', 'chart_of_account_id'], 'ear_entity_role_account_unique');
+            $table->index('legal_entity_id');
         });
     }
 

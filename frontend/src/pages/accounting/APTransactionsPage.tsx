@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAPTransactions, useVendorBalance, useExportAPTransactions } from '@/hooks/useTransactions';
 import type { TransactionFilters } from '@/types/transactions';
-import axios from 'axios';
+import api from '@/lib/api';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -48,7 +48,7 @@ export default function APTransactionsPage() {
   const exportMutation = useExportAPTransactions();
 
   useEffect(() => {
-    axios.get('/api/v1/accounting/vendors', { params: { per_page: 100 } })
+    api.get('/accounting/vendors', { params: { per_page: 100 } })
       .then(res => setVendors(res.data.data || []))
       .catch(err => console.error('Failed to load vendors:', err));
   }, []);

@@ -22,11 +22,14 @@ class EntityManagementController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
+            'code' => 'required|string|max:50|unique:groups,code',
             'base_currency' => 'required|string|size:3',
+            'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
         $id = DB::table('groups')->insertGetId(array_merge($data, [
-            'is_active' => true,
+            'fiscal_year_start' => $data['fiscal_year_start'] ?? '01-01',
+            'created_by' => auth()->id(),
             'created_at' => now(),
             'updated_at' => now(),
         ]));
@@ -47,9 +50,21 @@ class EntityManagementController extends Controller
     {
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
+            'code' => 'sometimes|string|max:50',
             'base_currency' => 'sometimes|string|size:3',
-            'is_active' => 'sometimes|boolean',
+            'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
+
+        // Ensure code uniqueness if changing
+        if (isset($data['code'])) {
+            $existing = DB::table('groups')
+                ->where('code', $data['code'])
+                ->where('id', '!=', $id)
+                ->exists();
+            if ($existing) {
+                return response()->json(['message' => 'Group code already taken'], 422);
+            }
+        }
 
         DB::table('groups')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
         return response()->json(DB::table('groups')->find($id));
@@ -73,15 +88,15 @@ class EntityManagementController extends Controller
         $data = $request->validate([
             'group_id' => 'required|integer|exists:groups,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:20|unique:legal_entities,code',
-            'country_code' => 'required|string|size:2',
+            'code' => 'required|string|max:50|unique:legal_entities,code',
+            'country_code' => 'sometimes|string|size:2',
             'base_currency' => 'required|string|size:3',
-            'fiscal_year_start_month' => 'sometimes|integer|min:1|max:12',
+            'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
         $id = DB::table('legal_entities')->insertGetId(array_merge($data, [
-            'fiscal_year_start_month' => $data['fiscal_year_start_month'] ?? 1,
-            'is_active' => true,
+            'fiscal_year_start' => $data['fiscal_year_start'] ?? '01-01',
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]));
@@ -102,11 +117,11 @@ class EntityManagementController extends Controller
     {
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:20',
+            'code' => 'sometimes|string|max:50',
             'country_code' => 'sometimes|string|size:2',
             'base_currency' => 'sometimes|string|size:3',
-            'fiscal_year_start_month' => 'sometimes|integer|min:1|max:12',
-            'is_active' => 'sometimes|boolean',
+            'fiscal_year_start' => 'sometimes|string|max:5',
+            'status' => 'sometimes|in:active,inactive',
         ]);
 
         // Ensure code uniqueness if changing
@@ -172,12 +187,14 @@ class EntityManagementController extends Controller
         $data = $request->validate([
             'legal_entity_id' => 'required|integer|exists:legal_entities,id',
             'name' => 'required|string|max:255',
-            'book_type' => 'required|in:primary,adjustment,tax,consolidation',
-            'currency' => 'required|string|size:3',
+            'book_type' => 'required|in:general,statutory,management,tax',
+            'currency_code' => 'required|string|size:3',
+            'is_primary' => 'sometimes|boolean',
         ]);
 
         $id = DB::table('entity_books')->insertGetId(array_merge($data, [
-            'is_active' => true,
+            'is_primary' => $data['is_primary'] ?? false,
+            'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]));

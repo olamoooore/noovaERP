@@ -112,7 +112,7 @@ class InvoiceService
             $totalCogs = 0;
             foreach ($invoice->lines as $line) {
                 if ($line->product && $line->product->track_inventory) {
-                    $unitCost = (float) ($line->product->cost_price ?? 0);
+                    $unitCost = (float) ($line->product->cost ?? 0);
                     $lineCogs = $unitCost * $line->quantity;
 
                     if ($lineCogs > 0) {

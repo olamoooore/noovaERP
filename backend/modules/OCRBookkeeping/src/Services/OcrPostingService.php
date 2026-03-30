@@ -100,6 +100,8 @@ class OcrPostingService
                 lines: $postingLines,
                 reference: $document->document_reference ?? "OCR-{$document->uuid}",
                 userId: TenantUserHelper::getTenantUserId(),
+                legalEntityId: request()->attributes->get('legal_entity_id'),
+                entityBookId: request()->attributes->get('entity_book_id'),
             ));
 
             if (!$result->success) {

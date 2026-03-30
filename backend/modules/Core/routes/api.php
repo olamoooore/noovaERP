@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\VendorCreditNotesController;
 use App\Http\Controllers\Api\ARTransactionsController;
 use App\Http\Controllers\Api\APTransactionsController;
+use App\Http\Controllers\Api\CustomerStatementController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\ImportController;
@@ -46,6 +47,9 @@ use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\EntityManagementController;
+use App\Http\Middleware\ResolveEntityContext;
+use App\Http\Middleware\EnsureEntityAccess;
+use App\Http\Middleware\EnsureAccountingWriteAccess;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -146,7 +150,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::apiResource('payments', PaymentController::class);
 
     // Accounting
-    Route::prefix('accounting')->group(function () {
+    Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard
         Route::get('/dashboard', [AccountingDashboardController::class, 'index']);
         Route::get('/dashboard-test', function() {
@@ -382,5 +386,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
         Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
         Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
+
+        // Customer Statements
+        Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
     });
 });

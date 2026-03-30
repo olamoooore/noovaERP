@@ -34,7 +34,7 @@ export const CustomerPayments: React.FC = () => {
   const { data: unpaidInvoices } = useQuery({
     queryKey: ['unpaid-invoices'],
     queryFn: async () => {
-      const response = await api.get('/invoices?status=posted,overdue');
+      const response = await api.get('/invoices?status=sent,overdue,partial');
       return response.data.data || [];
     },
     enabled: showRecordPayment,
@@ -173,7 +173,7 @@ export const CustomerPayments: React.FC = () => {
                       </TableCell>
                       <TableCell>{formatDate(payment.payment_date)}</TableCell>
                       <TableCell>{payment.customer?.name || payment.customer_name || '-'}</TableCell>
-                      <TableCell>{getPaymentMethodBadge(payment.payment_method)}</TableCell>
+                      <TableCell>{getPaymentMethodBadge(payment.method)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {payment.reference || '-'}
                       </TableCell>
@@ -264,7 +264,7 @@ const RecordPaymentForm: React.FC<{
     invoice_id: '',
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
-    payment_method: 'bank',
+    method: 'bank_transfer',
     reference: '',
     notes: '',
   });
@@ -356,19 +356,20 @@ const RecordPaymentForm: React.FC<{
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="payment_method">Payment Method</Label>
+          <Label htmlFor="method">Payment Method</Label>
           <Select
-            value={formData.payment_method}
-            onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+            value={formData.method}
+            onValueChange={(value) => setFormData({ ...formData, method: value })}
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="bank">Bank Transfer</SelectItem>
+              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
               <SelectItem value="card">Credit/Debit Card</SelectItem>
               <SelectItem value="check">Check</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
         </div>
