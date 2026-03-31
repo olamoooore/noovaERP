@@ -164,7 +164,7 @@ export const CustomerBills: React.FC = () => {
             <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
             Upload Invoice (OCR)
           </Button>
-          <Button onClick={() => navigate('/invoices/create')}>
+          <Button onClick={() => navigate('/accounting/customers/bills/create')}>
             <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
             New Invoice
           </Button>
@@ -291,7 +291,7 @@ export const CustomerBills: React.FC = () => {
                   <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
                   Upload Invoice
                 </Button>
-                <Button onClick={() => navigate('/invoices/create')}>
+                <Button onClick={() => navigate('/accounting/customers/bills/create')}>
                   <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
                   Create Invoice
                 </Button>

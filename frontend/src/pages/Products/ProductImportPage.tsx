@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface ImportResult {
   created: number
+  updated: number
   errors: Array<{ row: number; message: string }>
 }
 
@@ -63,18 +64,23 @@ export function ProductImportPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setImportResult(data)
       const errorCount = data.errors?.length || 0
-      if (data.created > 0 && errorCount === 0) {
+      const totalProcessed = data.created + (data.updated || 0)
+      const parts: string[] = []
+      if (data.created > 0) parts.push(`${data.created} created`)
+      if (data.updated > 0) parts.push(`${data.updated} updated`)
+      if (errorCount > 0) parts.push(`${errorCount} errors`)
+      if (totalProcessed > 0 && errorCount === 0) {
         toast({
           title: 'Import successful!',
-          description: `${data.created} products have been imported.`,
+          description: `${parts.join(', ')}.`,
         })
-      } else if (data.created > 0 && errorCount > 0) {
+      } else if (totalProcessed > 0 && errorCount > 0) {
         toast({
           title: 'Import completed with errors',
-          description: `${data.created} products imported, ${errorCount} rows had errors.`,
+          description: `${parts.join(', ')}.`,
           variant: 'default',
         })
-      } else if (data.created === 0) {
+      } else if (totalProcessed === 0) {
         toast({
           title: 'Import failed',
           description: 'No products were imported. Please check the errors below.',
@@ -345,18 +351,22 @@ export function ProductImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Icon 
-                    icon={importResult.created > 0 ? "solar:check-circle-bold" : "solar:close-circle-bold"} 
-                    className={`h-5 w-5 ${importResult.created > 0 ? 'text-green-500' : 'text-destructive'}`} 
+                    icon={(importResult.created > 0 || (importResult.updated || 0) > 0) ? "solar:check-circle-bold" : "solar:close-circle-bold"} 
+                    className={`h-5 w-5 ${(importResult.created > 0 || (importResult.updated || 0) > 0) ? 'text-green-500' : 'text-destructive'}`} 
                   />
                   Import Results
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Summary */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
                     <div className="text-2xl font-bold text-green-600">{importResult.created}</div>
-                    <div className="text-sm text-muted-foreground">Products Imported</div>
+                    <div className="text-sm text-muted-foreground">Created</div>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{importResult.updated || 0}</div>
+                    <div className="text-sm text-muted-foreground">Updated</div>
                   </div>
                   <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
                     <div className="text-2xl font-bold text-red-600">{importResult.errors.length}</div>

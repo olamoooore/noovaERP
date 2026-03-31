@@ -50,11 +50,13 @@ const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashbo
 // Lazy load new accounting module pages
 const AccountingDashboard = lazy(() => import('@/pages/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })))
 const CustomerBills = lazy(() => import('@/pages/accounting/customers/CustomerBills').then(m => ({ default: m.CustomerBills })))
+const CreateInvoicePage = lazy(() => import('@/pages/accounting/customers/CreateInvoicePage').then(m => ({ default: m.CreateInvoicePage })))
 const CustomerInvoiceDetail = lazy(() => import('@/pages/accounting/customers/CustomerInvoiceDetail').then(m => ({ default: m.CustomerInvoiceDetail })))
 const CustomerPayments = lazy(() => import('@/pages/accounting/customers/CustomerPayments').then(m => ({ default: m.CustomerPayments })))
 const CustomerFollowupReports = lazy(() => import('@/pages/accounting/customers/CustomerFollowupReports').then(m => ({ default: m.CustomerFollowupReports })))
 const CustomerStatements = lazy(() => import('@/pages/accounting/customers/CustomerStatements').then(m => ({ default: m.CustomerStatements })))
 const VendorBills = lazy(() => import('@/pages/accounting/vendors/VendorBills').then(m => ({ default: m.VendorBills })))
+const CreateVendorBillPage = lazy(() => import('@/pages/accounting/vendors/CreateVendorBillPage').then(m => ({ default: m.CreateVendorBillPage })))
 const VendorBillDetail = lazy(() => import('@/pages/accounting/vendors/VendorBillDetail').then(m => ({ default: m.VendorBillDetail })))
 const VendorPayments = lazy(() => import('@/pages/accounting/vendors/VendorPayments').then(m => ({ default: m.VendorPayments })))
 const AgedReceivablesPage = lazy(() => import('@/pages/accounting/reports/AgedReceivablesPage').then(m => ({ default: m.AgedReceivablesPage })))
@@ -231,6 +233,7 @@ function App() {
                 <Route path="/customers/:id" element={<CustomerDetailsPage />} />
                 
                 <Route path="/invoices" element={<InvoicesPage />} />
+                <Route path="/invoices/create" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/accounting" element={<AccountingPage />} />
                 
@@ -239,6 +242,7 @@ function App() {
                 
                 {/* Customer Section */}
                 <Route path="/accounting/customers/bills" element={<CustomerBills />} />
+                <Route path="/accounting/customers/bills/create" element={<CreateInvoicePage />} />
                 <Route path="/accounting/customers/bills/:id" element={<CustomerInvoiceDetail />} />
                 <Route path="/accounting/customers/payments" element={<CustomerPayments />} />
                 <Route path="/accounting/customers/credit-notes" element={<CustomerCreditNotesPage />} />
@@ -248,6 +252,7 @@ function App() {
                 
                 {/* Vendor Section */}
                 <Route path="/accounting/vendors/bills" element={<VendorBills />} />
+                <Route path="/accounting/vendors/bills/create" element={<CreateVendorBillPage />} />
                 <Route path="/accounting/vendors/bills/:id" element={<VendorBillDetail />} />
                 <Route path="/accounting/vendors/payments" element={<VendorPayments />} />
                 <Route path="/accounting/vendors/credit-notes" element={<VendorCreditNotesPage />} />

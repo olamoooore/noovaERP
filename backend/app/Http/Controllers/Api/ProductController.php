@@ -681,7 +681,12 @@ class ProductController extends Controller
             $row = [];
             foreach ($header as $idx => $key) {
                 if ($key !== '') {
-                    $row[$key] = $data[$idx] ?? null;
+                    $val = $data[$idx] ?? null;
+                    if (is_string($val)) {
+                        $encoding = mb_detect_encoding($val, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true) ?: 'ISO-8859-1';
+                        $val = mb_convert_encoding($val, 'UTF-8', $encoding);
+                    }
+                    $row[$key] = $val;
                 }
             }
             $rows[] = $row;
@@ -693,6 +698,7 @@ class ProductController extends Controller
         }
 
         $created = 0;
+        $updated = 0;
         $errors = [];
         $categoriesCache = [];
 
@@ -746,11 +752,9 @@ class ProductController extends Controller
                 $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
                 $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
 
-                try {
-                    Product::create([
+                $productData = [
                         'name'             => $name,
                         'secondary_name'   => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
-                        'sku'              => $sku,
                         'barcode'          => $barcode !== '' ? $barcode : null,
                         'description'      => $description !== '' ? $description : null,
                         'short_description'=> $row['short_description'] ?? ($description !== '' ? $description : null),
@@ -764,20 +768,30 @@ class ProductController extends Controller
                         'image'            => $imageValue,
                         'manufacturer'     => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
                         'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
-                    ]);
-                    $created++;
+                    ];
+
+                try {
+                    $product = Product::updateOrCreate(['sku' => $sku], $productData);
+                    if ($product->wasRecentlyCreated) {
+                        $created++;
+                    } else {
+                        $updated++;
+                    }
                 } catch (\Throwable $e) {
+                    $msg = $e->getMessage();
+                    $enc = mb_detect_encoding($msg, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true) ?: 'ISO-8859-1';
                     $errors[] = [
                         'row' => $index + 2,
-                        'message' => $e->getMessage(),
+                        'message' => mb_convert_encoding($msg, 'UTF-8', $enc),
                     ];
                 }
         }
 
         return response()->json([
             'created' => $created,
+            'updated' => $updated,
             'errors' => $errors,
-        ]);
+        ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     /**
