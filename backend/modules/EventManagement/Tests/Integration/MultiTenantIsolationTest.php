@@ -42,15 +42,13 @@ class MultiTenantIsolationTest extends TestCase
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantSchemaManager = $this->createMock(TenantSchemaManager::class);
         
-        $this->eventService = new EventService(
-            $this->tenantSchemaManager,
-            $this->auditService
-        );
+        // Bind mocks into the container so auto-wiring uses them
+        $this->app->instance(AuditService::class, $this->auditService);
+        $this->app->instance(TenantSchemaManager::class, $this->tenantSchemaManager);
 
-        $this->bookingService = new BookingService(
-            $this->tenantSchemaManager,
-            $this->auditService
-        );
+        // Resolve from container — picks up mocks + auto-resolves remaining deps
+        $this->eventService = app(EventService::class);
+        $this->bookingService = app(BookingService::class);
     }
 
     /**

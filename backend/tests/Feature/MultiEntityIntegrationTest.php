@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use App\Services\EntityModuleService;
 use App\Services\EntityAccessService;
 use App\Services\IntercompanyPostingService;
@@ -20,10 +21,12 @@ class MultiEntityIntegrationTest extends TestCase
     protected int $entityBId;
     protected int $bookAId;
     protected int $bookBId;
+    protected User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->user = User::factory()->create();
         $this->seedEntityStructure();
     }
 
@@ -129,11 +132,12 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_create_group_via_api(): void
     {
-        $response = $this->postJson('/api/accounting/groups', [
-            'name' => 'Test Group',
-            'code' => 'TG2',
-            'base_currency' => 'USD',
-        ]);
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/accounting/groups', [
+                'name' => 'Test Group',
+                'code' => 'TG2',
+                'base_currency' => 'USD',
+            ]);
 
         $response->assertStatus(201);
         $response->assertJsonFragment(['name' => 'Test Group']);
@@ -141,13 +145,14 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_create_entity_via_api(): void
     {
-        $response = $this->postJson('/api/accounting/legal-entities', [
-            'group_id' => $this->groupId,
-            'name' => 'Test Entity C',
-            'code' => 'ENT-C',
-            'country_code' => 'US',
-            'base_currency' => 'USD',
-        ]);
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/accounting/legal-entities', [
+                'group_id' => $this->groupId,
+                'name' => 'Test Entity C',
+                'code' => 'ENT-C',
+                'country_code' => 'US',
+                'base_currency' => 'USD',
+            ]);
 
         $response->assertStatus(201);
         $response->assertJsonFragment(['code' => 'ENT-C']);
@@ -155,7 +160,8 @@ class MultiEntityIntegrationTest extends TestCase
 
     public function test_list_entities_filtered_by_group(): void
     {
-        $response = $this->getJson("/api/accounting/legal-entities?group_id={$this->groupId}");
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/accounting/legal-entities?group_id={$this->groupId}");
 
         $response->assertStatus(200);
         $this->assertGreaterThanOrEqual(2, count($response->json()));
