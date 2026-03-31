@@ -473,7 +473,7 @@ class StaffController extends Controller
     public function getAssignment(int $assignmentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $assignment = \DB::table('staff_assignments')
                 ->where('id', $assignmentId)
@@ -523,7 +523,7 @@ class StaffController extends Controller
                 ]);
             }
 
-            $tenantId = auth()->user()->tenant_id ?? null;
+            $tenantId = tenant('id') ?? null;
 
             $hasPerfRating = \Schema::hasColumn('staff_assignments', 'performance_rating');
             $hasStatus     = \Schema::hasColumn('staff_assignments', 'status');

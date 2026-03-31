@@ -21,7 +21,33 @@ class SetTenantFromUserPreference
     {
         $user = $request->user();
         
-        if ($user && !($user->is_super_admin ?? false)) {
+        if (!$user) {
+            return $next($request);
+        }
+
+        if ($user->is_super_admin ?? false) {
+            // Super-admins must explicitly select a tenant via X-Tenant-ID header
+            $tenantId = $request->header('X-Tenant-ID');
+            if (!$tenantId) {
+                return response()->json([
+                    'message' => 'Super-admin must specify X-Tenant-ID header to select a tenant context.',
+                ], 400);
+            }
+
+            $tenant = \App\Models\Tenant::find($tenantId);
+            if (!$tenant) {
+                return response()->json([
+                    'message' => 'Specified tenant not found.',
+                ], 404);
+            }
+
+            Log::info('SetTenantFromUserPreference: Super-admin selected tenant', [
+                'user_id' => $user->id,
+                'tenant_id' => $tenant->id,
+            ]);
+
+            $this->tenancy->initialize($tenant);
+        } else {
             // Get user's default company
             $defaultCompany = DB::table('user_company_access')
                 ->where('user_id', $user->id)

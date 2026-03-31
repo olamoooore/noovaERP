@@ -44,6 +44,17 @@ class VendorCreditNotesController extends Controller
             $query->where('credit_note_date', '<=', $request->end_date);
         }
 
+        // Search
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('credit_note_number', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('vendor', function ($vq) use ($search) {
+                      $vq->where('name', 'ILIKE', "%{$search}%");
+                  });
+            });
+        }
+
         $creditNotes = $query->paginate(20);
 
         return response()->json($creditNotes);

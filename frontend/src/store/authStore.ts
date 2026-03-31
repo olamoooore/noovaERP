@@ -11,7 +11,8 @@ interface User {
 interface AuthState {
   user: User | null
   token: string | null
-  setAuth: (user: User, token: string) => void
+  tenantId: string | null
+  setAuth: (user: User, token: string, tenantId?: string) => void
   logout: () => void
   isAuthenticated: () => boolean
 }
@@ -21,15 +22,20 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
-      setAuth: (user, token) => {
+      tenantId: null,
+      setAuth: (user, token, tenantId) => {
         localStorage.setItem('token', token)
         localStorage.setItem('user', JSON.stringify(user))
-        set({ user, token })
+        if (tenantId) {
+          localStorage.setItem('tenant_id', tenantId)
+        }
+        set({ user, token, tenantId: tenantId || null })
       },
       logout: () => {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        set({ user: null, token: null })
+        localStorage.removeItem('tenant_id')
+        set({ user: null, token: null, tenantId: null })
       },
       isAuthenticated: () => !!get().token,
     }),

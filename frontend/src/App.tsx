@@ -77,7 +77,9 @@ const JournalsPage = lazy(() => import('@/pages/accounting/JournalsPage'))
 const TaxConfigurationPage = lazy(() => import('@/pages/accounting/TaxConfigurationPage'))
 const BankAccountsPage = lazy(() => import('@/pages/accounting/BankAccountsPage'))
 const CustomerCreditNotesPage = lazy(() => import('@/pages/accounting/CustomerCreditNotesPage'))
+const CustomerCreditNoteDetail = lazy(() => import('@/pages/accounting/customers/CustomerCreditNoteDetail'))
 const VendorCreditNotesPage = lazy(() => import('@/pages/accounting/VendorCreditNotesPage'))
+const VendorCreditNoteDetail = lazy(() => import('@/pages/accounting/vendors/VendorCreditNoteDetail'))
 const ARTransactionsPage = lazy(() => import('@/pages/accounting/ARTransactionsPage'))
 const APTransactionsPage = lazy(() => import('@/pages/accounting/APTransactionsPage'))
 const BalanceSheetPage = lazy(() => import('@/pages/accounting/reports/BalanceSheetPage'))
@@ -246,6 +248,7 @@ function App() {
                 <Route path="/accounting/customers/bills/:id" element={<CustomerInvoiceDetail />} />
                 <Route path="/accounting/customers/payments" element={<CustomerPayments />} />
                 <Route path="/accounting/customers/credit-notes" element={<CustomerCreditNotesPage />} />
+                <Route path="/accounting/customers/credit-notes/:id" element={<CustomerCreditNoteDetail />} />
                 <Route path="/accounting/customers/transactions" element={<ARTransactionsPage />} />
                 <Route path="/accounting/customers/followup-reports" element={<CustomerFollowupReports />} />
                 <Route path="/accounting/customers/statements" element={<CustomerStatements />} />
@@ -256,6 +259,7 @@ function App() {
                 <Route path="/accounting/vendors/bills/:id" element={<VendorBillDetail />} />
                 <Route path="/accounting/vendors/payments" element={<VendorPayments />} />
                 <Route path="/accounting/vendors/credit-notes" element={<VendorCreditNotesPage />} />
+                <Route path="/accounting/vendors/credit-notes/:id" element={<VendorCreditNoteDetail />} />
                 <Route path="/accounting/vendors/transactions" element={<APTransactionsPage />} />
                 
                 {/* Accounting Core Section */}

@@ -36,10 +36,10 @@ export default function AccountingEntityManagementPage() {
       ]);
 
       return {
-        groups: groups.data.data || [],
-        entities: entities.data.data || [],
-        branches: branches.data.data || [],
-        books: books.data.data || [],
+        groups: Array.isArray(groups.data) ? groups.data : (groups.data.data || []),
+        entities: Array.isArray(entities.data) ? entities.data : (entities.data.data || []),
+        branches: Array.isArray(branches.data) ? branches.data : (branches.data.data || []),
+        books: Array.isArray(books.data) ? books.data : (books.data.data || []),
       };
     },
   });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCustomerCreditNotes, useDeleteCreditNote } from '@/hooks/useCustomerCreditNotes';
 import type { CreditNoteFilters } from '@/types/creditNote';
 import CreateCreditNoteDialog from './components/CreateCreditNoteDialog';
@@ -20,6 +20,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function CustomerCreditNotesPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filters, setFilters] = useState<CreditNoteFilters>({
@@ -180,7 +181,10 @@ export default function CustomerCreditNotesPage() {
                               </button>
                             </>
                           )}
-                          <button className="text-blue-600 hover:text-blue-900">
+                          <button
+                            className="text-blue-600 hover:text-blue-900"
+                            onClick={() => navigate(`/accounting/customers/credit-notes/${creditNote.id}`)}
+                          >
                             View
                           </button>
                         </div>

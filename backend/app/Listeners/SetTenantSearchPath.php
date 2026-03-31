@@ -45,23 +45,9 @@ class SetTenantSearchPath
         // Set search_path explicitly on the current connection
         DB::statement("SET search_path TO {$searchPath}");
         
-        // Register a macro to ensure search_path is set before every query
-        // This is a fallback in case a new connection is created
-        if (!DB::hasMacro('ensureSearchPath')) {
-            DB::macro('ensureSearchPath', function () use ($searchPath, $schemaName) {
-                static $checked = [];
-                $connectionId = spl_object_id(DB::connection()->getPdo());
-                
-                if (!in_array($connectionId, $checked)) {
-                    DB::statement("SET search_path TO {$searchPath}");
-                    $checked[] = $connectionId;
-                    Log::debug("SetTenantSearchPath: Ensured search_path on connection", [
-                        'connection_id' => $connectionId,
-                        'schema' => $schemaName
-                    ]);
-                }
-            });
-        }
+        // Per-request enforcement is handled by EnsureTenantSearchPath middleware.
+        // No macro fallback needed — that pattern leaked closures and duplicated
+        // the middleware's responsibility.
         
         // Verify
         $result = DB::select("SHOW search_path");

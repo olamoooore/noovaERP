@@ -65,7 +65,7 @@ class TemplateController extends Controller
 
         $template = CommunicationTemplate::create(array_merge(
             $request->only(['key', 'module', 'event', 'name', 'subject', 'body_html', 'body_plain', 'channels', 'variables', 'locale']),
-            ['tenant_id' => $request->header('X-Tenant-ID')],
+            ['tenant_id' => tenant('id')],
         ));
 
         // Invalidate cache for this template key

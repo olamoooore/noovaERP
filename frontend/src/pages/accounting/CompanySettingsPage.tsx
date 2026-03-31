@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
@@ -23,6 +23,30 @@ export default function CompanySettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('company');
+
+  // Controlled state for Currency form (Radix Select doesn't reliably emit to FormData)
+  const [currencyForm, setCurrencyForm] = useState({
+    base_currency: 'USD',
+    date_format: 'MM/DD/YYYY',
+    number_format: 'en-US',
+    decimal_places: '2',
+    thousand_separator: ',',
+    decimal_separator: '.',
+  });
+
+  // Controlled state for Default Accounts form
+  const [accountsForm, setAccountsForm] = useState<Record<string, string>>({
+    accounts_receivable: 'none',
+    accounts_payable: 'none',
+    sales_revenue: 'none',
+    sales_tax: 'none',
+    purchase_expense: 'none',
+    purchase_tax: 'none',
+    inventory: 'none',
+    cost_of_goods_sold: 'none',
+    retained_earnings: 'none',
+    bank_charges: 'none',
+  });
 
   // Fetch company settings
   const { data: settings, isLoading } = useQuery({
@@ -68,6 +92,37 @@ export default function CompanySettingsPage() {
 
   const getAccountsByType = (type: string) =>
     accounts.filter((account: any) => account.type === type);
+
+  // Sync controlled state with fetched data
+  useEffect(() => {
+    if (currencies) {
+      setCurrencyForm({
+        base_currency: currencies.base_currency || 'USD',
+        date_format: currencies.date_format || 'MM/DD/YYYY',
+        number_format: currencies.number_format || 'en-US',
+        decimal_places: currencies.decimal_places?.toString() || '2',
+        thousand_separator: currencies.thousand_separator ?? ',',
+        decimal_separator: currencies.decimal_separator || '.',
+      });
+    }
+  }, [currencies]);
+
+  useEffect(() => {
+    if (defaultAccounts) {
+      setAccountsForm({
+        accounts_receivable: defaultAccounts.accounts_receivable?.toString() || 'none',
+        accounts_payable: defaultAccounts.accounts_payable?.toString() || 'none',
+        sales_revenue: defaultAccounts.sales_revenue?.toString() || 'none',
+        sales_tax: defaultAccounts.sales_tax?.toString() || 'none',
+        purchase_expense: defaultAccounts.purchase_expense?.toString() || 'none',
+        purchase_tax: defaultAccounts.purchase_tax?.toString() || 'none',
+        inventory: defaultAccounts.inventory?.toString() || 'none',
+        cost_of_goods_sold: defaultAccounts.cost_of_goods_sold?.toString() || 'none',
+        retained_earnings: defaultAccounts.retained_earnings?.toString() || 'none',
+        bank_charges: defaultAccounts.bank_charges?.toString() || 'none',
+      });
+    }
+  }, [defaultAccounts]);
 
   // Mutation for updating company info
   const updateCompanyMutation = useMutation({
@@ -185,33 +240,32 @@ export default function CompanySettingsPage() {
 
   const handleCurrencySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const thousandSep = formData.get('thousand_separator') as string;
+    const thousandSep = currencyForm.thousand_separator;
     const data = {
-      base_currency: formData.get('base_currency'),
-      date_format: formData.get('date_format'),
-      number_format: formData.get('number_format'),
-      decimal_places: parseInt(formData.get('decimal_places') as string),
+      base_currency: currencyForm.base_currency,
+      date_format: currencyForm.date_format,
+      number_format: currencyForm.number_format,
+      decimal_places: parseInt(currencyForm.decimal_places),
       thousand_separator: thousandSep === 'none' ? '' : thousandSep,
-      decimal_separator: formData.get('decimal_separator'),
+      decimal_separator: currencyForm.decimal_separator,
     };
     updateCurrenciesMutation.mutate(data);
   };
 
   const handleAccountsSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    const parseAccount = (val: string) => val && val !== 'none' ? parseInt(val) : null;
     const data = {
-      accounts_receivable: formData.get('accounts_receivable') && formData.get('accounts_receivable') !== 'none' ? parseInt(formData.get('accounts_receivable') as string) : null,
-      accounts_payable: formData.get('accounts_payable') && formData.get('accounts_payable') !== 'none' ? parseInt(formData.get('accounts_payable') as string) : null,
-      sales_revenue: formData.get('sales_revenue') && formData.get('sales_revenue') !== 'none' ? parseInt(formData.get('sales_revenue') as string) : null,
-      sales_tax: formData.get('sales_tax') && formData.get('sales_tax') !== 'none' ? parseInt(formData.get('sales_tax') as string) : null,
-      purchase_expense: formData.get('purchase_expense') && formData.get('purchase_expense') !== 'none' ? parseInt(formData.get('purchase_expense') as string) : null,
-      purchase_tax: formData.get('purchase_tax') && formData.get('purchase_tax') !== 'none' ? parseInt(formData.get('purchase_tax') as string) : null,
-      inventory: formData.get('inventory') && formData.get('inventory') !== 'none' ? parseInt(formData.get('inventory') as string) : null,
-      cost_of_goods_sold: formData.get('cost_of_goods_sold') && formData.get('cost_of_goods_sold') !== 'none' ? parseInt(formData.get('cost_of_goods_sold') as string) : null,
-      retained_earnings: formData.get('retained_earnings') && formData.get('retained_earnings') !== 'none' ? parseInt(formData.get('retained_earnings') as string) : null,
-      bank_charges: formData.get('bank_charges') && formData.get('bank_charges') !== 'none' ? parseInt(formData.get('bank_charges') as string) : null,
+      accounts_receivable: parseAccount(accountsForm.accounts_receivable),
+      accounts_payable: parseAccount(accountsForm.accounts_payable),
+      sales_revenue: parseAccount(accountsForm.sales_revenue),
+      sales_tax: parseAccount(accountsForm.sales_tax),
+      purchase_expense: parseAccount(accountsForm.purchase_expense),
+      purchase_tax: parseAccount(accountsForm.purchase_tax),
+      inventory: parseAccount(accountsForm.inventory),
+      cost_of_goods_sold: parseAccount(accountsForm.cost_of_goods_sold),
+      retained_earnings: parseAccount(accountsForm.retained_earnings),
+      bank_charges: parseAccount(accountsForm.bank_charges),
     };
     updateAccountsMutation.mutate(data);
   };
@@ -402,7 +456,7 @@ export default function CompanySettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="base_currency">Base Currency</Label>
-                  <Select name="base_currency" defaultValue={currencies?.base_currency || 'USD'}>
+                  <Select value={currencyForm.base_currency} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, base_currency: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -419,7 +473,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="date_format">Date Format</Label>
-                  <Select name="date_format" defaultValue={currencies?.date_format || 'MM/DD/YYYY'}>
+                  <Select value={currencyForm.date_format} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, date_format: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -433,7 +487,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="number_format">Number Format</Label>
-                  <Select name="number_format" defaultValue={currencies?.number_format || 'en-US'}>
+                  <Select value={currencyForm.number_format} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, number_format: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -447,7 +501,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="decimal_places">Decimal Places</Label>
-                  <Select name="decimal_places" defaultValue={currencies?.decimal_places?.toString() || '2'}>
+                  <Select value={currencyForm.decimal_places} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, decimal_places: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -461,7 +515,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="thousand_separator">Thousand Separator</Label>
-                  <Select name="thousand_separator" defaultValue={currencies?.thousand_separator || ','}>
+                  <Select value={currencyForm.thousand_separator} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, thousand_separator: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -475,7 +529,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="decimal_separator">Decimal Separator</Label>
-                  <Select name="decimal_separator" defaultValue={currencies?.decimal_separator || '.'}>
+                  <Select value={currencyForm.decimal_separator} onValueChange={(v) => setCurrencyForm(prev => ({ ...prev, decimal_separator: v }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -514,7 +568,7 @@ export default function CompanySettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="accounts_receivable">Accounts Receivable</Label>
-                  <Select name="accounts_receivable" defaultValue={defaultAccounts?.accounts_receivable?.toString() || 'none'}>
+                  <Select value={accountsForm.accounts_receivable} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, accounts_receivable: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -530,7 +584,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="accounts_payable">Accounts Payable</Label>
-                  <Select name="accounts_payable" defaultValue={defaultAccounts?.accounts_payable?.toString() || 'none'}>
+                  <Select value={accountsForm.accounts_payable} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, accounts_payable: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -546,7 +600,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sales_revenue">Sales Revenue</Label>
-                  <Select name="sales_revenue" defaultValue={defaultAccounts?.sales_revenue?.toString() || 'none'}>
+                  <Select value={accountsForm.sales_revenue} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, sales_revenue: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -562,7 +616,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sales_tax">Sales Tax</Label>
-                  <Select name="sales_tax" defaultValue={defaultAccounts?.sales_tax?.toString() || 'none'}>
+                  <Select value={accountsForm.sales_tax} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, sales_tax: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -578,7 +632,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="purchase_expense">Purchase Expense</Label>
-                  <Select name="purchase_expense" defaultValue={defaultAccounts?.purchase_expense?.toString() || 'none'}>
+                  <Select value={accountsForm.purchase_expense} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, purchase_expense: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -594,7 +648,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="purchase_tax">Purchase Tax</Label>
-                  <Select name="purchase_tax" defaultValue={defaultAccounts?.purchase_tax?.toString() || 'none'}>
+                  <Select value={accountsForm.purchase_tax} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, purchase_tax: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -610,7 +664,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="inventory">Inventory</Label>
-                  <Select name="inventory" defaultValue={defaultAccounts?.inventory?.toString() || 'none'}>
+                  <Select value={accountsForm.inventory} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, inventory: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -626,7 +680,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cost_of_goods_sold">Cost of Goods Sold</Label>
-                  <Select name="cost_of_goods_sold" defaultValue={defaultAccounts?.cost_of_goods_sold?.toString() || 'none'}>
+                  <Select value={accountsForm.cost_of_goods_sold} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, cost_of_goods_sold: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -642,7 +696,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="retained_earnings">Retained Earnings</Label>
-                  <Select name="retained_earnings" defaultValue={defaultAccounts?.retained_earnings?.toString() || 'none'}>
+                  <Select value={accountsForm.retained_earnings} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, retained_earnings: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
@@ -658,7 +712,7 @@ export default function CompanySettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bank_charges">Bank Charges</Label>
-                  <Select name="bank_charges" defaultValue={defaultAccounts?.bank_charges?.toString() || 'none'}>
+                  <Select value={accountsForm.bank_charges} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, bank_charges: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>

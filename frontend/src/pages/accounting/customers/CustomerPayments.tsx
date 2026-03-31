@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,8 @@ import api from '@/lib/api';
 
 export const CustomerPayments: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const invoiceIdParam = searchParams.get('invoice_id') || '';
+  const [showRecordPayment, setShowRecordPayment] = useState(!!invoiceIdParam);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -95,6 +96,7 @@ export const CustomerPayments: React.FC = () => {
             </DialogHeader>
             <RecordPaymentForm
               unpaidInvoices={unpaidInvoices || []}
+              initialInvoiceId={invoiceIdParam}
               onSuccess={() => {
                 setShowRecordPayment(false);
                 queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
@@ -116,10 +118,6 @@ export const CustomerPayments: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <Button variant="outline">
-              <Icon icon="solar:filter-bold-duotone" className="h-4 w-4 mr-2" />
-              Filter
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -192,9 +190,6 @@ export const CustomerPayments: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="ghost">
-                          <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -259,8 +254,9 @@ export const CustomerPayments: React.FC = () => {
 // Record Payment Form Component
 const RecordPaymentForm: React.FC<{
   unpaidInvoices: any[];
+  initialInvoiceId?: string;
   onSuccess: () => void;
-}> = ({ unpaidInvoices, onSuccess }) => {
+}> = ({ unpaidInvoices, initialInvoiceId, onSuccess }) => {
   const [formData, setFormData] = useState({
     customer_id: '',
     invoice_id: '',
@@ -270,6 +266,21 @@ const RecordPaymentForm: React.FC<{
     reference: '',
     notes: '',
   });
+
+  // Preselect invoice from URL param once invoices are loaded
+  useEffect(() => {
+    if (initialInvoiceId && unpaidInvoices.length > 0 && !formData.invoice_id) {
+      const invoice = unpaidInvoices.find((inv) => inv.id === parseInt(initialInvoiceId));
+      if (invoice) {
+        setFormData((prev) => ({
+          ...prev,
+          invoice_id: initialInvoiceId,
+          customer_id: invoice.customer_id || '',
+          amount: invoice.balance || invoice.total || '',
+        }));
+      }
+    }
+  }, [initialInvoiceId, unpaidInvoices]);
 
   const { toast } = useToast();
 

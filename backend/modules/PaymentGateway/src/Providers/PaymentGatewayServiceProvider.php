@@ -40,11 +40,9 @@ class PaymentGatewayServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Only load migrations when tenancy is initialized
-        // This prevents tenant-specific migrations from running during central migrations
-        if (tenancy()->initialized) {
-            $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
-        }
+        // Tenant migrations are in database/migrations/tenant/ and discovered
+        // automatically via ModuleManager::tenantMigrationPaths().
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
 
         // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
         // Do NOT also loadRoutesFrom here or routes will be registered twice,

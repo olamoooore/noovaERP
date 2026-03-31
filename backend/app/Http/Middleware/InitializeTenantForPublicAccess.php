@@ -13,8 +13,9 @@ use Stancl\Tenancy\Tenancy;
  * 
  * Resolution order:
  * 1. From Host header (domain-based) via the domains table
- * 2. From authenticated user preference (if token present)
- * 3. Fail gracefully if no tenant found
+ * 2. From subdomain (exact match only)
+ * 3. From authenticated user preference (if token present)
+ * 4. Fail closed with 404 if no tenant resolved
  */
 class InitializeTenantForPublicAccess
 {
@@ -30,20 +31,6 @@ class InitializeTenantForPublicAccess
         // Skip if tenancy is already initialized
         if (tenancy()->initialized) {
             return $next($request);
-        }
-
-        // 0. Try explicit tenant ID from query parameter (e.g., ?tenant=xxx)
-        // This is useful for preview URLs in development when Host header doesn't match
-        $tenantParam = $request->query('tenant');
-        if ($tenantParam) {
-            $tenant = \App\Models\Tenant::find($tenantParam);
-            if ($tenant) {
-                Log::info('InitializeTenantForPublicAccess: Tenant from query param', [
-                    'tenant_id' => $tenant->id,
-                ]);
-                $this->tenancy->initialize($tenant);
-                return $next($request);
-            }
         }
 
         // 1. Try domain-based resolution from Host header
@@ -64,29 +51,17 @@ class InitializeTenantForPublicAccess
                 }
             }
 
-            // Try subdomain resolution: demo.localhost -> look for domain "demo.localhost"
-            // or tenant with matching subdomain
+            // Try subdomain resolution: demo.localhost -> look for tenant with exact ID match
             $centralDomains = config('tenancy.central_domains', ['localhost']);
             foreach ($centralDomains as $centralDomain) {
                 $centralDomain = trim($centralDomain);
                 if ($host !== $centralDomain && str_ends_with($host, '.' . $centralDomain)) {
                     $subdomain = str_replace('.' . $centralDomain, '', $host);
                     
-                    // Try finding tenant by ID matching subdomain
+                    // Only exact match — no partial/LIKE matching
                     $tenant = \App\Models\Tenant::find($subdomain);
                     if ($tenant) {
                         Log::info('InitializeTenantForPublicAccess: Tenant from subdomain', [
-                            'subdomain' => $subdomain,
-                            'tenant_id' => $tenant->id,
-                        ]);
-                        $this->tenancy->initialize($tenant);
-                        return $next($request);
-                    }
-
-                    // Try finding tenant by name matching subdomain
-                    $tenant = \App\Models\Tenant::where('id', 'like', '%' . $subdomain . '%')->first();
-                    if ($tenant) {
-                        Log::info('InitializeTenantForPublicAccess: Tenant from subdomain partial match', [
                             'subdomain' => $subdomain,
                             'tenant_id' => $tenant->id,
                         ]);
@@ -122,14 +97,13 @@ class InitializeTenantForPublicAccess
             // Auth failed silently - this is expected for public access
         }
 
-        // 3. No tenant resolved — log warning but don't fall back to Tenant::first()
-        // as that causes cross-tenant data leakage
-        if (!tenancy()->initialized) {
-            Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved', [
-                'host' => $request->getHost(),
-            ]);
-        }
+        // 3. No tenant resolved — fail closed
+        Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved, rejecting request', [
+            'host' => $request->getHost(),
+        ]);
 
-        return $next($request);
+        return response()->json([
+            'message' => 'Tenant could not be resolved.',
+        ], 404);
     }
 }

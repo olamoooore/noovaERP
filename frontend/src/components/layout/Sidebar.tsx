@@ -163,6 +163,11 @@ const baseNavItems: NavItem[] = [
     featureKey: 'accounting',
     children: [
       {
+        title: 'Onboarding',
+        href: '/accounting/core/onboarding',
+        icon: 'solar:clipboard-check-bold-duotone',
+      },
+      {
         title: 'Dashboard',
         href: '/accounting/dashboard',
         icon: 'solar:chart-square-bold-duotone',
@@ -191,11 +196,6 @@ const baseNavItems: NavItem[] = [
         title: 'Bank Reconciliation',
         href: '/accounting/core/reconciliation',
         icon: 'solar:safe-2-bold-duotone',
-      },
-      {
-        title: 'Onboarding',
-        href: '/accounting/core/onboarding',
-        icon: 'solar:clipboard-check-bold-duotone',
       },
       {
         title: 'Entities',

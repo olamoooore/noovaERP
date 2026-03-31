@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DocumentUpload } from '@/components/ocr/DocumentUpload';
-import { ImportButton } from '@/components/ImportButton';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { accountingApi } from '@/lib/api';
@@ -206,11 +205,6 @@ export const VendorBills: React.FC = () => {
             <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
             Upload Bill (OCR)
           </Button>
-          <ImportButton 
-            importType="vendor-bills"
-            onImportComplete={() => refetch()}
-            variant="outline"
-          />
           <Button onClick={() => navigate('/accounting/vendors/bills/create')}>
             <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
             New Bill
@@ -295,10 +289,6 @@ export const VendorBills: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <Button variant="outline">
-              <Icon icon="solar:filter-bold-duotone" className="h-4 w-4 mr-2" />
-              More Filters
-            </Button>
           </div>
         </CardContent>
       </Card>

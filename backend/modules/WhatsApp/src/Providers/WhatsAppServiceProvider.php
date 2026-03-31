@@ -39,12 +39,12 @@ class WhatsAppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Only load migrations when tenancy is initialized
-        if (function_exists('tenancy') && tenancy()->initialized) {
-            $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
-        }
+        // Tenant migrations are in database/migrations/tenant/ and discovered
+        // automatically via ModuleManager::tenantMigrationPaths().
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
 
-        // Load routes
-        $this->loadRoutesFrom(__DIR__ . '/../../routes/api.php');
+        // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
+        // Do NOT also loadRoutesFrom here or routes will be registered twice
+        // with different middleware stacks, bypassing tenant isolation.
     }
 }

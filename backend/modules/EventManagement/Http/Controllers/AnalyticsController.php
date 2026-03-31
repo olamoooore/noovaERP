@@ -327,7 +327,7 @@ class AnalyticsController extends Controller
 
             $query = DB::table('bookings')
                 ->where('status', 'confirmed')
-                ->where('tenant_id', auth()->user()->tenant_id);
+                ->where('tenant_id', tenant('id'));
 
             if ($request->has('event_ids')) {
                 $query->whereIn('event_id', $request->event_ids);
@@ -472,7 +472,7 @@ class AnalyticsController extends Controller
     public function getDashboardSummary(): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             // Get summary metrics for the last 30 days
             $thirtyDaysAgo = now()->subDays(30);

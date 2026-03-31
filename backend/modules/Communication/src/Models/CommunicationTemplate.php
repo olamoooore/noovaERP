@@ -3,6 +3,7 @@
 namespace Modules\Communication\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * CommunicationTemplate — Reusable message templates.
@@ -53,6 +54,15 @@ class CommunicationTemplate extends Model
         'is_active' => 'boolean',
         'is_system' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('tenant', function (Builder $query) {
+            if (function_exists('tenancy') && tenancy()->initialized) {
+                $query->where('tenant_id', tenant('id'));
+            }
+        });
+    }
 
     // ── Scopes ─────────────────────────────────────────────
 

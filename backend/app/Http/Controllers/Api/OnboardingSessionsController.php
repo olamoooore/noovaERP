@@ -21,7 +21,7 @@ class OnboardingSessionsController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenantId = tenant('id');
 
         $sessions = \Illuminate\Support\Facades\DB::table('onboarding_sessions')
             ->where('tenant_id', $tenantId)
@@ -49,7 +49,7 @@ class OnboardingSessionsController extends Controller
             'mode' => 'sometimes|in:guided,expert',
         ]);
 
-        $tenantId = $request->user()->tenant_id;
+        $tenantId = tenant('id');
         $mode = $request->input('mode', 'guided');
 
         $session = $this->machine->createSession(

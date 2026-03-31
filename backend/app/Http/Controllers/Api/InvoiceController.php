@@ -13,11 +13,31 @@ class InvoiceController extends Controller
         private InvoiceService $invoiceService
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $invoices = Invoice::with(['customer', 'lines'])
-            ->orderBy('invoice_date', 'desc')
-            ->paginate(20);
+        $query = Invoice::with(['customer', 'lines'])
+            ->orderBy('invoice_date', 'desc');
+
+        if ($request->has('status')) {
+            $statuses = explode(',', $request->status);
+            $query->whereIn('status', $statuses);
+        }
+
+        if ($request->has('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('customer', function ($cq) use ($search) {
+                      $cq->where('name', 'ILIKE', "%{$search}%");
+                  });
+            });
+        }
+
+        $invoices = $query->paginate($request->per_page ?? 20);
 
         return response()->json($invoices);
     }

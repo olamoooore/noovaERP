@@ -14,11 +14,27 @@ class PaymentController extends Controller
         private InvoiceService $invoiceService
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $payments = Payment::with(['customer', 'invoice', 'journalEntry'])
-            ->orderBy('payment_date', 'desc')
-            ->paginate(20);
+        $query = Payment::with(['customer', 'invoice', 'journalEntry'])
+            ->orderBy('payment_date', 'desc');
+
+        if ($request->has('invoice_id')) {
+            $query->where('invoice_id', $request->invoice_id);
+        }
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('payment_number', 'ILIKE', "%{$search}%")
+                  ->orWhere('reference', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('customer', function ($cq) use ($search) {
+                      $cq->where('name', 'ILIKE', "%{$search}%");
+                  });
+            });
+        }
+
+        $payments = $query->paginate($request->per_page ?? 20);
 
         return response()->json($payments);
     }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,8 @@ import api from '@/lib/api';
 
 export const VendorPayments: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const billIdParam = searchParams.get('bill_id') || '';
+  const [showRecordPayment, setShowRecordPayment] = useState(!!billIdParam);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -103,6 +104,7 @@ export const VendorPayments: React.FC = () => {
               </DialogHeader>
               <RecordPaymentForm
                 unpaidBills={unpaidBills || []}
+                initialBillId={billIdParam}
                 onSuccess={() => {
                   setShowRecordPayment(false);
                   queryClient.invalidateQueries({ queryKey: ['vendor-payments'] });
@@ -125,10 +127,6 @@ export const VendorPayments: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <Button variant="outline">
-              <Icon icon="solar:filter-bold-duotone" className="h-4 w-4 mr-2" />
-              Filter
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -201,9 +199,6 @@ export const VendorPayments: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="ghost">
-                          <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -268,8 +263,9 @@ export const VendorPayments: React.FC = () => {
 // Record Payment Form Component
 const RecordPaymentForm: React.FC<{
   unpaidBills: any[];
+  initialBillId?: string;
   onSuccess: () => void;
-}> = ({ unpaidBills, onSuccess }) => {
+}> = ({ unpaidBills, initialBillId, onSuccess }) => {
   const [formData, setFormData] = useState({
     vendor_id: '',
     bill_id: '',
@@ -279,6 +275,21 @@ const RecordPaymentForm: React.FC<{
     reference: '',
     memo: '',
   });
+
+  // Preselect bill from URL param once bills are loaded
+  useEffect(() => {
+    if (initialBillId && unpaidBills.length > 0 && !formData.bill_id) {
+      const bill = unpaidBills.find((b) => b.id === parseInt(initialBillId));
+      if (bill) {
+        setFormData((prev) => ({
+          ...prev,
+          bill_id: initialBillId,
+          vendor_id: bill.vendor_id || '',
+          amount: bill.balance || bill.total || '',
+        }));
+      }
+    }
+  }, [initialBillId, unpaidBills]);
 
   const { toast } = useToast();
 

@@ -55,6 +55,13 @@ class CustomerController extends Controller
             $query->where('salesperson_id', $request->salesperson_id);
         }
 
+        if ($request->boolean('has_balance')) {
+            $query->whereHas('invoices', function ($q) {
+                $q->where('status', '!=', 'paid')
+                  ->where('status', '!=', 'draft');
+            });
+        }
+
         // Sorting
         $sortBy = $request->sort_by ?? 'name';
         $sortDir = $request->sort_dir ?? 'asc';

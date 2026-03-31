@@ -51,9 +51,9 @@ use App\Http\Middleware\ResolveEntityContext;
 use App\Http\Middleware\EnsureEntityAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
 
-// Auth
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+// Auth routes are registered centrally in routes/api.php (v1/auth/login, auth/login).
+// Do NOT duplicate them here — this file is loaded under tenant middleware
+// and would create an unauthenticated /api/v1/login surface.
 
 // Import (requires auth)
 Route::middleware('auth:sanctum')->group(function () {

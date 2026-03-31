@@ -85,7 +85,7 @@ class EventOperationsController extends Controller
     public function getCheckInMetrics(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
             $metrics = $this->operationsService->getCheckInMetrics($eventId, $tenantId);
 
             return response()->json([
@@ -112,7 +112,7 @@ class EventOperationsController extends Controller
     public function getZoneStatus(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
             $zones = $this->operationsService->getZoneStatus($eventId, $tenantId);
 
             return response()->json([
@@ -179,7 +179,7 @@ class EventOperationsController extends Controller
     public function getQueueStatus(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
             $queueStatus = $this->operationsService->getQueueStatus($eventId, $tenantId);
 
             return response()->json([
@@ -305,7 +305,7 @@ class EventOperationsController extends Controller
     {
         try {
             $limit = $request->input('limit', 10);
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incidents = $this->operationsService->getRecentIncidents($eventId, $tenantId, $limit);
 
@@ -393,7 +393,7 @@ class EventOperationsController extends Controller
     public function getCurrentStatus(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
             $status = $this->operationsService->getCurrentEventStatus($eventId, $tenantId);
 
             return response()->json([
@@ -456,7 +456,7 @@ class EventOperationsController extends Controller
     public function getStaffStatus(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
             $staffStatus = $this->operationsService->getStaffStatus($eventId, $tenantId);
 
             return response()->json([
@@ -483,7 +483,7 @@ class EventOperationsController extends Controller
     public function getDashboardSummary(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $summary = \DB::table('operational_dashboard')
                 ->where('event_id', $eventId)

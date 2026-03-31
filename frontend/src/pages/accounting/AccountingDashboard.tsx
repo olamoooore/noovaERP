@@ -173,11 +173,11 @@ export const AccountingDashboard: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button onClick={() => navigate('/invoices')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
+            <button onClick={() => navigate('/accounting/customers/bills/create')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
               <Icon icon="solar:document-add-bold-duotone" className="h-8 w-8 text-primary" />
               <span className="text-sm font-medium">New Invoice</span>
             </button>
-            <button onClick={() => navigate('/accounting/vendors/bills')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
+            <button onClick={() => navigate('/accounting/vendors/bills/create')} className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-accent transition-colors">
               <Icon icon="solar:bill-list-bold-duotone" className="h-8 w-8 text-primary" />
               <span className="text-sm font-medium">New Bill</span>
             </button>
@@ -206,7 +206,7 @@ export const AccountingDashboard: React.FC = () => {
                   <div 
                     key={invoice.id}
                     className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
-                    onClick={() => navigate(`/invoices/${invoice.id}`)}
+                    onClick={() => navigate(`/accounting/customers/bills/${invoice.id}`)}
                   >
                     <div className="flex-1">
                       <div className="font-medium">{invoice.invoice_number}</div>

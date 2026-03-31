@@ -131,10 +131,6 @@ export const CustomerStatements: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <Button variant="outline">
-              <Icon icon="solar:filter-bold-duotone" className="h-4 w-4 mr-2" />
-              Filter
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -343,13 +339,18 @@ const GenerateStatementForm: React.FC<{
   initialCustomerId?: string;
   onSuccess: () => void;
 }> = ({ customers, initialCustomerId, onSuccess }) => {
-  const [formData, setFormData] = useState({
-    customer_id: initialCustomerId || '',
-    period_type: 'monthly',
-    start_date: '',
-    end_date: new Date().toISOString().split('T')[0],
-    include_paid: false,
-    send_email: false,
+  const [formData, setFormData] = useState(() => {
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    startDate.setMonth(startDate.getMonth() - 1);
+    return {
+      customer_id: initialCustomerId || '',
+      period_type: 'monthly',
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0],
+      include_paid: false,
+      send_email: false,
+    };
   });
 
   const { toast } = useToast();

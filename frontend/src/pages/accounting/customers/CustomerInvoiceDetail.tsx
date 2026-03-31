@@ -161,10 +161,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 <Icon icon="solar:send-bold-duotone" className="h-4 w-4 mr-2" />
                 Post Invoice
               </Button>
-              <Button variant="outline" onClick={() => navigate(`/accounting/customers/bills/${id}/edit`)}>
-                <Icon icon="solar:pen-bold-duotone" className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
               <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
                 <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-2" />
                 Delete
@@ -382,14 +378,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   <p className="text-sm text-muted-foreground">Posted on {formatDate(invoice.invoice_date)}</p>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/accounting/journal-entries/${invoice.journal_entry_id}`)}
-              >
-                <Icon icon="solar:eye-bold-duotone" className="h-4 w-4 mr-2" />
-                View Entry
-              </Button>
             </div>
           </CardContent>
         </Card>

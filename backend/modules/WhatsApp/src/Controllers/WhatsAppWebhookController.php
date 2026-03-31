@@ -7,6 +7,7 @@ use App\Models\Tenant;
 use Modules\WhatsApp\Models\WhatsAppApiKey;
 use Modules\WhatsApp\Services\WhatsAppService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Crypt;
@@ -31,17 +32,44 @@ class WhatsAppWebhookController extends Controller
             return null;
         }
 
-        // Search for the API key across all tenants
+        $cacheKey = 'whatsapp_api_key:' . hash('sha256', $apiKeyValue);
+
+        // Fast path: check cache for known tenant mapping
+        $cachedTenantId = Cache::get($cacheKey);
+        if ($cachedTenantId) {
+            $tenant = Tenant::find($cachedTenantId);
+            if ($tenant) {
+                $apiKey = null;
+                $tenant->run(function () use ($apiKeyValue, &$apiKey) {
+                    $keys = WhatsAppApiKey::where('is_active', true)->get();
+                    foreach ($keys as $key) {
+                        if ($key->key === $apiKeyValue && $key->isValid()) {
+                            $apiKey = $key;
+                            return;
+                        }
+                    }
+                });
+
+                if ($apiKey) {
+                    tenancy()->initialize($tenant);
+                    return $apiKey;
+                }
+
+                // Cached mapping is stale (key revoked/expired), clear it
+                Cache::forget($cacheKey);
+            }
+        }
+
+        // Slow path: scan all tenants (first request per key, or after cache miss)
         $tenants = Tenant::all();
 
         foreach ($tenants as $tenant) {
+            $apiKey = null;
             $tenant->run(function () use ($apiKeyValue, &$apiKey) {
                 try {
-                    // Find API key in this tenant's database
                     $keys = WhatsAppApiKey::where('is_active', true)->get();
 
                     foreach ($keys as $key) {
-                        // Compare decrypted key with provided value
                         if ($key->key === $apiKeyValue && $key->isValid()) {
                             $apiKey = $key;
                             return;
@@ -55,9 +83,9 @@ class WhatsAppWebhookController extends Controller
                 }
             });
 
-            // If we found the key, break out of the loop
-            if (isset($apiKey)) {
-                // Re-initialize tenant context for this tenant
+            if ($apiKey) {
+                // Cache the mapping for 1 hour to avoid future full scans
+                Cache::put($cacheKey, $tenant->id, 3600);
                 tenancy()->initialize($tenant);
                 return $apiKey;
             }

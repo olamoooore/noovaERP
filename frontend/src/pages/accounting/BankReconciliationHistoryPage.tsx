@@ -65,11 +65,14 @@ export default function BankReconciliationHistoryPage() {
                   <div className="font-medium">Statement Date: {entry.statement_date}</div>
                   <div className="text-sm text-muted-foreground">
                     Ending balance: {entry.statement_balance}
+                    {entry.opening_balance != null && <> | Opening: {entry.opening_balance}</>}
+                    {entry.difference != null && <> | Difference: {entry.difference}</>}
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground flex items-center gap-2">
                   <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-green-600" />
-                  {entry.created_at}
+                  {entry.reconciled_at || entry.created_at}
+                  {entry.reconciled_by?.name && <span>by {entry.reconciled_by.name}</span>}
                 </div>
               </div>
             ))}

@@ -116,7 +116,7 @@ class AnalyticsReportRequest extends FormRequest
 
             // Validate event_ids belong to current tenant
             if ($this->has('event_ids')) {
-                $tenantId = $this->user()->tenant_id;
+                $tenantId = tenant('id');
                 $validEventIds = \Modules\EventManagement\Models\Event::where('tenant_id', $tenantId)
                     ->whereIn('id', $this->event_ids)
                     ->pluck('id')

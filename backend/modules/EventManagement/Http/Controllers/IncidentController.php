@@ -45,7 +45,7 @@ class IncidentController extends Controller
     public function getEventIncidents(int $eventId, Request $request): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $query = IncidentLog::forEvent($eventId)
                 ->forTenant($tenantId)
@@ -103,7 +103,7 @@ class IncidentController extends Controller
     public function getIncident(int $incidentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)
                 ->with(['event', 'operationalZone', 'checkInCounter'])
@@ -172,7 +172,7 @@ class IncidentController extends Controller
             }
 
             $incidentData = $validator->validated();
-            $incidentData['tenant_id'] = auth()->user()->tenant_id;
+            $incidentData['tenant_id'] = tenant('id');
             $incidentData['reported_by'] = auth()->user()->id;
             $incidentData['reported_at'] = now();
             $incidentData['status'] = 'open';
@@ -215,7 +215,7 @@ class IncidentController extends Controller
     public function updateIncident(Request $request, int $incidentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -292,7 +292,7 @@ class IncidentController extends Controller
     public function acknowledgeIncident(Request $request, int $incidentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -355,7 +355,7 @@ class IncidentController extends Controller
                 ], 422);
             }
 
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -402,7 +402,7 @@ class IncidentController extends Controller
     public function markInProgress(int $incidentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -468,7 +468,7 @@ class IncidentController extends Controller
                 ], 422);
             }
 
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -548,7 +548,7 @@ class IncidentController extends Controller
                 ], 422);
             }
 
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -602,7 +602,7 @@ class IncidentController extends Controller
     public function closeIncident(int $incidentId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
@@ -652,7 +652,7 @@ class IncidentController extends Controller
     public function getIncidentStatistics(int $eventId): JsonResponse
     {
         try {
-            $tenantId = auth()->user()->tenant_id;
+            $tenantId = tenant('id');
 
             $stats = DB::table('incident_logs')
                 ->where('event_id', $eventId)

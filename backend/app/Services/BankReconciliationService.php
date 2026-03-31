@@ -282,7 +282,7 @@ class BankReconciliationService
 
             // Return the bank account line from the posted entry
             $bankLine = $result->journalEntry->lines
-                ->where('account_id', $bankAccountId)
+                ->where('account_id', $glAccount->id)
                 ->first();
             
             return $bankLine;
