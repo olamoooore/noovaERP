@@ -38,7 +38,7 @@ class AccountingDashboardController extends Controller
     {
         $result = DB::table('invoices')
             ->whereIn('status', ['draft', 'sent', 'overdue'])
-            ->selectRaw('COALESCE(SUM(total - COALESCE(balance, 0)), 0) as total')
+            ->selectRaw('COALESCE(SUM(COALESCE(balance, total)), 0) as total')
             ->first();
 
         return [
@@ -68,12 +68,20 @@ class AccountingDashboardController extends Controller
      */
     private function getBankBalance()
     {
-        // Bank balance needs to be calculated from GL accounts
-        // For now, return 0 - this would need to query journal_entry_lines
-        // for the gl_account_id of each bank account
+        $total = 0;
+        if (Schema::hasTable('bank_accounts') && Schema::hasTable('journal_entry_lines')) {
+            $total = DB::table('bank_accounts')
+                ->join('journal_entry_lines', 'bank_accounts.gl_account_id', '=', 'journal_entry_lines.account_id')
+                ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
+                ->where('bank_accounts.is_active', true)
+                ->where('journal_entries.status', 'posted')
+                ->selectRaw('COALESCE(SUM(journal_entry_lines.debit - journal_entry_lines.credit), 0) as total')
+                ->value('total');
+        }
+
         return [
-            'amount' => 0,
-            'formatted' => '$0.00',
+            'amount' => round((float) $total, 2),
+            'formatted' => '$' . number_format(round((float) $total, 2), 2),
         ];
     }
 

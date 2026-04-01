@@ -19,7 +19,8 @@ class WebsiteBuilderServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations/tenant');
+        // Do NOT loadMigrationsFrom for tenant migrations here or they will run during central migrations.
+        // Tenant migrations are loaded via tenancy.php migration_parameters config.
         // Routes are loaded via ModuleManager in routes/tenant.php with proper tenant context
         // $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
         $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');

@@ -55,8 +55,15 @@ use App\Http\Middleware\EnsureAccountingWriteAccess;
 // Do NOT duplicate them here — this file is loaded under tenant middleware
 // and would create an unauthenticated /api/v1/login surface.
 
-// Import (requires auth)
-Route::middleware('auth:sanctum')->group(function () {
+// Import (requires auth + tenant + entity + accounting write)
+Route::middleware([
+    'auth:sanctum',
+    \App\Http\Middleware\SetTenantFromUserPreference::class,
+    \App\Http\Middleware\EnsureTenantSearchPath::class,
+    ResolveEntityContext::class,
+    EnsureEntityAccess::class,
+    EnsureAccountingWriteAccess::class,
+])->group(function () {
     Route::post('/import', [ImportController::class, 'import']);
     Route::get('/import/template', [ImportController::class, 'downloadTemplate']);
 });
@@ -147,17 +154,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
             Route::apiResource('invoices', InvoiceController::class);
             Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
 
-            // Payments
-            Route::apiResource('payments', PaymentController::class);
+            // Payments (no update — PaymentController has no update method)
+            Route::get('/payments', [PaymentController::class, 'index']);
+            Route::post('/payments', [PaymentController::class, 'store']);
+            Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+            Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
         });
 
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard
         Route::get('/dashboard', [AccountingDashboardController::class, 'index']);
-        Route::get('/dashboard-test', function() {
-            return response()->json(['test' => 'Dashboard route works!']);
-        });
+
         
         // Chart of Accounts
         Route::get('/chart-of-accounts', [ChartOfAccountsController::class, 'index']);
@@ -303,8 +311,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Company Settings
         Route::get('/settings', [CompanySettingsController::class, 'index']);
         Route::put('/settings', [CompanySettingsController::class, 'update']);
-        Route::post('/settings/logo', [CompanySettingsController::class, 'uploadLogo']);
-        Route::delete('/settings/logo', [CompanySettingsController::class, 'deleteLogo']);
+        // Logo upload/delete: routes removed until controller methods are implemented
         Route::get('/settings/fiscal-year', [CompanySettingsController::class, 'fiscalYear']);
         Route::put('/settings/fiscal-year', [CompanySettingsController::class, 'updateFiscalYear']);
         Route::get('/settings/currencies', [CompanySettingsController::class, 'currencies']);

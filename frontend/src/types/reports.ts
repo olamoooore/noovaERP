@@ -517,6 +517,55 @@ export interface FinancialDashboardData {
   }>;
 }
 
+// Bank Reconciliation Types
+export interface ReconciliationTransaction {
+  id: number;
+  date: string;
+  description: string;
+  reference: string | null;
+  debit: number;
+  credit: number;
+  reconciled: boolean;
+  reconciliation_date: string | null;
+}
+
+export interface ReconciliationTransactionsData {
+  data: ReconciliationTransaction[];
+  opening_balance: number;
+  bank_account_id: number;
+  gl_account_id: number;
+}
+
+export interface BankAccountsData {
+  data: Array<{
+    id: number;
+    name: string;
+    account_number: string;
+    bank_name: string;
+    gl_account_id: number;
+    gl_account_name: string | null;
+    last_reconciliation_date: string | null;
+    last_reconciliation_balance: number | null;
+  }>;
+}
+
+export interface ReconciliationCompleteRequest {
+  bank_account_id: number;
+  statement_date: string;
+  statement_balance: number;
+  reconciled_transaction_ids: number[];
+}
+
+export interface AddTransactionRequest {
+  bank_account_id: number;
+  date: string;
+  description: string;
+  amount: number;
+  type: 'debit' | 'credit';
+  reference?: string;
+  contra_account_id?: number;
+}
+
 // Export Types
 export interface ExportRequest {
   report_type: string;

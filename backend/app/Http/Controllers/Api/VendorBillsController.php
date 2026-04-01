@@ -40,6 +40,17 @@ class VendorBillsController extends Controller
                 $query->where('vendor_id', $vendorId);
             }
 
+            // Search filter
+            if ($request->has('search')) {
+                $search = $request->get('search');
+                $query->where(function ($q) use ($search) {
+                    $q->where('bill_number', 'ILIKE', "%{$search}%")
+                      ->orWhereHas('vendor', function ($vq) use ($search) {
+                          $vq->where('name', 'ILIKE', "%{$search}%");
+                      });
+                });
+            }
+
             // Get total count
             $total = $query->count();
 

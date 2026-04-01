@@ -1,12 +1,17 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Schema;
 use App\Models\Feature;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('features')) {
+            return;
+        }
+
         Feature::firstOrCreate(
             ['key' => 'loyalty'],
             [

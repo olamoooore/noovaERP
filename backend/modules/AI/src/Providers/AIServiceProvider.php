@@ -33,10 +33,10 @@ class AIServiceProvider extends ServiceProvider
         // Routes are loaded via tenant.php through ModuleManager->tenantApiRouteFiles()
         // Do NOT load routes here to avoid duplicate/incorrect prefix issues
 
-        // Load migrations
+        // Load central migrations only
+        // Tenant migrations are loaded via tenancy.php migration_parameters config.
         $this->loadMigrationsFrom([
             __DIR__ . '/../../database/migrations',
-            __DIR__ . '/../../database/migrations/tenant',
         ]);
     }
 }

@@ -259,11 +259,12 @@ class ReportApiClient {
     filters?: { status?: string; search?: string }
   ): Promise<ReconciliationTransactionsData> {
     try {
-      const response = await api.get<ApiResponse<ReconciliationTransactionsData>>(
+      const response = await api.get(
         `/accounting/reconciliation/transactions/${accountId}`,
         { params: filters }
       );
-      return response.data.data;
+      // Backend returns { data: [...], opening_balance, bank_account_id, gl_account_id } directly
+      return response.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch reconciliation transactions');
       throw error;

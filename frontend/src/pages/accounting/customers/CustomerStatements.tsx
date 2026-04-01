@@ -362,10 +362,6 @@ const GenerateStatementForm: React.FC<{
     },
     onSuccess: (data) => {
       onSuccess();
-      // Open PDF in new tab if available
-      if (data.pdf_url) {
-        window.open(data.pdf_url, '_blank');
-      }
     },
     onError: (error: any) => {
       toast({

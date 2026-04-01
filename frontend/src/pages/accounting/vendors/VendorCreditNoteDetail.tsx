@@ -27,7 +27,7 @@ export const VendorCreditNoteDetail: React.FC = () => {
   const { data: creditNote, isLoading } = useQuery({
     queryKey: ['vendor-credit-note', id],
     queryFn: async () => {
-      const response = await api.get(`/vendor-credit-notes/${id}`);
+      const response = await api.get(`/accounting/vendors/credit-notes/${id}`);
       return response.data;
     },
     enabled: !!id,

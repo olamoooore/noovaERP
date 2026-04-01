@@ -12,6 +12,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Guard: products is a tenant table — skip when running central-only migrations
+        if (!Schema::hasTable('products')) {
+            return;
+        }
+
         // 1. Enhance products table with new fields
         Schema::table('products', function (Blueprint $table) {
             // Status workflow

@@ -87,6 +87,8 @@ export const VendorBills: React.FC = () => {
           params: {
             per_page: 1000,
             vendor_id: vendorFilter || undefined,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            search: searchQuery || undefined,
           },
         });
         const billsData = billsResponse.data.data || [];

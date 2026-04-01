@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('products')) {
+            return;
+        }
+
         Schema::table('products', function (Blueprint $table) {
             $table->dropUnique('products_barcode_unique');
         });

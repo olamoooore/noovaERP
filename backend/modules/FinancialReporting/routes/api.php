@@ -15,7 +15,13 @@ use Modules\FinancialReporting\Controllers\ReportTemplateController;
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware([
+    'auth:sanctum',
+    \App\Http\Middleware\SetTenantFromUserPreference::class,
+    \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\ResolveEntityContext::class,
+    \App\Http\Middleware\EnsureEntityAccess::class,
+])->group(function () {
     
     // Financial Reports
     Route::prefix('reports/financial')->name('reports.financial.')->group(function () {

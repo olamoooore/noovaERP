@@ -17,11 +17,8 @@ class LoyaltyServiceProvider extends ServiceProvider
 
     protected function registerMigrations(): void
     {
-        $migrationsPath = base_path('modules/Loyalty/database/migrations/tenant');
-        
-        if (is_dir($migrationsPath)) {
-            $this->loadMigrationsFrom($migrationsPath);
-        }
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
+        // Tenant migrations are loaded via tenancy.php migration_parameters config.
     }
 
     protected function registerCommands(): void

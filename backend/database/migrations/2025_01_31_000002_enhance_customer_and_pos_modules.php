@@ -11,6 +11,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Guard: customers/products are tenant tables — skip when running central-only migrations
+        if (!Schema::hasTable('customers')) {
+            return;
+        }
+
         // =====================================================
         // CUSTOMER ENHANCEMENTS (res.partner pattern from Odoo)
         // =====================================================

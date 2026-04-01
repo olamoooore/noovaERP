@@ -64,7 +64,7 @@ class EntityAccessService
             ->join('legal_entities as le', 'le.id', '=', 'uea.legal_entity_id')
             ->where('uea.user_id', $userId)
             ->where('uea.is_default', true)
-            ->where('le.is_active', true)
+            ->where('le.status', 'active')
             ->select('le.*', 'uea.role')
             ->first();
     }
