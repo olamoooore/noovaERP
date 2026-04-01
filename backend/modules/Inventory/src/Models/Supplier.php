@@ -12,6 +12,13 @@ class Supplier extends Model
 {
     use SoftDeletes;
 
+    protected $appends = [
+        'contact_person',
+        'address',
+        'tax_number',
+        'payment_terms',
+    ];
+
     protected $fillable = [
         'name',
         'code',
@@ -94,5 +101,47 @@ class Supplier extends Model
     public function getContactNameAttribute($value)
     {
         return $value ?: $this->contact_person;
+    }
+
+    public function setContactPersonAttribute($value): void
+    {
+        $this->attributes['contact_name'] = $value;
+    }
+
+    public function getContactPersonAttribute(): ?string
+    {
+        return $this->attributes['contact_name'] ?? null;
+    }
+
+    public function setAddressAttribute($value): void
+    {
+        $this->attributes['address_line_1'] = $value;
+    }
+
+    public function getAddressAttribute(): ?string
+    {
+        return $this->attributes['address_line_1'] ?? null;
+    }
+
+    public function setTaxNumberAttribute($value): void
+    {
+        $this->attributes['tax_id'] = $value;
+    }
+
+    public function getTaxNumberAttribute(): ?string
+    {
+        return $this->attributes['tax_id'] ?? null;
+    }
+
+    public function setPaymentTermsAttribute($value): void
+    {
+        $this->attributes['payment_terms_days'] = $value;
+    }
+
+    public function getPaymentTermsAttribute(): ?int
+    {
+        return isset($this->attributes['payment_terms_days'])
+            ? (int) $this->attributes['payment_terms_days']
+            : null;
     }
 }

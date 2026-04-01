@@ -14,7 +14,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('brands', BrandController::class);
 
     // Suppliers
-    Route::apiResource('suppliers', SupplierController::class);
+    Route::apiResource('suppliers', SupplierController::class)->parameters([
+        'suppliers' => 'supplier_id',
+    ]);
 
     // Purchase Orders
     Route::apiResource('purchase-orders', PurchaseOrderController::class);

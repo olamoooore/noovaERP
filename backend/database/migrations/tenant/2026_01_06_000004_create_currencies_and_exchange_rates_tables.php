@@ -49,14 +49,23 @@ return new class extends Migration
             $table->index('effective_date');
         });
         
-        // Add currency fields to journal_entry_lines if not already present
+        // Add currency fields to journal_entry_lines with independent guards to avoid partial-schema drift.
         if (!Schema::hasColumn('journal_entry_lines', 'currency_code')) {
             Schema::table('journal_entry_lines', function (Blueprint $table) {
                 $table->string('currency_code', 3)->default('USD')->after('credit');
-                $table->decimal('original_amount', 15, 2)->nullable()->after('currency_code');
-                $table->decimal('exchange_rate', 15, 6)->default(1.0)->after('original_amount');
-                
                 $table->foreign('currency_code')->references('code')->on('currencies');
+            });
+        }
+
+        if (!Schema::hasColumn('journal_entry_lines', 'original_amount')) {
+            Schema::table('journal_entry_lines', function (Blueprint $table) {
+                $table->decimal('original_amount', 15, 2)->nullable()->after('currency_code');
+            });
+        }
+
+        if (!Schema::hasColumn('journal_entry_lines', 'exchange_rate')) {
+            Schema::table('journal_entry_lines', function (Blueprint $table) {
+                $table->decimal('exchange_rate', 15, 6)->default(1.0)->after('original_amount');
             });
         }
     }
