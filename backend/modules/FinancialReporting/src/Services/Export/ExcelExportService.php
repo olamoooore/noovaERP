@@ -18,7 +18,10 @@ class ExcelExportService
             throw new \Exception('PhpSpreadsheet library is not installed. Run: composer require phpoffice/phpspreadsheet');
         }
 
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His') . '.xlsx';
+        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His');
+        if (!str_ends_with($filename, '.xlsx')) {
+            $filename .= '.xlsx';
+        }
         $path = 'reports/' . $filename;
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();

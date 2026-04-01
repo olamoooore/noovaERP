@@ -4,6 +4,7 @@ namespace Modules\FinancialReporting\Tests\Feature;
 
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Modules\FinancialReporting\Models\ReportCache;
 use App\Models\User;
@@ -18,6 +19,24 @@ class CacheManagementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Artisan::call('migrate', [
+            '--path' => [database_path('migrations/tenant')],
+            '--realpath' => true,
+        ]);
+        Artisan::call('migrate', [
+            '--path' => [base_path('modules/FinancialReporting/database/migrations/tenant')],
+            '--realpath' => true,
+        ]);
+
+        $this->withoutMiddleware([
+            \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\ResolveEntityContext::class,
+            \App\Http\Middleware\EnsureEntityAccess::class,
+        ]);
+
         $this->user = User::factory()->create();
     }
 
@@ -29,7 +48,7 @@ class CacheManagementTest extends TestCase
         ReportCache::factory()->count(2)->expired()->create();
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/cache/stats');
+            ->getJson('/api/v1/reports/cache/stats');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -56,7 +75,7 @@ class CacheManagementTest extends TestCase
         ReportCache::factory()->count(5)->create();
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/cache/clear-all');
+            ->postJson('/api/v1/reports/cache/clear-all');
 
         $response->assertStatus(200)
             ->assertJson([
@@ -72,7 +91,7 @@ class CacheManagementTest extends TestCase
         ReportCache::factory()->count(2)->expired()->create();
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/cache/clear-expired');
+            ->postJson('/api/v1/reports/cache/clear-expired');
 
         $response->assertStatus(200)
             ->assertJson([
@@ -89,7 +108,7 @@ class CacheManagementTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/cache/clear-by-type', $data);
+            ->postJson('/api/v1/reports/cache/clear-by-type', $data);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -102,7 +121,7 @@ class CacheManagementTest extends TestCase
     public function it_validates_report_type_when_clearing_by_type()
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/cache/clear-by-type', []);
+            ->postJson('/api/v1/reports/cache/clear-by-type', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['report_type']);
@@ -112,7 +131,7 @@ class CacheManagementTest extends TestCase
     public function it_can_warm_cache()
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/cache/warm');
+            ->postJson('/api/v1/reports/cache/warm');
 
         $response->assertStatus(200)
             ->assertJson([
@@ -129,7 +148,7 @@ class CacheManagementTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/reports/cache/{$cache->cache_key}");
+            ->getJson("/api/v1/reports/cache/{$cache->cache_key}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -144,7 +163,7 @@ class CacheManagementTest extends TestCase
     public function it_returns_404_for_non_existent_cache_entry()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/cache/non_existent_key');
+            ->getJson('/api/v1/reports/cache/non_existent_key');
 
         $response->assertStatus(404)
             ->assertJson([
@@ -161,7 +180,7 @@ class CacheManagementTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/reports/cache/{$cache->cache_key}");
+            ->deleteJson("/api/v1/reports/cache/{$cache->cache_key}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -178,7 +197,7 @@ class CacheManagementTest extends TestCase
     public function it_returns_404_when_deleting_non_existent_cache_entry()
     {
         $response = $this->actingAs($this->user)
-            ->deleteJson('/api/reports/cache/non_existent_key');
+            ->deleteJson('/api/v1/reports/cache/non_existent_key');
 
         $response->assertStatus(404)
             ->assertJson([
@@ -190,10 +209,10 @@ class CacheManagementTest extends TestCase
     /** @test */
     public function it_requires_authentication_for_cache_operations()
     {
-        $response = $this->getJson('/api/reports/cache/stats');
+        $response = $this->getJson('/api/v1/reports/cache/stats');
         $response->assertStatus(401);
 
-        $response = $this->postJson('/api/reports/cache/clear-all');
+        $response = $this->postJson('/api/v1/reports/cache/clear-all');
         $response->assertStatus(401);
     }
 
@@ -204,7 +223,7 @@ class CacheManagementTest extends TestCase
         ReportCache::factory()->count(2)->create(['report_type' => 'balance_sheet']);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/cache/stats');
+            ->getJson('/api/v1/reports/cache/stats');
 
         $response->assertStatus(200);
         $byType = $response->json('data.by_type');

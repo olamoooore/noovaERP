@@ -14,6 +14,7 @@ class ReportScheduleFactory extends Factory
     {
         return [
             'name' => $this->faker->sentence(3),
+            'description' => $this->faker->optional()->sentence(),
             'report_type' => $this->faker->randomElement([
                 'profit_loss',
                 'balance_sheet',
@@ -30,10 +31,10 @@ class ReportScheduleFactory extends Factory
                 'quarterly',
                 'yearly',
             ]),
-            'parameters' => [
-                'export_format' => $this->faker->randomElement(['pdf', 'excel']),
+            'report_filters' => [
                 'compare_period' => $this->faker->boolean(),
             ],
+            'export_format' => $this->faker->randomElement(['pdf', 'excel', 'csv']),
             'recipients' => [
                 $this->faker->email(),
                 $this->faker->email(),

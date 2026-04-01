@@ -4,6 +4,7 @@ namespace Modules\FinancialReporting\Tests\Feature;
 
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Modules\FinancialReporting\Models\ReportTemplate;
 use App\Models\User;
 
@@ -16,6 +17,24 @@ class ReportTemplateTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Artisan::call('migrate', [
+            '--path' => [database_path('migrations/tenant')],
+            '--realpath' => true,
+        ]);
+        Artisan::call('migrate', [
+            '--path' => [base_path('modules/FinancialReporting/database/migrations/tenant')],
+            '--realpath' => true,
+        ]);
+
+        $this->withoutMiddleware([
+            \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\ResolveEntityContext::class,
+            \App\Http\Middleware\EnsureEntityAccess::class,
+        ]);
+
         $this->user = User::factory()->create();
     }
 
@@ -25,7 +44,7 @@ class ReportTemplateTest extends TestCase
         ReportTemplate::factory()->count(3)->create();
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/templates');
+            ->getJson('/api/v1/reports/templates');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -57,7 +76,7 @@ class ReportTemplateTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/templates', $data);
+            ->postJson('/api/v1/reports/templates', $data);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -76,7 +95,7 @@ class ReportTemplateTest extends TestCase
     public function it_validates_required_fields_when_creating_template()
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/templates', []);
+            ->postJson('/api/v1/reports/templates', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'report_type', 'configuration']);
@@ -92,7 +111,7 @@ class ReportTemplateTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/templates', $data);
+            ->postJson('/api/v1/reports/templates', $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['report_type']);
@@ -112,7 +131,7 @@ class ReportTemplateTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->putJson("/api/reports/templates/{$template->id}", $data);
+            ->putJson("/api/v1/reports/templates/{$template->id}", $data);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -136,7 +155,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->putJson("/api/reports/templates/{$template->id}", [
+            ->putJson("/api/v1/reports/templates/{$template->id}", [
                 'name' => 'Updated Name',
             ]);
 
@@ -157,7 +176,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->putJson("/api/reports/templates/{$template->id}", [
+            ->putJson("/api/v1/reports/templates/{$template->id}", [
                 'name' => 'Updated Name',
             ]);
 
@@ -177,12 +196,12 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/reports/templates/{$template->id}");
+            ->deleteJson("/api/v1/reports/templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson(['success' => true]);
 
-        $this->assertDatabaseMissing('report_templates', [
+        $this->assertSoftDeleted('report_templates', [
             'id' => $template->id,
         ]);
     }
@@ -195,7 +214,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/reports/templates/{$template->id}");
+            ->deleteJson("/api/v1/reports/templates/{$template->id}");
 
         $response->assertStatus(403)
             ->assertJson([
@@ -212,7 +231,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/templates/{$template->id}/duplicate");
+            ->postJson("/api/v1/reports/templates/{$template->id}/duplicate");
 
         $response->assertStatus(201)
             ->assertJson([
@@ -236,7 +255,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/templates/{$template->id}/share");
+            ->postJson("/api/v1/reports/templates/{$template->id}/share");
 
         $response->assertStatus(200)
             ->assertJson(['success' => true]);
@@ -258,7 +277,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/templates/{$template->id}/unshare");
+            ->postJson("/api/v1/reports/templates/{$template->id}/unshare");
 
         $response->assertStatus(200)
             ->assertJson(['success' => true]);
@@ -278,7 +297,7 @@ class ReportTemplateTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/templates/{$template->id}/apply", [
+            ->postJson("/api/v1/reports/templates/{$template->id}/apply", [
                 'filters' => ['start_date' => '2024-01-01'],
             ]);
 
@@ -302,7 +321,7 @@ class ReportTemplateTest extends TestCase
         ReportTemplate::factory()->create(['report_type' => 'balance_sheet']);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/templates?report_type=profit_loss');
+            ->getJson('/api/v1/reports/templates?report_type=profit_loss');
 
         $response->assertStatus(200);
         $data = $response->json('data');
@@ -318,7 +337,7 @@ class ReportTemplateTest extends TestCase
         ReportTemplate::factory()->create(['is_system' => false]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/templates?is_system=1');
+            ->getJson('/api/v1/reports/templates?is_system=1');
 
         $response->assertStatus(200);
         $data = $response->json('data');
@@ -330,7 +349,7 @@ class ReportTemplateTest extends TestCase
     /** @test */
     public function it_requires_authentication()
     {
-        $response = $this->getJson('/api/reports/templates');
+        $response = $this->getJson('/api/v1/reports/templates');
         $response->assertStatus(401);
     }
 }

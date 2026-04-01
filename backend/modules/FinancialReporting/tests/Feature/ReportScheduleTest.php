@@ -4,7 +4,10 @@ namespace Modules\FinancialReporting\Tests\Feature;
 
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Modules\FinancialReporting\Models\ReportSchedule;
+use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use App\Models\User;
 
 class ReportScheduleTest extends TestCase
@@ -16,6 +19,24 @@ class ReportScheduleTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Artisan::call('migrate', [
+            '--path' => [database_path('migrations/tenant')],
+            '--realpath' => true,
+        ]);
+        Artisan::call('migrate', [
+            '--path' => [base_path('modules/FinancialReporting/database/migrations/tenant')],
+            '--realpath' => true,
+        ]);
+
+        $this->withoutMiddleware([
+            \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\ResolveEntityContext::class,
+            \App\Http\Middleware\EnsureEntityAccess::class,
+        ]);
+
         $this->user = User::factory()->create();
     }
 
@@ -25,7 +46,7 @@ class ReportScheduleTest extends TestCase
         ReportSchedule::factory()->count(3)->create();
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/schedules');
+            ->getJson('/api/v1/reports/schedules');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -56,7 +77,7 @@ class ReportScheduleTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/schedules', $data);
+            ->postJson('/api/v1/reports/schedules', $data);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -81,7 +102,7 @@ class ReportScheduleTest extends TestCase
     public function it_validates_required_fields_when_creating_schedule()
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/schedules', []);
+            ->postJson('/api/v1/reports/schedules', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'report_type', 'frequency', 'recipients']);
@@ -98,7 +119,7 @@ class ReportScheduleTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/schedules', $data);
+            ->postJson('/api/v1/reports/schedules', $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['report_type']);
@@ -115,7 +136,7 @@ class ReportScheduleTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/schedules', $data);
+            ->postJson('/api/v1/reports/schedules', $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['frequency']);
@@ -132,7 +153,7 @@ class ReportScheduleTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/reports/schedules', $data);
+            ->postJson('/api/v1/reports/schedules', $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['recipients.0']);
@@ -151,7 +172,7 @@ class ReportScheduleTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user)
-            ->putJson("/api/reports/schedules/{$schedule->id}", $data);
+            ->putJson("/api/v1/reports/schedules/{$schedule->id}", $data);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -175,12 +196,12 @@ class ReportScheduleTest extends TestCase
         $schedule = ReportSchedule::factory()->create();
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/reports/schedules/{$schedule->id}");
+            ->deleteJson("/api/v1/reports/schedules/{$schedule->id}");
 
         $response->assertStatus(200)
             ->assertJson(['success' => true]);
 
-        $this->assertDatabaseMissing('report_schedules', [
+        $this->assertSoftDeleted('report_schedules', [
             'id' => $schedule->id,
         ]);
     }
@@ -193,7 +214,7 @@ class ReportScheduleTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/schedules/{$schedule->id}/toggle");
+            ->postJson("/api/v1/reports/schedules/{$schedule->id}/toggle");
 
         $response->assertStatus(200);
 
@@ -206,22 +227,26 @@ class ReportScheduleTest extends TestCase
     /** @test */
     public function it_can_run_schedule_immediately()
     {
+        Bus::fake([GenerateScheduledReport::class]);
+
         $schedule = ReportSchedule::factory()->create();
 
         $response = $this->actingAs($this->user)
-            ->postJson("/api/reports/schedules/{$schedule->id}/run");
+            ->postJson("/api/v1/reports/schedules/{$schedule->id}/run");
 
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
                 'message' => 'Report generation job dispatched successfully',
             ]);
+
+        Bus::assertDispatched(GenerateScheduledReport::class);
     }
 
     /** @test */
     public function it_requires_authentication()
     {
-        $response = $this->getJson('/api/reports/schedules');
+        $response = $this->getJson('/api/v1/reports/schedules');
         $response->assertStatus(401);
     }
 
@@ -232,7 +257,7 @@ class ReportScheduleTest extends TestCase
         ReportSchedule::factory()->create(['is_active' => false]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/schedules?is_active=1');
+            ->getJson('/api/v1/reports/schedules?is_active=1');
 
         $response->assertStatus(200);
         $data = $response->json('data');
@@ -248,7 +273,7 @@ class ReportScheduleTest extends TestCase
         ReportSchedule::factory()->create(['report_type' => 'balance_sheet']);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/reports/schedules?report_type=profit_loss');
+            ->getJson('/api/v1/reports/schedules?report_type=profit_loss');
 
         $response->assertStatus(200);
         $data = $response->json('data');

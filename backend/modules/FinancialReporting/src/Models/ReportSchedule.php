@@ -35,6 +35,7 @@ class ReportSchedule extends Model
         'last_error',
         'created_by',
         'updated_by',
+        'parameters',
     ];
 
     protected $casts = [
@@ -46,6 +47,22 @@ class ReportSchedule extends Model
         'last_success_at' => 'datetime',
         'time_of_day' => 'datetime:H:i:s',
     ];
+
+    /**
+     * Virtual "parameters" accessor — backward compat for controllers/tests.
+     */
+    public function getParametersAttribute(): array
+    {
+        return $this->report_filters ?? [];
+    }
+
+    /**
+     * Virtual "parameters" mutator — stores into report_filters.
+     */
+    public function setParametersAttribute($value): void
+    {
+        $this->attributes['report_filters'] = is_array($value) ? json_encode($value) : $value;
+    }
 
     /**
      * Relationships

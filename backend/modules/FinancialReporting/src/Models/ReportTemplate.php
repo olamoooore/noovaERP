@@ -20,6 +20,7 @@ class ReportTemplate extends Model
         'default_filters',
         'chart_config',
         'column_config',
+        'configuration',
         'is_system',
         'is_public',
         'is_favorite',
@@ -39,6 +40,40 @@ class ReportTemplate extends Model
         'is_public' => 'boolean',
         'is_favorite' => 'boolean',
     ];
+
+    protected $appends = ['configuration'];
+
+    /**
+     * Virtual "configuration" accessor — combines the three JSON columns
+     * into a single array for backward compatibility with controllers/tests.
+     */
+    public function getConfigurationAttribute(): array
+    {
+        $config = $this->chart_config ?? [];
+        if (!empty($this->column_config)) {
+            $config['columns'] = $this->column_config;
+        }
+        if (!empty($this->default_filters)) {
+            $config['filters'] = $this->default_filters;
+        }
+        return $config;
+    }
+
+    /**
+     * Virtual "configuration" mutator — distributes into the three JSON columns.
+     */
+    public function setConfigurationAttribute($value): void
+    {
+        if (!is_array($value)) {
+            return;
+        }
+
+        $this->attributes['column_config'] = json_encode($value['columns'] ?? []);
+        $this->attributes['default_filters'] = json_encode($value['filters'] ?? []);
+
+        $remaining = array_diff_key($value, array_flip(['columns', 'filters']));
+        $this->attributes['chart_config'] = json_encode($remaining);
+    }
 
     /**
      * Relationships

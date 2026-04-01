@@ -21,7 +21,7 @@ class ReportCacheFactory extends Factory
                 'trial_balance',
                 'stock_valuation',
             ]),
-            'parameters' => [
+            'filters' => [
                 'start_date' => $this->faker->date(),
                 'end_date' => $this->faker->date(),
             ],

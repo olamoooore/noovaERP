@@ -68,8 +68,12 @@ class ClearReportCache implements ShouldQueue
         $count = ReportCache::count();
         ReportCache::truncate();
 
-        // Clear Redis cache with report tags
-        Cache::tags(['reports', 'dashboards', 'sales_analytics', 'inventory_reports'])->flush();
+        // Clear Redis cache with report tags (only works with tag-supporting drivers)
+        try {
+            Cache::tags(['reports', 'dashboards', 'sales_analytics', 'inventory_reports'])->flush();
+        } catch (\BadMethodCallException $e) {
+            // Cache driver does not support tagging — skip
+        }
 
         Log::info('Cleared all report cache', [
             'database_entries_cleared' => $count,
@@ -102,8 +106,12 @@ class ClearReportCache implements ShouldQueue
     {
         ReportCache::where('report_type', $reportType)->delete();
         
-        // Clear Redis cache for this report type
-        Cache::tags(['reports'])->flush();
+        // Clear Redis cache for this report type (only works with tag-supporting drivers)
+        try {
+            Cache::tags(['reports'])->flush();
+        } catch (\BadMethodCallException $e) {
+            // Cache driver does not support tagging — skip
+        }
 
         Log::info('Cleared cache for report type', [
             'report_type' => $reportType,
