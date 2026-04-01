@@ -4,6 +4,7 @@ namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\WorkOrderPart;
@@ -15,15 +16,19 @@ class WorkOrderPartsController extends Controller
         private StockDeductionService $stockService
     ) {}
 
-    public function index(WorkOrder $workOrder)
+    public function index(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         return response()->json(
             $workOrder->parts()->with(['product', 'warehouse'])->get()
         );
     }
 
-    public function store(Request $request, WorkOrder $workOrder)
+    public function store(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'product_id'    => 'required|exists:products,id',
             'description'   => 'nullable|string|max:255',
@@ -47,8 +52,19 @@ class WorkOrderPartsController extends Controller
         return response()->json($part->load(['product', 'warehouse']), 201);
     }
 
-    public function update(Request $request, WorkOrder $workOrder, WorkOrderPart $part)
+    public function show(int $work_order_id, int $part_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $part = $this->findPartOrFail($part_id);
+        $this->ensurePartBelongs($workOrder, $part);
+
+        return response()->json($part->load(['product', 'warehouse']));
+    }
+
+    public function update(Request $request, int $work_order_id, int $part_id)
+    {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $part = $this->findPartOrFail($part_id);
         $this->ensurePartBelongs($workOrder, $part);
 
         $validated = $request->validate([
@@ -65,8 +81,10 @@ class WorkOrderPartsController extends Controller
         return response()->json($part->fresh(['product', 'warehouse']));
     }
 
-    public function destroy(WorkOrder $workOrder, WorkOrderPart $part)
+    public function destroy(int $work_order_id, int $part_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $part = $this->findPartOrFail($part_id);
         $this->ensurePartBelongs($workOrder, $part);
 
         if ($part->stock_deducted) {
@@ -80,8 +98,10 @@ class WorkOrderPartsController extends Controller
         return response()->json(['message' => 'Part removed.']);
     }
 
-    public function checkStock(Request $request, WorkOrder $workOrder)
+    public function checkStock(Request $request, int $work_order_id)
     {
+        $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'product_id'   => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
@@ -100,5 +120,27 @@ class WorkOrderPartsController extends Controller
         if ($part->work_order_id !== $workOrder->id) {
             abort(404, 'Part not found on this work order.');
         }
+    }
+
+    private function findWorkOrderOrFail(int $workOrderId): WorkOrder
+    {
+        $workOrder = WorkOrder::query()->find($workOrderId);
+
+        if (!$workOrder) {
+            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        }
+
+        return $workOrder;
+    }
+
+    private function findPartOrFail(int $partId): WorkOrderPart
+    {
+        $part = WorkOrderPart::query()->find($partId);
+
+        if (!$part) {
+            throw (new ModelNotFoundException())->setModel(WorkOrderPart::class, [$partId]);
+        }
+
+        return $part;
     }
 }

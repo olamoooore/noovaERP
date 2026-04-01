@@ -4,6 +4,7 @@ namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Modules\FieldService\Models\Technician;
 use Modules\FieldService\Models\WorkOrder;
@@ -28,24 +29,18 @@ class TechnicianController extends Controller
         return response()->json($query->get());
     }
 
-    public function show(Technician $technician)
+    public function show(int $technician_id)
     {
-        $technician->load(['user', 'team', 'defaultWarehouse']);
+        $technician = $this->findTechnicianOrFail($technician_id);
 
-        // Attach work order stats
-        $stats = WorkOrder::where('lead_technician_id', $technician->user_id)
-            ->selectRaw('
-                COUNT(*) as total_jobs,
-                SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed_jobs,
-                SUM(CASE WHEN status = "in_progress" THEN 1 ELSE 0 END) as active_jobs,
-                ROUND(AVG(CASE WHEN customer_rating IS NOT NULL THEN customer_rating END), 2) as avg_rating
-            ')
-            ->first();
+        return response()->json($this->buildTechnicianPayload($technician));
+    }
 
-        $data = $technician->toArray();
-        $data['stats'] = $stats;
+    public function stats(int $technician_id)
+    {
+        $technician = $this->findTechnicianOrFail($technician_id);
 
-        return response()->json($data);
+        return response()->json($this->buildTechnicianPayload($technician)['stats']);
     }
 
     public function store(Request $request)
@@ -67,8 +62,10 @@ class TechnicianController extends Controller
         return response()->json($technician->load(['user', 'team']), 201);
     }
 
-    public function update(Request $request, Technician $technician)
+    public function update(Request $request, int $technician_id)
     {
+        $technician = $this->findTechnicianOrFail($technician_id);
+
         $validated = $request->validate([
             'team_id'              => 'nullable|exists:fs_teams,id',
             'skills'               => 'nullable|array',
@@ -86,8 +83,10 @@ class TechnicianController extends Controller
         return response()->json($technician->fresh(['user', 'team']));
     }
 
-    public function destroy(Technician $technician)
+    public function destroy(int $technician_id)
     {
+        $technician = $this->findTechnicianOrFail($technician_id);
+
         $technician->update(['is_active' => false]);
         return response()->json(['message' => 'Technician deactivated.']);
     }
@@ -105,5 +104,36 @@ class TechnicianController extends Controller
             ->get();
 
         return response()->json($users);
+    }
+
+    private function buildTechnicianPayload(Technician $technician): array
+    {
+        $technician->load(['user', 'team', 'defaultWarehouse']);
+
+        // Attach work order stats
+        $stats = WorkOrder::where('lead_technician_id', $technician->user_id)
+            ->selectRaw('
+                COUNT(*) as total_jobs,
+                SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed_jobs,
+                SUM(CASE WHEN status = "in_progress" THEN 1 ELSE 0 END) as active_jobs,
+                ROUND(AVG(CASE WHEN customer_rating IS NOT NULL THEN customer_rating END), 2) as avg_rating
+            ')
+            ->first();
+
+        $data = $technician->toArray();
+        $data['stats'] = $stats;
+
+        return $data;
+    }
+
+    private function findTechnicianOrFail(int $technicianId): Technician
+    {
+        $technician = Technician::query()->find($technicianId);
+
+        if (!$technician) {
+            throw (new ModelNotFoundException())->setModel(Technician::class, [$technicianId]);
+        }
+
+        return $technician;
     }
 }

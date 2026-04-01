@@ -78,7 +78,8 @@ DB::table('user_company_access')->updateOrInsert(
 );
 echo "user_company_access linked\n";
 
-// Initialize tenant (run migrations + switch schema)
+// Initialize tenant context. Schema creation and tenant migrations now happen
+// automatically during Tenant::create().
 tenancy()->initialize($tenant);
 
 // Create admin user in tenant schema

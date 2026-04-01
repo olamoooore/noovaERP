@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\PurchaseOrder;
@@ -112,8 +113,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->load(['supplier', 'warehouse', 'items.product']), 201);
     }
 
-    public function show(PurchaseOrder $purchaseOrder)
+    public function show(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         return response()->json($purchaseOrder->load([
             'supplier',
             'warehouse',
@@ -123,8 +126,10 @@ class PurchaseOrderController extends Controller
         ]));
     }
 
-    public function update(Request $request, PurchaseOrder $purchaseOrder)
+    public function update(Request $request, int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if (!in_array($purchaseOrder->status, ['draft', 'pending'])) {
             return response()->json(['message' => 'Cannot update purchase order in current status'], 422);
         }
@@ -182,8 +187,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
     }
 
-    public function destroy(PurchaseOrder $purchaseOrder)
+    public function destroy(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if (!in_array($purchaseOrder->status, ['draft', 'cancelled'])) {
             return response()->json(['message' => 'Cannot delete purchase order in current status'], 422);
         }
@@ -193,8 +200,10 @@ class PurchaseOrderController extends Controller
         return response()->json(['message' => 'Purchase order deleted successfully']);
     }
 
-    public function approve(PurchaseOrder $purchaseOrder)
+    public function approve(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if ($purchaseOrder->status !== 'pending') {
             return response()->json(['message' => 'Only pending orders can be approved'], 422);
         }
@@ -208,8 +217,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
     }
 
-    public function submit(PurchaseOrder $purchaseOrder)
+    public function submit(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if ($purchaseOrder->status !== 'draft') {
             return response()->json(['message' => 'Only draft orders can be submitted'], 422);
         }
@@ -219,8 +230,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
     }
 
-    public function markOrdered(PurchaseOrder $purchaseOrder)
+    public function markOrdered(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if (!in_array($purchaseOrder->status, ['approved', 'pending'])) {
             return response()->json(['message' => 'Order must be approved first'], 422);
         }
@@ -230,8 +243,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
     }
 
-    public function receive(Request $request, PurchaseOrder $purchaseOrder)
+    public function receive(Request $request, int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if (!in_array($purchaseOrder->status, ['ordered', 'partial'])) {
             return response()->json(['message' => 'Order must be in ordered or partial status'], 422);
         }
@@ -285,8 +300,10 @@ class PurchaseOrderController extends Controller
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
     }
 
-    public function cancel(PurchaseOrder $purchaseOrder)
+    public function cancel(int $purchase_order_id)
     {
+        $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
+
         if (in_array($purchaseOrder->status, ['received', 'cancelled'])) {
             return response()->json(['message' => 'Cannot cancel this order'], 422);
         }
@@ -294,5 +311,16 @@ class PurchaseOrderController extends Controller
         $purchaseOrder->update(['status' => 'cancelled']);
 
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
+    }
+
+    private function findPurchaseOrderOrFail(int $purchaseOrderId): PurchaseOrder
+    {
+        $purchaseOrder = PurchaseOrder::query()->find($purchaseOrderId);
+
+        if (!$purchaseOrder) {
+            throw (new ModelNotFoundException())->setModel(PurchaseOrder::class, [$purchaseOrderId]);
+        }
+
+        return $purchaseOrder;
     }
 }

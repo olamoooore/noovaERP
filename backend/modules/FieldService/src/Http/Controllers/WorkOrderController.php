@@ -3,6 +3,7 @@
 namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -179,8 +180,10 @@ class WorkOrderController extends Controller
 
     // ────────────── SHOW ──────────────
 
-    public function show(WorkOrder $workOrder)
+    public function show(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $workOrder->load([
             'type',
             'customer',
@@ -235,8 +238,10 @@ class WorkOrderController extends Controller
 
     // ────────────── UPDATE ──────────────
 
-    public function update(Request $request, WorkOrder $workOrder)
+    public function update(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'title'              => 'sometimes|required|string|max:255',
             'description'        => 'nullable|string',
@@ -264,8 +269,10 @@ class WorkOrderController extends Controller
 
     // ────────────── STATUS TRANSITION ──────────────
 
-    public function updateStatus(Request $request, WorkOrder $workOrder)
+    public function updateStatus(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'status' => 'required|in:draft,scheduled,in_progress,on_hold,completed,invoiced,cancelled',
         ]);
@@ -282,8 +289,10 @@ class WorkOrderController extends Controller
 
     // ────────────── ASSIGN TECHNICIANS ──────────────
 
-    public function assign(Request $request, WorkOrder $workOrder)
+    public function assign(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'technician_ids'   => 'required|array|min:1',
             'technician_ids.*' => 'exists:users,id',
@@ -301,8 +310,10 @@ class WorkOrderController extends Controller
 
     // ────────────── NOTES (CHATTER) ──────────────
 
-    public function addNote(Request $request, WorkOrder $workOrder)
+    public function addNote(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'body' => 'required|string|max:5000',
         ]);
@@ -314,8 +325,10 @@ class WorkOrderController extends Controller
 
     // ────────────── GENERATE INVOICE ──────────────
 
-    public function generateInvoice(WorkOrder $workOrder)
+    public function generateInvoice(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         if (!in_array($workOrder->status, ['completed', 'invoiced'])) {
             return response()->json([
                 'message' => 'Work Order must be completed before generating an invoice.',
@@ -334,8 +347,10 @@ class WorkOrderController extends Controller
 
     // ────────────── RATING ──────────────
 
-    public function submitRating(Request $request, WorkOrder $workOrder)
+    public function submitRating(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'rating'   => 'required|integer|min:1|max:5',
             'feedback' => 'nullable|string|max:2000',
@@ -357,8 +372,10 @@ class WorkOrderController extends Controller
 
     // ────────────── DUPLICATE ──────────────
 
-    public function duplicate(WorkOrder $workOrder)
+    public function duplicate(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $newWo = $this->service->create([
             'title'              => $workOrder->title . ' (Copy)',
             'description'        => $workOrder->description,
@@ -380,8 +397,10 @@ class WorkOrderController extends Controller
 
     // ────────────── DELETE (soft) ──────────────
 
-    public function destroy(WorkOrder $workOrder)
+    public function destroy(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         if (in_array($workOrder->status, ['in_progress', 'completed', 'invoiced'])) {
             return response()->json([
                 'message' => 'Cannot delete a work order that is in progress, completed, or invoiced.',
@@ -391,5 +410,16 @@ class WorkOrderController extends Controller
         $workOrder->delete();
 
         return response()->json(['message' => 'Work Order deleted.']);
+    }
+
+    private function findWorkOrderOrFail(int $workOrderId): WorkOrder
+    {
+        $workOrder = WorkOrder::query()->find($workOrderId);
+
+        if (!$workOrder) {
+            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        }
+
+        return $workOrder;
     }
 }

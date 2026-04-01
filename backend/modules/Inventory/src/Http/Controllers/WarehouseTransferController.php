@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\WarehouseTransfer;
@@ -77,8 +78,10 @@ class WarehouseTransferController extends Controller
         return response()->json($transfer->load(['fromWarehouse', 'toWarehouse', 'items.product']), 201);
     }
 
-    public function show(WarehouseTransfer $warehouseTransfer)
+    public function show(int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         return response()->json($warehouseTransfer->load([
             'fromWarehouse',
             'toWarehouse',
@@ -88,8 +91,10 @@ class WarehouseTransferController extends Controller
         ]));
     }
 
-    public function update(Request $request, WarehouseTransfer $warehouseTransfer)
+    public function update(Request $request, int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if ($warehouseTransfer->status !== 'draft') {
             return response()->json(['message' => 'Cannot update transfer in current status'], 422);
         }
@@ -133,8 +138,10 @@ class WarehouseTransferController extends Controller
         return response()->json($warehouseTransfer->fresh(['fromWarehouse', 'toWarehouse', 'items.product']));
     }
 
-    public function destroy(WarehouseTransfer $warehouseTransfer)
+    public function destroy(int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if (!in_array($warehouseTransfer->status, ['draft', 'cancelled'])) {
             return response()->json(['message' => 'Cannot delete transfer in current status'], 422);
         }
@@ -144,8 +151,10 @@ class WarehouseTransferController extends Controller
         return response()->json(['message' => 'Transfer deleted successfully']);
     }
 
-    public function submit(WarehouseTransfer $warehouseTransfer)
+    public function submit(int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if ($warehouseTransfer->status !== 'draft') {
             return response()->json(['message' => 'Only draft transfers can be submitted'], 422);
         }
@@ -155,8 +164,10 @@ class WarehouseTransferController extends Controller
         return response()->json($warehouseTransfer->fresh(['fromWarehouse', 'toWarehouse', 'items.product']));
     }
 
-    public function ship(Request $request, WarehouseTransfer $warehouseTransfer)
+    public function ship(Request $request, int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if ($warehouseTransfer->status !== 'pending') {
             return response()->json(['message' => 'Transfer must be pending to ship'], 422);
         }
@@ -197,8 +208,10 @@ class WarehouseTransferController extends Controller
         return response()->json($warehouseTransfer->fresh(['fromWarehouse', 'toWarehouse', 'items.product']));
     }
 
-    public function receive(Request $request, WarehouseTransfer $warehouseTransfer)
+    public function receive(Request $request, int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if ($warehouseTransfer->status !== 'in_transit') {
             return response()->json(['message' => 'Transfer must be in transit to receive'], 422);
         }
@@ -243,8 +256,10 @@ class WarehouseTransferController extends Controller
         return response()->json($warehouseTransfer->fresh(['fromWarehouse', 'toWarehouse', 'items.product']));
     }
 
-    public function cancel(WarehouseTransfer $warehouseTransfer)
+    public function cancel(int $warehouse_transfer_id)
     {
+        $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
+
         if (in_array($warehouseTransfer->status, ['completed', 'cancelled'])) {
             return response()->json(['message' => 'Cannot cancel this transfer'], 422);
         }
@@ -273,5 +288,16 @@ class WarehouseTransferController extends Controller
         $warehouseTransfer->update(['status' => 'cancelled']);
 
         return response()->json($warehouseTransfer->fresh(['fromWarehouse', 'toWarehouse', 'items.product']));
+    }
+
+    private function findWarehouseTransferOrFail(int $warehouseTransferId): WarehouseTransfer
+    {
+        $warehouseTransfer = WarehouseTransfer::query()->find($warehouseTransferId);
+
+        if (!$warehouseTransfer) {
+            throw (new ModelNotFoundException())->setModel(WarehouseTransfer::class, [$warehouseTransferId]);
+        }
+
+        return $warehouseTransfer;
     }
 }

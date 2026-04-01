@@ -31,7 +31,7 @@ class InventorySettings extends Model
         'enable_barcode_scanning' => 'boolean',
     ];
 
-    public static function get(): self
+    public static function current(): self
     {
         return static::first() ?? static::create([]);
     }

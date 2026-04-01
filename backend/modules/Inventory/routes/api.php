@@ -11,7 +11,9 @@ use Modules\Inventory\Http\Controllers\WarehouseTransferController;
 
 Route::middleware('auth:sanctum')->group(function () {
     // Brands
-    Route::apiResource('brands', BrandController::class);
+    Route::apiResource('brands', BrandController::class)->parameters([
+        'brands' => 'brand_id',
+    ]);
 
     // Suppliers
     Route::apiResource('suppliers', SupplierController::class)->parameters([
@@ -19,19 +21,23 @@ Route::middleware('auth:sanctum')->group(function () {
     ]);
 
     // Purchase Orders
-    Route::apiResource('purchase-orders', PurchaseOrderController::class);
-    Route::post('/purchase-orders/{purchaseOrder}/submit', [PurchaseOrderController::class, 'submit']);
-    Route::post('/purchase-orders/{purchaseOrder}/approve', [PurchaseOrderController::class, 'approve']);
-    Route::post('/purchase-orders/{purchaseOrder}/mark-ordered', [PurchaseOrderController::class, 'markOrdered']);
-    Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive']);
-    Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
+    Route::apiResource('purchase-orders', PurchaseOrderController::class)->parameters([
+        'purchase-orders' => 'purchase_order_id',
+    ]);
+    Route::post('/purchase-orders/{purchase_order_id}/submit', [PurchaseOrderController::class, 'submit']);
+    Route::post('/purchase-orders/{purchase_order_id}/approve', [PurchaseOrderController::class, 'approve']);
+    Route::post('/purchase-orders/{purchase_order_id}/mark-ordered', [PurchaseOrderController::class, 'markOrdered']);
+    Route::post('/purchase-orders/{purchase_order_id}/receive', [PurchaseOrderController::class, 'receive']);
+    Route::post('/purchase-orders/{purchase_order_id}/cancel', [PurchaseOrderController::class, 'cancel']);
 
     // Warehouse Transfers
-    Route::apiResource('warehouse-transfers', WarehouseTransferController::class);
-    Route::post('/warehouse-transfers/{warehouseTransfer}/submit', [WarehouseTransferController::class, 'submit']);
-    Route::post('/warehouse-transfers/{warehouseTransfer}/ship', [WarehouseTransferController::class, 'ship']);
-    Route::post('/warehouse-transfers/{warehouseTransfer}/receive', [WarehouseTransferController::class, 'receive']);
-    Route::post('/warehouse-transfers/{warehouseTransfer}/cancel', [WarehouseTransferController::class, 'cancel']);
+    Route::apiResource('warehouse-transfers', WarehouseTransferController::class)->parameters([
+        'warehouse-transfers' => 'warehouse_transfer_id',
+    ]);
+    Route::post('/warehouse-transfers/{warehouse_transfer_id}/submit', [WarehouseTransferController::class, 'submit']);
+    Route::post('/warehouse-transfers/{warehouse_transfer_id}/ship', [WarehouseTransferController::class, 'ship']);
+    Route::post('/warehouse-transfers/{warehouse_transfer_id}/receive', [WarehouseTransferController::class, 'receive']);
+    Route::post('/warehouse-transfers/{warehouse_transfer_id}/cancel', [WarehouseTransferController::class, 'cancel']);
 
     // Stock Operations
     Route::prefix('stock')->group(function () {

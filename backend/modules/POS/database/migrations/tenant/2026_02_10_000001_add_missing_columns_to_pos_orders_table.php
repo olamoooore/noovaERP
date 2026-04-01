@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -54,6 +55,18 @@ return new class extends Migration
                 $table->string('cashier_name')->nullable();
             }
         });
+
+        if (Schema::hasColumn('pos_orders', 'session_id') && ! $this->foreignKeyExists('pos_orders', 'session_id')) {
+            Schema::table('pos_orders', function (Blueprint $table) {
+                $table->foreign('session_id')->references('id')->on('pos_sessions')->nullOnDelete();
+            });
+        }
+
+        if (Schema::hasColumn('pos_orders', 'terminal_id') && ! $this->foreignKeyExists('pos_orders', 'terminal_id')) {
+            Schema::table('pos_orders', function (Blueprint $table) {
+                $table->foreign('terminal_id')->references('id')->on('pos_terminals')->nullOnDelete();
+            });
+        }
     }
 
     /**
@@ -69,12 +82,28 @@ return new class extends Migration
             ];
             foreach ($columns as $col) {
                 if (Schema::hasColumn('pos_orders', $col)) {
-                    if (in_array($col, ['customer_id', 'original_order_id'])) {
+                    if (in_array($col, ['session_id', 'terminal_id', 'customer_id', 'original_order_id']) && $this->foreignKeyExists('pos_orders', $col)) {
                         $table->dropForeign(["$col"]);
                     }
                     $table->dropColumn($col);
                 }
             }
         });
+    }
+
+    private function foreignKeyExists(string $table, string $column): bool
+    {
+        $schema = DB::selectOne('select current_schema() as schema')->schema;
+
+        return DB::table('information_schema.table_constraints as tc')
+            ->join('information_schema.key_column_usage as kcu', function ($join) {
+                $join->on('tc.constraint_name', '=', 'kcu.constraint_name')
+                    ->on('tc.table_schema', '=', 'kcu.table_schema');
+            })
+            ->where('tc.constraint_type', 'FOREIGN KEY')
+            ->where('tc.table_schema', $schema)
+            ->where('tc.table_name', $table)
+            ->where('kcu.column_name', $column)
+            ->exists();
     }
 };

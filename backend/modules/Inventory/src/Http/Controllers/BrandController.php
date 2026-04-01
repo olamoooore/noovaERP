@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Modules\Inventory\Models\Brand;
 
@@ -42,13 +43,17 @@ class BrandController extends Controller
         return response()->json($brand, 201);
     }
 
-    public function show(Brand $brand)
+    public function show(int $brand_id)
     {
+        $brand = $this->findBrandOrFail($brand_id);
+
         return response()->json($brand->load(['products' => fn($q) => $q->limit(20)]));
     }
 
-    public function update(Request $request, Brand $brand)
+    public function update(Request $request, int $brand_id)
     {
+        $brand = $this->findBrandOrFail($brand_id);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'slug' => 'nullable|string|max:255|unique:brands,slug,' . $brand->id,
@@ -63,8 +68,10 @@ class BrandController extends Controller
         return response()->json($brand);
     }
 
-    public function destroy(Brand $brand)
+    public function destroy(int $brand_id)
     {
+        $brand = $this->findBrandOrFail($brand_id);
+
         if ($brand->products()->exists()) {
             return response()->json([
                 'message' => 'Cannot delete brand with existing products'
@@ -74,5 +81,16 @@ class BrandController extends Controller
         $brand->delete();
 
         return response()->json(['message' => 'Brand deleted successfully']);
+    }
+
+    private function findBrandOrFail(int $brandId): Brand
+    {
+        $brand = Brand::query()->find($brandId);
+
+        if (!$brand) {
+            throw (new ModelNotFoundException())->setModel(Brand::class, [$brandId]);
+        }
+
+        return $brand;
     }
 }

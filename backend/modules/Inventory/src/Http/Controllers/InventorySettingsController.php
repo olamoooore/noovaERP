@@ -10,7 +10,7 @@ class InventorySettingsController extends Controller
 {
     public function show()
     {
-        return response()->json(InventorySettings::get());
+        return response()->json(InventorySettings::current());
     }
 
     public function update(Request $request)
@@ -27,7 +27,7 @@ class InventorySettingsController extends Controller
             'enable_barcode_scanning' => 'boolean',
         ]);
 
-        $settings = InventorySettings::get();
+        $settings = InventorySettings::current();
         $settings->update($validated);
 
         return response()->json($settings);

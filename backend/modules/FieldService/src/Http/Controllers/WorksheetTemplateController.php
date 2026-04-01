@@ -5,6 +5,7 @@ namespace Modules\FieldService\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Modules\FieldService\Models\WorksheetTemplate;
 
 class WorksheetTemplateController extends Controller
@@ -16,8 +17,10 @@ class WorksheetTemplateController extends Controller
         return response()->json($templates);
     }
 
-    public function show(WorksheetTemplate $template): JsonResponse
+    public function show(int $template_id): JsonResponse
     {
+        $template = $this->findTemplateOrFail($template_id);
+
         return response()->json($template);
     }
 
@@ -47,8 +50,10 @@ class WorksheetTemplateController extends Controller
         return response()->json($template, 201);
     }
 
-    public function update(Request $request, WorksheetTemplate $template): JsonResponse
+    public function update(Request $request, int $template_id): JsonResponse
     {
+        $template = $this->findTemplateOrFail($template_id);
+
         $validated = $request->validate([
             'name'        => 'sometimes|string|max:100',
             'description' => 'nullable|string',
@@ -73,8 +78,10 @@ class WorksheetTemplateController extends Controller
         return response()->json($template->fresh());
     }
 
-    public function destroy(WorksheetTemplate $template): JsonResponse
+    public function destroy(int $template_id): JsonResponse
     {
+        $template = $this->findTemplateOrFail($template_id);
+
         // Prevent deletion if used by any work order types
         if ($template->workOrderTypes()->exists()) {
             return response()->json([
@@ -85,5 +92,16 @@ class WorksheetTemplateController extends Controller
         $template->delete();
 
         return response()->json(['message' => 'Template deleted.']);
+    }
+
+    private function findTemplateOrFail(int $templateId): WorksheetTemplate
+    {
+        $template = WorksheetTemplate::query()->find($templateId);
+
+        if (!$template) {
+            throw (new ModelNotFoundException())->setModel(WorksheetTemplate::class, [$templateId]);
+        }
+
+        return $template;
     }
 }

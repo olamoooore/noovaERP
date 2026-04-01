@@ -3,6 +3,7 @@
 namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\FieldService\Models\WorkOrder;
@@ -10,15 +11,19 @@ use Modules\FieldService\Models\TimeLog;
 
 class TimeLogController extends Controller
 {
-    public function index(WorkOrder $workOrder)
+    public function index(int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         return response()->json(
             $workOrder->timeLogs()->with('user')->orderBy('date', 'desc')->get()
         );
     }
 
-    public function store(Request $request, WorkOrder $workOrder)
+    public function store(Request $request, int $work_order_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'description'    => 'nullable|string|max:255',
             'date'           => 'required|date',
@@ -37,8 +42,19 @@ class TimeLogController extends Controller
         return response()->json($log->load('user'), 201);
     }
 
-    public function update(Request $request, WorkOrder $workOrder, TimeLog $timeLog)
+    public function show(int $work_order_id, int $time_log_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $timeLog = $this->findTimeLogOrFail($time_log_id);
+        $this->ensureLogBelongs($workOrder, $timeLog);
+
+        return response()->json($timeLog->load('user'));
+    }
+
+    public function update(Request $request, int $work_order_id, int $time_log_id)
+    {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $timeLog = $this->findTimeLogOrFail($time_log_id);
         $this->ensureLogBelongs($workOrder, $timeLog);
 
         $validated = $request->validate([
@@ -56,8 +72,10 @@ class TimeLogController extends Controller
         return response()->json($timeLog->fresh('user'));
     }
 
-    public function destroy(WorkOrder $workOrder, TimeLog $timeLog)
+    public function destroy(int $work_order_id, int $time_log_id)
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+        $timeLog = $this->findTimeLogOrFail($time_log_id);
         $this->ensureLogBelongs($workOrder, $timeLog);
         $timeLog->delete();
 
@@ -69,5 +87,27 @@ class TimeLogController extends Controller
         if ($timeLog->work_order_id !== $workOrder->id) {
             abort(404, 'Time log not found on this work order.');
         }
+    }
+
+    private function findWorkOrderOrFail(int $workOrderId): WorkOrder
+    {
+        $workOrder = WorkOrder::query()->find($workOrderId);
+
+        if (!$workOrder) {
+            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        }
+
+        return $workOrder;
+    }
+
+    private function findTimeLogOrFail(int $timeLogId): TimeLog
+    {
+        $timeLog = TimeLog::query()->find($timeLogId);
+
+        if (!$timeLog) {
+            throw (new ModelNotFoundException())->setModel(TimeLog::class, [$timeLogId]);
+        }
+
+        return $timeLog;
     }
 }

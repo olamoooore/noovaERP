@@ -3,6 +3,7 @@
 namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -20,8 +21,10 @@ class WorksheetResponseController extends Controller
      *
      * Returns the assigned template + any existing response for this WO.
      */
-    public function show(WorkOrder $workOrder): JsonResponse
+    public function show(int $work_order_id): JsonResponse
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         // Determine the template: from existing response, or from WO type, or the default
         $response = WorksheetResponse::with('template')
             ->where('work_order_id', $workOrder->id)
@@ -56,8 +59,10 @@ class WorksheetResponseController extends Controller
      *
      * Save (create or update) the worksheet response.
      */
-    public function save(Request $request, WorkOrder $workOrder): JsonResponse
+    public function save(Request $request, int $work_order_id): JsonResponse
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'template_id' => 'required|exists:fs_worksheet_templates,id',
             'responses'   => 'required|array',
@@ -82,8 +87,10 @@ class WorksheetResponseController extends Controller
      * Apply technician or customer signature.
      * Body: { signer: 'technician'|'customer', signature: '<base64>' }
      */
-    public function sign(Request $request, WorkOrder $workOrder): JsonResponse
+    public function sign(Request $request, int $work_order_id): JsonResponse
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $validated = $request->validate([
             'signer'    => 'required|in:technician,customer',
             'signature' => 'required|string',
@@ -129,8 +136,10 @@ class WorksheetResponseController extends Controller
      *
      * Stream the generated PDF.
      */
-    public function pdf(WorkOrder $workOrder): mixed
+    public function pdf(int $work_order_id): mixed
     {
+        $workOrder = $this->findWorkOrderOrFail($work_order_id);
+
         $response = WorksheetResponse::where('work_order_id', $workOrder->id)->firstOrFail();
 
         // Generate on-demand if PDF doesn't exist yet
@@ -145,5 +154,16 @@ class WorksheetResponseController extends Controller
             'Content-Type'        => 'application/pdf',
             'Content-Disposition' => 'inline; filename="worksheet-' . $workOrder->reference . '.pdf"',
         ]);
+    }
+
+    private function findWorkOrderOrFail(int $workOrderId): WorkOrder
+    {
+        $workOrder = WorkOrder::query()->find($workOrderId);
+
+        if (!$workOrder) {
+            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        }
+
+        return $workOrder;
     }
 }

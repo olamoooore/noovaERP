@@ -32,7 +32,7 @@ class InventoryService
             $referenceType, $referenceId, $adjustmentReasonId, $notes,
             $batchNumber, $expiryDate
         ) {
-            $settings = InventorySettings::get();
+            $settings = InventorySettings::current();
             
             // Get or create stock level for this product/warehouse
             $stockLevel = StockLevel::firstOrCreate(

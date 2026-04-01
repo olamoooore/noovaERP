@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Fix ASCT tenant: create its PostgreSQL schema and run all tenant migrations.
- * This is needed because the TenancyServiceProvider doesn't have a JobPipeline
- * to auto-create schemas on Tenant::create(). The schema must be created manually.
+ * Legacy recovery script for tenants created before automatic provisioning was restored.
+ * New tenants should now get their PostgreSQL schema and tenant migrations automatically
+ * through the TenantCreated provisioning pipeline.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
