@@ -36,6 +36,7 @@ export const CreateInvoicePage: React.FC = () => {
   );
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
+  const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState(0);
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
 
@@ -98,6 +99,25 @@ export const CreateInvoicePage: React.FC = () => {
 
   const addLine = () => setLines([...lines, emptyLine()]);
 
+  const duplicateLine = (index: number) => {
+    const targetLine = lines[index];
+    if (!targetLine) return;
+    const updated = [...lines];
+    updated.splice(index + 1, 0, { ...targetLine });
+    setLines(updated);
+  };
+
+  const moveLine = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= lines.length) {
+      return;
+    }
+
+    const updated = [...lines];
+    [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
+    setLines(updated);
+  };
+
   const removeLine = (index: number) => {
     if (lines.length > 1) {
       setLines(lines.filter((_, i) => i !== index));
@@ -113,7 +133,12 @@ export const CreateInvoicePage: React.FC = () => {
   const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0);
   const taxTotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price * (l.tax_rate / 100), 0);
   const lineDiscounts = lines.reduce((sum, l) => sum + l.discount_amount, 0);
-  const total = subtotal + taxTotal - lineDiscounts - discountAmount;
+  const documentDiscountAmount = discountMode === 'percentage'
+    ? subtotal * (discountAmount / 100)
+    : discountAmount;
+  const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
+  const selectedCustomer = customers?.find((customer: any) => String(customer.id) === String(customerId));
+  const invoiceNumberPreview = `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -137,7 +162,7 @@ export const CreateInvoicePage: React.FC = () => {
       due_date: dueDate,
       notes: notes || undefined,
       terms: terms || undefined,
-      discount_amount: discountAmount || 0,
+      discount_amount: documentDiscountAmount || 0,
       lines: lines
         .filter((l) => l.description || l.product_id)
         .map((l) => ({
@@ -212,17 +237,52 @@ export const CreateInvoicePage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Discount Amount</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <label className="block text-sm font-medium mb-1">Document Number</label>
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+                  <div className="text-sm font-semibold text-slate-900">{invoiceNumberPreview}</div>
+                  <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the invoice is created.</div>
+                </div>
               </div>
             </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/customers')}>
+                <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4 mr-2" />
+                Manage Customers
+              </Button>
+              {selectedCustomer && (
+                <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/customers/${selectedCustomer.id}`)}>
+                  <Icon icon="solar:user-id-bold-duotone" className="h-4 w-4 mr-2" />
+                  Open Customer Profile
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products')}>
+                <Icon icon="solar:box-bold-duotone" className="h-4 w-4 mr-2" />
+                Product List
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products/new')}>
+                <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
+                Create Product
+              </Button>
+            </div>
+
+            {selectedCustomer && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Customer</div>
+                  <div className="mt-1 font-medium text-slate-900">{selectedCustomer.name}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Email / Phone</div>
+                  <div className="mt-1 text-sm text-slate-700">{selectedCustomer.email || selectedCustomer.phone || selectedCustomer.mobile || 'Not captured'}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Business Reference</div>
+                  <div className="mt-1 text-sm text-slate-700">{selectedCustomer.tax_id || selectedCustomer.code || 'No tax or registration reference on file'}</div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Notes</label>
@@ -253,10 +313,16 @@ export const CreateInvoicePage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Line Items</span>
-              <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                Add Line
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                  Add Line
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
+                  <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
+                  Duplicate Last
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -264,18 +330,20 @@ export const CreateInvoicePage: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
+                    <th className="text-left py-2 px-2 w-12">#</th>
                     <th className="text-left py-2 px-2">Product</th>
                     <th className="text-left py-2 px-2">Description</th>
                     <th className="text-right py-2 px-2 w-24">Qty</th>
                     <th className="text-right py-2 px-2 w-32">Unit Price</th>
                     <th className="text-right py-2 px-2 w-24">Tax %</th>
                     <th className="text-right py-2 px-2 w-32">Line Total</th>
-                    <th className="py-2 px-2 w-12"></th>
+                    <th className="py-2 px-2 w-40">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.map((line, index) => (
                     <tr key={index} className="border-b">
+                      <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                       <td className="py-2 px-2">
                         <select
                           value={line.product_id}
@@ -334,11 +402,22 @@ export const CreateInvoicePage: React.FC = () => {
                         {formatCurrency(getLineTotal(line))}
                       </td>
                       <td className="py-2 px-2">
-                        {lines.length > 1 && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
-                            <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                        <div className="flex items-center justify-end gap-1">
+                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
+                            <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
                           </Button>
-                        )}
+                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
+                            <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
+                            <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
+                          </Button>
+                          {lines.length > 1 && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
+                              <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -353,15 +432,36 @@ export const CreateInvoicePage: React.FC = () => {
                   <span className="text-muted-foreground">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Document Discount:</span>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={discountMode}
+                      onChange={(e) => setDiscountMode(e.target.value as 'fixed' | 'percentage')}
+                      className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                    >
+                      <option value="fixed">Fixed</option>
+                      <option value="percentage">%</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                      className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax:</span>
                   <span className="font-medium">{formatCurrency(taxTotal)}</span>
                 </div>
-                {(discountAmount > 0 || lineDiscounts > 0) && (
+                {(documentDiscountAmount > 0 || lineDiscounts > 0) && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Discount:</span>
                     <span className="font-medium text-green-600">
-                      -{formatCurrency(discountAmount + lineDiscounts)}
+                      -{formatCurrency(documentDiscountAmount + lineDiscounts)}
                     </span>
                   </div>
                 )}

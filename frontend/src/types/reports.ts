@@ -562,6 +562,7 @@ export interface BankAccountsData {
     gl_account_name: string | null;
     last_reconciliation_date: string | null;
     last_reconciliation_balance: number | null;
+    current_balance?: number;
   }>;
 }
 
