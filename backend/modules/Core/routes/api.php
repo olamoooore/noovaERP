@@ -374,6 +374,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Vendors List
         Route::get('/vendors', [VendorsController::class, 'index']);
         Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        Route::post('/vendors', [VendorsController::class, 'store']);
+        Route::put('/vendors/{id}', [VendorsController::class, 'update']);
         Route::post('/vendors/import', [VendorsController::class, 'import']);
         
         // Vendor Credit Notes

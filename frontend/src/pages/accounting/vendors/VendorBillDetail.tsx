@@ -213,6 +213,73 @@ export const VendorBillDetail: React.FC = () => {
               <p className="text-sm">{bill.notes}</p>
             </div>
           )}
+          {(bill.vendor_reference || bill.internal_reference || bill.attention_to || bill.contact_email || bill.contact_phone || bill.company_registration_number || bill.tax_registration_number || bill.vendor_address_snapshot || bill.remittance_address_snapshot) && (
+            <div className="mt-6 pt-6 border-t space-y-6">
+              <div>
+                <p className="text-sm font-medium mb-3">Commercial Snapshot</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {bill.vendor_reference && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Vendor Reference</p>
+                      <p className="font-medium">{bill.vendor_reference}</p>
+                    </div>
+                  )}
+                  {bill.internal_reference && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Internal Reference</p>
+                      <p className="font-medium">{bill.internal_reference}</p>
+                    </div>
+                  )}
+                  {bill.attention_to && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Attention To</p>
+                      <p className="font-medium">{bill.attention_to}</p>
+                    </div>
+                  )}
+                  {bill.contact_email && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Contact Email</p>
+                      <p className="font-medium">{bill.contact_email}</p>
+                    </div>
+                  )}
+                  {bill.contact_phone && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Contact Phone</p>
+                      <p className="font-medium">{bill.contact_phone}</p>
+                    </div>
+                  )}
+                  {bill.company_registration_number && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Company Registration</p>
+                      <p className="font-medium">{bill.company_registration_number}</p>
+                    </div>
+                  )}
+                  {bill.tax_registration_number && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Tax Registration</p>
+                      <p className="font-medium">{bill.tax_registration_number}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {(bill.vendor_address_snapshot || bill.remittance_address_snapshot) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {bill.vendor_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-sm text-muted-foreground mb-2">Vendor Address Snapshot</p>
+                      <p className="text-sm whitespace-pre-wrap">{bill.vendor_address_snapshot}</p>
+                    </div>
+                  )}
+                  {bill.remittance_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-sm text-muted-foreground mb-2">Remittance Address Snapshot</p>
+                      <p className="text-sm whitespace-pre-wrap">{bill.remittance_address_snapshot}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

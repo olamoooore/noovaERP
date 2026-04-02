@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
@@ -16,6 +23,74 @@ interface InvoiceLine {
   discount_amount: number;
 }
 
+interface CustomerAddress {
+  type?: 'billing' | 'shipping' | 'other';
+  street?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country?: string | null;
+  is_default?: boolean;
+}
+
+interface CustomerContact {
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  is_primary?: boolean;
+}
+
+interface CustomerRecord {
+  id: number;
+  type?: 'individual' | 'company';
+  name?: string;
+  company?: string | null;
+  code?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  tax_number?: string | null;
+  company_registration_number?: string | null;
+  website?: string | null;
+  payment_terms?: number | null;
+  notes?: string | null;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  addresses?: CustomerAddress[];
+  customer_contacts?: CustomerContact[];
+  customerContacts?: CustomerContact[];
+}
+
+interface CustomerFormState {
+  type: 'individual' | 'company';
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  tax_number: string;
+  company_registration_number: string;
+  website: string;
+  billing_address: string;
+  shipping_address: string;
+  payment_terms: string;
+  notes: string;
+}
+
+interface InvoiceDocumentSnapshot {
+  customer_reference: string;
+  internal_reference: string;
+  attention_to: string;
+  contact_email: string;
+  contact_phone: string;
+  billing_address_snapshot: string;
+  shipping_address_snapshot: string;
+  company_registration_number: string;
+  tax_registration_number: string;
+}
+
 const emptyLine = (): InvoiceLine => ({
   product_id: '',
   description: '',
@@ -25,8 +100,77 @@ const emptyLine = (): InvoiceLine => ({
   discount_amount: 0,
 });
 
+const initialCustomerForm: CustomerFormState = {
+  type: 'company',
+  name: '',
+  company: '',
+  email: '',
+  phone: '',
+  mobile: '',
+  tax_number: '',
+  company_registration_number: '',
+  website: '',
+  billing_address: '',
+  shipping_address: '',
+  payment_terms: '30',
+  notes: '',
+};
+
+const emptyDocumentSnapshot: InvoiceDocumentSnapshot = {
+  customer_reference: '',
+  internal_reference: '',
+  attention_to: '',
+  contact_email: '',
+  contact_phone: '',
+  billing_address_snapshot: '',
+  shipping_address_snapshot: '',
+  company_registration_number: '',
+  tax_registration_number: '',
+};
+
+const formatAddress = (address?: CustomerAddress | null): string => {
+  if (!address) {
+    return '';
+  }
+
+  return [address.street, address.street2, address.city, address.state, address.zip, address.country]
+    .filter(Boolean)
+    .join(', ');
+};
+
+const getPrimaryCustomerContact = (customer?: CustomerRecord | null): CustomerContact | undefined => {
+  const contacts = customer?.customer_contacts ?? customer?.customerContacts ?? [];
+  return contacts.find((contact) => contact.is_primary) ?? contacts[0];
+};
+
+const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' | 'shipping'): string => {
+  if (!customer) {
+    return '';
+  }
+
+  const typedAddresses = customer.addresses ?? [];
+  const matchedAddress = typedAddresses.find((address) => address.type === type && address.is_default)
+    ?? typedAddresses.find((address) => address.type === type)
+    ?? null;
+
+  if (matchedAddress) {
+    return formatAddress(matchedAddress);
+  }
+
+  if (type === 'billing') {
+    return customer.billing_address ?? '';
+  }
+
+  if (type === 'shipping') {
+    return customer.shipping_address ?? '';
+  }
+
+  return '';
+};
+
 export const CreateInvoicePage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [customerId, setCustomerId] = useState('');
@@ -39,9 +183,12 @@ export const CreateInvoicePage: React.FC = () => {
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState(0);
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
+  const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
+  const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
 
-  // Fetch customers
-  const { data: customers } = useQuery({
+  const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
     queryFn: async () => {
       const response = await api.get('/customers?per_page=1000');
@@ -49,7 +196,15 @@ export const CreateInvoicePage: React.FC = () => {
     },
   });
 
-  // Fetch products
+  const { data: selectedCustomerDetail } = useQuery<CustomerRecord>({
+    queryKey: ['customer-document', customerId],
+    queryFn: async () => {
+      const response = await api.get(`/customers/${customerId}`);
+      return response.data;
+    },
+    enabled: Boolean(customerId),
+  });
+
   const { data: products } = useQuery({
     queryKey: ['products-list'],
     queryFn: async () => {
@@ -58,8 +213,33 @@ export const CreateInvoicePage: React.FC = () => {
     },
   });
 
+  const selectedCustomer = selectedCustomerDetail
+    ?? customers?.find((customer) => String(customer.id) === String(customerId));
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      return;
+    }
+
+    const primaryContact = getPrimaryCustomerContact(selectedCustomer);
+    const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
+    const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
+
+    setDocumentSnapshot({
+      customer_reference: selectedCustomer.code ?? '',
+      internal_reference: '',
+      attention_to: primaryContact?.name ?? selectedCustomer.name ?? '',
+      contact_email: primaryContact?.email ?? selectedCustomer.email ?? '',
+      contact_phone: primaryContact?.phone ?? primaryContact?.mobile ?? selectedCustomer.phone ?? selectedCustomer.mobile ?? '',
+      billing_address_snapshot: billingAddress,
+      shipping_address_snapshot: shippingAddress,
+      company_registration_number: selectedCustomer.company_registration_number ?? '',
+      tax_registration_number: selectedCustomer.tax_number ?? '',
+    });
+  }, [selectedCustomer]);
+
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: unknown) => {
       const response = await api.post('/invoices', data);
       return response.data;
     },
@@ -81,13 +261,61 @@ export const CreateInvoicePage: React.FC = () => {
     },
   });
 
-  const updateLine = (index: number, field: keyof InvoiceLine, value: any) => {
+  const createCustomerMutation = useMutation({
+    mutationFn: async (payload: CustomerFormState) => {
+      const response = await api.post('/customers', {
+        ...payload,
+        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
+      });
+      return response.data as CustomerRecord;
+    },
+    onSuccess: async (customer) => {
+      await queryClient.invalidateQueries({ queryKey: ['customers-list'] });
+      toast({ title: 'Customer created successfully' });
+      setCustomerId(String(customer.id));
+      setCustomerDialogOpen(false);
+      setCustomerForm(initialCustomerForm);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create customer',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const updateCustomerMutation = useMutation({
+    mutationFn: async (payload: CustomerFormState) => {
+      const response = await api.put(`/customers/${customerId}`, {
+        ...payload,
+        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
+      });
+      return response.data as CustomerRecord;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['customers-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['customer-document', customerId] }),
+      ]);
+      toast({ title: 'Customer updated successfully' });
+      setCustomerDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update customer',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
 
-    // Auto-fill description and price from selected product
     if (field === 'product_id' && value && products) {
-      const product = products.find((p: any) => String(p.id) === String(value));
+      const product = products.find((item: any) => String(item.id) === String(value));
       if (product) {
         updated[index].description = product.name || product.description || '';
         updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
@@ -95,6 +323,13 @@ export const CreateInvoicePage: React.FC = () => {
     }
 
     setLines(updated);
+  };
+
+  const updateDocumentSnapshot = (field: keyof InvoiceDocumentSnapshot, value: string) => {
+    setDocumentSnapshot((current) => ({
+      ...current,
+      [field]: value,
+    }));
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
@@ -120,7 +355,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   const removeLine = (index: number) => {
     if (lines.length > 1) {
-      setLines(lines.filter((_, i) => i !== index));
+      setLines(lines.filter((_, currentIndex) => currentIndex !== index));
     }
   };
 
@@ -130,28 +365,68 @@ export const CreateInvoicePage: React.FC = () => {
     return base + tax - line.discount_amount;
   };
 
-  const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0);
-  const taxTotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price * (l.tax_rate / 100), 0);
-  const lineDiscounts = lines.reduce((sum, l) => sum + l.discount_amount, 0);
+  const openCreateCustomerDialog = () => {
+    setCustomerDialogMode('create');
+    setCustomerForm(initialCustomerForm);
+    setCustomerDialogOpen(true);
+  };
+
+  const openEditCustomerDialog = () => {
+    if (!selectedCustomer) {
+      return;
+    }
+
+    setCustomerDialogMode('edit');
+    setCustomerForm({
+      type: selectedCustomer.type ?? 'company',
+      name: selectedCustomer.name ?? '',
+      company: selectedCustomer.company ?? '',
+      email: selectedCustomer.email ?? '',
+      phone: selectedCustomer.phone ?? '',
+      mobile: selectedCustomer.mobile ?? '',
+      tax_number: selectedCustomer.tax_number ?? '',
+      company_registration_number: selectedCustomer.company_registration_number ?? '',
+      website: selectedCustomer.website ?? '',
+      billing_address: getCustomerAddress(selectedCustomer, 'billing'),
+      shipping_address: getCustomerAddress(selectedCustomer, 'shipping'),
+      payment_terms: String(selectedCustomer.payment_terms ?? 30),
+      notes: selectedCustomer.notes ?? '',
+    });
+    setCustomerDialogOpen(true);
+  };
+
+  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
+  const taxTotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price * (line.tax_rate / 100), 0);
+  const lineDiscounts = lines.reduce((sum, line) => sum + line.discount_amount, 0);
   const documentDiscountAmount = discountMode === 'percentage'
     ? subtotal * (discountAmount / 100)
     : discountAmount;
   const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
-  const selectedCustomer = customers?.find((customer: any) => String(customer.id) === String(customerId));
   const invoiceNumberPreview = `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCustomerFormSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (customerDialogMode === 'edit') {
+      updateCustomerMutation.mutate(customerForm);
+      return;
+    }
+
+    createCustomerMutation.mutate(customerForm);
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
 
     if (!customerId) {
       toast({ variant: 'destructive', title: 'Please select a customer' });
       return;
     }
 
-    if (lines.length === 0 || lines.every((l) => !l.description && !l.product_id)) {
+    if (lines.length === 0 || lines.every((line) => !line.description && !line.product_id)) {
       toast({ variant: 'destructive', title: 'Please add at least one line item' });
       return;
     }
@@ -163,338 +438,591 @@ export const CreateInvoicePage: React.FC = () => {
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
+      ...documentSnapshot,
       lines: lines
-        .filter((l) => l.description || l.product_id)
-        .map((l) => ({
-          product_id: l.product_id ? parseInt(l.product_id, 10) : null,
-          description: l.description || 'Item',
-          quantity: l.quantity,
-          unit_price: l.unit_price,
-          tax_rate: l.tax_rate,
-          discount_amount: l.discount_amount,
+        .filter((line) => line.description || line.product_id)
+        .map((line) => ({
+          product_id: line.product_id ? parseInt(line.product_id, 10) : null,
+          description: line.description || 'Item',
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          tax_rate: line.tax_rate,
+          discount_amount: line.discount_amount,
         })),
     };
 
     createMutation.mutate(payload);
   };
 
+  const customerMutationPending = createCustomerMutation.isPending || updateCustomerMutation.isPending;
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/customers/bills')}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Create Invoice</h1>
-            <p className="text-muted-foreground mt-1">Create a new customer invoice</p>
+    <>
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/customers/bills')}>
+              <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">Create Invoice</h1>
+              <p className="text-muted-foreground mt-1">Create a new customer invoice</p>
+            </div>
           </div>
         </div>
+
+        <form onSubmit={handleSubmit}>
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Invoice Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Customer *</label>
+                  <select
+                    value={customerId}
+                    onChange={(event) => setCustomerId(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Select customer...</option>
+                    {customers?.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Invoice Date</label>
+                  <input
+                    type="date"
+                    value={invoiceDate}
+                    onChange={(event) => setInvoiceDate(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Document Number</label>
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+                    <div className="text-sm font-semibold text-slate-900">{invoiceNumberPreview}</div>
+                    <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the invoice is created.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={openCreateCustomerDialog}>
+                  <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
+                  Add Customer Inline
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={openEditCustomerDialog} disabled={!selectedCustomer}>
+                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4 mr-2" />
+                  Edit Selected Customer
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/customers')}>
+                  <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4 mr-2" />
+                  Manage Customers
+                </Button>
+                {selectedCustomer && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/customers/${selectedCustomer.id}`)}>
+                    <Icon icon="solar:user-id-bold-duotone" className="h-4 w-4 mr-2" />
+                    Open Customer Profile
+                  </Button>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products')}>
+                  <Icon icon="solar:box-bold-duotone" className="h-4 w-4 mr-2" />
+                  Product List
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products/new')}>
+                  <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
+                  Create Product
+                </Button>
+              </div>
+
+              {selectedCustomer && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Customer</div>
+                    <div className="mt-1 font-medium text-slate-900">{selectedCustomer.name}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Email / Phone</div>
+                    <div className="mt-1 text-sm text-slate-700">{selectedCustomer.email || selectedCustomer.phone || selectedCustomer.mobile || 'Not captured'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Business Reference</div>
+                    <div className="mt-1 text-sm text-slate-700">
+                      {selectedCustomer.tax_number || selectedCustomer.company_registration_number || selectedCustomer.code || 'No tax or registration reference on file'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Customer Ref.</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.customer_reference}
+                    onChange={(event) => updateDocumentSnapshot('customer_reference', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="PO / customer code"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Internal Ref.</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.internal_reference}
+                    onChange={(event) => updateDocumentSnapshot('internal_reference', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Sales order / project"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Attention To</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.attention_to}
+                    onChange={(event) => updateDocumentSnapshot('attention_to', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Primary contact"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    value={documentSnapshot.contact_email}
+                    onChange={(event) => updateDocumentSnapshot('contact_email', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="billing@customer.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.contact_phone}
+                    onChange={(event) => updateDocumentSnapshot('contact_phone', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Phone or mobile"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Company Reg. No.</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.company_registration_number}
+                    onChange={(event) => updateDocumentSnapshot('company_registration_number', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Business registration number"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Tax Registration</label>
+                  <input
+                    type="text"
+                    value={documentSnapshot.tax_registration_number}
+                    onChange={(event) => updateDocumentSnapshot('tax_registration_number', event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="VAT / GST / TIN"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Billing Address Snapshot</label>
+                  <textarea
+                    value={documentSnapshot.billing_address_snapshot}
+                    onChange={(event) => updateDocumentSnapshot('billing_address_snapshot', event.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Invoice billing address"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Shipping Address Snapshot</label>
+                  <textarea
+                    value={documentSnapshot.shipping_address_snapshot}
+                    onChange={(event) => updateDocumentSnapshot('shipping_address_snapshot', event.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Delivery address"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Notes</label>
+                  <textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Internal notes..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Terms</label>
+                  <textarea
+                    value={terms}
+                    onChange={(event) => setTerms(event.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Payment terms..."
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Line Items</span>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                    Add Line
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
+                    <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
+                    Duplicate Last
+                  </Button>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2 w-12">#</th>
+                      <th className="text-left py-2 px-2">Product</th>
+                      <th className="text-left py-2 px-2">Description</th>
+                      <th className="text-right py-2 px-2 w-24">Qty</th>
+                      <th className="text-right py-2 px-2 w-32">Unit Price</th>
+                      <th className="text-right py-2 px-2 w-24">Tax %</th>
+                      <th className="text-right py-2 px-2 w-32">Line Total</th>
+                      <th className="py-2 px-2 w-40">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
+                        <td className="py-2 px-2">
+                          <select
+                            value={line.product_id}
+                            onChange={(event) => updateLine(index, 'product_id', event.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          >
+                            <option value="">-- None --</option>
+                            {products?.map((product: any) => (
+                              <option key={product.id} value={product.id}>
+                                {product.name} {product.sku ? `(${product.sku})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={line.description}
+                            onChange={(event) => updateLine(index, 'description', event.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            placeholder="Description"
+                            required
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={line.quantity}
+                            onChange={(event) => updateLine(index, 'quantity', parseInt(event.target.value, 10) || 1)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.unit_price}
+                            onChange={(event) => updateLine(index, 'unit_price', parseFloat(event.target.value) || 0)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={line.tax_rate}
+                            onChange={(event) => updateLine(index, 'tax_rate', parseFloat(event.target.value) || 0)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right font-medium">
+                          {formatCurrency(getLineTotal(line))}
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
+                              <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
+                              <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
+                              <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            {lines.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
+                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <div className="w-full max-w-sm space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal:</span>
+                    <span className="font-medium">{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Document Discount:</span>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={discountMode}
+                        onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')}
+                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                      >
+                        <option value="fixed">Fixed</option>
+                        <option value="percentage">%</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={discountAmount}
+                        onChange={(event) => setDiscountAmount(parseFloat(event.target.value) || 0)}
+                        className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Tax:</span>
+                    <span className="font-medium">{formatCurrency(taxTotal)}</span>
+                  </div>
+                  {(documentDiscountAmount > 0 || lineDiscounts > 0) && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Discount:</span>
+                      <span className="font-medium text-green-600">
+                        -{formatCurrency(documentDiscountAmount + lineDiscounts)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                    <span>Total:</span>
+                    <span className="text-primary">{formatCurrency(total)}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="outline" onClick={() => navigate('/accounting/customers/bills')}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createMutation.isPending}>
+              {createMutation.isPending ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {/* Invoice Header */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Invoice Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{customerDialogMode === 'create' ? 'Add Customer' : 'Edit Customer'}</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleCustomerFormSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Customer *</label>
+                <label className="block text-sm font-medium mb-1">Customer Type</label>
                 <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
+                  value={customerForm.type}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, type: event.target.value as 'individual' | 'company' }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                 >
-                  <option value="">Select customer...</option>
-                  {customers?.map((c: any) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
+                  <option value="company">Company</option>
+                  <option value="individual">Individual</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Invoice Date</label>
+                <label className="block text-sm font-medium mb-1">Customer Name *</label>
                 <input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text"
+                  value={customerForm.name}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, name: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Due Date</label>
+                <label className="block text-sm font-medium mb-1">Company</label>
                 <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text"
+                  value={customerForm.company}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, company: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Document Number</label>
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
-                  <div className="text-sm font-semibold text-slate-900">{invoiceNumberPreview}</div>
-                  <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the invoice is created.</div>
-                </div>
+                <label className="block text-sm font-medium mb-1">Email</label>
+                <input
+                  type="email"
+                  value={customerForm.email}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, email: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
               </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/customers')}>
-                <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4 mr-2" />
-                Manage Customers
-              </Button>
-              {selectedCustomer && (
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/customers/${selectedCustomer.id}`)}>
-                  <Icon icon="solar:user-id-bold-duotone" className="h-4 w-4 mr-2" />
-                  Open Customer Profile
-                </Button>
-              )}
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products')}>
-                <Icon icon="solar:box-bold-duotone" className="h-4 w-4 mr-2" />
-                Product List
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products/new')}>
-                <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
-                Create Product
-              </Button>
-            </div>
-
-            {selectedCustomer && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Customer</div>
-                  <div className="mt-1 font-medium text-slate-900">{selectedCustomer.name}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Email / Phone</div>
-                  <div className="mt-1 text-sm text-slate-700">{selectedCustomer.email || selectedCustomer.phone || selectedCustomer.mobile || 'Not captured'}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Business Reference</div>
-                  <div className="mt-1 text-sm text-slate-700">{selectedCustomer.tax_id || selectedCustomer.code || 'No tax or registration reference on file'}</div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Notes</label>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input
+                  type="text"
+                  value={customerForm.phone}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, phone: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Mobile</label>
+                <input
+                  type="text"
+                  value={customerForm.mobile}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, mobile: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Tax Registration</label>
+                <input
+                  type="text"
+                  value={customerForm.tax_number}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, tax_number: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Company Registration</label>
+                <input
+                  type="text"
+                  value={customerForm.company_registration_number}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, company_registration_number: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Website</label>
+                <input
+                  type="url"
+                  value={customerForm.website}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, website: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Payment Terms (days)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={customerForm.payment_terms}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, payment_terms: event.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Billing Address</label>
                 <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Internal notes..."
+                  value={customerForm.billing_address}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, billing_address: event.target.value }))}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Terms</label>
+                <label className="block text-sm font-medium mb-1">Shipping Address</label>
                 <textarea
-                  value={terms}
-                  onChange={(e) => setTerms(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Payment terms..."
+                  value={customerForm.shipping_address}
+                  onChange={(event) => setCustomerForm((current) => ({ ...current, shipping_address: event.target.value }))}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                 />
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Line Items */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Line Items</span>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                  Add Line
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
-                  <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
-                  Duplicate Last
-                </Button>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-2 w-12">#</th>
-                    <th className="text-left py-2 px-2">Product</th>
-                    <th className="text-left py-2 px-2">Description</th>
-                    <th className="text-right py-2 px-2 w-24">Qty</th>
-                    <th className="text-right py-2 px-2 w-32">Unit Price</th>
-                    <th className="text-right py-2 px-2 w-24">Tax %</th>
-                    <th className="text-right py-2 px-2 w-32">Line Total</th>
-                    <th className="py-2 px-2 w-40">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
-                      <td className="py-2 px-2">
-                        <select
-                          value={line.product_id}
-                          onChange={(e) => updateLine(index, 'product_id', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                        >
-                          <option value="">-- None --</option>
-                          {products?.map((p: any) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} {p.sku ? `(${p.sku})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          value={line.description}
-                          onChange={(e) => updateLine(index, 'description', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                          placeholder="Description"
-                          required
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={line.quantity}
-                          onChange={(e) => updateLine(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={line.unit_price}
-                          onChange={(e) => updateLine(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          value={line.tax_rate}
-                          onChange={(e) => updateLine(index, 'tax_rate', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-right font-medium">
-                        {formatCurrency(getLineTotal(line))}
-                      </td>
-                      <td className="py-2 px-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
-                            <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
-                            <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
-                            <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          {lines.length > 1 && (
-                            <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
-                              <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea
+                value={customerForm.notes}
+                onChange={(event) => setCustomerForm((current) => ({ ...current, notes: event.target.value }))}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+              />
             </div>
 
-            {/* Totals */}
-            <div className="mt-6 flex justify-end">
-              <div className="w-full max-w-sm space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">Document Discount:</span>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={discountMode}
-                      onChange={(e) => setDiscountMode(e.target.value as 'fixed' | 'percentage')}
-                      className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                    >
-                      <option value="fixed">Fixed</option>
-                      <option value="percentage">%</option>
-                    </select>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={discountAmount}
-                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                      className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax:</span>
-                  <span className="font-medium">{formatCurrency(taxTotal)}</span>
-                </div>
-                {(documentDiscountAmount > 0 || lineDiscounts > 0) && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-green-600">
-                      -{formatCurrency(documentDiscountAmount + lineDiscounts)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                  <span>Total:</span>
-                  <span className="text-primary">{formatCurrency(total)}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/accounting/customers/bills')}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
-                Create Invoice
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
-    </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={customerMutationPending}>
+                {customerMutationPending ? 'Saving...' : customerDialogMode === 'create' ? 'Create Customer' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

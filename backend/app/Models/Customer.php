@@ -26,6 +26,7 @@ class Customer extends Model
         'mobile',
         'company',
         'tax_number',
+        'company_registration_number',
         'website',
         'language',
         

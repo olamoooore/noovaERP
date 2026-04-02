@@ -17,6 +17,7 @@ class Vendor extends Model
         'phone',
         'company',
         'tax_number',
+        'company_registration_number',
         'address',
         'contact_person',
         'website',

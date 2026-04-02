@@ -233,6 +233,73 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-sm">{invoice.terms}</p>
             </div>
           )}
+          {(invoice.customer_reference || invoice.internal_reference || invoice.attention_to || invoice.contact_email || invoice.contact_phone || invoice.company_registration_number || invoice.tax_registration_number || invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
+            <div className="mt-6 pt-6 border-t space-y-6">
+              <div>
+                <p className="text-sm font-medium mb-3">Commercial Snapshot</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {invoice.customer_reference && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Customer Reference</p>
+                      <p className="font-medium">{invoice.customer_reference}</p>
+                    </div>
+                  )}
+                  {invoice.internal_reference && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Internal Reference</p>
+                      <p className="font-medium">{invoice.internal_reference}</p>
+                    </div>
+                  )}
+                  {invoice.attention_to && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Attention To</p>
+                      <p className="font-medium">{invoice.attention_to}</p>
+                    </div>
+                  )}
+                  {invoice.contact_email && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Contact Email</p>
+                      <p className="font-medium">{invoice.contact_email}</p>
+                    </div>
+                  )}
+                  {invoice.contact_phone && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Contact Phone</p>
+                      <p className="font-medium">{invoice.contact_phone}</p>
+                    </div>
+                  )}
+                  {invoice.company_registration_number && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Company Registration</p>
+                      <p className="font-medium">{invoice.company_registration_number}</p>
+                    </div>
+                  )}
+                  {invoice.tax_registration_number && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Tax Registration</p>
+                      <p className="font-medium">{invoice.tax_registration_number}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {(invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {invoice.billing_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-sm text-muted-foreground mb-2">Billing Address Snapshot</p>
+                      <p className="text-sm whitespace-pre-wrap">{invoice.billing_address_snapshot}</p>
+                    </div>
+                  )}
+                  {invoice.shipping_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-sm text-muted-foreground mb-2">Shipping Address Snapshot</p>
+                      <p className="text-sm whitespace-pre-wrap">{invoice.shipping_address_snapshot}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

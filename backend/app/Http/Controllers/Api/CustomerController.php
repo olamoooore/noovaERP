@@ -92,6 +92,7 @@ class CustomerController extends Controller
             'mobile' => 'nullable|string|max:50',
             'company' => 'nullable|string|max:255',
             'tax_number' => 'nullable|string|max:50',
+            'company_registration_number' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',
             'language' => 'nullable|string|max:10',
             
@@ -218,6 +219,7 @@ class CustomerController extends Controller
             'mobile' => 'nullable|string|max:50',
             'company' => 'nullable|string|max:255',
             'tax_number' => 'nullable|string|max:50',
+            'company_registration_number' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',
             'language' => 'nullable|string|max:10',
             

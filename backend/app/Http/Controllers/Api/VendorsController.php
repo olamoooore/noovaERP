@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Vendor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,10 +21,37 @@ class VendorsController extends Controller
         try {
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
+            $search = trim((string) $request->get('search', ''));
 
-            $query = DB::table('vendors')
-                ->select('id', 'name', 'email', 'phone', 'company', 'address', 'contact_person', 'created_at', 'updated_at')
+            $query = Vendor::query()
+                ->select([
+                    'id',
+                    'name',
+                    'email',
+                    'phone',
+                    'company',
+                    'tax_number',
+                    'company_registration_number',
+                    'address',
+                    'contact_person',
+                    'website',
+                    'payment_terms',
+                    'notes',
+                    'is_active',
+                    'created_at',
+                    'updated_at',
+                ])
                 ->orderBy('name', 'asc');
+
+            if ($search !== '') {
+                $query->where(function ($builder) use ($search) {
+                    $builder->where('name', 'ILIKE', "%{$search}%")
+                        ->orWhere('email', 'ILIKE', "%{$search}%")
+                        ->orWhere('company', 'ILIKE', "%{$search}%")
+                        ->orWhere('contact_person', 'ILIKE', "%{$search}%")
+                        ->orWhere('tax_number', 'ILIKE', "%{$search}%");
+                });
+            }
 
             // Get total count
             $total = $query->count();
@@ -62,9 +90,7 @@ class VendorsController extends Controller
     public function show($id)
     {
         try {
-            $vendor = DB::table('vendors')
-                ->where('id', $id)
-                ->first();
+            $vendor = Vendor::find($id);
 
             if (!$vendor) {
                 return response()->json([
@@ -83,6 +109,74 @@ class VendorsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Create a vendor.
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'company' => 'nullable|string|max:255',
+            'tax_number' => 'nullable|string|max:100',
+            'company_registration_number' => 'nullable|string|max:100',
+            'address' => 'nullable|string',
+            'contact_person' => 'nullable|string|max:255',
+            'website' => 'nullable|url|max:255',
+            'payment_terms' => 'nullable|integer|min:0|max:365',
+            'notes' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $vendor = Vendor::create([
+            ...$validated,
+            'payment_terms' => $validated['payment_terms'] ?? 30,
+            'is_active' => $validated['is_active'] ?? true,
+        ]);
+
+        return response()->json([
+            'message' => 'Vendor created successfully',
+            'data' => $vendor,
+        ], 201);
+    }
+
+    /**
+     * Update a vendor.
+     */
+    public function update(Request $request, $id)
+    {
+        $vendor = Vendor::find($id);
+
+        if (!$vendor) {
+            return response()->json([
+                'message' => 'Vendor not found',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'company' => 'nullable|string|max:255',
+            'tax_number' => 'nullable|string|max:100',
+            'company_registration_number' => 'nullable|string|max:100',
+            'address' => 'nullable|string',
+            'contact_person' => 'nullable|string|max:255',
+            'website' => 'nullable|url|max:255',
+            'payment_terms' => 'nullable|integer|min:0|max:365',
+            'notes' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $vendor->update($validated);
+
+        return response()->json([
+            'message' => 'Vendor updated successfully',
+            'data' => $vendor->fresh(),
+        ]);
     }
 
     /**
