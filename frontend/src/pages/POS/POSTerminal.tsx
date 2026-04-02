@@ -901,7 +901,7 @@ export function POSTerminal() {
         reference: reference || `POS-${Date.now()}`,
         payment_type: method.type,
         gateway_id: method.gateway_id,
-        offline_method_id: method.id?.startsWith('offline_') ? parseInt(method.id.replace('offline_', '')) : null,
+        offline_method_id: String(method.id ?? '').startsWith('offline_') ? parseInt(String(method.id).replace('offline_', '')) : null,
       }
 
       console.log('Processing payment for order ID:', order.id, 'with data:', paymentData)

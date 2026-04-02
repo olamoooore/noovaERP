@@ -249,8 +249,9 @@ class IoTAgentController extends Controller
      * @param IoTDevice $device
      * @return \Illuminate\Http\JsonResponse
      */
-    public function health(Request $request, IoTDevice $device)
+    public function health(Request $request, $device)
     {
+        $device = IoTDevice::findOrFail($device);
         if ($device->type !== 'agent' && $device->connection_type !== 'usb') {
             return response()->json([
                 'success' => false,

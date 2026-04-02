@@ -422,8 +422,9 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function adjustLoyalty(Request $request, Customer $customer): JsonResponse
+    public function adjustLoyalty(Request $request, $customer): JsonResponse
     {
+        $customer = Customer::findOrFail($customer);
         $validated = $request->validate([
             'points' => 'required|integer',
             'notes' => 'nullable|string',

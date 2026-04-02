@@ -85,8 +85,9 @@ class PosHeldOrderController extends Controller
     /**
      * Recall held order
      */
-    public function show(PosHeldOrder $heldOrder): JsonResponse
+    public function show($heldOrder): JsonResponse
     {
+        $heldOrder = PosHeldOrder::findOrFail($heldOrder);
         return response()->json([
             'held_order' => $heldOrder->load('customer'),
         ]);
@@ -95,8 +96,9 @@ class PosHeldOrderController extends Controller
     /**
      * Delete held order (after recalling or canceling)
      */
-    public function destroy(PosHeldOrder $heldOrder): JsonResponse
+    public function destroy($heldOrder): JsonResponse
     {
+        $heldOrder = PosHeldOrder::findOrFail($heldOrder);
         $session = PosSession::where('user_id', Auth::id())
             ->where('status', 'open')
             ->first();

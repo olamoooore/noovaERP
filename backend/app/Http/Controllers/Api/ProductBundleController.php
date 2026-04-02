@@ -52,8 +52,9 @@ class ProductBundleController extends Controller
     /**
      * Get bundle components
      */
-    public function components(Product $product): JsonResponse
+    public function components($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if (!$product->is_bundle) {
             return response()->json([
                 'message' => 'This product is not a bundle'
@@ -92,8 +93,9 @@ class ProductBundleController extends Controller
     /**
      * Add component to bundle
      */
-    public function addComponent(Request $request, Product $bundle): JsonResponse
+    public function addComponent(Request $request, $bundle): JsonResponse
     {
+        $bundle = Product::findOrFail($bundle);
         if (!$bundle->is_bundle) {
             return response()->json([
                 'message' => 'This product is not a bundle'
@@ -152,8 +154,10 @@ class ProductBundleController extends Controller
     /**
      * Update bundle component
      */
-    public function updateComponent(Request $request, Product $bundle, ProductBundle $component): JsonResponse
+    public function updateComponent(Request $request, $bundle, $component): JsonResponse
     {
+        $bundle = Product::findOrFail($bundle);
+        $component = ProductBundle::findOrFail($component);
         if ($component->bundle_product_id !== $bundle->id) {
             return response()->json([
                 'message' => 'Component does not belong to this bundle'
@@ -180,8 +184,10 @@ class ProductBundleController extends Controller
     /**
      * Remove component from bundle
      */
-    public function removeComponent(Product $bundle, ProductBundle $component): JsonResponse
+    public function removeComponent($bundle, $component): JsonResponse
     {
+        $bundle = Product::findOrFail($bundle);
+        $component = ProductBundle::findOrFail($component);
         if ($component->bundle_product_id !== $bundle->id) {
             return response()->json([
                 'message' => 'Component does not belong to this bundle'
@@ -198,8 +204,9 @@ class ProductBundleController extends Controller
     /**
      * Reorder bundle components
      */
-    public function reorderComponents(Request $request, Product $bundle): JsonResponse
+    public function reorderComponents(Request $request, $bundle): JsonResponse
     {
+        $bundle = Product::findOrFail($bundle);
         if (!$bundle->is_bundle) {
             return response()->json([
                 'message' => 'This product is not a bundle'
@@ -228,8 +235,9 @@ class ProductBundleController extends Controller
     /**
      * Check if bundle can be fulfilled
      */
-    public function checkAvailability(Product $bundle, Request $request): JsonResponse
+    public function checkAvailability($bundle, Request $request): JsonResponse
     {
+        $bundle = Product::findOrFail($bundle);
         if (!$bundle->is_bundle) {
             return response()->json([
                 'message' => 'This product is not a bundle'
@@ -308,8 +316,9 @@ class ProductBundleController extends Controller
     /**
      * Convert a product to a bundle
      */
-    public function convertToBundle(Request $request, Product $product): JsonResponse
+    public function convertToBundle(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->is_bundle) {
             return response()->json([
                 'message' => 'This product is already a bundle'
@@ -334,8 +343,9 @@ class ProductBundleController extends Controller
     /**
      * Remove bundle status from product
      */
-    public function removeBundle(Product $product): JsonResponse
+    public function removeBundle($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if (!$product->is_bundle) {
             return response()->json([
                 'message' => 'This product is not a bundle'

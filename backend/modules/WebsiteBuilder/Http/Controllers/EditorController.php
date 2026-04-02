@@ -9,8 +9,12 @@ use Modules\WebsiteBuilder\Models\Page;
 
 class EditorController extends Controller
 {
-    public function edit(Request $request, Website $website, Page $page = null)
+    public function edit(Request $request, $website, $page = null)
     {
+        $website = Website::findOrFail($website);
+        if ($page) {
+            $page = Page::findOrFail($page);
+        }
         // If no page is specified, redirect to the home page or first page
         if (!$page) {
             $page = $website->pages()->where('is_home', true)->first() 

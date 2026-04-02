@@ -267,9 +267,9 @@ class PostingEngine implements PostingEngineInterface
                 'department_id'   => $line->departmentId,
                 'project_id'     => $line->projectId,
                 'location_id'    => $line->locationId,
-                'currency_code'  => $line->currencyCode,
+                'currency_code'  => $line->currencyCode ?? 'USD',
                 'original_amount' => $line->originalAmount,
-                'exchange_rate'  => $line->exchangeRate,
+                'exchange_rate'  => $line->exchangeRate ?? 1.0,
             ];
         }
 

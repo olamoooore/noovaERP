@@ -21,8 +21,9 @@ class ProductTrackingController extends Controller
     /**
      * List batches for a product
      */
-    public function batches(Product $product, Request $request): JsonResponse
+    public function batches($product, Request $request): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $query = $product->batches();
 
         // Filter by status
@@ -69,8 +70,9 @@ class ProductTrackingController extends Controller
     /**
      * Create a new batch
      */
-    public function createBatch(Request $request, Product $product): JsonResponse
+    public function createBatch(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_BATCH) {
             return response()->json([
                 'message' => 'This product is not configured for batch tracking'
@@ -115,8 +117,10 @@ class ProductTrackingController extends Controller
     /**
      * Update batch information
      */
-    public function updateBatch(Request $request, Product $product, ProductBatch $batch): JsonResponse
+    public function updateBatch(Request $request, $product, $batch): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $batch = ProductBatch::findOrFail($batch);
         if ($batch->product_id !== $product->id) {
             return response()->json(['message' => 'Batch not found'], 404);
         }
@@ -143,8 +147,10 @@ class ProductTrackingController extends Controller
     /**
      * Adjust batch quantity
      */
-    public function adjustBatch(Request $request, Product $product, ProductBatch $batch): JsonResponse
+    public function adjustBatch(Request $request, $product, $batch): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $batch = ProductBatch::findOrFail($batch);
         if ($batch->product_id !== $product->id) {
             return response()->json(['message' => 'Batch not found'], 404);
         }
@@ -190,8 +196,10 @@ class ProductTrackingController extends Controller
     /**
      * Reserve batch quantity
      */
-    public function reserveBatch(Request $request, Product $product, ProductBatch $batch): JsonResponse
+    public function reserveBatch(Request $request, $product, $batch): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $batch = ProductBatch::findOrFail($batch);
         if ($batch->product_id !== $product->id) {
             return response()->json(['message' => 'Batch not found'], 404);
         }
@@ -216,8 +224,10 @@ class ProductTrackingController extends Controller
     /**
      * Release reserved batch quantity
      */
-    public function releaseBatch(Request $request, Product $product, ProductBatch $batch): JsonResponse
+    public function releaseBatch(Request $request, $product, $batch): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $batch = ProductBatch::findOrFail($batch);
         if ($batch->product_id !== $product->id) {
             return response()->json(['message' => 'Batch not found'], 404);
         }
@@ -278,8 +288,9 @@ class ProductTrackingController extends Controller
     /**
      * List serial numbers for a product
      */
-    public function serials(Product $product, Request $request): JsonResponse
+    public function serials($product, Request $request): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $query = $product->serials();
 
         // Filter by status
@@ -317,8 +328,9 @@ class ProductTrackingController extends Controller
     /**
      * Create a new serial number
      */
-    public function createSerial(Request $request, Product $product): JsonResponse
+    public function createSerial(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_SERIAL) {
             return response()->json([
                 'message' => 'This product is not configured for serial number tracking'
@@ -362,8 +374,9 @@ class ProductTrackingController extends Controller
     /**
      * Bulk create serial numbers
      */
-    public function createSerialsBulk(Request $request, Product $product): JsonResponse
+    public function createSerialsBulk(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_SERIAL) {
             return response()->json([
                 'message' => 'This product is not configured for serial number tracking'
@@ -418,8 +431,10 @@ class ProductTrackingController extends Controller
     /**
      * Update serial number information
      */
-    public function updateSerial(Request $request, Product $product, ProductSerial $serial): JsonResponse
+    public function updateSerial(Request $request, $product, $serial): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $serial = ProductSerial::findOrFail($serial);
         if ($serial->product_id !== $product->id) {
             return response()->json(['message' => 'Serial not found'], 404);
         }
@@ -447,8 +462,10 @@ class ProductTrackingController extends Controller
     /**
      * Mark serial as sold
      */
-    public function markSerialSold(Request $request, Product $product, ProductSerial $serial): JsonResponse
+    public function markSerialSold(Request $request, $product, $serial): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $serial = ProductSerial::findOrFail($serial);
         if ($serial->product_id !== $product->id) {
             return response()->json(['message' => 'Serial not found'], 404);
         }
@@ -480,8 +497,10 @@ class ProductTrackingController extends Controller
     /**
      * Mark serial as returned
      */
-    public function markSerialReturned(Request $request, Product $product, ProductSerial $serial): JsonResponse
+    public function markSerialReturned(Request $request, $product, $serial): JsonResponse
     {
+        $product = Product::findOrFail($product);
+        $serial = ProductSerial::findOrFail($serial);
         if ($serial->product_id !== $product->id) {
             return response()->json(['message' => 'Serial not found'], 404);
         }
@@ -534,8 +553,9 @@ class ProductTrackingController extends Controller
     /**
      * Get warranty status for a serial
      */
-    public function warrantyStatus(ProductSerial $serial): JsonResponse
+    public function warrantyStatus($serial): JsonResponse
     {
+        $serial = ProductSerial::findOrFail($serial);
         return response()->json([
             'serial_number' => $serial->serial_number,
             'product' => $serial->product ? [

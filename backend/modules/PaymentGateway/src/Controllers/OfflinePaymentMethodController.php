@@ -60,8 +60,10 @@ class OfflinePaymentMethodController extends Controller
     /**
      * Update an offline payment method
      */
-    public function update(Request $request, OfflinePaymentMethod $offlinePaymentMethod)
+    public function update(Request $request, $offlinePaymentMethod)
     {
+        $offlinePaymentMethod = OfflinePaymentMethod::findOrFail($offlinePaymentMethod);
+
         $validated = $request->validate([
             'method_name' => 'sometimes|string|max:255',
             'instructions' => 'nullable|string',
@@ -85,8 +87,10 @@ class OfflinePaymentMethodController extends Controller
     /**
      * Delete an offline payment method
      */
-    public function destroy(OfflinePaymentMethod $offlinePaymentMethod)
+    public function destroy($offlinePaymentMethod)
     {
+        $offlinePaymentMethod = OfflinePaymentMethod::findOrFail($offlinePaymentMethod);
+
         $offlinePaymentMethod->delete();
 
         return response()->json([

@@ -18,8 +18,9 @@ class IoTPrinterController extends Controller
     /**
      * Print labels using a label printer.
      */
-    public function printLabel(Request $request, IoTDevice $device): JsonResponse
+    public function printLabel(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         // Validate that the device is a printer
         if ($device->type !== DeviceType::PRINTER) {
             return response()->json([
@@ -56,8 +57,9 @@ class IoTPrinterController extends Controller
     /**
      * Get printer status.
      */
-    public function getStatus(IoTDevice $device): JsonResponse
+    public function getStatus($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         if ($device->type !== DeviceType::PRINTER) {
             return response()->json([
                 'success' => false,
@@ -84,8 +86,9 @@ class IoTPrinterController extends Controller
     /**
      * Test printer connection.
      */
-    public function testConnection(IoTDevice $device): JsonResponse
+    public function testConnection($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         if ($device->type !== DeviceType::PRINTER) {
             return response()->json([
                 'success' => false,

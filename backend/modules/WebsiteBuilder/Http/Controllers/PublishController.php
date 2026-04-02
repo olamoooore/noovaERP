@@ -17,8 +17,9 @@ class PublishController extends Controller
     /**
      * Publish a website.
      */
-    public function publish(Website $website): JsonResponse
+    public function publish($website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         // Dispatch async job
         PublishWebsiteJob::dispatch($website, auth()->id());
 
@@ -31,8 +32,9 @@ class PublishController extends Controller
     /**
      * Rollback to a previous version.
      */
-    public function rollback(Website $website, int $version): JsonResponse
+    public function rollback($website, int $version): JsonResponse
     {
+        $website = Website::findOrFail($website);
         $log = $website->publishLogs()
             ->where('version', $version)
             ->where('status', 'success')

@@ -30,8 +30,9 @@ class IoTMonitoringController extends Controller
     /**
      * Get health summary for a specific device
      */
-    public function deviceHealth(Request $request, IoTDevice $device): JsonResponse
+    public function deviceHealth(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $days = $request->input('days', 7);
         $healthSummary = $this->healthCheckService->getDeviceHealthSummary($device, $days);
         
@@ -41,8 +42,9 @@ class IoTMonitoringController extends Controller
     /**
      * Get health logs for a device
      */
-    public function deviceHealthLogs(Request $request, IoTDevice $device): JsonResponse
+    public function deviceHealthLogs(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $query = IoTDeviceHealthLog::where('iot_device_id', $device->id);
 
         // Filter by date range
@@ -68,8 +70,9 @@ class IoTMonitoringController extends Controller
     /**
      * Get device metrics
      */
-    public function deviceMetrics(Request $request, IoTDevice $device): JsonResponse
+    public function deviceMetrics(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $days = $request->input('days', 30);
         
         $metrics = IoTDeviceMetric::where('iot_device_id', $device->id)
@@ -83,8 +86,9 @@ class IoTMonitoringController extends Controller
     /**
      * Trigger manual health check for a device
      */
-    public function checkDevice(IoTDevice $device): JsonResponse
+    public function checkDevice($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         try {
             $result = $this->healthCheckService->checkDevice($device);
             

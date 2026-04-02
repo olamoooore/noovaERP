@@ -78,8 +78,9 @@ class CustomerStatementController extends Controller
         ]);
     }
 
-    public function show(CustomerStatement $statement)
+    public function show($statement)
     {
+        $statement = CustomerStatement::findOrFail($statement);
         $statement->loadMissing(['customer:id,name,email', 'generatedBy:id,name']);
 
         return response()->json($this->formatStatementResponse($statement, true));

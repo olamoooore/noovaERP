@@ -14,8 +14,9 @@ class PageController extends Controller
     /**
      * List pages for a website.
      */
-    public function index(Website $website): JsonResponse
+    public function index($website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         $pages = $website->pages()
             ->with('currentVersion')
             ->orderBy('sort_order')
@@ -27,8 +28,9 @@ class PageController extends Controller
     /**
      * Create a new page.
      */
-    public function store(Request $request, Website $website): JsonResponse
+    public function store(Request $request, $website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'slug' => 'nullable|string|max:100',
@@ -99,16 +101,18 @@ class PageController extends Controller
     /**
      * Get a single page with its current content.
      */
-    public function show(Page $page): JsonResponse
+    public function show($page): JsonResponse
     {
+        $page = Page::findOrFail($page);
         return response()->json(new PageResource($page->load(['currentVersion', 'website'])));
     }
 
     /**
      * Update a page and create a new version.
      */
-    public function update(Request $request, Page $page): JsonResponse
+    public function update(Request $request, $page): JsonResponse
     {
+        $page = Page::findOrFail($page);
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'slug' => 'sometimes|string|max:100',
@@ -138,8 +142,9 @@ class PageController extends Controller
     /**
      * Delete a page.
      */
-    public function destroy(Page $page): JsonResponse
+    public function destroy($page): JsonResponse
     {
+        $page = Page::findOrFail($page);
         $page->delete();
 
         return response()->json(['message' => 'Page deleted successfully']);
@@ -148,8 +153,9 @@ class PageController extends Controller
     /**
      * List all versions of a page.
      */
-    public function versions(Page $page): JsonResponse
+    public function versions($page): JsonResponse
     {
+        $page = Page::findOrFail($page);
         $versions = $page->versions()
             ->with('createdBy')
             ->orderByDesc('version')
@@ -161,8 +167,9 @@ class PageController extends Controller
     /**
      * Restore a specific version.
      */
-    public function restore(Page $page, int $version): JsonResponse
+    public function restore($page, int $version): JsonResponse
     {
+        $page = Page::findOrFail($page);
         $targetVersion = $page->versions()->where('version', $version)->firstOrFail();
 
         $page->createVersion($targetVersion->content, auth()->id());

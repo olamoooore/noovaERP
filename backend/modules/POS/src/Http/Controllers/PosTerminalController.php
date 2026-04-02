@@ -54,8 +54,9 @@ class PosTerminalController extends Controller
     /**
      * Show terminal
      */
-    public function show(PosTerminal $terminal): JsonResponse
+    public function show($terminal): JsonResponse
     {
+        $terminal = PosTerminal::findOrFail($terminal);
         return response()->json([
             'terminal' => [
                 ...$terminal->load(['warehouse', 'sessions' => function ($q) {
@@ -70,8 +71,9 @@ class PosTerminalController extends Controller
     /**
      * Update terminal
      */
-    public function update(Request $request, PosTerminal $terminal): JsonResponse
+    public function update(Request $request, $terminal): JsonResponse
     {
+        $terminal = PosTerminal::findOrFail($terminal);
         $request->validate([
             'name' => 'string|max:100',
             'warehouse_id' => 'nullable|exists:warehouses,id',
@@ -92,8 +94,9 @@ class PosTerminalController extends Controller
     /**
      * Delete terminal
      */
-    public function destroy(PosTerminal $terminal): JsonResponse
+    public function destroy($terminal): JsonResponse
     {
+        $terminal = PosTerminal::findOrFail($terminal);
         if ($terminal->hasOpenSession()) {
             return response()->json([
                 'error' => 'Cannot delete terminal with active session',

@@ -242,8 +242,9 @@ class ProductController extends Controller
     /**
      * Get product audit log
      */
-    public function auditLog(Product $product, Request $request): JsonResponse
+    public function auditLog($product, Request $request): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $perPage = $request->get('per_page', 50);
         
         $logs = $product->auditLogs()
@@ -277,8 +278,9 @@ class ProductController extends Controller
     /**
      * Submit product for approval
      */
-    public function submitForApproval(Product $product): JsonResponse
+    public function submitForApproval($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_DRAFT) {
             return response()->json([
                 'message' => 'Only draft products can be submitted for approval'
@@ -296,8 +298,9 @@ class ProductController extends Controller
     /**
      * Approve a product
      */
-    public function approve(Product $product): JsonResponse
+    public function approve($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
             return response()->json([
                 'message' => 'Only products pending approval can be approved'
@@ -315,8 +318,9 @@ class ProductController extends Controller
     /**
      * Reject a product (send back to draft)
      */
-    public function reject(Request $request, Product $product): JsonResponse
+    public function reject(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
             return response()->json([
                 'message' => 'Only products pending approval can be rejected'
@@ -343,8 +347,9 @@ class ProductController extends Controller
     /**
      * Discontinue a product
      */
-    public function discontinue(Product $product): JsonResponse
+    public function discontinue($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->status === Product::STATUS_DISCONTINUED) {
             return response()->json([
                 'message' => 'Product is already discontinued'
@@ -362,8 +367,9 @@ class ProductController extends Controller
     /**
      * Archive a product
      */
-    public function archive(Product $product): JsonResponse
+    public function archive($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $product->archive();
 
         return response()->json([
@@ -375,8 +381,9 @@ class ProductController extends Controller
     /**
      * Reactivate a product
      */
-    public function reactivate(Product $product): JsonResponse
+    public function reactivate($product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         if ($product->status === Product::STATUS_ACTIVE) {
             return response()->json([
                 'message' => 'Product is already active'
@@ -431,8 +438,9 @@ class ProductController extends Controller
     /**
      * Calculate price for quantity
      */
-    public function calculatePrice(Request $request, Product $product): JsonResponse
+    public function calculatePrice(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1',
             'customer_id' => 'nullable|exists:customers,id',
@@ -465,8 +473,9 @@ class ProductController extends Controller
     /**
      * Duplicate a product
      */
-    public function duplicate(Request $request, Product $product): JsonResponse
+    public function duplicate(Request $request, $product): JsonResponse
     {
+        $product = Product::findOrFail($product);
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'sku' => 'nullable|string|unique:products,sku',
@@ -718,11 +727,7 @@ class ProductController extends Controller
                 $price = $this->parseNumericValue($row['price'] ?? null);
 
                 $sku = trim((string) ($row['sku'] ?? ''));
-                if ($sku === '' || $sku === '-') {
-                    $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
-                    $base = $base !== '' ? $base : 'SKU';
-                    $sku = $base . '-' . Str::upper(Str::random(6));
-                }
+                $barcode = isset($row['barcode']) ? trim((string) $row['barcode']) : '';
 
                 // Resolve category_id – handle both numeric IDs and category names
                 $categoryId = $this->resolveCategoryId($row['category_id'] ?? null, $categoriesCache);
@@ -747,13 +752,29 @@ class ProductController extends Controller
                 $imageUrl = trim((string) ($row['image_url'] ?? ''));
                 $imageValue = ($imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL)) ? $imageUrl : null;
 
-                $barcode = isset($row['barcode']) ? trim((string) $row['barcode']) : '';
                 $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
                 $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
                 $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
 
+                // Try to find existing product by SKU or barcode to avoid duplicates
+                $existingProduct = null;
+                if ($sku !== '' && $sku !== '-') {
+                    $existingProduct = Product::where('sku', $sku)->first();
+                }
+                if (!$existingProduct && $barcode !== '' && $barcode !== '-') {
+                    $existingProduct = Product::where('barcode', $barcode)->first();
+                }
+
+                // Generate SKU only if no existing product found and no SKU provided
+                if (!$existingProduct && ($sku === '' || $sku === '-')) {
+                    $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
+                    $base = $base !== '' ? $base : 'SKU';
+                    $sku = $base . '-' . Str::upper(Str::random(6));
+                }
+
                 $productData = [
                         'name'             => $name,
+                        'sku'              => ($sku !== '' && $sku !== '-') ? $sku : ($existingProduct->sku ?? $sku),
                         'secondary_name'   => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
                         'barcode'          => $barcode !== '' ? $barcode : null,
                         'description'      => $description !== '' ? $description : null,
@@ -771,11 +792,12 @@ class ProductController extends Controller
                     ];
 
                 try {
-                    $product = Product::updateOrCreate(['sku' => $sku], $productData);
-                    if ($product->wasRecentlyCreated) {
-                        $created++;
-                    } else {
+                    if ($existingProduct) {
+                        $existingProduct->update($productData);
                         $updated++;
+                    } else {
+                        Product::create($productData);
+                        $created++;
                     }
                 } catch (\Throwable $e) {
                     $msg = $e->getMessage();

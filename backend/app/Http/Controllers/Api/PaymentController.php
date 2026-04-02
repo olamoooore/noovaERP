@@ -71,13 +71,15 @@ class PaymentController extends Controller
         }
     }
 
-    public function show(Payment $payment)
+    public function show($payment)
     {
+        $payment = Payment::findOrFail($payment);
         return response()->json($payment->load(['customer', 'invoice', 'journalEntry']));
     }
 
-    public function destroy(Payment $payment)
+    public function destroy($payment)
     {
+        $payment = Payment::findOrFail($payment);
         return response()->json(['message' => 'Payments cannot be deleted once posted'], 403);
     }
 }

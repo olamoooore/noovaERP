@@ -48,8 +48,9 @@ class PosPaymentMethodController extends Controller
     /**
      * Update payment method
      */
-    public function update(Request $request, PosPaymentMethod $paymentMethod): JsonResponse
+    public function update(Request $request, $paymentMethod): JsonResponse
     {
+        $paymentMethod = PosPaymentMethod::findOrFail($paymentMethod);
         $request->validate([
             'name' => 'string|max:100',
             'code' => 'string|max:50|unique:pos_payment_methods,code,' . $paymentMethod->id,
@@ -74,8 +75,9 @@ class PosPaymentMethodController extends Controller
     /**
      * Delete payment method
      */
-    public function destroy(PosPaymentMethod $paymentMethod): JsonResponse
+    public function destroy($paymentMethod): JsonResponse
     {
+        $paymentMethod = PosPaymentMethod::findOrFail($paymentMethod);
         // Soft delete by deactivating
         $paymentMethod->update(['is_active' => false]);
 

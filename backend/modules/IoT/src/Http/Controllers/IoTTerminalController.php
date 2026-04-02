@@ -31,8 +31,9 @@ class IoTTerminalController extends Controller
      * @param IoTDevice $device
      * @return \Illuminate\Http\JsonResponse
      */
-    public function createPayment(Request $request, IoTDevice $device)
+    public function createPayment(Request $request, $device)
     {
+        $device = IoTDevice::findOrFail($device);
         $validated = $request->validate([
             'order_id' => 'required|integer|exists:pos_orders,id',
             'payment_method' => 'nullable|string|in:wifi_card_reader,paynow_online,grabpay,wechat,alipay',
@@ -102,8 +103,9 @@ class IoTTerminalController extends Controller
      * @param IoTDevice $device
      * @return \Illuminate\Http\JsonResponse
      */
-    public function checkPaymentStatus(Request $request, IoTDevice $device)
+    public function checkPaymentStatus(Request $request, $device)
     {
+        $device = IoTDevice::findOrFail($device);
         $validated = $request->validate([
             'payment_request_id' => 'required|string',
         ]);
@@ -135,8 +137,9 @@ class IoTTerminalController extends Controller
      * @param IoTDevice $device
      * @return \Illuminate\Http\JsonResponse
      */
-    public function cancelPayment(Request $request, IoTDevice $device)
+    public function cancelPayment(Request $request, $device)
     {
+        $device = IoTDevice::findOrFail($device);
         $validated = $request->validate([
             'payment_request_id' => 'required|string',
             'order_id' => 'required|integer|exists:pos_orders,id',

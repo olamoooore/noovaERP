@@ -45,8 +45,9 @@ class EditorApiController extends Controller
         return response()->json(['success' => true, 'version' => $version->version]);
     }
 
-    public function getContent(Request $request, Page $page)
+    public function getContent(Request $request, $page)
     {
+        $page = Page::findOrFail($page);
         // Get current version
         $version = $page->currentVersion;
 

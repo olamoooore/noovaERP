@@ -329,19 +329,22 @@ class PosOrderController extends Controller
         });
     }
 
-    public function show(PosOrder $posOrder)
+    public function show($posOrder)
     {
+        $posOrder = PosOrder::findOrFail($posOrder);
         return response()->json($posOrder->load('items', 'payments', 'journalEntry'));
     }
 
-    public function pay(Request $request, PosOrder $posOrder, PosPostingService $posting)
+    public function pay(Request $request, $posOrder, PosPostingService $posting)
     {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
         if ($posOrder->status !== 'draft') {
             return response()->json(['message' => 'Order is not payable'], 422);
         }
 
         $validated = $request->validate([
-            'method' => 'required|in:cash,card,bank_transfer,other',
+            'method' => 'required|string|max:50',
             'amount' => 'required|numeric|min:0.01',
             'reference' => 'nullable|string|max:255',
         ]);
@@ -470,8 +473,10 @@ class PosOrderController extends Controller
         });
     }
 
-    public function destroy(PosOrder $posOrder)
+    public function destroy($posOrder)
     {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
         if ($posOrder->status !== 'draft') {
             return response()->json(['message' => 'Only draft orders can be deleted'], 422);
         }
@@ -486,8 +491,10 @@ class PosOrderController extends Controller
     /**
      * Create a return/refund for a paid order
      */
-    public function createReturn(Request $request, PosOrder $posOrder)
+    public function createReturn(Request $request, $posOrder)
     {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
         if ($posOrder->status !== 'paid') {
             return response()->json(['message' => 'Only paid orders can be returned'], 422);
         }
@@ -525,8 +532,9 @@ class PosOrderController extends Controller
     /**
      * Generate PDF receipt for a POS order
      */
-    public function receipt(PosOrder $posOrder)
+    public function receipt($posOrder)
     {
+        $posOrder = PosOrder::findOrFail($posOrder);
         $posOrder->load(['items.product', 'items.variant', 'payments', 'customer']);
 
         // Get business settings
@@ -550,19 +558,57 @@ class PosOrderController extends Controller
     }
 
     /**
-     * Get invoice associated with a POS order
+     * Get or create invoice associated with a POS order
      */
-    public function invoice(PosOrder $posOrder)
+    public function invoice($posOrder)
     {
-        // Find invoice by searching notes for the order number
+        $posOrder = PosOrder::findOrFail($posOrder);
+
+        if ($posOrder->status !== 'paid') {
+            return response()->json([
+                'message' => 'Only paid orders can have invoices',
+            ], 422);
+        }
+
+        // Try to find existing invoice linked to this POS order
         $invoice = Invoice::where('notes', 'like', "%POS Order: {$posOrder->order_number}%")
             ->with(['customer', 'lines.product'])
             ->first();
 
+        // Auto-create invoice from POS order if none exists
         if (!$invoice) {
-            return response()->json([
-                'message' => 'No invoice found for this order',
-            ], 404);
+            $invoice = DB::transaction(function () use ($posOrder) {
+                $inv = Invoice::create([
+                    'customer_id'      => $posOrder->customer_id,
+                    'invoice_date'     => $posOrder->paid_at ?? $posOrder->created_at,
+                    'due_date'         => $posOrder->paid_at ?? $posOrder->created_at,
+                    'status'           => 'paid',
+                    'subtotal'         => $posOrder->subtotal,
+                    'tax_amount'       => $posOrder->tax_amount ?? 0,
+                    'discount_amount'  => $posOrder->discount_amount ?? 0,
+                    'total'            => $posOrder->total,
+                    'paid_amount'      => $posOrder->total,
+                    'balance'          => 0,
+                    'notes'            => "POS Order: {$posOrder->order_number}",
+                    'journal_entry_id' => $posOrder->journal_entry_id,
+                    'created_by'       => auth()->id(),
+                ]);
+
+                foreach ($posOrder->items as $item) {
+                    $inv->lines()->create([
+                        'product_id'      => $item->product_id,
+                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
+                        'quantity'        => $item->quantity,
+                        'unit_price'      => $item->unit_price,
+                        'tax_rate'        => $item->tax_rate ?? 0,
+                        'tax_amount'      => $item->tax_amount ?? 0,
+                        'discount_amount' => 0,
+                        'line_total'      => $item->line_total,
+                    ]);
+                }
+
+                return $inv->load(['customer', 'lines.product']);
+            });
         }
 
         return response()->json([

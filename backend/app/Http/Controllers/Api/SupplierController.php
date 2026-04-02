@@ -109,8 +109,9 @@ class SupplierController extends Controller
     /**
      * Display the specified supplier
      */
-    public function show(Supplier $supplier): JsonResponse
+    public function show($supplier): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $supplier->load(['products']);
         $supplier->loadCount('products');
 
@@ -120,8 +121,9 @@ class SupplierController extends Controller
     /**
      * Update the specified supplier
      */
-    public function update(Request $request, Supplier $supplier): JsonResponse
+    public function update(Request $request, $supplier): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'code' => ['sometimes', 'nullable', 'string', 'max:50', Rule::unique('suppliers', 'code')->ignore($supplier->id)],
@@ -157,8 +159,9 @@ class SupplierController extends Controller
     /**
      * Remove the specified supplier
      */
-    public function destroy(Supplier $supplier): JsonResponse
+    public function destroy($supplier): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         // Check if supplier has linked products
         if ($supplier->products()->count() > 0) {
             return response()->json([
@@ -176,8 +179,9 @@ class SupplierController extends Controller
     /**
      * Get products linked to this supplier
      */
-    public function products(Supplier $supplier): JsonResponse
+    public function products($supplier): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $products = $supplier->products()
             ->with(['category', 'brand'])
             ->withPivot([
@@ -192,8 +196,9 @@ class SupplierController extends Controller
     /**
      * Link a product to this supplier
      */
-    public function linkProduct(Request $request, Supplier $supplier): JsonResponse
+    public function linkProduct(Request $request, $supplier): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'supplier_sku' => 'nullable|string|max:100',
@@ -241,8 +246,9 @@ class SupplierController extends Controller
     /**
      * Update product-supplier link
      */
-    public function updateProductLink(Request $request, Supplier $supplier, int $productId): JsonResponse
+    public function updateProductLink(Request $request, $supplier, int $productId): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $validated = $request->validate([
             'supplier_sku' => 'nullable|string|max:100',
             'supplier_barcode' => 'nullable|string|max:100',
@@ -280,8 +286,9 @@ class SupplierController extends Controller
     /**
      * Unlink a product from this supplier
      */
-    public function unlinkProduct(Supplier $supplier, int $productId): JsonResponse
+    public function unlinkProduct($supplier, int $productId): JsonResponse
     {
+        $supplier = Supplier::findOrFail($supplier);
         $supplier->products()->detach($productId);
 
         return response()->json([

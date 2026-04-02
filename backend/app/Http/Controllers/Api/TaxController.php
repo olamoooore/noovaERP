@@ -39,8 +39,9 @@ class TaxController extends Controller
         return response()->json($tax, 201);
     }
 
-    public function update(Request $request, Tax $tax)
+    public function update(Request $request, $tax)
     {
+        $tax = Tax::findOrFail($tax);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|nullable|string|max:50',
@@ -59,8 +60,9 @@ class TaxController extends Controller
         return response()->json($tax->fresh());
     }
 
-    public function destroy(Tax $tax)
+    public function destroy($tax)
     {
+        $tax = Tax::findOrFail($tax);
         $tax->delete();
         return response()->json(['message' => 'Tax deleted successfully']);
     }

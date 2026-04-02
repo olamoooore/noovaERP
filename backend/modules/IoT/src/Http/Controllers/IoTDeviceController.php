@@ -70,8 +70,9 @@ class IoTDeviceController extends Controller
     /**
      * Show a specific device.
      */
-    public function show(IoTDevice $device): JsonResponse
+    public function show($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $device->load(['bindings', 'logs' => function ($query) {
             $query->latest()->limit(50);
         }]);
@@ -82,8 +83,9 @@ class IoTDeviceController extends Controller
     /**
      * Update a device.
      */
-    public function update(Request $request, IoTDevice $device): JsonResponse
+    public function update(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $validated = $request->validate([
             'name' => 'string|max:255',
             'type' => 'in:printer,terminal,scanner,kiosk',
@@ -106,8 +108,9 @@ class IoTDeviceController extends Controller
     /**
      * Delete a device.
      */
-    public function destroy(IoTDevice $device): JsonResponse
+    public function destroy($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $device->logAction('device_deleted', 'success');
         $device->delete();
 
@@ -119,8 +122,9 @@ class IoTDeviceController extends Controller
     /**
      * Test device connection.
      */
-    public function test(IoTDevice $device): JsonResponse
+    public function test($device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $result = $this->deviceManager->testConnection($device);
 
         return response()->json($result, $result['success'] ? 200 : 500);
@@ -129,8 +133,9 @@ class IoTDeviceController extends Controller
     /**
      * Get device logs.
      */
-    public function logs(Request $request, IoTDevice $device): JsonResponse
+    public function logs(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $limit = $request->input('limit', 100);
 
         $logs = $device->logs()
@@ -144,8 +149,9 @@ class IoTDeviceController extends Controller
     /**
      * Save device configuration as a template.
      */
-    public function saveAsTemplate(Request $request, IoTDevice $device): JsonResponse
+    public function saveAsTemplate(Request $request, $device): JsonResponse
     {
+        $device = IoTDevice::findOrFail($device);
         $validated = $request->validate([
             'template_name' => 'required|string|max:255',
             'category' => 'required|string|max:50',

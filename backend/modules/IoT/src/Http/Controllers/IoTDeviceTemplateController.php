@@ -101,8 +101,9 @@ class IoTDeviceTemplateController extends Controller
     /**
      * Get a specific template
      */
-    public function show(IoTDeviceTemplate $template): JsonResponse
+    public function show($template): JsonResponse
     {
+        $template = IoTDeviceTemplate::findOrFail($template);
         return response()->json($template);
     }
 
@@ -135,8 +136,9 @@ class IoTDeviceTemplateController extends Controller
     /**
      * Update a template
      */
-    public function update(Request $request, IoTDeviceTemplate $template): JsonResponse
+    public function update(Request $request, $template): JsonResponse
     {
+        $template = IoTDeviceTemplate::findOrFail($template);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'category' => 'sometimes|string|max:50',
@@ -161,8 +163,9 @@ class IoTDeviceTemplateController extends Controller
     /**
      * Delete a template
      */
-    public function destroy(IoTDeviceTemplate $template): JsonResponse
+    public function destroy($template): JsonResponse
     {
+        $template = IoTDeviceTemplate::findOrFail($template);
         // Check if template is being used by any devices
         if ($template->devices()->count() > 0) {
             return response()->json([
@@ -178,8 +181,9 @@ class IoTDeviceTemplateController extends Controller
     /**
      * Create device from template
      */
-    public function createDevice(Request $request, IoTDeviceTemplate $template): JsonResponse
+    public function createDevice(Request $request, $template): JsonResponse
     {
+        $template = IoTDeviceTemplate::findOrFail($template);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'config_overrides' => 'nullable|array', // Allow overriding template config

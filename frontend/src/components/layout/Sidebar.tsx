@@ -439,13 +439,14 @@ export function Sidebar() {
     queryKey: ['features'],
     queryFn: async () => {
       const response = await api.get('/features')
-      return response.data
+      const data = response.data
+      return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 
   const enabledFeatures = new Set(
-    features?.filter((f: any) => f.enabled || f.is_core).map((f: any) => f.key)
+    (features || []).filter((f: any) => f.enabled || f.is_core).map((f: any) => f.key)
   )
 
   const navItems = baseNavItems.filter(item => {

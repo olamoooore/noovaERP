@@ -54,8 +54,9 @@ class WebsiteController extends Controller
     /**
      * Get a single website with pages.
      */
-    public function show(Website $website): JsonResponse
+    public function show($website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         return response()->json(
             new WebsiteResource($website->load(['pages', 'createdBy']))
         );
@@ -64,8 +65,9 @@ class WebsiteController extends Controller
     /**
      * Update a website.
      */
-    public function update(Request $request, Website $website): JsonResponse
+    public function update(Request $request, $website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'slug' => 'sometimes|string|max:100|unique:wb_websites,slug,' . $website->id,
@@ -82,8 +84,9 @@ class WebsiteController extends Controller
     /**
      * Delete a website (soft delete).
      */
-    public function destroy(Website $website): JsonResponse
+    public function destroy($website): JsonResponse
     {
+        $website = Website::findOrFail($website);
         $website->delete();
 
         return response()->json(['message' => 'Website deleted successfully']);

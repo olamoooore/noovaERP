@@ -27,13 +27,15 @@ class WarehouseController extends Controller
         return response()->json($warehouse, 201);
     }
 
-    public function show(Warehouse $warehouse)
+    public function show($warehouse)
     {
+        $warehouse = Warehouse::findOrFail($warehouse);
         return $warehouse;
     }
 
-    public function update(Request $request, Warehouse $warehouse)
+    public function update(Request $request, $warehouse)
     {
+        $warehouse = Warehouse::findOrFail($warehouse);
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'code' => 'nullable|string|max:50',
@@ -46,8 +48,9 @@ class WarehouseController extends Controller
         return $warehouse;
     }
 
-    public function destroy(Warehouse $warehouse)
+    public function destroy($warehouse)
     {
+        $warehouse = Warehouse::findOrFail($warehouse);
         $warehouse->delete();
 
         return response()->json(null, 204);

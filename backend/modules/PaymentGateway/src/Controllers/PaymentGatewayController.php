@@ -58,16 +58,19 @@ class PaymentGatewayController extends Controller
     /**
      * Show a specific gateway
      */
-    public function show(PaymentGateway $gateway)
+    public function show($gateway)
     {
+        $gateway = PaymentGateway::findOrFail($gateway);
         return response()->json($gateway->load(['creator', 'updater', 'transactions']));
     }
 
     /**
      * Update a payment gateway
      */
-    public function update(Request $request, PaymentGateway $gateway)
+    public function update(Request $request, $gateway)
     {
+        $gateway = PaymentGateway::findOrFail($gateway);
+
         $validated = $request->validate([
             'publishable_key' => 'nullable|string',
             'api_key' => 'sometimes|string',
@@ -91,8 +94,10 @@ class PaymentGatewayController extends Controller
     /**
      * Delete a payment gateway
      */
-    public function destroy(PaymentGateway $gateway)
+    public function destroy($gateway)
     {
+        $gateway = PaymentGateway::findOrFail($gateway);
+
         // Check if gateway has transactions
         if ($gateway->transactions()->exists()) {
             return response()->json([
@@ -110,8 +115,10 @@ class PaymentGatewayController extends Controller
     /**
      * Test gateway connection
      */
-    public function test(PaymentGateway $gateway)
+    public function test($gateway)
     {
+        $gateway = PaymentGateway::findOrFail($gateway);
+
         try {
             $service = PaymentGatewayFactory::create($gateway);
             $success = $service->testConnection();
@@ -139,8 +146,10 @@ class PaymentGatewayController extends Controller
      * Toggle gateway active status
      * Multiple gateways can be active simultaneously
      */
-    public function toggle(PaymentGateway $gateway)
+    public function toggle($gateway)
     {
+        $gateway = PaymentGateway::findOrFail($gateway);
+
         $newStatus = !$gateway->is_active;
 
         $gateway->update([

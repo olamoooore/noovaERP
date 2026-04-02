@@ -63,8 +63,9 @@ class CustomerCreditNotesController extends Controller
     /**
      * Get single credit note
      */
-    public function show(CustomerCreditNote $creditNote)
+    public function show($creditNote)
     {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
         return response()->json(
             $creditNote->load([
                 'customer',
@@ -117,8 +118,9 @@ class CustomerCreditNotesController extends Controller
     /**
      * Update draft credit note
      */
-    public function update(Request $request, CustomerCreditNote $creditNote)
+    public function update(Request $request, $creditNote)
     {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
         if ($creditNote->status !== 'draft') {
             return response()->json([
                 'message' => 'Only draft credit notes can be edited'
@@ -140,8 +142,9 @@ class CustomerCreditNotesController extends Controller
     /**
      * Delete draft credit note
      */
-    public function destroy(CustomerCreditNote $creditNote)
+    public function destroy($creditNote)
     {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
         if ($creditNote->status !== 'draft') {
             return response()->json([
                 'message' => 'Only draft credit notes can be deleted. Use reversal for posted credit notes.',
@@ -157,8 +160,9 @@ class CustomerCreditNotesController extends Controller
     /**
      * Post credit note (creates GL entries)
      */
-    public function post(CustomerCreditNote $creditNote)
+    public function post($creditNote)
     {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
         if ($creditNote->status !== 'draft') {
             return response()->json([
                 'message' => 'Only draft credit notes can be posted'

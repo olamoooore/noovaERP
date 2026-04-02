@@ -9,13 +9,15 @@ use Illuminate\Http\Request;
 
 class ProductVariantController extends Controller
 {
-    public function index(Product $product)
+    public function index($product)
     {
+        $product = Product::findOrFail($product);
         return response()->json($product->variants()->orderBy('name')->get());
     }
 
-    public function store(Request $request, Product $product)
+    public function store(Request $request, $product)
     {
+        $product = Product::findOrFail($product);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|unique:product_variants,sku',
@@ -36,8 +38,9 @@ class ProductVariantController extends Controller
         return response()->json($variant, 201);
     }
 
-    public function update(Request $request, ProductVariant $productVariant)
+    public function update(Request $request, $productVariant)
     {
+        $productVariant = ProductVariant::findOrFail($productVariant);
         $validated = $request->validate([
             'name' => 'string|max:255',
             'sku' => 'string|unique:product_variants,sku,' . $productVariant->id,
@@ -57,8 +60,9 @@ class ProductVariantController extends Controller
         return response()->json($productVariant->fresh());
     }
 
-    public function destroy(ProductVariant $productVariant)
+    public function destroy($productVariant)
     {
+        $productVariant = ProductVariant::findOrFail($productVariant);
         $productVariant->delete();
 
         return response()->json(['message' => 'Variant deleted successfully']);

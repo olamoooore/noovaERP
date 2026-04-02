@@ -29,8 +29,9 @@ class ConfigController extends Controller
         return response()->json($type, 201);
     }
 
-    public function updateType(Request $request, WorkOrderType $type)
+    public function updateType(Request $request, $type)
     {
+        $type = WorkOrderType::findOrFail($type);
         $validated = $request->validate([
             'name'        => 'sometimes|required|string|max:100',
             'description' => 'nullable|string',
@@ -44,8 +45,9 @@ class ConfigController extends Controller
         return response()->json($type->fresh());
     }
 
-    public function destroyType(WorkOrderType $type)
+    public function destroyType($type)
     {
+        $type = WorkOrderType::findOrFail($type);
         $type->update(['is_active' => false]);
         return response()->json(['message' => 'Work order type deactivated.']);
     }

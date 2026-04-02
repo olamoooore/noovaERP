@@ -149,14 +149,20 @@ class SettingsController extends Controller
         ];
 
         // Build connection string based on encryption
-        $remote = '';
+        $remote = 'tcp://' . $host . ':' . $port;
         if ($encryption === 'ssl') {
-            $remote = 'ssl://' . $host;
-        } else {
-            $remote = $host;
+            $remote = 'ssl://' . $host . ':' . $port;
         }
 
-        $socket = @fsockopen($remote, $port, $errno, $errstr, $timeout);
+        $context = stream_context_create([
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+            ],
+        ]);
+
+        $socket = @stream_socket_client($remote, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $context);
 
         if (!$socket) {
             $result['message'] = "Could not connect: {$errstr} ({$errno})";
@@ -192,7 +198,14 @@ class SettingsController extends Controller
                 $result['server_info']['starttls'] = trim($tlsResponse);
 
                 if ($this->isSuccessCode($tlsResponse, 220)) {
-                    // Enable crypto for TLS
+                    // Enable crypto for TLS with relaxed SSL verification
+                    stream_context_set_option($socket, [
+                        'ssl' => [
+                            'verify_peer' => false,
+                            'verify_peer_name' => false,
+                            'allow_self_signed' => true,
+                        ],
+                    ]);
                     if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
                         $result['message'] = 'Failed to enable TLS encryption';
                         return $result;

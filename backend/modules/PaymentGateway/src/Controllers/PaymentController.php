@@ -346,8 +346,9 @@ class PaymentController extends Controller
     /**
      * Get payment status
      */
-    public function status(PaymentTransaction $transaction)
+    public function status($transaction)
     {
+        $transaction = PaymentTransaction::findOrFail($transaction);
         return response()->json($transaction->load(['gateway', 'invoice', 'customer']));
     }
 
@@ -655,8 +656,9 @@ class PaymentController extends Controller
     /**
      * Process a refund for a payment transaction
      */
-    public function refund(Request $request, PaymentTransaction $transaction)
+    public function refund(Request $request, $transaction)
     {
+        $transaction = PaymentTransaction::findOrFail($transaction);
         \Log::info('Refund method called', [
             'transaction_id' => $transaction->transaction_id ?? 'NULL',
             'transaction_object' => get_class($transaction),

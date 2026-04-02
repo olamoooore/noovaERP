@@ -34,16 +34,18 @@ class TemplateController extends Controller
     /**
      * Get a single template.
      */
-    public function show(Template $template): JsonResponse
+    public function show($template): JsonResponse
     {
+        $template = Template::findOrFail($template);
         return response()->json($template);
     }
 
     /**
      * Clone a template to create a new website.
      */
-    public function cloneToWebsite(Request $request, Template $template): JsonResponse
+    public function cloneToWebsite(Request $request, $template): JsonResponse
     {
+        $template = Template::findOrFail($template);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:100|unique:wb_websites,slug',
