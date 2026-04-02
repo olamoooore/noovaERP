@@ -29,7 +29,16 @@ class PublicWebsiteRenderController extends Controller
         // If not found in current tenant, search across all tenants (dev-friendly fallback)
         if (!$website) {
             $foundTenant = null;
-            foreach (\App\Models\Tenant::all() as $tenant) {
+            try {
+                $tenants = \App\Models\Tenant::all();
+            } catch (\Exception $e) {
+                Log::warning('PublicWebsiteRender: Unable to query tenants table', [
+                    'error' => $e->getMessage(),
+                ]);
+                return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
+            }
+
+            foreach ($tenants as $tenant) {
                 if ($tenant->id === tenant()?->id) {
                     continue; // Already checked current tenant
                 }

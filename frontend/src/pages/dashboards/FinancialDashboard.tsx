@@ -16,6 +16,27 @@ import type { FinancialDashboardData } from '@/types/reports';
 export const FinancialDashboard: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month');
 
+  const getProfitAmount = (value: unknown) => {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (value && typeof value === 'object' && 'amount' in value) {
+      const amount = (value as { amount?: unknown }).amount;
+      return typeof amount === 'number' ? amount : 0;
+    }
+
+    return 0;
+  };
+
+  const getExpenseTotal = (profitLoss: any) => {
+    return (
+      (profitLoss?.cost_of_goods_sold?.total ?? 0) +
+      (profitLoss?.operating_expenses?.total ?? profitLoss?.expenses?.total ?? 0) +
+      (profitLoss?.other_expenses?.total ?? 0)
+    );
+  };
+
   // Get date range presets
   const datePresets = reportApi.getDateRangePresets();
   const filters = {
@@ -43,10 +64,13 @@ export const FinancialDashboard: React.FC = () => {
         interval: selectedPeriod === 'month' ? 'day' : selectedPeriod === 'quarter' ? 'week' : 'month',
       });
 
+      const totalExpenses = getExpenseTotal(profitLoss);
+      const netProfit = getProfitAmount(profitLoss.net_profit);
+
       // Transform data into dashboard format
       const revenueVsExpenses = salesTrends.trends.map((trend) => {
         // Calculate expenses proportionally based on total
-        const expenseRatio = profitLoss.expenses.total / profitLoss.revenue.total;
+        const expenseRatio = profitLoss.revenue.total > 0 ? totalExpenses / profitLoss.revenue.total : 0;
         return {
           period: trend.period,
           revenue: trend.total_revenue,
@@ -57,8 +81,8 @@ export const FinancialDashboard: React.FC = () => {
       return {
         profit_loss_summary: {
           revenue: profitLoss.revenue.total,
-          expenses: profitLoss.expenses.total,
-          net_profit: profitLoss.net_profit,
+          expenses: totalExpenses,
+          net_profit: netProfit,
         },
         balance_sheet_summary: {
           total_assets: balanceSheet.total_assets,

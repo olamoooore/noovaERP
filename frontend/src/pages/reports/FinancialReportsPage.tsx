@@ -96,7 +96,7 @@ export function FinancialReportsPage() {
   // Profit & Loss Columns
   const plColumns: Column[] = [
     {
-      key: 'account_name',
+      key: 'name',
       label: 'Account',
       sortable: true,
       filterable: true,
@@ -305,24 +305,87 @@ export function FinancialReportsPage() {
                   </div>
                 </div>
 
-                {/* Expenses Section */}
+                {/* Cost of Goods Sold Section */}
+                {(profitLossData?.cost_of_goods_sold?.accounts?.length ?? 0) > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-primary">Cost of Goods Sold</h3>
+                    <ReportTable
+                      columns={plColumns}
+                      data={profitLossData?.cost_of_goods_sold?.accounts ?? []}
+                      showPagination={false}
+                      showSearch={false}
+                    />
+                    <div className="flex justify-end mt-2 pr-4">
+                      <div className="text-right">
+                        <span className="font-semibold">Total COGS: </span>
+                        <span className="text-lg font-bold text-red-600">
+                          {formatCurrency(profitLossData?.cost_of_goods_sold?.total ?? 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Operating Expenses Section */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Expenses</h3>
+                  <h3 className="text-lg font-semibold mb-4 text-primary">Operating Expenses</h3>
                   <ReportTable
                     columns={plColumns}
-                    data={profitLossData?.expenses?.accounts ?? []}
+                    data={profitLossData?.operating_expenses?.accounts ?? profitLossData?.expenses?.accounts ?? []}
                     showPagination={false}
                     showSearch={false}
                   />
                   <div className="flex justify-end mt-2 pr-4">
                     <div className="text-right">
-                      <span className="font-semibold">Total Expenses: </span>
+                      <span className="font-semibold">Total Operating Expenses: </span>
                       <span className="text-lg font-bold text-red-600">
-                        {formatCurrency(profitLossData?.expenses?.total ?? 0)}
+                        {formatCurrency(profitLossData?.operating_expenses?.total ?? profitLossData?.expenses?.total ?? 0)}
                       </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Other Income Section */}
+                {(profitLossData?.other_income?.accounts?.length ?? 0) > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-primary">Other Income</h3>
+                    <ReportTable
+                      columns={plColumns}
+                      data={profitLossData?.other_income?.accounts ?? []}
+                      showPagination={false}
+                      showSearch={false}
+                    />
+                    <div className="flex justify-end mt-2 pr-4">
+                      <div className="text-right">
+                        <span className="font-semibold">Total Other Income: </span>
+                        <span className="text-lg font-bold text-green-600">
+                          {formatCurrency(profitLossData?.other_income?.total ?? 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Other Expenses Section */}
+                {(profitLossData?.other_expenses?.accounts?.length ?? 0) > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-primary">Other Expenses</h3>
+                    <ReportTable
+                      columns={plColumns}
+                      data={profitLossData?.other_expenses?.accounts ?? []}
+                      showPagination={false}
+                      showSearch={false}
+                    />
+                    <div className="flex justify-end mt-2 pr-4">
+                      <div className="text-right">
+                        <span className="font-semibold">Total Other Expenses: </span>
+                        <span className="text-lg font-bold text-red-600">
+                          {formatCurrency(profitLossData?.other_expenses?.total ?? 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Summary Section */}
                 <Card className="p-6 bg-gray-50 dark:bg-gray-800">
@@ -330,26 +393,25 @@ export function FinancialReportsPage() {
                     <div className="flex justify-between items-center">
                       <span className="font-semibold">Gross Profit:</span>
                       <span className="text-lg font-bold">
-                        {formatCurrency(profitLossData?.gross_profit ?? 0)}
+                        {formatCurrency(typeof profitLossData?.gross_profit === 'object' ? profitLossData?.gross_profit?.amount ?? 0 : profitLossData?.gross_profit ?? 0)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="font-semibold">Operating Profit:</span>
                       <span className="text-lg font-bold">
-                        {formatCurrency(profitLossData?.operating_profit ?? 0)}
+                        {formatCurrency(typeof profitLossData?.operating_profit === 'object' ? profitLossData?.operating_profit?.amount ?? 0 : profitLossData?.operating_profit ?? 0)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center pt-3 border-t">
                       <span className="text-xl font-bold">Net Profit:</span>
-                      <span
-                        className={`text-2xl font-bold ${
-                          (profitLossData?.net_profit ?? 0) >= 0
-                            ? 'text-green-600'
-                            : 'text-red-600'
-                        }`}
-                      >
-                        {formatCurrency(profitLossData?.net_profit ?? 0)}
-                      </span>
+                      {(() => {
+                        const netVal = typeof profitLossData?.net_profit === 'object' ? profitLossData?.net_profit?.amount ?? 0 : profitLossData?.net_profit ?? 0;
+                        return (
+                          <span className={`text-2xl font-bold ${netVal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(netVal)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 </Card>

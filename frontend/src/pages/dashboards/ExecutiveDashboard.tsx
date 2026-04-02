@@ -36,6 +36,27 @@ export const ExecutiveDashboard: React.FC = () => {
 
   const currentMonthFilters = getDateFilters();
 
+  const getProfitAmount = (value: unknown) => {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (value && typeof value === 'object' && 'amount' in value) {
+      const amount = (value as { amount?: unknown }).amount;
+      return typeof amount === 'number' ? amount : 0;
+    }
+
+    return 0;
+  };
+
+  const getExpenseTotal = (profitLoss: any) => {
+    return (
+      (profitLoss?.cost_of_goods_sold?.total ?? 0) +
+      (profitLoss?.operating_expenses?.total ?? profitLoss?.expenses?.total ?? 0) +
+      (profitLoss?.other_expenses?.total ?? 0)
+    );
+  };
+
   // Fetch dashboard data
   const { data, isLoading, error, refetch } = useQuery<ExecutiveDashboardData>({
     queryKey: ['executive-dashboard', selectedMonth, selectedYear],
@@ -66,6 +87,8 @@ export const ExecutiveDashboard: React.FC = () => {
         const categories = Array.isArray(salesByCategory?.categories) ? salesByCategory.categories : [];
         const expenses = Array.isArray(expensesByCategory?.categories) ? expensesByCategory.categories : [];
         const products = Array.isArray(salesByProduct?.products) ? salesByProduct.products : [];
+        const netProfit = getProfitAmount(profitLoss?.net_profit);
+        const totalExpenses = getExpenseTotal(profitLoss);
 
         return {
           kpis: {
@@ -77,14 +100,14 @@ export const ExecutiveDashboard: React.FC = () => {
               change_percentage: profitLoss?.comparison?.revenue_change ?? 0,
             },
             profit: {
-              current: profitLoss?.net_profit ?? 0,
+              current: netProfit,
               previous: profitLoss?.comparison?.profit_change
-                ? (profitLoss?.net_profit ?? 0) / (1 + profitLoss.comparison.profit_change / 100)
+                ? netProfit / (1 + profitLoss.comparison.profit_change / 100)
                 : 0,
               change_percentage: profitLoss?.comparison?.profit_change ?? 0,
             },
             cash: {
-              current: (profitLoss?.revenue?.total ?? 0) - (profitLoss?.expenses?.total ?? 0),
+              current: (profitLoss?.revenue?.total ?? 0) - totalExpenses,
               previous: 0,
               change_percentage: 0,
             },

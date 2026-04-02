@@ -37,38 +37,45 @@ class InitializeTenantForPublicAccess
         $host = $request->getHost();
         
         if ($host) {
-            $domain = DB::table('domains')->where('domain', $host)->first();
-            
-            if ($domain) {
-                $tenant = \App\Models\Tenant::find($domain->tenant_id);
-                if ($tenant) {
-                    Log::info('InitializeTenantForPublicAccess: Tenant from domain', [
-                        'domain' => $host,
-                        'tenant_id' => $tenant->id,
-                    ]);
-                    $this->tenancy->initialize($tenant);
-                    return $next($request);
-                }
-            }
+            try {
+                $domain = DB::table('domains')->where('domain', $host)->first();
 
-            // Try subdomain resolution: demo.localhost -> look for tenant with exact ID match
-            $centralDomains = config('tenancy.central_domains', ['localhost']);
-            foreach ($centralDomains as $centralDomain) {
-                $centralDomain = trim($centralDomain);
-                if ($host !== $centralDomain && str_ends_with($host, '.' . $centralDomain)) {
-                    $subdomain = str_replace('.' . $centralDomain, '', $host);
-                    
-                    // Only exact match — no partial/LIKE matching
-                    $tenant = \App\Models\Tenant::find($subdomain);
+                if ($domain) {
+                    $tenant = \App\Models\Tenant::find($domain->tenant_id);
                     if ($tenant) {
-                        Log::info('InitializeTenantForPublicAccess: Tenant from subdomain', [
-                            'subdomain' => $subdomain,
+                        Log::info('InitializeTenantForPublicAccess: Tenant from domain', [
+                            'domain' => $host,
                             'tenant_id' => $tenant->id,
                         ]);
                         $this->tenancy->initialize($tenant);
                         return $next($request);
                     }
                 }
+
+                // Try subdomain resolution: demo.localhost -> look for tenant with exact ID match
+                $centralDomains = config('tenancy.central_domains', ['localhost']);
+                foreach ($centralDomains as $centralDomain) {
+                    $centralDomain = trim($centralDomain);
+                    if ($host !== $centralDomain && str_ends_with($host, '.' . $centralDomain)) {
+                        $subdomain = str_replace('.' . $centralDomain, '', $host);
+
+                        // Only exact match — no partial/LIKE matching
+                        $tenant = \App\Models\Tenant::find($subdomain);
+                        if ($tenant) {
+                            Log::info('InitializeTenantForPublicAccess: Tenant from subdomain', [
+                                'subdomain' => $subdomain,
+                                'tenant_id' => $tenant->id,
+                            ]);
+                            $this->tenancy->initialize($tenant);
+                            return $next($request);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('InitializeTenantForPublicAccess: Tenant resolution query failed', [
+                    'host' => $host,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 

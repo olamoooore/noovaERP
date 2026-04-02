@@ -20,6 +20,8 @@ interface ImportButtonProps {
   size?: 'default' | 'sm' | 'lg';
 }
 
+const LEGACY_IMPORT_TYPES = new Set(['journal-entries', 'vendor-bills']);
+
 export const ImportButton: React.FC<ImportButtonProps> = ({
   importType,
   onImportComplete,
@@ -45,6 +47,8 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
     'vendors': 'Vendors',
     'products': 'Products',
   };
+
+  const isLegacyImportType = LEGACY_IMPORT_TYPES.has(importType);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -90,6 +94,15 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
   };
 
   const handleImport = async () => {
+    if (isLegacyImportType) {
+      toast({
+        title: 'Import unavailable',
+        description: `${importLabels[importType]} import has moved off this deprecated endpoint. Use the migration workbench flow instead.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!file) {
       toast({
         title: 'No file selected',
@@ -206,11 +219,19 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
           <DialogHeader>
             <DialogTitle>Import {importLabels[importType]}</DialogTitle>
             <DialogDescription>
-              Upload an Excel file to import {importLabels[importType].toLowerCase()} into the system
+              {isLegacyImportType
+                ? `${importLabels[importType]} import is no longer available from this deprecated endpoint.`
+                : `Upload an Excel file to import ${importLabels[importType].toLowerCase()} into the system`}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {isLegacyImportType && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                This legacy import type was removed from the old import API. Use the migration workbench flow for this data.
+              </div>
+            )}
+
             {/* File Upload */}
             <div className="space-y-2">
               <Label htmlFor="file">
@@ -222,7 +243,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
                   type="file"
                   accept={['customers', 'vendors', 'products'].includes(importType) ? '.csv,.txt' : '.xlsx,.xls'}
                   onChange={handleFileChange}
-                  disabled={loading}
+                  disabled={loading || isLegacyImportType}
                   className="flex-1 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 file:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -302,7 +323,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
             <Button variant="outline" onClick={handleClose} disabled={loading}>
               Cancel
             </Button>
-            <Button onClick={handleImport} disabled={!file || loading}>
+            <Button onClick={handleImport} disabled={!file || loading || isLegacyImportType}>
               {loading ? (
                 <>
                   <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />

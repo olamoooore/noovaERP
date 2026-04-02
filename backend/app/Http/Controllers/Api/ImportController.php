@@ -24,7 +24,7 @@ class ImportController extends Controller
     {
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls|max:10240', // 10MB max
-            'type' => 'required|in:chart-of-accounts,journal-entries,vendor-bills,payments'
+            'type' => 'required|in:chart-of-accounts,payments'
         ]);
 
         try {
@@ -36,12 +36,6 @@ class ImportController extends Controller
                     return $this->importChartOfAccounts($request);
                 case 'payments':
                     return $this->importVendorPayments($request);
-                case 'journal-entries':
-                case 'vendor-bills':
-                    return response()->json([
-                        'message' => 'Import type not yet implemented',
-                        'error' => "Import for {$type} is coming soon"
-                    ], 501);
                 default:
                     return response()->json([
                         'message' => 'Invalid import type',

@@ -21,27 +21,41 @@ export interface ReportFilters {
 }
 
 // Financial Report Types
+export interface ProfitLossAccount {
+  account_id?: number;
+  code?: string;
+  account_name?: string;
+  name?: string;
+  amount: number;
+}
+
+export interface ProfitLossSection {
+  total: number;
+  accounts: ProfitLossAccount[];
+}
+
+export interface ProfitLossSummary {
+  amount: number;
+  margin_percent?: number;
+}
+
 export interface ProfitLossData {
-  revenue: {
-    accounts: Array<{
-      account_name: string;
-      amount: number;
-    }>;
-    total: number;
-  };
-  expenses: {
+  revenue: ProfitLossSection;
+  cost_of_goods_sold?: ProfitLossSection;
+  operating_expenses?: ProfitLossSection;
+  other_income?: ProfitLossSection;
+  other_expenses?: ProfitLossSection;
+  /** @deprecated use cost_of_goods_sold/operating_expenses/other_expenses sections */
+  expenses?: {
     cogs: number;
     operating: number;
     other: number;
     total: number;
-    accounts: Array<{
-      account_name: string;
-      amount: number;
-    }>;
+    accounts: ProfitLossAccount[];
   };
-  gross_profit: number;
-  operating_profit: number;
-  net_profit: number;
+  gross_profit: number | ProfitLossSummary;
+  operating_profit: number | ProfitLossSummary;
+  net_profit: number | ProfitLossSummary;
   comparison?: {
     revenue_change: number;
     expense_change: number;
@@ -171,7 +185,8 @@ export interface GeneralLedgerData {
     id: number;
     code: string;
     name: string;
-  };
+    type?: string;
+  } | null;
   opening_balance: number;
   transactions: Array<{
     date: string;
@@ -182,12 +197,13 @@ export interface GeneralLedgerData {
     balance: number;
   }>;
   closing_balance: number;
-  pagination?: {
+  pagination: {
     current_page: number;
     total_pages: number;
+    last_page?: number;
     per_page: number;
     total: number;
-  };
+  } | null;
 }
 
 // Inventory Report Types
@@ -577,6 +593,7 @@ export interface ExportResponse {
   success: boolean;
   file_path?: string;
   download_url?: string;
+  filename?: string;
   message?: string;
 }
 

@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsurePublicSchemaForAuth
@@ -30,8 +31,17 @@ class EnsurePublicSchemaForAuth
             && !str_contains($request->path(), 'web-shop/payment-gateways')
             && !str_contains($request->path(), 'web-shop/orders/guest/');
         
-        if (!$isWebCustomerRoute && DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement('SET search_path TO public');
+        if (!$isWebCustomerRoute) {
+            try {
+                if (DB::connection()->getDriverName() === 'pgsql') {
+                    DB::statement('SET search_path TO public');
+                }
+            } catch (\Exception $e) {
+                Log::warning('EnsurePublicSchemaForAuth: Failed to set public schema', [
+                    'path' => $request->path(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
         
         $response = $next($request);

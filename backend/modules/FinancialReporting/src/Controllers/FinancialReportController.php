@@ -72,6 +72,7 @@ class FinancialReportController extends Controller
                 'revenue' => $reportData->data['revenue'] ?? ['total' => 0, 'accounts' => []],
                 'cost_of_goods_sold' => $reportData->data['cost_of_goods_sold'] ?? ['total' => 0, 'accounts' => []],
                 'operating_expenses' => $reportData->data['operating_expenses'] ?? ['total' => 0, 'accounts' => []],
+                'other_income' => $reportData->data['other_income'] ?? ['total' => 0, 'accounts' => []],
                 'other_expenses' => $reportData->data['other_expenses'] ?? ['total' => 0, 'accounts' => []],
                 'gross_profit' => $reportData->data['gross_profit'] ?? ['amount' => 0],
                 'operating_profit' => $reportData->data['operating_profit'] ?? ['amount' => 0],

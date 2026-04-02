@@ -21,89 +21,92 @@ class PublicSiteController extends Controller
             'pageSlug' => $pageSlug,
         ]);
 
-        // Find website by slug
-        $website = Website::where('slug', $websiteSlug)->first();
-        
-        if (!$website) {
-            Log::warning('Website not found', ['slug' => $websiteSlug]);
-            return response()->json([
-                'error' => 'Website not found',
-                'message' => "No website found with slug: {$websiteSlug}",
-                'debug' => [
-                    'searched_slug' => $websiteSlug,
-                    'available_websites' => Website::pluck('slug')->toArray(),
-                ]
-            ], 404);
-        }
+        try {
+            // Find website by slug
+            $website = Website::where('slug', $websiteSlug)->first();
 
-        Log::info('Website found', ['id' => $website->id, 'name' => $website->name]);
+            if (!$website) {
+                Log::warning('Website not found', ['slug' => $websiteSlug]);
+                return response()->json([
+                    'error' => 'Website not found',
+                    'message' => "No website found with slug: {$websiteSlug}",
+                ], 404);
+            }
 
-        // If no page slug, get home page
-        if ($pageSlug === null || $pageSlug === '') {
-            $page = $website->pages()
-                ->where('is_home', true)
-                ->with('currentVersion')
-                ->first();
-            
-            // If no home page, get the first page
-            if (!$page) {
-                Log::info('No home page found, getting first page');
+            Log::info('Website found', ['id' => $website->id, 'name' => $website->name]);
+
+            // If no page slug, get home page
+            if ($pageSlug === null || $pageSlug === '') {
                 $page = $website->pages()
-                    ->orderBy('sort_order')
+                    ->where('is_home', true)
+                    ->with('currentVersion')
+                    ->first();
+
+                // If no home page, get the first page
+                if (!$page) {
+                    Log::info('No home page found, getting first page');
+                    $page = $website->pages()
+                        ->orderBy('sort_order')
+                        ->with('currentVersion')
+                        ->first();
+                }
+            } else {
+                $page = $website->pages()
+                    ->where('slug', $pageSlug)
                     ->with('currentVersion')
                     ->first();
             }
-        } else {
-            $page = $website->pages()
-                ->where('slug', $pageSlug)
-                ->with('currentVersion')
-                ->first();
-        }
 
-        if (!$page) {
-            Log::warning('Page not found', [
+            if (!$page) {
+                Log::warning('Page not found', [
+                    'websiteSlug' => $websiteSlug,
+                    'pageSlug' => $pageSlug,
+                ]);
+                return response()->json([
+                    'error' => 'Page not found',
+                    'message' => $pageSlug
+                        ? "No page found with slug: {$pageSlug}"
+                        : 'No home page or pages found for this website',
+                ], 404);
+            }
+
+            Log::info('Page found', ['id' => $page->id, 'title' => $page->title]);
+
+            // Get content from current version or return empty content
+            $content = $page->currentVersion?->content ?? [
+                'html' => '',
+                'css' => '',
+                'components' => [],
+                'styles' => [],
+            ];
+
+            return response()->json([
+                'id' => $page->id,
+                'title' => $page->title,
+                'slug' => $page->slug,
+                'is_home' => $page->is_home,
+                'seo_title' => $page->seo_title,
+                'seo_description' => $page->seo_description,
+                'content' => $content,
+                'website' => [
+                    'id' => $website->id,
+                    'name' => $website->name,
+                    'slug' => $website->slug,
+                    'settings' => $website->settings,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('PublicSiteController::getPage failed', [
                 'websiteSlug' => $websiteSlug,
                 'pageSlug' => $pageSlug,
-                'available_pages' => $website->pages()->pluck('slug')->toArray(),
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Page not found',
-                'message' => $pageSlug 
-                    ? "No page found with slug: {$pageSlug}" 
-                    : 'No home page or pages found for this website',
-                'debug' => [
-                    'website_slug' => $websiteSlug,
-                    'searched_page_slug' => $pageSlug,
-                    'available_pages' => $website->pages()->pluck('slug')->toArray(),
-                ]
-            ], 404);
+                'error' => 'Public site unavailable',
+                'message' => 'The public website is temporarily unavailable.',
+            ], 503);
         }
-
-        Log::info('Page found', ['id' => $page->id, 'title' => $page->title]);
-
-        // Get content from current version or return empty content
-        $content = $page->currentVersion?->content ?? [
-            'html' => '',
-            'css' => '',
-            'components' => [],
-            'styles' => [],
-        ];
-
-        return response()->json([
-            'id' => $page->id,
-            'title' => $page->title,
-            'slug' => $page->slug,
-            'is_home' => $page->is_home,
-            'seo_title' => $page->seo_title,
-            'seo_description' => $page->seo_description,
-            'content' => $content,
-            'website' => [
-                'id' => $website->id,
-                'name' => $website->name,
-                'slug' => $website->slug,
-                'settings' => $website->settings,
-            ],
-        ]);
     }
 }
 
