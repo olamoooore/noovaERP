@@ -12,7 +12,7 @@ class SuperAdminSeeder extends Seeder
     {
         User::query()->updateOrCreate(
             ['email' => 'superadmin@noovaerp.com'],
-            ['name' => 'Super Admin', 'password' => Hash::make('password')]
+            ['name' => 'Super Admin', 'password' => Hash::make('password'), 'role' => 'platform_super_admin']
         );
     }
 }

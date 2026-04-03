@@ -31,6 +31,11 @@ Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaFor
     Route::get('/health', fn() => response()->json(['status' => 'ok']));
 });
 
+// Superadmin Control Plane routes
+Route::prefix('v1/admin')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
+    require __DIR__.'/admin.php';
+});
+
 // Legacy auth routes (keep for backwards compatibility)
 Route::prefix('auth')->group(function () {
     Route::post('/signup', [TenantController::class, 'signup']);
