@@ -67,6 +67,7 @@ return [
             database_path('migrations/tenant'),
             base_path('modules/EventManagement/Database/Migrations/tenant'),
             base_path('modules/FinancialReporting/database/migrations/tenant'),
+            base_path('modules/HRM/database/migrations/tenant'),
             base_path('modules/OCRBookkeeping/database/migrations/tenant'),
             base_path('modules/POS/database/migrations/tenant'),
             base_path('modules/Ecommerce/database/migrations/tenant'),

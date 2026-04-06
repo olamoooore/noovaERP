@@ -23,6 +23,7 @@ Route::middleware([
     'api',
     \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
     \App\Http\Middleware\InitializeTenantForPublicAccess::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
     // Website public routes
     Route::prefix('website-public')->group(function () {
@@ -88,6 +89,7 @@ Route::middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
     PreventAccessFromCentralDomains::class,
 ])->prefix('api/v1')->group(function () {
     $modules = app(\App\Modules\ModuleManager::class);

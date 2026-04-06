@@ -104,6 +104,15 @@ const FSGanttPage = lazy(() => import('@/pages/FieldService/GanttPage'))
 const FSWorksheetTemplatesPage = lazy(() => import('@/pages/FieldService/WorksheetTemplatesPage'))
 const FSAnalyticsPage = lazy(() => import('@/pages/FieldService/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
 
+// HRM Module Pages
+const HRMDashboard = lazy(() => import('@/pages/HRM').then(m => ({ default: m.HRMDashboard })))
+const EmployeesPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.EmployeesPage })))
+const ContractsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.ContractsPage })))
+const TimeshiftsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.TimeshiftsPage })))
+const AttendancePage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.AttendancePage })))
+const LeaveRequestsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.LeaveRequestsPage })))
+const PayrollPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.PayrollPage })))
+
 // Event Management Module Pages
 const StaffManagementPage = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.StaffManagementPage })))
 const LiveOperationsDashboard = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.LiveOperationsDashboard })))
@@ -341,6 +350,15 @@ function App() {
                 <Route path="/field-service/gantt" element={<FSGanttPage />} />
                 <Route path="/field-service/worksheet-templates" element={<FSWorksheetTemplatesPage />} />
                 <Route path="/field-service/analytics" element={<FSAnalyticsPage />} />
+
+                {/* HRM Module Routes */}
+                <Route path="/hrm" element={<HRMDashboard />} />
+                <Route path="/hrm/employees" element={<EmployeesPage />} />
+                <Route path="/hrm/contracts" element={<ContractsPage />} />
+                <Route path="/hrm/timeshifts" element={<TimeshiftsPage />} />
+                <Route path="/hrm/attendance" element={<AttendancePage />} />
+                <Route path="/hrm/leave-requests" element={<LeaveRequestsPage />} />
+                <Route path="/hrm/payroll" element={<PayrollPage />} />
 
                 {/* Event Management Module Routes */}
                 <Route path="/event-management" element={<MyEventsDashboard />} />

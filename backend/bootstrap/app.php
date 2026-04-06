@@ -40,6 +40,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
         ]);
 
+        // Remove SubstituteBindings from the 'api' group so tenant routes can
+        // add it AFTER the search_path middleware — otherwise route-model
+        // binding queries run before the tenant schema is active.
+        $middleware->removeFromGroup('api', \Illuminate\Routing\Middleware\SubstituteBindings::class);
+
         // Add CORS to the very beginning of global middleware stack
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
 

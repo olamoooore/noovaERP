@@ -388,6 +388,48 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
+    title: 'HRM',
+    href: '/hrm',
+    icon: 'solar:users-group-rounded-bold-duotone',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/hrm',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Employees',
+        href: '/hrm/employees',
+        icon: 'solar:user-id-bold-duotone',
+      },
+      {
+        title: 'Contracts',
+        href: '/hrm/contracts',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Timeshifts',
+        href: '/hrm/timeshifts',
+        icon: 'solar:clock-circle-bold-duotone',
+      },
+      {
+        title: 'Attendance',
+        href: '/hrm/attendance',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Leave Requests',
+        href: '/hrm/leave-requests',
+        icon: 'solar:calendar-bold-duotone',
+      },
+      {
+        title: 'Payroll',
+        href: '/hrm/payroll',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',
