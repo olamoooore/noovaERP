@@ -49,8 +49,8 @@ class AdminTenantNoteController extends Controller
 
         $this->auditLogger->log(
             action: 'tenant_note.created',
-            targetType: 'admin_note',
-            targetId: (string) $note->id,
+            target: $note,
+            before: [],
             after: $note->toAuditSnapshot(),
             status: 'success',
         );
@@ -73,9 +73,9 @@ class AdminTenantNoteController extends Controller
 
         $this->auditLogger->log(
             action: 'tenant_note.deleted',
-            targetType: 'admin_note',
-            targetId: (string) $snapshot['id'],
+            target: null,
             before: $snapshot,
+            after: [],
             status: 'success',
         );
 

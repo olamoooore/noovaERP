@@ -36,8 +36,7 @@ class TenantOperationService
 
         $this->auditLogger->log(
             action: 'tenant.suspended',
-            targetType: 'tenant',
-            targetId: (string) $tenantId,
+            target: $tenant,
             before: $before,
             after: array_merge($before, ['suspended' => true]),
             reason: $reason,
@@ -66,8 +65,7 @@ class TenantOperationService
 
         $this->auditLogger->log(
             action: 'tenant.reinstated',
-            targetType: 'tenant',
-            targetId: (string) $tenantId,
+            target: $tenant,
             before: $before,
             after: array_merge($before, ['suspended' => false]),
             reason: $reason,
@@ -129,8 +127,7 @@ class TenantOperationService
 
         $this->auditLogger->log(
             action: 'tenant.health_pinged',
-            targetType: 'tenant',
-            targetId: (string) $tenantId,
+            target: $tenant,
             before: [],
             after: ['db_connected' => $dbConnected],
             status: 'success',
