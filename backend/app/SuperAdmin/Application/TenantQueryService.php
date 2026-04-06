@@ -28,11 +28,11 @@ class TenantQueryService
                 't.plan',
                 't.trial_ends_at',
                 't.subscription_ends_at',
-                't.data',
+                DB::raw('t.data::text as data'),
                 't.created_at',
                 DB::raw('MIN(d.domain) as domain'),
             ])
-            ->groupBy('t.id', 't.name', 't.email', 't.plan', 't.trial_ends_at', 't.subscription_ends_at', 't.data', 't.created_at');
+            ->groupBy('t.id', 't.name', 't.email', 't.plan', 't.trial_ends_at', 't.subscription_ends_at', DB::raw('t.data::text'), 't.created_at');
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -112,11 +112,11 @@ class TenantQueryService
                 't.plan',
                 't.trial_ends_at',
                 't.subscription_ends_at',
-                't.data',
+                DB::raw('t.data::text as data'),
                 't.created_at',
                 DB::raw('MIN(d.domain) as domain'),
             ])
-            ->groupBy('t.id', 't.name', 't.email', 't.plan', 't.trial_ends_at', 't.subscription_ends_at', 't.data', 't.created_at')
+            ->groupBy('t.id', 't.name', 't.email', 't.plan', 't.trial_ends_at', 't.subscription_ends_at', DB::raw('t.data::text'), 't.created_at')
             ->first();
 
         abort_if(is_null($tenant), 404, 'Tenant not found.');
