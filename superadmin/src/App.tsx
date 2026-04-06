@@ -6,6 +6,9 @@ import { AdminProtectedRoute } from '@/components/admin/AdminProtectedRoute'
 import { AdminLayout } from '@/components/admin/AdminLayout'
 import { AdminLoginPage } from '@/pages/auth/AdminLoginPage'
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
+import { PlanListPage } from '@/pages/plans/PlanListPage'
+import { PlanDetailPage } from '@/pages/plans/PlanDetailPage'
+import { ModuleCatalogPage } from '@/pages/modules/ModuleCatalogPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +43,11 @@ export default function App() {
 
                 {/* Phase 2+ pages — placeholders until implemented */}
                 <Route path="tenants/*"       element={<ComingSoon title="Tenants" />} />
-                <Route path="plans/*"         element={<ComingSoon title="Plans" />} />
-                <Route path="modules/*"       element={<ComingSoon title="Module Catalog" />} />
+
+                {/* Phase 1 — live pages */}
+                <Route path="plans"           element={<PlanListPage />} />
+                <Route path="plans/:familyId" element={<PlanDetailPage />} />
+                <Route path="modules"         element={<ModuleCatalogPage />} />
                 <Route path="subscriptions/*" element={<ComingSoon title="Subscriptions" />} />
                 <Route path="billing/*"       element={<ComingSoon title="Billing" />} />
                 <Route path="collections/*"   element={<ComingSoon title="Collections" />} />

@@ -17,6 +17,14 @@ module.exports = {
       watch: false,
     },
     {
+      name: 'noovaerp-superadmin',
+      cwd: './superadmin',
+      script: 'npm',
+      args: 'run dev',
+      interpreter: 'none',
+      watch: false,
+    },
+    {
       name: 'noovaerp-queue',
       cwd: './backend',
       script: 'php',

@@ -2,6 +2,8 @@
 
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
+use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
+use App\SuperAdmin\Http\Controllers\AdminPlanController;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
 use Illuminate\Support\Facades\Route;
 
@@ -25,4 +27,28 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     Route::post('/auth/logout', [AdminAuthController::class, 'logout']);
 
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
+
+    // --- Plan Catalog ---
+    Route::prefix('plans')->group(function () {
+        Route::get('/',    [AdminPlanController::class, 'index']);
+        Route::post('/',   [AdminPlanController::class, 'store']);
+        Route::get('/{family}',    [AdminPlanController::class, 'show']);
+        Route::put('/{family}',    [AdminPlanController::class, 'update']);
+
+        Route::prefix('{family}/versions')->group(function () {
+            Route::post('/',                           [AdminPlanController::class, 'createVersion']);
+            Route::put('/{version}',                   [AdminPlanController::class, 'updateVersion']);
+            Route::post('/{version}/prices',           [AdminPlanController::class, 'setPrices']);
+            Route::post('/{version}/modules/{module}', [AdminPlanController::class, 'attachModule']);
+            Route::delete('/{version}/modules/{module}', [AdminPlanController::class, 'detachModule']);
+        });
+    });
+
+    // --- Module Catalog ---
+    Route::prefix('modules')->group(function () {
+        Route::get('/',         [AdminModuleCatalogController::class, 'index']);
+        Route::post('/sync',    [AdminModuleCatalogController::class, 'sync']);
+        Route::get('/{module}', [AdminModuleCatalogController::class, 'show']);
+        Route::put('/{module}', [AdminModuleCatalogController::class, 'update']);
+    });
 });
