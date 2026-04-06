@@ -62,7 +62,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 0 — Foundation</p>
+        <p className="text-[10px] text-gray-400">Phase 2 — Tenant 360</p>
       </div>
     </aside>
   )

@@ -4,6 +4,10 @@ use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPlanController;
+use App\SuperAdmin\Http\Controllers\AdminTenantController;
+use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
+use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
+use App\SuperAdmin\Http\Middleware\DenyReadonlyRole;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
 use Illuminate\Support\Facades\Route;
 
@@ -50,5 +54,24 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::post('/sync',    [AdminModuleCatalogController::class, 'sync']);
         Route::get('/{module}', [AdminModuleCatalogController::class, 'show']);
         Route::put('/{module}', [AdminModuleCatalogController::class, 'update']);
+    });
+
+    // --- Tenant 360 ---
+    Route::prefix('tenants')->group(function () {
+        // Read — all admin roles
+        Route::get('/',                              [AdminTenantController::class, 'index']);
+        Route::get('/{tenantId}',                    [AdminTenantController::class, 'show']);
+        Route::get('/{tenantId}/operations',         [AdminTenantOperationController::class, 'index']);
+        Route::get('/{tenantId}/notes',              [AdminTenantNoteController::class, 'index']);
+        Route::get('/{tenantId}/health',             [AdminTenantController::class, 'latestHealth']);
+
+        // Write — denied for support_readonly
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::patch('/{tenantId}/status',           [AdminTenantController::class, 'updateStatus']);
+            Route::post('/{tenantId}/operations',        [AdminTenantOperationController::class, 'store']);
+            Route::post('/{tenantId}/notes',             [AdminTenantNoteController::class, 'store']);
+            Route::delete('/{tenantId}/notes/{note}',    [AdminTenantNoteController::class, 'destroy']);
+            Route::post('/{tenantId}/health/ping',       [AdminTenantController::class, 'pingHealth']);
+        });
     });
 });

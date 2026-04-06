@@ -9,6 +9,8 @@ import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
 import { PlanListPage } from '@/pages/plans/PlanListPage'
 import { PlanDetailPage } from '@/pages/plans/PlanDetailPage'
 import { ModuleCatalogPage } from '@/pages/modules/ModuleCatalogPage'
+import TenantListPage from '@/pages/tenants/TenantListPage'
+import TenantDetailPage from '@/pages/tenants/TenantDetailPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,8 +43,9 @@ export default function App() {
               <Route element={<AdminLayout />}>
                 <Route index element={<AdminDashboardPage />} />
 
-                {/* Phase 2+ pages — placeholders until implemented */}
-                <Route path="tenants/*"       element={<ComingSoon title="Tenants" />} />
+                {/* Phase 2 — Tenant 360 */}
+                <Route path="tenants"               element={<TenantListPage />} />
+                <Route path="tenants/:tenantId"     element={<TenantDetailPage />} />
 
                 {/* Phase 1 — live pages */}
                 <Route path="plans"           element={<PlanListPage />} />

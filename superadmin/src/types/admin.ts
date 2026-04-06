@@ -108,7 +108,80 @@ export interface ApiListResponse<T> {
   }
 }
 
+export interface PaginatedResponse<T> {
+  data: T[]
+  meta: {
+    total: number
+    page: number
+    per_page: number
+    last_page: number
+  }
+}
+
 export interface SyncResult {
   synced: number
   keys: string[]
+}
+
+// ─── Tenant 360 ───────────────────────────────────────────────────────────────
+
+export type TenantStatus = 'active' | 'suspended' | 'trial'
+
+export interface TenantDomain {
+  id: number
+  domain: string
+}
+
+export interface Tenant {
+  id: string
+  name: string | null
+  email: string | null
+  plan: string | null
+  status: TenantStatus
+  trial_ends_at: string | null
+  subscription_ends_at: string | null
+  created_at: string
+  domain?: string | null
+  last_health_check?: string | null
+}
+
+export interface TenantDetail extends Tenant {
+  modules_enabled: string[]
+  recent_operations: TenantOperation[]
+  latest_health: TenantHealthSnapshot | null
+  notes: AdminNote[]
+}
+
+export interface TenantOperation {
+  id: number
+  tenant_id: string
+  admin_user_id: number | null
+  operation: string
+  payload: Record<string, unknown> | null
+  result: Record<string, unknown> | null
+  status: 'pending' | 'success' | 'failure'
+  created_at: string
+  admin_user?: { id: number; name: string; email: string }
+}
+
+export interface TenantHealthSnapshot {
+  id: number
+  tenant_id: string
+  db_connected: boolean
+  storage_usage_mb: number | null
+  last_login_at: string | null
+  error_rate_percent: number | null
+  response_time_ms: number | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface AdminNote {
+  id: number
+  tenant_id: string
+  admin_user_id: number | null
+  body: string
+  created_at: string
+  updated_at: string
+  admin_user?: { id: number; name: string; email: string }
 }
