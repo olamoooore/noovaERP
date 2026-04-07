@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, Fragment } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getAuditLogs, getAuditStats, downloadAuditCsv } from '@/lib/admin-api/audit'
@@ -407,9 +407,8 @@ export default function AuditLogPage() {
                 </tr>
               ) : (
                 logs.map(log => (
-                  <>
+                  <Fragment key={log.id}>
                     <tr
-                      key={log.id}
                       onClick={() => setExpandedId(prev => prev === log.id ? null : log.id)}
                       className={`cursor-pointer transition-colors ${
                         expandedId === log.id ? 'bg-indigo-50' : 'hover:bg-gray-50'
@@ -466,9 +465,9 @@ export default function AuditLogPage() {
                     </tr>
 
                     {expandedId === log.id && (
-                      <ExpandedRow key={`${log.id}-exp`} log={log} />
+                      <ExpandedRow log={log} />
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>
