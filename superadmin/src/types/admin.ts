@@ -67,6 +67,14 @@ export interface ModuleCatalogEntry {
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
+export type AuditSeverity = 'info' | 'warning' | 'critical'
+
+export interface AuditDiffField {
+  field: string
+  before: unknown
+  after: unknown
+}
+
 export interface AdminActionLog {
   id: number
   admin_user_id: number | null
@@ -78,8 +86,42 @@ export interface AdminActionLog {
   reason: string | null
   ip_address: string | null
   status: 'success' | 'failure'
+  severity: AuditSeverity
+  human_description: string | null
   created_at: string
   admin_user?: { id: number; name: string; email: string } | null
+  /** Only present in GET /audit-logs/{id} response */
+  diff?: AuditDiffField[]
+}
+
+// ─── Tenant Timeline ──────────────────────────────────────────────────────────
+
+export type TimelineEventType = 'audit' | 'operation' | 'health'
+
+export interface TenantTimelineEvent {
+  id: string
+  type: TimelineEventType
+  created_at: string
+  severity: AuditSeverity
+  action: string
+  human_description: string
+  status: 'success' | 'failure' | 'pending'
+  admin_user?: { id: number; name: string; email: string } | null
+  // health-specific
+  db_connected?: boolean
+  response_time_ms?: number | null
+}
+
+// ─── Observability Stats ─────────────────────────────────────────────────────
+
+export interface ObservabilityStats {
+  today_total: number
+  today_failures: number
+  today_critical: number
+  today_warnings: number
+  top_actions: Array<{ action: string; count: number }>
+  hourly_volume: Array<{ hour: number; count: number }>
+  recent_failures: AdminActionLog[]
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

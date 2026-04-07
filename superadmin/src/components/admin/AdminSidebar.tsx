@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Sales',         path: '/sales',           icon: 'solar:chart-square-bold-duotone' },
   { label: 'Operations',    path: '/operations',      icon: 'solar:settings-bold-duotone' },
   { label: 'Audit Log',     path: '/audit',           icon: 'solar:shield-check-bold-duotone' },
+  { label: 'Observability', path: '/observability',   icon: 'solar:graph-bold-duotone' },
 ]
 
 export function AdminSidebar() {
@@ -62,7 +63,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 3 — Subscriptions</p>
+        <p className="text-[10px] text-gray-400">Phase 4 — Observability</p>
       </div>
     </aside>
   )

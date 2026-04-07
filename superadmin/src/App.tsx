@@ -15,6 +15,7 @@ import SubscriptionListPage from '@/pages/subscriptions/SubscriptionListPage'
 import SubscriptionDetailPage from '@/pages/subscriptions/SubscriptionDetailPage'
 import BillingPage from '@/pages/billing/BillingPage'
 import AuditLogPage from '@/pages/audit/AuditLogPage'
+import ObservabilityPage from '@/pages/observability/ObservabilityPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,10 +60,13 @@ export default function App() {
                 <Route path="subscriptions"                    element={<SubscriptionListPage />} />
                 <Route path="subscriptions/:subscriptionId"    element={<SubscriptionDetailPage />} />
                 <Route path="billing"                          element={<BillingPage />} />
-                <Route path="collections/*"   element={<ComingSoon title="Collections" />} />
-                <Route path="sales/*"         element={<ComingSoon title="Sales" />} />
-                <Route path="operations/*"    element={<ComingSoon title="Operations" />} />
-                <Route path="audit"            element={<AuditLogPage />} />
+                {/* Phase 4 — Audit Log & Observability */}
+                <Route path="audit"         element={<AuditLogPage />} />
+                <Route path="observability" element={<ObservabilityPage />} />
+
+                <Route path="collections/*" element={<ComingSoon title="Collections" />} />
+                <Route path="sales/*"       element={<ComingSoon title="Sales" />} />
+                <Route path="operations/*"  element={<ComingSoon title="Operations" />} />
               </Route>
             </Route>
 

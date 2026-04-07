@@ -10,6 +10,7 @@ use App\SuperAdmin\Http\Controllers\AdminSubscriptionController;
 use App\SuperAdmin\Http\Controllers\AdminTenantController;
 use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
 use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
+use App\SuperAdmin\Http\Controllers\AdminTenantTimelineController;
 use App\SuperAdmin\Http\Middleware\DenyReadonlyRole;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
 use Illuminate\Support\Facades\Route;
@@ -30,8 +31,8 @@ Route::post('/auth/login', [AdminAuthController::class, 'login']);
 
 // Protected — requires valid Sanctum token + admin role
 Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
-    Route::get('/auth/me', [AdminAuthController::class, 'me']);
-    Route::post('/auth/logout', [AdminAuthController::class, 'logout']);
+    Route::get('/auth/me',       [AdminAuthController::class, 'me']);
+    Route::post('/auth/logout',  [AdminAuthController::class, 'logout']);
 
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
 
@@ -43,11 +44,11 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::put('/{family}',    [AdminPlanController::class, 'update']);
 
         Route::prefix('{family}/versions')->group(function () {
-            Route::post('/',                           [AdminPlanController::class, 'createVersion']);
-            Route::put('/{version}',                   [AdminPlanController::class, 'updateVersion']);
-            Route::post('/{version}/prices',           [AdminPlanController::class, 'setPrices']);
-            Route::post('/{version}/modules/{module}', [AdminPlanController::class, 'attachModule']);
-            Route::delete('/{version}/modules/{module}', [AdminPlanController::class, 'detachModule']);
+            Route::post('/',                               [AdminPlanController::class, 'createVersion']);
+            Route::put('/{version}',                       [AdminPlanController::class, 'updateVersion']);
+            Route::post('/{version}/prices',               [AdminPlanController::class, 'setPrices']);
+            Route::post('/{version}/modules/{module}',     [AdminPlanController::class, 'attachModule']);
+            Route::delete('/{version}/modules/{module}',   [AdminPlanController::class, 'detachModule']);
         });
     });
 
@@ -62,20 +63,21 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     // --- Tenant 360 ---
     Route::prefix('tenants')->group(function () {
         // Read — all admin roles
-        Route::get('/',                              [AdminTenantController::class, 'index']);
-        Route::get('/{tenantId}',                    [AdminTenantController::class, 'show']);
-        Route::get('/{tenantId}/operations',         [AdminTenantOperationController::class, 'index']);
-        Route::get('/{tenantId}/notes',              [AdminTenantNoteController::class, 'index']);
-        Route::get('/{tenantId}/health',             [AdminTenantController::class, 'latestHealth']);
+        Route::get('/',                                [AdminTenantController::class, 'index']);
+        Route::get('/{tenantId}',                      [AdminTenantController::class, 'show']);
+        Route::get('/{tenantId}/operations',           [AdminTenantOperationController::class, 'index']);
+        Route::get('/{tenantId}/notes',                [AdminTenantNoteController::class, 'index']);
+        Route::get('/{tenantId}/health',               [AdminTenantController::class, 'latestHealth']);
+        Route::get('/{tenantId}/timeline',             [AdminTenantTimelineController::class, 'index']);
 
         // Write — denied for support_readonly
         Route::middleware(DenyReadonlyRole::class)->group(function () {
-            Route::patch('/{tenantId}/status',           [AdminTenantController::class, 'updateStatus']);
-            Route::post('/{tenantId}/operations',        [AdminTenantOperationController::class, 'store']);
-            Route::post('/{tenantId}/notes',             [AdminTenantNoteController::class, 'store']);
-            Route::delete('/{tenantId}/notes/{note}',    [AdminTenantNoteController::class, 'destroy']);
-            Route::post('/{tenantId}/health/ping',       [AdminTenantController::class, 'pingHealth']);
-            Route::post('/{tenantId}/subscription',      [AdminSubscriptionController::class, 'create']);
+            Route::patch('/{tenantId}/status',             [AdminTenantController::class, 'updateStatus']);
+            Route::post('/{tenantId}/operations',          [AdminTenantOperationController::class, 'store']);
+            Route::post('/{tenantId}/notes',               [AdminTenantNoteController::class, 'store']);
+            Route::delete('/{tenantId}/notes/{note}',      [AdminTenantNoteController::class, 'destroy']);
+            Route::post('/{tenantId}/health/ping',         [AdminTenantController::class, 'pingHealth']);
+            Route::post('/{tenantId}/subscription',        [AdminSubscriptionController::class, 'create']);
         });
 
         Route::get('/{tenantId}/subscription', [AdminSubscriptionController::class, 'forTenant']);
@@ -104,9 +106,12 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         });
     });
 
-    // --- Phase 4: Audit Log Viewer ---
+    // --- Phase 4: Audit Log + Observability ---
+    // NOTE: static sub-routes (stats, export) MUST be registered before /{log}
     Route::prefix('audit-logs')->group(function () {
-        Route::get('/',      [AdminAuditLogController::class, 'index']);
-        Route::get('/{log}', [AdminAuditLogController::class, 'show']);
+        Route::get('/stats',     [AdminAuditLogController::class, 'stats']);
+        Route::get('/export',    [AdminAuditLogController::class, 'export']);
+        Route::get('/',          [AdminAuditLogController::class, 'index']);
+        Route::get('/{log}',     [AdminAuditLogController::class, 'show']);
     });
 });
