@@ -14,6 +14,7 @@ import TenantDetailPage from '@/pages/tenants/TenantDetailPage'
 import SubscriptionListPage from '@/pages/subscriptions/SubscriptionListPage'
 import SubscriptionDetailPage from '@/pages/subscriptions/SubscriptionDetailPage'
 import BillingPage from '@/pages/billing/BillingPage'
+import AuditLogPage from '@/pages/audit/AuditLogPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,7 +62,7 @@ export default function App() {
                 <Route path="collections/*"   element={<ComingSoon title="Collections" />} />
                 <Route path="sales/*"         element={<ComingSoon title="Sales" />} />
                 <Route path="operations/*"    element={<ComingSoon title="Operations" />} />
-                <Route path="audit/*"         element={<ComingSoon title="Audit Log" />} />
+                <Route path="audit"            element={<AuditLogPage />} />
               </Route>
             </Route>
 

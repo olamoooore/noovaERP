@@ -79,6 +79,7 @@ export interface AdminActionLog {
   ip_address: string | null
   status: 'success' | 'failure'
   created_at: string
+  admin_user?: { id: number; name: string; email: string } | null
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

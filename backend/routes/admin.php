@@ -1,6 +1,7 @@
 <?php
 
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
+use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
@@ -101,5 +102,11 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
             Route::patch('/{invoice}/void',      [AdminBillingController::class, 'voidInvoice']);
             Route::post('/generate',             [AdminBillingController::class, 'generate']);
         });
+    });
+
+    // --- Phase 4: Audit Log Viewer ---
+    Route::prefix('audit-logs')->group(function () {
+        Route::get('/',      [AdminAuditLogController::class, 'index']);
+        Route::get('/{log}', [AdminAuditLogController::class, 'show']);
     });
 });
