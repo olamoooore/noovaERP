@@ -756,14 +756,9 @@ class ProductController extends Controller
                 $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
                 $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
 
-                // Try to find existing product by SKU or barcode to avoid duplicates
-                $existingProduct = null;
-                if ($sku !== '' && $sku !== '-') {
-                    $existingProduct = Product::where('sku', $sku)->first();
-                }
-                if (!$existingProduct && $barcode !== '' && $barcode !== '-') {
-                    $existingProduct = Product::where('barcode', $barcode)->first();
-                }
+                // Match by SKU when available. Barcode alone is not reliable because
+                // multiple distinct products in the same catalog can legitimately share it.
+                $existingProduct = $this->findExistingProductForImport($sku, $barcode, $name, $secondaryName);
 
                 // Generate SKU only if no existing product found and no SKU provided
                 if (!$existingProduct && ($sku === '' || $sku === '-')) {
@@ -826,6 +821,33 @@ class ProductController extends Controller
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
         return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    private function findExistingProductForImport(string $sku, string $barcode, string $name, string $secondaryName): ?Product
+    {
+        if ($this->hasImportIdentifier($sku)) {
+            return Product::where('sku', $sku)->first();
+        }
+
+        if (!$this->hasImportIdentifier($barcode)) {
+            return null;
+        }
+
+        return Product::query()
+            ->where('barcode', $barcode)
+            ->whereRaw('LOWER(name) = ?', [$this->normalizeImportIdentityValue($name)])
+            ->whereRaw("LOWER(COALESCE(secondary_name, '')) = ?", [$this->normalizeImportIdentityValue($secondaryName)])
+            ->first();
+    }
+
+    private function hasImportIdentifier(string $value): bool
+    {
+        return $value !== '' && $value !== '-';
+    }
+
+    private function normalizeImportIdentityValue(?string $value): string
+    {
+        return Str::lower(trim((string) $value));
     }
 
     /**
