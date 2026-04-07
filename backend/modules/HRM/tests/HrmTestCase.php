@@ -7,6 +7,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -50,17 +51,20 @@ abstract class HrmTestCase extends TestCase
      */
     protected function refreshTestDatabase(): void
     {
-        if (! RefreshDatabaseState::$migrated) {
+        if (! RefreshDatabaseState::$migrated || ! $this->hrmSchemaIsReady()) {
             // Drop everything in the test database (removes stale tables from
             // previous test runs or from running php artisan migrate globally)
             $this->artisan('db:wipe', ['--force' => true]);
 
             // Run only the migrations HRM tests need — base schema + HRM tables
             $this->artisan('migrate', [
-                '--path' => [
-                    'modules/HRM/tests/database/migrations',
-                    'modules/HRM/database/migrations/tenant',
-                ],
+                '--force' => true,
+                '--path' => 'modules/HRM/tests/database/migrations',
+            ]);
+
+            $this->artisan('migrate', [
+                '--force' => true,
+                '--path' => 'modules/HRM/database/migrations/tenant',
             ]);
 
             $this->app[Kernel::class]->setArtisan(null);
@@ -118,5 +122,12 @@ abstract class HrmTestCase extends TestCase
         return property_exists($this, 'connectionsToTransact')
             ? $this->connectionsToTransact
             : [null];
+    }
+
+    protected function hrmSchemaIsReady(): bool
+    {
+        return Schema::hasTable('hrm_employees')
+            && Schema::hasTable('hrm_payroll_runs')
+            && Schema::hasTable('hrm_payrolls');
     }
 }

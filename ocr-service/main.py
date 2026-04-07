@@ -2,14 +2,31 @@
 OCR Bookkeeping Service - FastAPI Application
 
 Extracts structured financial data (invoices, receipts) from uploaded documents
-using Tesseract OCR + regex-based field extraction.
+using Tesseract OCR or PaddleOCR + regex-based field extraction.
 
 Endpoints:
   POST /api/bookkeeping/upload - Extract data from uploaded file
   GET  /health                 - Health check
+
+Environment variables:
+    OCR_ENGINE  - "tesseract" (default) or "paddle"
 """
 
+# Must be set before PaddlePaddle is imported.
+import os as _os
+
+_os.environ.setdefault("FLAGS_enable_pir_api", "0")
+_os.environ.setdefault("FLAGS_use_mkldnn", "0")
+_os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
+# Help Tesseract find its language data when it is installed in a non-standard path.
+if not _os.environ.get("TESSDATA_PREFIX"):
+        _candidate = _os.path.join(_os.environ.get("HOME", ""), "tessdata")
+        if _os.path.isfile(_os.path.join(_candidate, "eng.traineddata")):
+                _os.environ["TESSDATA_PREFIX"] = _candidate
+
 import io
+import os
 import re
 import tempfile
 from datetime import datetime
@@ -18,6 +35,10 @@ from pathlib import Path
 import pytesseract
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
+
+OCR_ENGINE = os.environ.get("OCR_ENGINE", "tesseract").lower()
+_paddle_ocr = None
+_paddle_patched = False
 
 app = FastAPI(title="OCR Bookkeeping Service", version="1.0.0")
 
@@ -41,6 +62,154 @@ def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
 
     image = Image.open(io.BytesIO(image_bytes))
     return pytesseract.image_to_string(image)
+
+
+def _patch_paddle_inference() -> None:
+    """Patch Paddle inference settings to avoid known runtime issues."""
+    global _paddle_patched
+
+    if _paddle_patched:
+        return
+
+    _paddle_patched = True
+
+    try:
+        import importlib
+
+        paddle = importlib.import_module("paddle")
+        paddle_inference = importlib.import_module("paddle.inference")
+
+        paddle.set_flags({
+            "FLAGS_enable_pir_api": False,
+            "FLAGS_enable_pir_in_executor": False,
+            "FLAGS_use_mkldnn": False,
+        })
+
+        original_create = paddle_inference.create_predictor
+
+        def safe_create(config):
+            if hasattr(config, "enable_new_ir"):
+                config.enable_new_ir(False)
+            if hasattr(config, "disable_mkldnn"):
+                config.disable_mkldnn()
+            return original_create(config)
+
+        paddle_inference.create_predictor = safe_create
+    except Exception:
+        pass
+
+
+def _get_paddle_ocr():
+    """Return a singleton PaddleOCR instance, created on first call."""
+    global _paddle_ocr
+
+    if _paddle_ocr is None:
+        _patch_paddle_inference()
+
+        import importlib.metadata as metadata
+
+        original_requires = metadata.requires
+
+        def safe_requires(package_name: str):
+            requirements = original_requires(package_name)
+            return requirements if requirements is not None else []
+
+        metadata.requires = safe_requires
+
+        import importlib
+
+        PaddleOCR = importlib.import_module("paddleocr").PaddleOCR
+
+        try:
+            _paddle_ocr = PaddleOCR(use_angle_cls=True, lang="en")
+        except TypeError:
+            _paddle_ocr = PaddleOCR(lang="en")
+
+    return _paddle_ocr
+
+
+def extract_text_with_paddle(image_bytes: bytes, filename: str) -> tuple[str, float]:
+    """Run PaddleOCR on an image or PDF and return raw text with average confidence."""
+    ocr = _get_paddle_ocr()
+    lower = filename.lower()
+
+    def ocr_image(image: Image.Image) -> list[tuple[str, float]]:
+        import tempfile as tempfiles
+
+        with tempfiles.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            image.save(tmp, format="PNG")
+            tmp_path = tmp.name
+
+        lines: list[tuple[float, str, float]] = []
+
+        try:
+            for result in ocr.predict(tmp_path):
+                rec_texts = result.get("rec_texts", []) if isinstance(result, dict) else getattr(result, "rec_texts", [])
+                rec_scores = result.get("rec_scores", []) if isinstance(result, dict) else getattr(result, "rec_scores", [])
+                dt_polys = result.get("dt_polys", []) if isinstance(result, dict) else getattr(result, "dt_polys", [])
+
+                for index, text in enumerate(rec_texts):
+                    confidence = float(rec_scores[index]) if index < len(rec_scores) else 0.0
+                    if index < len(dt_polys) and len(dt_polys[index]) > 0:
+                        y_top = float(min(point[1] for point in dt_polys[index]))
+                    else:
+                        y_top = float(index)
+                    lines.append((y_top, text, confidence))
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        lines.sort(key=lambda item: item[0])
+        return [(text, confidence) for _, text, confidence in lines]
+
+    all_lines: list[tuple[str, float]] = []
+
+    if lower.endswith(".pdf"):
+        try:
+            from pdf2image import convert_from_bytes
+
+            pages = convert_from_bytes(image_bytes, dpi=300)
+            for page in pages:
+                all_lines.extend(ocr_image(page))
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"PDF conversion failed: {e}")
+    else:
+        image = Image.open(io.BytesIO(image_bytes))
+        all_lines = ocr_image(image)
+
+    if not all_lines:
+        return "", 0.0
+
+    raw_text = "\n".join(text for text, _ in all_lines)
+    avg_confidence = sum(confidence for _, confidence in all_lines) / len(all_lines) * 100
+    return raw_text, round(avg_confidence, 1)
+
+
+def run_ocr(image_bytes: bytes, filename: str, engine: str | None = None) -> tuple[str, float]:
+    """Unified OCR entry point returning raw text and a 0-100 confidence score."""
+    selected_engine = (engine or OCR_ENGINE).lower()
+
+    if selected_engine == "paddle":
+        return extract_text_with_paddle(image_bytes, filename)
+
+    raw_text = extract_text_from_image(image_bytes, filename)
+    avg_confidence = 75.0
+
+    if not filename.lower().endswith(".pdf"):
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+            confidences = [int(confidence) for confidence in data["conf"] if int(confidence) > 0]
+            if confidences:
+                avg_confidence = sum(confidences) / len(confidences)
+        except Exception:
+            avg_confidence = 50.0
+
+    return raw_text, round(avg_confidence, 1)
 
 
 def parse_financial_data(raw_text: str) -> dict:
@@ -223,7 +392,7 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty file")
 
     # Run OCR
-    raw_text = extract_text_from_image(contents, file.filename or "document.jpg")
+    raw_text, avg_confidence = run_ocr(contents, file.filename or "document.jpg")
 
     if not raw_text.strip():
         return {
@@ -245,18 +414,6 @@ async def upload_document(file: UploadFile = File(...)):
             },
         }
 
-    # Get OCR confidence from Tesseract
-    try:
-        image = Image.open(io.BytesIO(contents)) if not (file.filename or "").lower().endswith(".pdf") else None
-        if image:
-            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-            confidences = [int(c) for c in data["conf"] if int(c) > 0]
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 50
-        else:
-            avg_confidence = 75  # default for PDFs
-    except Exception:
-        avg_confidence = 50
-
     # Parse structured data
     extracted = parse_financial_data(raw_text)
 
@@ -264,9 +421,10 @@ async def upload_document(file: UploadFile = File(...)):
         "status": "success",
         "extracted_data": extracted,
         "processing_details": {
-            "ocr_confidence": round(avg_confidence, 1),
+            "ocr_confidence": avg_confidence,
             "raw_text": raw_text[:2000],  # truncate for response size
             "char_count": len(raw_text),
+            "engine": OCR_ENGINE,
         },
     }
 
