@@ -11,6 +11,9 @@ import { PlanDetailPage } from '@/pages/plans/PlanDetailPage'
 import { ModuleCatalogPage } from '@/pages/modules/ModuleCatalogPage'
 import TenantListPage from '@/pages/tenants/TenantListPage'
 import TenantDetailPage from '@/pages/tenants/TenantDetailPage'
+import SubscriptionListPage from '@/pages/subscriptions/SubscriptionListPage'
+import SubscriptionDetailPage from '@/pages/subscriptions/SubscriptionDetailPage'
+import BillingPage from '@/pages/billing/BillingPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,8 +54,10 @@ export default function App() {
                 <Route path="plans"           element={<PlanListPage />} />
                 <Route path="plans/:familyId" element={<PlanDetailPage />} />
                 <Route path="modules"         element={<ModuleCatalogPage />} />
-                <Route path="subscriptions/*" element={<ComingSoon title="Subscriptions" />} />
-                <Route path="billing/*"       element={<ComingSoon title="Billing" />} />
+                {/* Phase 3 — Subscriptions & Billing */}
+                <Route path="subscriptions"                    element={<SubscriptionListPage />} />
+                <Route path="subscriptions/:subscriptionId"    element={<SubscriptionDetailPage />} />
+                <Route path="billing"                          element={<BillingPage />} />
                 <Route path="collections/*"   element={<ComingSoon title="Collections" />} />
                 <Route path="sales/*"         element={<ComingSoon title="Sales" />} />
                 <Route path="operations/*"    element={<ComingSoon title="Operations" />} />

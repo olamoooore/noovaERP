@@ -1,10 +1,12 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { pingTenantHealth, runTenantOperation } from '@/lib/admin-api/tenants'
+import { getPlanFamilies } from '@/lib/admin-api/plans'
+import type { TenantHealthSnapshot, TenantOperation } from '@/types/admin'
 
 interface TenantOperationModalProps {
   tenantId: string
-  operation: 'suspend' | 'reinstate' | 'ping_health'
+  operation: 'suspend' | 'reinstate' | 'ping_health' | 'migrate_plan'
   tenantName: string
   onClose: () => void
   onSuccess: () => void
@@ -24,6 +26,10 @@ const LABELS: Record<string, { title: string; description: string; warning?: str
     title: 'Ping Health Check',
     description: 'This will run a live connectivity and storage check on the tenant schema.',
   },
+  migrate_plan: {
+    title: 'Change Plan',
+    description: 'Select a new plan version and billing interval for this tenant. A new invoice will be generated automatically.',
+  },
 }
 
 export default function TenantOperationModal({
@@ -33,13 +39,31 @@ export default function TenantOperationModal({
   onClose,
   onSuccess,
 }: TenantOperationModalProps) {
-  const [reason, setReason] = useState('')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [reason, setReason]                     = useState('')
+  const [errorMsg, setErrorMsg]                 = useState<string | null>(null)
+  const [planVersionId, setPlanVersionId]       = useState<number | ''>('')
+  const [billingInterval, setBillingInterval]   = useState<'monthly' | 'yearly'>('monthly')
+
   const meta = LABELS[operation]
 
-  const mutation = useMutation({
+  // Only fetch plan families when the migrate_plan modal is open
+  const { data: planFamilies, isLoading: plansLoading } = useQuery({
+    queryKey: ['admin', 'plans', 'families-with-versions'],
+    queryFn: () => getPlanFamilies(),
+    enabled: operation === 'migrate_plan',
+  })
+
+  const mutation = useMutation<TenantOperation | TenantHealthSnapshot, Error, void>({
     mutationFn: () => {
       if (operation === 'ping_health') return pingTenantHealth(tenantId)
+      if (operation === 'migrate_plan') {
+        return runTenantOperation(
+          tenantId,
+          'migrate_plan',
+          { plan_version_id: planVersionId, billing_interval: billingInterval },
+          reason || undefined,
+        )
+      }
       return runTenantOperation(tenantId, operation, {}, reason || undefined)
     },
     onSuccess: () => {
@@ -51,6 +75,8 @@ export default function TenantOperationModal({
       setErrorMsg(msg)
     },
   })
+
+  const canSubmit = operation !== 'migrate_plan' || planVersionId !== ''
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -73,7 +99,52 @@ export default function TenantOperationModal({
           </div>
         )}
 
-        {/* Reason input — only for suspend/reinstate */}
+        {/* Plan picker — only for migrate_plan */}
+        {operation === 'migrate_plan' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                New Plan Version <span className="text-red-500">*</span>
+              </label>
+              {plansLoading ? (
+                <p className="text-sm text-gray-400">Loading plans…</p>
+              ) : (
+                <select
+                  value={planVersionId}
+                  onChange={e => setPlanVersionId(Number(e.target.value))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">Select a plan version…</option>
+                  {planFamilies?.map(family =>
+                    family.versions
+                      ?.filter(v => v.is_active)
+                      .map(version => (
+                        <option key={version.id} value={version.id}>
+                          {family.name} — {version.version_label}
+                        </option>
+                      ))
+                  )}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Billing Interval
+              </label>
+              <select
+                value={billingInterval}
+                onChange={e => setBillingInterval(e.target.value as 'monthly' | 'yearly')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Reason input — for suspend, reinstate, and migrate_plan */}
         {operation !== 'ping_health' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -107,7 +178,7 @@ export default function TenantOperationModal({
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !canSubmit}
             className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-40"
           >
             {mutation.isPending ? 'Running…' : 'Confirm'}

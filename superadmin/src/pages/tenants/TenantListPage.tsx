@@ -126,6 +126,8 @@ export default function TenantListPage() {
                 <th className="px-4 py-3 font-medium text-gray-600">Name</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Plan</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Last Updated</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Last Login</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Since</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Last Health Check</th>
               </tr>
@@ -145,6 +147,8 @@ export default function TenantListPage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={tenant.status} />
                   </td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(tenant.updated_at)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(tenant.last_login_at)}</td>
                   <td className="px-4 py-3 text-gray-500">{formatDate(tenant.created_at)}</td>
                   <td className="px-4 py-3 text-gray-500">{formatDate(tenant.last_health_check)}</td>
                 </tr>

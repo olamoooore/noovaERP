@@ -1,9 +1,11 @@
 <?php
 
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
+use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPlanController;
+use App\SuperAdmin\Http\Controllers\AdminSubscriptionController;
 use App\SuperAdmin\Http\Controllers\AdminTenantController;
 use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
 use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
@@ -72,6 +74,32 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
             Route::post('/{tenantId}/notes',             [AdminTenantNoteController::class, 'store']);
             Route::delete('/{tenantId}/notes/{note}',    [AdminTenantNoteController::class, 'destroy']);
             Route::post('/{tenantId}/health/ping',       [AdminTenantController::class, 'pingHealth']);
+            Route::post('/{tenantId}/subscription',      [AdminSubscriptionController::class, 'create']);
+        });
+
+        Route::get('/{tenantId}/subscription', [AdminSubscriptionController::class, 'forTenant']);
+    });
+
+    // --- Phase 3: Subscriptions ---
+    Route::prefix('subscriptions')->group(function () {
+        Route::get('/',                [AdminSubscriptionController::class, 'index']);
+        Route::get('/{subscription}',  [AdminSubscriptionController::class, 'show']);
+
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::patch('/{subscription}/cancel',     [AdminSubscriptionController::class, 'cancel']);
+            Route::patch('/{subscription}/reactivate', [AdminSubscriptionController::class, 'reactivate']);
+        });
+    });
+
+    // --- Phase 3: Billing ---
+    Route::prefix('billing/invoices')->group(function () {
+        Route::get('/',          [AdminBillingController::class, 'index']);
+        Route::get('/{invoice}', [AdminBillingController::class, 'show']);
+
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::patch('/{invoice}/mark-paid', [AdminBillingController::class, 'markPaid']);
+            Route::patch('/{invoice}/void',      [AdminBillingController::class, 'voidInvoice']);
+            Route::post('/generate',             [AdminBillingController::class, 'generate']);
         });
     });
 });

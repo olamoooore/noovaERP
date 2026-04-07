@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
+use App\SuperAdmin\Domain\PlanVersion;
+use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantHealthSnapshot;
 use App\SuperAdmin\Domain\TenantOperation;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +17,7 @@ class TenantOperationService
 {
     public function __construct(
         private readonly AdminAuditLogger $auditLogger,
+        private readonly SubscriptionService $subscriptionService,
     ) {}
 
     public function suspend(string $tenantId, ?string $reason = null): TenantOperation
@@ -136,18 +139,66 @@ class TenantOperationService
         return $snapshot;
     }
 
+    public function migratePlan(
+        string $tenantId,
+        array $payload,
+        ?string $reason = null,
+    ): TenantOperation {
+        $planVersionId    = $payload['plan_version_id'] ?? null;
+        $billingInterval  = $payload['billing_interval'] ?? 'monthly';
+
+        if (!$planVersionId) {
+            throw ValidationException::withMessages([
+                'payload' => 'plan_version_id is required for migrate_plan.',
+            ]);
+        }
+
+        if (!in_array($billingInterval, ['monthly', 'yearly'], true)) {
+            throw ValidationException::withMessages([
+                'payload' => 'billing_interval must be monthly or yearly.',
+            ]);
+        }
+
+        $subscription = Subscription::where('tenant_id', $tenantId)->latest()->first();
+
+        if (!$subscription) {
+            throw ValidationException::withMessages([
+                'operation' => 'Tenant has no active subscription to migrate.',
+            ]);
+        }
+
+        $newVersion = PlanVersion::findOrFail($planVersionId);
+
+        $this->subscriptionService->migratePlan(
+            subscription: $subscription,
+            newVersion: $newVersion,
+            billingInterval: $billingInterval,
+            reason: $reason,
+        );
+
+        return TenantOperation::create([
+            'tenant_id'     => $tenantId,
+            'admin_user_id' => Auth::id(),
+            'operation'     => 'migrate_plan',
+            'payload'       => $payload,
+            'result'        => ['plan_version_id' => $newVersion->id, 'billing_interval' => $billingInterval],
+            'status'        => 'success',
+            'created_at'    => now(),
+        ]);
+    }
+
     public function runOperation(
         string $tenantId,
         string $operation,
         array $payload = [],
         ?string $reason = null,
     ): TenantOperation {
-        $allowed = ['suspend', 'reinstate', 'ping_health'];
-        $notYetImplemented = ['migrate_plan', 'run_seeder'];
+        $allowed = ['suspend', 'reinstate', 'ping_health', 'migrate_plan'];
+        $notYetImplemented = ['run_seeder'];
 
         if (in_array($operation, $notYetImplemented, true)) {
             throw ValidationException::withMessages([
-                'operation' => "Operation [{$operation}] is not yet implemented. Scoped to Phase 3.",
+                'operation' => "Operation [{$operation}] is not yet implemented.",
             ]);
         }
 
@@ -158,9 +209,10 @@ class TenantOperationService
         }
 
         return match ($operation) {
-            'suspend'     => $this->suspend($tenantId, $reason),
-            'reinstate'   => $this->reinstate($tenantId, $reason),
-            'ping_health' => $this->wrapPingAsOperation($tenantId),
+            'suspend'      => $this->suspend($tenantId, $reason),
+            'reinstate'    => $this->reinstate($tenantId, $reason),
+            'ping_health'  => $this->wrapPingAsOperation($tenantId),
+            'migrate_plan' => $this->migratePlan($tenantId, $payload, $reason),
         };
     }
 

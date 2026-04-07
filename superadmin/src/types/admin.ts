@@ -136,13 +136,20 @@ export interface Tenant {
   id: string
   name: string | null
   email: string | null
+  /** Display name for the current plan (from subscription if active, else legacy tenants.plan) */
   plan: string | null
+  /** Plan family key for filtering (e.g. "starter", "professional") */
+  plan_key?: string | null
+  /** Plan version label (e.g. "v1") */
+  plan_version?: string | null
   status: TenantStatus
   trial_ends_at: string | null
   subscription_ends_at: string | null
   created_at: string
+  updated_at?: string | null
   domain?: string | null
   last_health_check?: string | null
+  last_login_at?: string | null
 }
 
 export interface TenantDetail extends Tenant {
@@ -184,4 +191,47 @@ export interface AdminNote {
   created_at: string
   updated_at: string
   admin_user?: { id: number; name: string; email: string }
+}
+
+// ─── Phase 3: Subscriptions & Billing ────────────────────────────────────────
+
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'expired'
+export type InvoiceStatus = 'draft' | 'open' | 'paid' | 'void' | 'uncollectible'
+
+export interface Subscription {
+  id: number
+  tenant_id: string
+  plan_version_id: number
+  status: SubscriptionStatus
+  trial_starts_at: string | null
+  trial_ends_at: string | null
+  current_period_start: string
+  current_period_end: string
+  canceled_at: string | null
+  cancellation_reason: string | null
+  created_at: string
+  updated_at: string
+  plan_version?: PlanVersion & { family?: PlanFamily }
+  invoices?: SubscriptionInvoice[]
+}
+
+export interface SubscriptionInvoice {
+  id: number
+  subscription_id: number
+  tenant_id: string
+  invoice_number: string
+  billing_interval: 'monthly' | 'yearly'
+  currency: string
+  subtotal: number   // cents
+  tax: number        // cents
+  total: number      // cents
+  status: InvoiceStatus
+  due_date: string | null
+  paid_at: string | null
+  period_start: string
+  period_end: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+  subscription?: Subscription
 }
