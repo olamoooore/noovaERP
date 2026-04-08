@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Icon } from '@iconify/react';
-import { storefrontRoutes, storefrontPath } from '@/storefront/lib/paths';
+import { storefrontRoutes } from '@/storefront/lib/paths';
 import { STOREFRONT_LOGO_URL } from '@/storefront/lib/assets';
 
 const socialLinks = [
@@ -20,23 +20,23 @@ export const Footer = () => {
             <h4 className="font-medium text-foreground mb-6">Shop</h4>
             <ul className="space-y-3">
               <li>
-                <Link to={`${storefrontRoutes.shop}?type=Album`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
-                  Albums
+                <Link to={storefrontRoutes.shop} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                  All Products
                 </Link>
               </li>
               <li>
-                <Link to={`${storefrontRoutes.shop}?type=Lightstick`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
-                  Lightsticks
+                <Link to={`${storefrontRoutes.shop}?sort=newest`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                  New Arrivals
                 </Link>
               </li>
               <li>
-                <Link to={`${storefrontRoutes.shop}?type=Merchandise`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
-                  Merchandise
+                <Link to={`${storefrontRoutes.shop}?search=pre-order`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                  Pre-Orders
                 </Link>
               </li>
               <li>
-                <Link to={`${storefrontRoutes.shop}?type=Photocard`} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
-                  Photocards
+                <Link to={storefrontRoutes.events} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                  Events
                 </Link>
               </li>
             </ul>
@@ -52,17 +52,17 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to={storefrontPath('/shipping')} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                <Link to={storefrontRoutes.shipping} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
                   Order &amp; Shipping
                 </Link>
               </li>
               <li>
-                <Link to={storefrontPath('/returns')} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                <Link to={storefrontRoutes.returns} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
                   Returns
                 </Link>
               </li>
               <li>
-                <Link to={storefrontPath('/faq')} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                <Link to={storefrontRoutes.faq} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
                   FAQ
                 </Link>
               </li>
@@ -74,7 +74,7 @@ export const Footer = () => {
             <h4 className="font-medium text-foreground mb-6">Company</h4>
             <ul className="space-y-3">
               <li>
-                <Link to={storefrontPath('/about')} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                <Link to={storefrontRoutes.about} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
                   About Us
                 </Link>
               </li>
@@ -84,7 +84,7 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to={storefrontPath('/contact')} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
+                <Link to={storefrontRoutes.contact} className="text-sm text-muted-foreground hover:text-primary transition-colors block">
                   Contact Us
                 </Link>
               </li>

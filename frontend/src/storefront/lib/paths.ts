@@ -24,6 +24,10 @@ export const storefrontRoutes = {
   account: `${STOREFRONT_BASE}/account`,
   login: `${STOREFRONT_BASE}/login`,
   faq: `${STOREFRONT_BASE}/faq`,
+  shipping: `${STOREFRONT_BASE}/shipping`,
+  returns: `${STOREFRONT_BASE}/returns`,
+  about: `${STOREFRONT_BASE}/about`,
+  contact: `${STOREFRONT_BASE}/contact`,
 } as const;
 
 /**
