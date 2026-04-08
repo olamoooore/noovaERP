@@ -92,6 +92,14 @@ class ChatbotService
             // Save user message
             $this->saveMessage($conversation, 'user', $userMessage);
             
+            // Handle simple greetings instantly (don't block server waiting for Llama)
+            if ($this->isGreeting($userMessage)) {
+                $greeting = "Hello! How can I assist you today? I can help with orders, invoices, loyalty points, and products.";
+                $this->saveMessage($conversation, 'assistant', $greeting);
+                DB::commit();
+                return $greeting;
+            }
+            
             // Try to use AI model
             try {
                 // Get conversation history
@@ -177,6 +185,22 @@ class ChatbotService
         }
     }
     
+    /**
+     * Check if message is a simple greeting (hi, hello, hey, etc.)
+     * These don't need Llama and would block the single-threaded dev server.
+     */
+    protected function isGreeting(string $message): bool
+    {
+        $message = strtolower(trim($message));
+        $greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'test', 'testing'];
+        foreach ($greetings as $greeting) {
+            if (preg_match('/^\s*' . preg_quote($greeting, '/') . '[!.\s]*$/i', $message)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Check if question is simple and doesn't need ERP data
      */
