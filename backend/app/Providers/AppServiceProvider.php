@@ -57,5 +57,27 @@ class AppServiceProvider extends ServiceProvider
         } catch (\Exception $e) {
             // Fails silently if DB/Schema checks fail during early boot
         }
+
+        // Disable SSL certificate verification for SMTP (self-signed mail server cert)
+        // This runs for both HTTP requests and queue workers
+        $this->app->afterResolving('mail.manager', function ($manager) {
+            try {
+                $transport = $manager->mailer('smtp')->getSymfonyTransport();
+                if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
+                    $stream = $transport->getStream();
+                    if ($stream instanceof \Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream) {
+                        $stream->setStreamOptions([
+                            'ssl' => [
+                                'verify_peer' => false,
+                                'verify_peer_name' => false,
+                                'allow_self_signed' => true,
+                            ],
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                // Fails silently if transport is not SMTP
+            }
+        });
     }
 }
