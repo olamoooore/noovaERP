@@ -32,7 +32,12 @@ Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaFor
 });
 
 // Superadmin Control Plane routes
-Route::prefix('v1/admin')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
+// SubstituteBindings is added AFTER EnsurePublicSchemaForAuth so that
+// route-model-binding queries run against the public schema, not a tenant schema.
+Route::prefix('v1/admin')->middleware([
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+])->group(function () {
     require __DIR__.'/admin.php';
 });
 
