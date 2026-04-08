@@ -27,6 +27,7 @@ Route::middleware(['auth:sanctum', 'feature:ai'])->prefix('ai')->group(function 
     
     // Chatbot Endpoints
     Route::post('/chat', [ChatbotController::class, 'sendMessage']);
+    Route::get('/conversations/{id}/poll', [ChatbotController::class, 'pollMessage']);
     Route::get('/conversations', [ChatbotController::class, 'getConversations']);
     Route::get('/conversations/{id}', [ChatbotController::class, 'getConversation']);
     Route::post('/conversations/{id}/close', [ChatbotController::class, 'closeConversation']);

@@ -446,13 +446,6 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     setIsLoading(true)
 
     try {
-      console.log('Sending message to AI:', {
-        customer_id: customerId,
-        message: userMessage,
-        channel,
-        conversation_id: conversationId,
-      })
-      
       const response = await api.post('/ai/chat', {
         customer_id: customerId,
         message: userMessage,
@@ -460,15 +453,62 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         conversation_id: conversationId,
       })
 
-      console.log('AI response:', response.data)
-
       if (response.data.success) {
         // Update conversation ID
+        const convId = response.data.conversation_id
         if (!conversationId) {
-          setConversationId(response.data.conversation_id)
+          setConversationId(convId)
         }
 
-        // Add AI response
+        // Check if response is being processed asynchronously
+        if (response.data.processing) {
+          // Show typing indicator and poll for result
+          const thinkingId = Date.now() + Math.random()
+          const thinkingMessage: Message = {
+            id: thinkingId,
+            role: 'assistant',
+            content: '🤔 Thinking...',
+            created_at: new Date().toISOString(),
+          }
+          setMessages(prev => [...prev, thinkingMessage])
+          
+          // Poll for the response
+          const pollForResponse = async () => {
+            const maxAttempts = 60 // ~2 minutes
+            for (let i = 0; i < maxAttempts; i++) {
+              await new Promise(resolve => setTimeout(resolve, 2000))
+              try {
+                const pollResp = await api.get(`/ai/conversations/${convId}/poll`)
+                if (pollResp.data.success && !pollResp.data.processing) {
+                  // Replace thinking message with actual response
+                  setMessages(prev => prev.map(m => 
+                    m.id === thinkingId ? {
+                      ...m,
+                      content: pollResp.data.message,
+                      common_questions: pollResp.data.common_questions,
+                      quick_options: pollResp.data.quick_options,
+                      show_buttons: pollResp.data.show_buttons,
+                    } : m
+                  ))
+                  return
+                }
+              } catch {
+                // Polling failed, keep trying
+              }
+            }
+            // Timeout - update thinking message
+            setMessages(prev => prev.map(m =>
+              m.id === thinkingId ? {
+                ...m,
+                content: 'Sorry, the AI is taking too long to respond. Please try again or select one of the options below.',
+              } : m
+            ))
+          }
+          pollForResponse().finally(() => setIsLoading(false))
+          return // Don't setIsLoading(false) yet - polling handles it
+        }
+
+        // Immediate response (greetings, button presses)
         const aiMessage: Message = {
           id: Date.now() + Math.random(),
           role: 'assistant',

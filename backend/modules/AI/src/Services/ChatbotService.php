@@ -100,80 +100,22 @@ class ChatbotService
                 return $greeting;
             }
             
-            // Try to use AI model
-            try {
-                // Get conversation history
-                $messages = $this->getConversationHistory($conversation);
-                
-                // Add current message
-                $messages[] = [
-                    'role' => 'user',
-                    'content' => $userMessage,
-                ];
-                
-                // Get functions filtered by active module
-                $functions = $this->getModuleFunctions($conversation);
-                
-                // Call Ollama
-                $response = $this->ollama->chat($messages, $functions);
-                
-                // Handle function call
-                if ($response['function_call']) {
-                    $assistantMessage = $this->handleFunctionCall(
-                        $conversation,
-                        $messages,
-                        $response
-                    );
-                } else {
-                    // Check if AI mentioned a function call in text (3B model fallback)
-                    $extractedCall = $this->extractFunctionCallFromText($response['content']);
-                    if ($extractedCall) {
-                        // Create proper function call structure
-                        $response['function_call'] = [
-                            'id' => 'call_' . uniqid(),
-                            'type' => 'function',
-                            'function' => $extractedCall,
-                        ];
-                        $assistantMessage = $this->handleFunctionCall(
-                            $conversation,
-                            $messages,
-                            $response
-                        );
-                    } else {
-                        $assistantMessage = $response['content'];
-                    }
-                }
-                
-                // Clean up response (remove JSON artifacts)
-                $assistantMessage = $this->cleanResponse($assistantMessage);
-                
-                // Save response
-                $this->saveMessage(
-                    $conversation,
-                    'assistant',
-                    $assistantMessage,
-                    ['tokens' => $response['tokens']]
-                );
-                
-                DB::commit();
-                return $assistantMessage;
-                
-            } catch (\Exception $ollamaError) {
-                // Ollama failed - enable fallback mode
-                Log::warning('Ollama unavailable, enabling fallback mode', [
-                    'error' => $ollamaError->getMessage(),
-                ]);
-                
-                $this->enableFallbackMode();
-                
-                // Return fallback message
-                $fallbackMessage = "I'm having trouble understanding complex questions right now. " .
-                                 "Please select one of the options below to help you:";
-                
-                $this->saveMessage($conversation, 'assistant', $fallbackMessage);
-                DB::commit();
-                return $fallbackMessage;
-            }
+            // Dispatch to queue for async processing (prevents blocking the server)
+            $pendingMessage = $this->saveMessage($conversation, 'assistant', null);
+            DB::commit();
+            
+            // Get tenant ID for the job
+            $tenantId = DB::selectOne("SHOW search_path")->search_path ?? 'public';
+            // Extract first schema (tenant) from search_path
+            $tenantId = trim(explode(',', str_replace('"', '', $tenantId))[0]);
+            
+            \Modules\AI\Jobs\ProcessAIMessage::dispatch(
+                $conversation->id,
+                $pendingMessage->id,
+                $tenantId
+            );
+            
+            return '__PROCESSING__';
             
         } catch (\Exception $e) {
             DB::rollBack();
@@ -622,8 +564,8 @@ class ChatbotService
         string $role,
         ?string $content,
         array $extra = []
-    ): void {
-        AIMessage::create([
+    ): AIMessage {
+        return AIMessage::create([
             'conversation_id' => $conversation->id,
             'role' => $role,
             'content' => $content,

@@ -89,10 +89,19 @@ class ChatbotController extends Controller
             $responseData = [
                 'success' => true,
                 'conversation_id' => $conversation->id,
-                'message' => $response,
                 'timestamp' => now()->toIso8601String(),
                 'fallback_mode' => $this->chatbotService->shouldUseFallbackMode(),
             ];
+            
+            // Check if response is being processed asynchronously
+            if ($response === '__PROCESSING__') {
+                $responseData['processing'] = true;
+                $responseData['message'] = null;
+                return response()->json($responseData);
+            }
+            
+            $responseData['message'] = $response;
+            $responseData['processing'] = false;
             
             // Add quick options or common questions based on mode
             $activeModule = $conversation->active_module ?? 'general';
@@ -110,12 +119,6 @@ class ChatbotController extends Controller
                 $responseData['show_buttons'] = true;
             }
             
-            Log::info('ChatbotController - Response data', [
-                'has_quick_options' => isset($responseData['quick_options']),
-                'has_common_questions' => isset($responseData['common_questions']),
-                'fallback_mode' => $responseData['fallback_mode'],
-            ]);
-            
             return response()->json($responseData);
             
         } catch (\Exception $e) {
@@ -127,6 +130,66 @@ class ChatbotController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to process message. Please try again.',
+            ], 500);
+        }
+    }
+    
+    /**
+     * Poll for the latest assistant message in a conversation
+     * Used when messages are processed asynchronously via queue
+     */
+    public function pollMessage(int $conversationId): JsonResponse
+    {
+        try {
+            $conversation = AIConversation::findOrFail($conversationId);
+            
+            // Get the latest assistant message
+            $lastMessage = $conversation->messages()
+                ->where('role', 'assistant')
+                ->orderBy('id', 'desc')
+                ->first();
+            
+            if (!$lastMessage) {
+                return response()->json([
+                    'success' => true,
+                    'processing' => true,
+                    'message' => null,
+                ]);
+            }
+            
+            // If content is null, still processing
+            if ($lastMessage->content === null) {
+                return response()->json([
+                    'success' => true,
+                    'processing' => true,
+                    'message' => null,
+                ]);
+            }
+            
+            // Message is ready
+            $responseData = [
+                'success' => true,
+                'processing' => false,
+                'message' => $lastMessage->content,
+                'timestamp' => $lastMessage->created_at->toIso8601String(),
+            ];
+            
+            // Add common questions for the active module
+            $activeModule = $conversation->active_module ?? 'general';
+            if ($activeModule !== 'general') {
+                $responseData['common_questions'] = $this->chatbotService->getCommonQuestions($conversation);
+                $responseData['show_buttons'] = true;
+            } else {
+                $responseData['quick_options'] = $this->chatbotService->getQuickOptions();
+            }
+            
+            return response()->json($responseData);
+            
+        } catch (\Exception $e) {
+            Log::error('Poll message failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to check message status',
             ], 500);
         }
     }

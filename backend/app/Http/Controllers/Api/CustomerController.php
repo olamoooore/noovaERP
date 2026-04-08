@@ -727,12 +727,9 @@ class CustomerController extends Controller
         }
 
         try {
-            // Send the email using Laravel's Mail facade
-            \Illuminate\Support\Facades\Mail::send([], [], function ($message) use ($customer, $validated) {
-                $message->to($customer->email, $customer->name)
-                    ->subject($validated['subject'])
-                    ->html(nl2br($validated['body']));
-            });
+            // Queue the email so it doesn't block the HTTP request
+            \Illuminate\Support\Facades\Mail::to($customer->email, $customer->name)
+                ->queue(new \App\Mail\CustomerEmail($validated['subject'], $validated['body']));
 
             // Log the activity
             $customer->update([
@@ -740,10 +737,10 @@ class CustomerController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Email sent successfully',
+                'message' => 'Email queued successfully',
             ]);
         } catch (\Exception $e) {
-            \Log::error('Failed to send customer email', [
+            \Log::error('Failed to queue customer email', [
                 'customer_id' => $customer->id,
                 'error' => $e->getMessage(),
             ]);
