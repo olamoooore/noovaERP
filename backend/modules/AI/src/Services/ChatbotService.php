@@ -92,14 +92,6 @@ class ChatbotService
             // Save user message
             $this->saveMessage($conversation, 'user', $userMessage);
             
-            // Check if this is a simple question that doesn't need ERP data
-            if ($this->isSimpleQuestion($userMessage)) {
-                $assistantMessage = $this->handleSimpleQuestion($userMessage);
-                $this->saveMessage($conversation, 'assistant', $assistantMessage);
-                DB::commit();
-                return $assistantMessage;
-            }
-            
             // Try to use AI model
             try {
                 // Get conversation history
@@ -257,7 +249,7 @@ class ChatbotService
         $aiPatterns = ['model', 'ai', 'llama', 'gpt', 'who are you', 'what are you'];
         foreach ($aiPatterns as $pattern) {
             if (str_contains($message, $pattern)) {
-                return "I'm powered by Llama 3.2 3B, running locally on your system. How can I help with your orders or loyalty points?";
+                return "I'm powered by " . config('ai.ollama.model', 'Llama') . ", running locally on your system. How can I help with your orders or loyalty points?";
             }
         }
         
