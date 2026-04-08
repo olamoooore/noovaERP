@@ -188,6 +188,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:bill-list-bold-duotone',
       },
       {
+        title: 'Vendors',
+        href: '/accounting/vendors',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+      },
+      {
         title: 'Vendor Bills',
         href: '/accounting/vendors/bills',
         icon: 'solar:clipboard-list-bold-duotone',
