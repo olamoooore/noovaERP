@@ -198,6 +198,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:clipboard-list-bold-duotone',
       },
       {
+        title: 'Bank Accounts',
+        href: '/accounting/configuration/bank-accounts',
+        icon: 'solar:card-bold-duotone',
+      },
+      {
         title: 'Bank Reconciliation',
         href: '/accounting/core/reconciliation',
         icon: 'solar:safe-2-bold-duotone',
