@@ -159,22 +159,25 @@ class TenantOperationService
             ]);
         }
 
+        $newVersion   = PlanVersion::findOrFail($planVersionId);
         $subscription = Subscription::where('tenant_id', $tenantId)->latest()->first();
 
-        if (!$subscription) {
-            throw ValidationException::withMessages([
-                'operation' => 'Tenant has no active subscription to migrate.',
-            ]);
+        if ($subscription) {
+            // Tenant already has a subscription — migrate it to the new plan
+            $this->subscriptionService->migratePlan(
+                subscription: $subscription,
+                newVersion: $newVersion,
+                billingInterval: $billingInterval,
+                reason: $reason,
+            );
+        } else {
+            // Tenant is on a legacy trial with no subscription record — create one
+            $this->subscriptionService->createSubscription(
+                tenantId: $tenantId,
+                planVersionId: (int) $planVersionId,
+                billingInterval: $billingInterval,
+            );
         }
-
-        $newVersion = PlanVersion::findOrFail($planVersionId);
-
-        $this->subscriptionService->migratePlan(
-            subscription: $subscription,
-            newVersion: $newVersion,
-            billingInterval: $billingInterval,
-            reason: $reason,
-        );
 
         return TenantOperation::create([
             'tenant_id'     => $tenantId,

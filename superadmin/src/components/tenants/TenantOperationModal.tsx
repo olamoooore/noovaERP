@@ -71,8 +71,17 @@ export default function TenantOperationModal({
       onClose()
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Operation failed. Please try again.'
-      setErrorMsg(msg)
+      // Extract Laravel validation message from 422 response if available
+      const axiosErr = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
+      const apiErrors = axiosErr?.response?.data?.errors
+      const apiMsg    = axiosErr?.response?.data?.message
+      if (apiErrors) {
+        setErrorMsg(Object.values(apiErrors).flat().join(' '))
+      } else if (apiMsg) {
+        setErrorMsg(apiMsg)
+      } else {
+        setErrorMsg(err instanceof Error ? err.message : 'Operation failed. Please try again.')
+      }
     },
   })
 
