@@ -33,5 +33,13 @@ module.exports = {
       watch: false,
       autorestart: true,
     },
+    {
+      name: 'noovaerp-ollama',
+      script: 'ollama',
+      args: 'serve',
+      interpreter: 'none',
+      watch: false,
+      autorestart: true,
+    },
   ],
 };
