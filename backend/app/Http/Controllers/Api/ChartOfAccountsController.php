@@ -175,11 +175,21 @@ class ChartOfAccountsController extends Controller
         try {
             $account = ChartOfAccount::findOrFail($id);
 
-            // Prevent editing system accounts
+            // System accounts: allow editing name/description/subtype/is_active but protect code & type
             if ($account->is_system) {
+                $validated = $request->validate([
+                    'name' => 'required|string|max:255',
+                    'subtype' => 'nullable|string|max:50',
+                    'description' => 'nullable|string',
+                    'is_active' => 'boolean',
+                ]);
+
+                $account->update($validated);
+
                 return response()->json([
-                    'message' => 'Cannot edit system accounts'
-                ], 403);
+                    'data' => $account,
+                    'message' => 'System account updated successfully'
+                ]);
             }
 
             $validated = $request->validate([
