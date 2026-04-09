@@ -17,8 +17,10 @@ import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, cn } from '@/lib/utils'
+import { formatCurrency, cn, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
+
+const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
 
 const formatLegacyAddress = (address: string) => {
   if (!address) return null
@@ -269,8 +271,12 @@ export function CustomerDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
       toast({ title: 'Customer updated successfully' })
     },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Failed to update customer' })
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update customer',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 
@@ -400,8 +406,8 @@ export function CustomerDetailsPage() {
         name: customer.name,
         display_name: customer.display_name,
         email: customer.email,
-        phone: customer.phone,
-        mobile: customer.mobile,
+        phone: numericPhoneValue(customer.phone || ''),
+        mobile: numericPhoneValue(customer.mobile || ''),
         company: customer.company,
         tax_number: customer.tax_number,
         website: customer.website,
@@ -1532,14 +1538,18 @@ export function CustomerDetailsPage() {
                 <Label>Phone</Label>
                 <Input 
                   value={contactForm.phone || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                  onChange={(e) => setContactForm({ ...contactForm, phone: numericPhoneValue(e.target.value) })}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Mobile</Label>
                 <Input 
                   value={contactForm.mobile || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, mobile: e.target.value })}
+                  onChange={(e) => setContactForm({ ...contactForm, mobile: numericPhoneValue(e.target.value) })}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
             </div>
@@ -1727,8 +1737,10 @@ export function CustomerDetailsPage() {
                 <Input
                   id="edit-phone"
                   value={editForm.phone || ''}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  onChange={(e) => setEditForm({ ...editForm, phone: numericPhoneValue(e.target.value) })}
                   placeholder="Phone number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
             </div>
@@ -1739,8 +1751,10 @@ export function CustomerDetailsPage() {
                 <Input
                   id="edit-mobile"
                   value={editForm.mobile || ''}
-                  onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                  onChange={(e) => setEditForm({ ...editForm, mobile: numericPhoneValue(e.target.value) })}
                   placeholder="Mobile number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
               <div className="space-y-2">

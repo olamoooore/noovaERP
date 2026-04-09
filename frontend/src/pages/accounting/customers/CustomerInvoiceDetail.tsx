@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 
 export const CustomerInvoiceDetail: React.FC = () => {
@@ -325,10 +325,28 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {line.product?.name || '-'}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          {line.product?.image ? (
+                            <img
+                              src={resolveImageUrl(line.product.image)}
+                              alt={line.product?.name || line.description || 'Line item'}
+                              className="h-12 w-12 rounded object-cover border bg-background"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded border bg-background flex items-center justify-center text-muted-foreground">
+                              <Icon icon="solar:box-bold-duotone" className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{line.product?.name || line.description || '-'}</p>
+                            {line.product?.name && line.description && line.product.name !== line.description && (
+                              <p className="text-xs text-muted-foreground truncate">{line.description}</p>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>{line.description || '-'}</TableCell>
+                      <TableCell>{line.description || line.product?.name || '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>

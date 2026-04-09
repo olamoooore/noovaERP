@@ -36,8 +36,12 @@
   }
 }
 
-/* Hide Stripe Developer Tools floating button in test mode */
+/* Hide Stripe Developer Tools overlay injected in Stripe test mode */
+[aria-label="Open Stripe Developer Tools"],
 [class*="__Easel"],
-[class*="__FloatingActionButton"] {
+[class*="__FloatingActionButton"],
+[class*="Easel-contentWrapper"] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -59,9 +60,7 @@ export function RefundDialog({
       }, 2000);
     },
     onError: (err: any) => {
-      setError(
-        err.response?.data?.message || 'Failed to process refund. Please try again.'
-      );
+      setError(getApiErrorMessage(err, 'Failed to process refund. Please try again.'));
       setSuccess(false);
     },
   });

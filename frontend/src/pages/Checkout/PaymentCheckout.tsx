@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
-import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { loadAceStripe } from '@/lib/stripe'
 
 interface PaymentData {
   clientSecret: string
@@ -238,7 +239,7 @@ export function PaymentCheckout() {
           })
 
           // Load Stripe with publishable key
-          setStripePromise(loadStripe(publishable_key))
+          setStripePromise(loadAceStripe(publishable_key))
           setLoading(false)
         } else {
           setError(`Unsupported payment gateway: ${gatewayInfo?.gateway_name || 'unknown'}`)

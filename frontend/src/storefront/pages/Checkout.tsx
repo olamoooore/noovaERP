@@ -32,7 +32,7 @@ import {
   LoyaltyBalance,
   calculateLoyaltyDiscount,
 } from '@/storefront/lib/api';
-import { loadStripe, Stripe } from '@stripe/stripe-js';
+import { Stripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
@@ -40,6 +40,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { cn } from '@/lib/utils';
+import { loadAceStripe } from '@/lib/stripe';
 import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -433,7 +434,7 @@ const Checkout = () => {
 
       if (pi?.client_secret && pi?.publishable_key) {
         // Stripe → show Elements
-        setStripePromise(loadStripe(pi.publishable_key));
+        setStripePromise(loadAceStripe(pi.publishable_key));
         setStep('stripe-payment');
       } else if (pi?.payment_url) {
         // HitPay / PayPal → redirect

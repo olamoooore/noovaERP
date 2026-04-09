@@ -10,9 +10,12 @@ use App\Models\CustomerAddress;
 use App\Models\CustomerLoyaltyProgram;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
+    private const NUMERIC_PHONE_RULE = 'nullable|regex:/^[0-9]+$/|max:50';
+
     public function index(Request $request): JsonResponse
     {
         $query = Customer::withCount(['invoices'])
@@ -88,8 +91,8 @@ class CustomerController extends Controller
             'type' => 'in:individual,company',
             'name' => 'required|string|max:255',
             'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
+            'phone' => self::NUMERIC_PHONE_RULE,
+            'mobile' => self::NUMERIC_PHONE_RULE,
             'company' => 'nullable|string|max:255',
             'tax_number' => 'nullable|string|max:50',
             'company_registration_number' => 'nullable|string|max:100',
@@ -142,11 +145,14 @@ class CustomerController extends Controller
             'contacts.*.name' => 'required|string|max:255',
             'contacts.*.job_title' => 'nullable|string|max:100',
             'contacts.*.email' => 'nullable|email',
-            'contacts.*.phone' => 'nullable|string|max:50',
-            'contacts.*.mobile' => 'nullable|string|max:50',
+            'contacts.*.phone' => self::NUMERIC_PHONE_RULE,
+            'contacts.*.mobile' => self::NUMERIC_PHONE_RULE,
             'contacts.*.is_primary' => 'boolean',
             'contacts.*.notes' => 'nullable|string',
         ]);
+
+        $validated = $this->normalizeCustomerIdentityFields($validated);
+        $this->ensureUniqueCustomerIdentity($validated);
 
         // Extract relations
         $categoryIds = $validated['category_ids'] ?? [];
@@ -215,8 +221,8 @@ class CustomerController extends Controller
             'type' => 'in:individual,company',
             'name' => 'string|max:255',
             'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
+            'phone' => self::NUMERIC_PHONE_RULE,
+            'mobile' => self::NUMERIC_PHONE_RULE,
             'company' => 'nullable|string|max:255',
             'tax_number' => 'nullable|string|max:50',
             'company_registration_number' => 'nullable|string|max:100',
@@ -252,6 +258,9 @@ class CustomerController extends Controller
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:customer_categories,id',
         ]);
+
+        $validated = $this->normalizeCustomerIdentityFields($validated);
+        $this->ensureUniqueCustomerIdentity($validated, $customer);
 
         // Extract category IDs
         $categoryIds = $validated['category_ids'] ?? null;
@@ -346,8 +355,8 @@ class CustomerController extends Controller
             'name' => 'required|string|max:255',
             'job_title' => 'nullable|string|max:100',
             'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
+            'phone' => self::NUMERIC_PHONE_RULE,
+            'mobile' => self::NUMERIC_PHONE_RULE,
             'is_primary' => 'boolean',
             'notes' => 'nullable|string',
         ]);
@@ -366,8 +375,8 @@ class CustomerController extends Controller
             'name' => 'string|max:255',
             'job_title' => 'nullable|string|max:100',
             'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
+            'phone' => self::NUMERIC_PHONE_RULE,
+            'mobile' => self::NUMERIC_PHONE_RULE,
             'is_primary' => 'boolean',
             'notes' => 'nullable|string',
         ]);
@@ -456,6 +465,83 @@ class CustomerController extends Controller
             ->get();
 
         return response()->json(['categories' => $categories]);
+    }
+
+    private function normalizeCustomerIdentityFields(array $validated): array
+    {
+        if (array_key_exists('email', $validated)) {
+            $validated['email'] = $this->normalizeEmail($validated['email']);
+        }
+
+        foreach (['phone', 'mobile'] as $field) {
+            if (array_key_exists($field, $validated)) {
+                $validated[$field] = $this->normalizePhone($validated[$field]);
+            }
+        }
+
+        return $validated;
+    }
+
+    private function ensureUniqueCustomerIdentity(array $validated, ?Customer $ignoreCustomer = null): void
+    {
+        $messages = [];
+
+        $email = $validated['email'] ?? null;
+        if ($email) {
+            $duplicateEmail = Customer::query()
+                ->when($ignoreCustomer, fn ($query) => $query->whereKeyNot($ignoreCustomer->id))
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->first();
+
+            if ($duplicateEmail) {
+                $messages['email'][] = 'A customer with this email address already exists.';
+            }
+        }
+
+        $incomingPhones = collect(['phone', 'mobile'])
+            ->filter(fn (string $field) => !empty($validated[$field]))
+            ->mapWithKeys(fn (string $field) => [$field => $validated[$field]]);
+
+        if ($incomingPhones->isNotEmpty()) {
+            $candidates = Customer::query()
+                ->select(['id', 'phone', 'mobile'])
+                ->when($ignoreCustomer, fn ($query) => $query->whereKeyNot($ignoreCustomer->id))
+                ->where(function ($query) {
+                    $query->whereNotNull('phone')->orWhereNotNull('mobile');
+                })
+                ->get();
+
+            foreach ($incomingPhones as $field => $phone) {
+                $duplicatePhone = $candidates->first(function (Customer $candidate) use ($phone) {
+                    return $phone === $this->normalizePhone($candidate->phone)
+                        || $phone === $this->normalizePhone($candidate->mobile);
+                });
+
+                if ($duplicatePhone) {
+                    $messages[$field][] = 'A customer with this phone number already exists.';
+                }
+            }
+        }
+
+        if (!empty($messages)) {
+            throw ValidationException::withMessages($messages);
+        }
+    }
+
+    private function normalizeEmail(?string $value): ?string
+    {
+        $normalized = is_string($value) ? mb_strtolower(trim($value)) : null;
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function normalizePhone(?string $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $normalized = preg_replace('/\D+/', '', $value);
+        return $normalized !== '' ? $normalized : null;
     }
 
     public function storeCategory(Request $request): JsonResponse

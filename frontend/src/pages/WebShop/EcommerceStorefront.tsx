@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
+import { loadAceStripe } from '@/lib/stripe'
 
 // ============================================================
 // Types
@@ -925,7 +926,7 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
         localStorage.setItem('ace_guest_token', data.guest_token)
       }
 
-      setStripePromise(loadStripe(data.payment_intent?.publishable_key || data.publishable_key))
+      setStripePromise(loadAceStripe(data.payment_intent?.publishable_key || data.publishable_key))
       setStep('payment')
     } catch (err: any) {
       toast({

@@ -26,13 +26,79 @@ import {
   SlideOverHeader,
   SlideOverTitle,
 } from '@/components/ui/slide-over'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } from '@/lib/utils'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { useToast } from '@/hooks/use-toast'
 
 interface POSOrderDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+interface PosOrderDetail {
+  id: number
+  order_number: string
+  status: string
+  created_at: string
+  paid_at?: string | null
+  subtotal: number
+  tax_amount: number
+  discount_amount: number
+  loyalty_discount?: number
+  total: number
+  notes?: string | null
+  receipt_number?: string | null
+  cashier_name?: string | null
+  currency?: string | null
+  customer_id?: number | null
+  is_return?: boolean
+  customer?: {
+    name: string
+    email?: string
+    phone?: string
+  }
+  terminal?: {
+    name?: string
+  }
+  session?: {
+    name?: string
+  }
+  created_by?: number | null
+  createdBy?: {
+    name?: string
+  }
+  payments?: {
+    id: number
+    method?: string | null
+    amount: number
+    reference?: string | null
+    notes?: string | null
+    payment_method?: {
+      name?: string | null
+    }
+    received_by?: number | null
+    receivedBy?: {
+      name?: string | null
+    }
+  }[]
+  items?: {
+    id: number
+    name: string
+    sku?: string | null
+    quantity: number
+    unit_price: number
+    tax_rate?: number
+    tax_amount?: number
+    line_total: number
+    product?: {
+      name?: string
+      image?: string | null
+    }
+    variant?: {
+      name?: string
+      image?: string | null
+    }
+  }[]
 }
 
 interface Invoice {
@@ -59,6 +125,10 @@ interface Invoice {
     quantity: number
     unit_price: number
     line_total: number
+    product?: {
+      name?: string
+      image?: string | null
+    }
   }[]
 }
 
@@ -66,9 +136,10 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   const { toast } = useToast()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
-  const [loadingInvoice, setLoadingInvoice] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<PosOrderDetail | null>(null)
+  const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false)
   
   // Store actions
   const setCart = usePosSessionStore((s) => s.setCart)
@@ -170,36 +241,39 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
       // Actual implementation would invoke window.print() on a receipt template or call backend
   }
 
-  const handleViewInvoice = async (order: any) => {
-      setLoadingInvoice(true)
+  const handleViewOrder = async (order: any) => {
+      setLoadingOrderDetails(true)
       try {
-        const response = await api.get(`/pos/orders/${order.id}/invoice`)
-        const invoice = response.data.data
-        setSelectedInvoice(invoice)
-        setInvoiceModalOpen(true)
+        const response = await api.get(`/pos/orders/${order.id}`)
+        setSelectedOrder(response.data)
+        setOrderModalOpen(true)
       } catch (error: any) {
         toast({ 
-          title: "No Invoice Found", 
-          description: "No invoice is associated with this order.", 
+          title: "Unable to Load Order", 
+          description: getApiErrorMessage(error, 'Could not load order details.'), 
           variant: "destructive" 
         })
       } finally {
-        setLoadingInvoice(false)
+        setLoadingOrderDetails(false)
       }
   }
 
   const handleDownloadInvoice = async () => {
-      if (!selectedInvoice) return
+      if (!selectedOrder) return
       
       try {
-        const response = await api.get(`/invoices/${selectedInvoice.id}/pdf`, {
+        setDownloadingInvoice(true)
+        const invoiceResponse = await api.get(`/pos/orders/${selectedOrder.id}/invoice`)
+        const invoice = invoiceResponse.data.data as Invoice
+
+        const response = await api.get(`/invoices/${invoice.id}/pdf`, {
           responseType: 'blob'
         })
         
         const url = window.URL.createObjectURL(new Blob([response.data]))
         const link = document.createElement('a')
         link.href = url
-        link.setAttribute('download', `invoice-${selectedInvoice.invoice_number}.pdf`)
+        link.setAttribute('download', `invoice-${invoice.invoice_number}.pdf`)
         document.body.appendChild(link)
         link.click()
         link.parentNode?.removeChild(link)
@@ -216,6 +290,8 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
           description: "Failed to download invoice.", 
           variant: "destructive" 
         })
+      } finally {
+        setDownloadingInvoice(false)
       }
   }
 
@@ -258,6 +334,27 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
       case 'cancelled': return <Badge variant="destructive">Cancelled</Badge>
       default: return <Badge variant="outline">{status}</Badge>
     }
+  }
+
+  const formatPaymentLabel = (payment: NonNullable<PosOrderDetail['payments']>[number]) => {
+    const source = payment.payment_method?.name || payment.method || 'Unknown'
+    return source
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  const getPaymentSummary = (order: PosOrderDetail | null) => {
+    if (!order?.payments?.length) {
+      return order?.status === 'paid' ? 'Paid' : 'Unpaid'
+    }
+
+    return order.payments.map(formatPaymentLabel).join(', ')
+  }
+
+  const getOrderPaidAmount = (order: PosOrderDetail | null) => {
+    return order?.payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0
   }
 
   return (
@@ -368,10 +465,11 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
                             <Button 
                                 variant="default"
                                 className="flex-1 h-9"
-                                onClick={() => handleViewInvoice(order)}
+                              onClick={() => handleViewOrder(order)}
+                              disabled={loadingOrderDetails}
                             >
-                                <Icon icon="solar:document-bold" className="h-4 w-4 mr-2" />
-                                View Invoice
+                              <Icon icon="solar:eye-bold" className="h-4 w-4 mr-2" />
+                              View Details
                             </Button>
                         </>
                     )}
@@ -402,56 +500,103 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
         </ScrollArea>
       </SlideOverContent>
 
-      {/* Invoice Modal */}
-      <Dialog open={invoiceModalOpen} onOpenChange={setInvoiceModalOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={orderModalOpen} onOpenChange={setOrderModalOpen}>
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>{selectedInvoice?.invoice_number}</span>
-              <Badge className={selectedInvoice?.status === 'paid' ? 'bg-green-500' : ''}>
-                {selectedInvoice?.status}
-              </Badge>
+              <div className="flex items-center gap-3">
+                <span>{selectedOrder?.order_number}</span>
+                {selectedOrder?.is_return ? <Badge variant="outline">Return</Badge> : <Badge variant="outline">POS</Badge>}
+              </div>
+              {selectedOrder && getStatusBadge(selectedOrder.status)}
             </DialogTitle>
           </DialogHeader>
 
-          {selectedInvoice && (
+          {selectedOrder && (
             <div className="space-y-4">
-              {/* Customer Info */}
-              <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="font-medium">{selectedInvoice.customer?.name || 'Walk-in Customer'}</p>
-                {selectedInvoice.customer?.email && (
-                  <p className="text-sm text-muted-foreground">{selectedInvoice.customer.email}</p>
-                )}
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer</p>
+                  <p className="mt-1 font-medium">{selectedOrder.customer?.name || 'Walk-in Customer'}</p>
+                  {selectedOrder.customer?.email && (
+                    <p className="text-sm text-muted-foreground">{selectedOrder.customer.email}</p>
+                  )}
+                  {selectedOrder.customer?.phone && (
+                    <p className="text-sm text-muted-foreground">{selectedOrder.customer.phone}</p>
+                  )}
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Payment Mode</p>
+                  <p className="mt-1 font-medium">{getPaymentSummary(selectedOrder)}</p>
+                  {selectedOrder.payments?.[0]?.reference && (
+                    <p className="text-sm text-muted-foreground">Ref: {selectedOrder.payments[0].reference}</p>
+                  )}
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Cashier</p>
+                  <p className="mt-1 font-medium">{selectedOrder.cashier_name || selectedOrder.createdBy?.name || 'Unknown'}</p>
+                  {selectedOrder.receipt_number && (
+                    <p className="text-sm text-muted-foreground">Receipt: {selectedOrder.receipt_number}</p>
+                  )}
+                </div>
               </div>
 
-              {/* Invoice Details */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                 <div>
-                  <span className="text-muted-foreground">Invoice Date:</span>
-                  <p className="font-medium">{new Date(selectedInvoice.invoice_date).toLocaleDateString()}</p>
+                  <span className="text-muted-foreground">Created</span>
+                  <p className="font-medium">{formatDateTime(selectedOrder.created_at)}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Due Date:</span>
-                  <p className="font-medium">{new Date(selectedInvoice.due_date).toLocaleDateString()}</p>
+                  <span className="text-muted-foreground">Paid At</span>
+                  <p className="font-medium">{formatDateTime(selectedOrder.paid_at)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Terminal</span>
+                  <p className="font-medium">{selectedOrder.terminal?.name || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Session</span>
+                  <p className="font-medium">{selectedOrder.session?.name || '-'}</p>
                 </div>
               </div>
 
               <Separator />
 
-              {/* Line Items */}
               <div>
-                <h4 className="font-medium mb-2">Items</h4>
-                <ScrollArea className="max-h-40">
+                <h4 className="font-medium mb-2">Order Lines</h4>
+                <ScrollArea className="max-h-72">
                   <div className="space-y-2">
-                    {selectedInvoice.lines?.map((line) => (
-                      <div key={line.id} className="flex justify-between text-sm p-2 rounded bg-muted/50">
-                        <div>
-                          <p className="font-medium">{line.description}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {line.quantity} x {formatCurrency(line.unit_price)}
-                          </p>
+                    {selectedOrder.items?.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 text-sm p-3 rounded border bg-muted/30">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {item.variant?.image || item.product?.image ? (
+                            <img
+                              src={resolveImageUrl(item.variant?.image || item.product?.image)}
+                              alt={item.name}
+                              className="h-12 w-12 rounded object-cover border bg-background"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded border bg-background flex items-center justify-center text-muted-foreground">
+                              <Icon icon="solar:box-bold-duotone" className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{item.name}</p>
+                            {item.sku && (
+                              <p className="text-xs text-muted-foreground truncate">SKU: {item.sku}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {item.quantity} x {formatCurrency(Number(item.unit_price))}
+                              {Number(item.tax_amount || 0) > 0 && ` • Tax ${formatCurrency(Number(item.tax_amount || 0))}`}
+                            </p>
+                          </div>
                         </div>
-                        <span className="font-medium">{formatCurrency(line.line_total)}</span>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-muted-foreground">
+                            Qty {item.quantity}
+                          </p>
+                          <span className="font-medium">{formatCurrency(Number(item.line_total))}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -460,58 +605,89 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
 
               <Separator />
 
-              {/* Totals */}
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(selectedInvoice.subtotal)}</span>
+                  <span>{formatCurrency(Number(selectedOrder.subtotal))}</span>
                 </div>
-                {selectedInvoice.tax_amount > 0 && (
+                {Number(selectedOrder.tax_amount) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Tax</span>
-                    <span>{formatCurrency(selectedInvoice.tax_amount)}</span>
+                    <span>{formatCurrency(Number(selectedOrder.tax_amount))}</span>
                   </div>
                 )}
-                {selectedInvoice.discount_amount > 0 && (
+                {Number(selectedOrder.discount_amount) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Discount</span>
-                    <span>-{formatCurrency(selectedInvoice.discount_amount)}</span>
+                    <span>-{formatCurrency(Number(selectedOrder.discount_amount))}</span>
+                  </div>
+                )}
+                {Number(selectedOrder.loyalty_discount || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Loyalty Discount</span>
+                    <span>-{formatCurrency(Number(selectedOrder.loyalty_discount || 0))}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>{formatCurrency(selectedInvoice.total)}</span>
+                  <span>{formatCurrency(Number(selectedOrder.total))}</span>
                 </div>
-                <div className="flex justify-between text-green-600">
-                  <span>Paid</span>
-                  <span>{formatCurrency(selectedInvoice.paid_amount)}</span>
-                </div>
+                {selectedOrder.payments?.length ? (
+                  <div className="rounded-lg border border-green-200 bg-green-50/60 p-3 text-sm">
+                    <div className="mb-2 flex justify-between font-medium text-green-700">
+                      <span>Payments</span>
+                      <span>{formatCurrency(getOrderPaidAmount(selectedOrder))}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {selectedOrder.payments.map((payment) => (
+                        <div key={payment.id} className="flex items-start justify-between gap-3 text-green-900">
+                          <div>
+                            <p className="font-medium">{formatPaymentLabel(payment)}</p>
+                            {payment.reference && (
+                              <p className="text-xs text-green-700/80">Reference: {payment.reference}</p>
+                            )}
+                            {payment.receivedBy?.name && (
+                              <p className="text-xs text-green-700/80">Received by: {payment.receivedBy.name}</p>
+                            )}
+                          </div>
+                          <span className="font-medium">{formatCurrency(Number(payment.amount))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              {/* Notes */}
-              {selectedInvoice.notes && (
+              {selectedOrder.notes && (
                 <>
                   <Separator />
                   <div>
                     <h4 className="font-medium mb-1 text-sm">Notes</h4>
-                    <p className="text-xs text-muted-foreground">{selectedInvoice.notes}</p>
+                    <p className="text-xs text-muted-foreground">{selectedOrder.notes}</p>
                   </div>
                 </>
               )}
 
-              {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <Button 
                   className="flex-1"
                   onClick={handleDownloadInvoice}
+                  disabled={downloadingInvoice}
                 >
-                  <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
-                  Download PDF
+                  <Icon icon="solar:document-bold" className="h-4 w-4 mr-2" />
+                  {downloadingInvoice ? 'Preparing Invoice...' : 'Download Invoice PDF'}
                 </Button>
                 <Button 
                   variant="outline"
-                  onClick={() => setInvoiceModalOpen(false)}
+                  onClick={() => handleGenerateReceipt(selectedOrder)}
+                >
+                  <Icon icon="solar:file-text-bold" className="h-4 w-4 mr-2" />
+                  Receipt PDF
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setOrderModalOpen(false)}
                 >
                   Close
                 </Button>

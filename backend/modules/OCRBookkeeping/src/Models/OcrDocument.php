@@ -2,10 +2,12 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
+use Database\Factories\OcrDocumentFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 use App\Models\Customer;
 use App\Models\JournalEntry;
@@ -81,6 +83,11 @@ class OcrDocument extends Model
         'exchange_rate' => 1.0,
         'retry_count' => 0,
     ];
+
+    protected static function newFactory(): Factory
+    {
+        return OcrDocumentFactory::new();
+    }
 
     /**
      * Boot method to auto-generate UUID

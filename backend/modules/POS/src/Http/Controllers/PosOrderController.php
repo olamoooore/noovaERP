@@ -332,7 +332,17 @@ class PosOrderController extends Controller
     public function show($posOrder)
     {
         $posOrder = PosOrder::findOrFail($posOrder);
-        return response()->json($posOrder->load('items', 'payments', 'journalEntry'));
+        return response()->json($posOrder->load([
+            'customer',
+            'terminal',
+            'session',
+            'createdBy',
+            'items.product',
+            'items.variant',
+            'payments.paymentMethod',
+            'payments.receivedBy',
+            'journalEntry',
+        ]));
     }
 
     public function pay(Request $request, $posOrder, PosPostingService $posting)

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
+import { loadAceStripe } from '@/lib/stripe'
 
 interface StripePaymentDialogProps {
   open: boolean
@@ -200,7 +201,7 @@ export function StripePaymentDialog({
         setClientSecret(client_secret)
         setPublishableKey(publishable_key)
         setCurrency(transaction.currency)
-        setStripePromise(loadStripe(publishable_key))
+        setStripePromise(loadAceStripe(publishable_key))
         setLoading(false)
       } catch (err: any) {
         console.error('Payment initialization error:', err)

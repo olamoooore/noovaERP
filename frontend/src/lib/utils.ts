@@ -136,3 +136,56 @@ export function formatNumber(value: number, decimals: number = 0): string {
     maximumFractionDigits: decimals,
   }).format(value)
 }
+
+export function getApiErrorMessage(error: any, fallback: string = 'An error occurred'): string {
+  const data = error?.response?.data
+
+  if (data?.errors && typeof data.errors === 'object') {
+    const messages = Object.values(data.errors)
+      .flat()
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+    if (messages.length > 0) {
+      return messages.join(', ')
+    }
+  }
+
+  if (typeof data?.error === 'string' && data.error.trim().length > 0) {
+    return data.error
+  }
+
+  if (typeof data?.message === 'string' && data.message.trim().length > 0) {
+    return data.message
+  }
+
+  if (typeof data === 'string' && data.trim().length > 0) {
+    return data
+  }
+
+  if (typeof error?.message === 'string' && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return fallback
+}
+
+export function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) {
+    return ''
+  }
+
+  if (
+    path.startsWith('http://')
+    || path.startsWith('https://')
+    || path.startsWith('data:')
+    || path.startsWith('blob:')
+  ) {
+    return path
+  }
+
+  if (path.startsWith('/storage/')) {
+    return path
+  }
+
+  return `/storage/${path.replace(/^\//, '')}`
+}

@@ -30,7 +30,8 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { formatCurrency } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
+import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } from '@/lib/utils'
 
 interface SalesOrder {
   id: number
@@ -58,12 +59,91 @@ interface SalesOrder {
   delivered_at?: string
 }
 
+interface SalesOrderDetail extends SalesOrder {
+  notes?: string | null
+  email?: string | null
+  phone?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  receipt_number?: string | null
+  cashier_name?: string | null
+  confirmed_at?: string | null
+  shipping_address?: {
+    first_name?: string
+    last_name?: string
+    address?: string
+    city?: string
+    state?: string
+    postal_code?: string
+    country?: string
+    phone?: string
+  } | null
+  customer?: {
+    id?: number
+    code?: string
+    name: string
+    email?: string
+    phone?: string
+    total_orders?: number
+    total_purchases?: number
+  } | null
+  terminal?: {
+    name?: string
+  } | null
+  session?: {
+    name?: string
+  } | null
+  createdBy?: {
+    name?: string
+  } | null
+  payments?: {
+    id: number
+    method?: string | null
+    amount: number
+    reference?: string | null
+    notes?: string | null
+    payment_method?: {
+      name?: string | null
+    }
+    receivedBy?: {
+      name?: string | null
+    } | null
+  }[]
+  items?: {
+    id: number
+    quantity: number
+    unit_price: number
+    tax_amount?: number
+    line_total: number
+    name?: string
+    sku?: string | null
+    product_name?: string
+    product_sku?: string | null
+    product_image?: string | null
+    product?: {
+      name?: string
+      image?: string | null
+    } | null
+    variant?: {
+      name?: string
+      image?: string | null
+    } | null
+  }[]
+  invoice?: {
+    id: number
+    invoice_number: string
+    status: string
+  } | null
+}
+
 export function POSOrdersPage() {
+  const { toast } = useToast()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('')
-  const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<SalesOrderDetail | null>(null)
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false)
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
@@ -121,6 +201,61 @@ export function POSOrdersPage() {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const formatPaymentMethod = (payment: NonNullable<SalesOrderDetail['payments']>[number]) => {
+    const rawValue = payment.payment_method?.name || payment.method || 'Unknown'
+
+    return rawValue
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  const getDetailPaymentSummary = (order: SalesOrderDetail) => {
+    if (order.source === 'pos') {
+      if (!order.payments?.length) {
+        return order.payment_status || 'Pending'
+      }
+
+      return order.payments.map(formatPaymentMethod).join(', ')
+    }
+
+    return order.payment_status ? order.payment_status.replace(/_/g, ' ') : 'Pending'
+  }
+
+  const getCustomerDisplayName = (order: SalesOrderDetail) => {
+    if (order.customer?.name) {
+      return order.customer.name
+    }
+
+    const fullName = [order.first_name, order.last_name].filter(Boolean).join(' ')
+    return fullName || order.cashier_name || order.cashier || 'Walk-in Customer'
+  }
+
+  const getOrderItems = (order: SalesOrderDetail) => order.items || []
+
+  const handleViewOrder = async (order: SalesOrder) => {
+    setLoadingOrderDetail(true)
+
+    try {
+      if (order.source === 'pos') {
+        const response = await api.get(`/pos/orders/${order.id}`)
+        setSelectedOrder({ ...response.data, source: 'pos', payment_status: order.payment_status })
+      } else {
+        const response = await api.get(`/admin/ecommerce/orders/${order.id}`)
+        setSelectedOrder({ ...response.data.order, source: 'web' })
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load order',
+        description: getApiErrorMessage(error, 'Could not load the order details.'),
+      })
+    } finally {
+      setLoadingOrderDetail(false)
+    }
   }
 
   return (
@@ -291,7 +426,8 @@ export function POSOrdersPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setSelectedOrder(order)}
+                          onClick={() => handleViewOrder(order)}
+                          disabled={loadingOrderDetail}
                         >
                           <Icon icon="solar:eye-bold" className="h-4 w-4" />
                         </Button>
@@ -334,7 +470,7 @@ export function POSOrdersPage() {
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Order {selectedOrder?.order_number}</span>
@@ -346,81 +482,215 @@ export function POSOrdersPage() {
           </DialogHeader>
 
           {selectedOrder && (
-            <div className="space-y-4">
-              {/* Order Info */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Date:</span>
-                  <p className="font-medium">{formatDate(selectedOrder.created_at)}</p>
+            <ScrollArea className="max-h-[80vh] pr-4">
+              <div className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer</p>
+                    <p className="mt-1 font-medium">{getCustomerDisplayName(selectedOrder)}</p>
+                    {selectedOrder.customer?.email && (
+                      <p className="text-sm text-muted-foreground">{selectedOrder.customer.email}</p>
+                    )}
+                    {!selectedOrder.customer?.email && selectedOrder.email && (
+                      <p className="text-sm text-muted-foreground">{selectedOrder.email}</p>
+                    )}
+                    {(selectedOrder.customer?.phone || selectedOrder.phone) && (
+                      <p className="text-sm text-muted-foreground">{selectedOrder.customer?.phone || selectedOrder.phone}</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Payment</p>
+                    <p className="mt-1 font-medium">{getDetailPaymentSummary(selectedOrder)}</p>
+                    <p className="text-sm text-muted-foreground">Status: {selectedOrder.payment_status}</p>
+                    {selectedOrder.invoice?.invoice_number && (
+                      <p className="text-sm text-muted-foreground">Invoice: {selectedOrder.invoice.invoice_number}</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Handled By</p>
+                    <p className="mt-1 font-medium">{selectedOrder.cashier_name || selectedOrder.cashier || selectedOrder.createdBy?.name || 'System'}</p>
+                    {selectedOrder.receipt_number && (
+                      <p className="text-sm text-muted-foreground">Receipt: {selectedOrder.receipt_number}</p>
+                    )}
+                    {selectedOrder.terminal?.name && (
+                      <p className="text-sm text-muted-foreground">Terminal: {selectedOrder.terminal.name}</p>
+                    )}
+                  </div>
                 </div>
-                {selectedOrder.paid_at && (
-                  <div>
-                    <span className="text-muted-foreground">Paid At:</span>
-                    <p className="font-medium">{formatDate(selectedOrder.paid_at)}</p>
-                  </div>
-                )}
-                {selectedOrder.shipped_at && (
-                  <div>
-                    <span className="text-muted-foreground">Shipped At:</span>
-                    <p className="font-medium">{formatDate(selectedOrder.shipped_at)}</p>
-                  </div>
-                )}
-                {selectedOrder.delivered_at && (
-                  <div>
-                    <span className="text-muted-foreground">Delivered At:</span>
-                    <p className="font-medium">{formatDate(selectedOrder.delivered_at)}</p>
-                  </div>
-                )}
-              </div>
 
-              {selectedOrder.customer && (
-                <>
-                  <Separator />
+                <div className="grid gap-3 text-sm md:grid-cols-4">
                   <div>
-                    <h4 className="font-medium mb-2">Customer</h4>
-                    <p className="font-medium">{selectedOrder.customer.name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedOrder.customer.email}</p>
+                    <span className="text-muted-foreground">Created</span>
+                    <p className="font-medium">{formatDateTime(selectedOrder.created_at)}</p>
                   </div>
-                </>
-              )}
-
-              <Separator />
-
-              {/* Totals */}
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(Number(selectedOrder.subtotal))}</span>
+                  {selectedOrder.confirmed_at && (
+                    <div>
+                      <span className="text-muted-foreground">Confirmed</span>
+                      <p className="font-medium">{formatDateTime(selectedOrder.confirmed_at)}</p>
+                    </div>
+                  )}
+                  {selectedOrder.paid_at && (
+                    <div>
+                      <span className="text-muted-foreground">Paid At</span>
+                      <p className="font-medium">{formatDateTime(selectedOrder.paid_at)}</p>
+                    </div>
+                  )}
+                  {selectedOrder.shipped_at && (
+                    <div>
+                      <span className="text-muted-foreground">Shipped At</span>
+                      <p className="font-medium">{formatDateTime(selectedOrder.shipped_at)}</p>
+                    </div>
+                  )}
+                  {selectedOrder.delivered_at && (
+                    <div>
+                      <span className="text-muted-foreground">Delivered At</span>
+                      <p className="font-medium">{formatDateTime(selectedOrder.delivered_at)}</p>
+                    </div>
+                  )}
+                  {selectedOrder.session?.name && (
+                    <div>
+                      <span className="text-muted-foreground">Session</span>
+                      <p className="font-medium">{selectedOrder.session.name}</p>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax</span>
-                  <span>{formatCurrency(Number(selectedOrder.tax_amount))}</span>
-                </div>
-                {selectedOrder.shipping_cost && selectedOrder.shipping_cost > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Shipping</span>
-                    <span>{formatCurrency(Number(selectedOrder.shipping_cost))}</span>
-                  </div>
+
+                {selectedOrder.shipping_address && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="mb-2 font-medium">Shipping Address</h4>
+                      <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          {[selectedOrder.shipping_address.first_name, selectedOrder.shipping_address.last_name].filter(Boolean).join(' ') || getCustomerDisplayName(selectedOrder)}
+                        </p>
+                        {selectedOrder.shipping_address.address && <p>{selectedOrder.shipping_address.address}</p>}
+                        <p>
+                          {[
+                            selectedOrder.shipping_address.city,
+                            selectedOrder.shipping_address.state,
+                            selectedOrder.shipping_address.postal_code,
+                          ].filter(Boolean).join(', ')}
+                        </p>
+                        {selectedOrder.shipping_address.country && <p>{selectedOrder.shipping_address.country}</p>}
+                        {selectedOrder.shipping_address.phone && <p>{selectedOrder.shipping_address.phone}</p>}
+                      </div>
+                    </div>
+                  </>
                 )}
-                {selectedOrder.discount_amount && selectedOrder.discount_amount > 0 && (
-                  <div className="flex justify-between text-destructive">
-                    <span>Discount</span>
-                    <span>-{formatCurrency(Number(selectedOrder.discount_amount))}</span>
-                  </div>
-                )}
-                {selectedOrder.loyalty_discount && selectedOrder.loyalty_discount > 0 && (
-                  <div className="flex justify-between text-primary">
-                    <span>Loyalty Discount</span>
-                    <span>-{formatCurrency(Number(selectedOrder.loyalty_discount))}</span>
-                  </div>
-                )}
+
                 <Separator />
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span>{formatCurrency(Number(selectedOrder.total))}</span>
+
+                <div>
+                  <h4 className="mb-2 font-medium">Order Lines</h4>
+                  <div className="space-y-2">
+                    {getOrderItems(selectedOrder).map((item) => {
+                      const itemName = item.name || item.product_name || item.product?.name || 'Item'
+                      const itemSku = item.sku || item.product_sku
+                      const itemImage = item.variant?.image || item.product?.image || item.product_image
+
+                      return (
+                        <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
+                          <div className="flex min-w-0 items-center gap-3">
+                            {itemImage ? (
+                              <img
+                                src={resolveImageUrl(itemImage)}
+                                alt={itemName}
+                                className="h-12 w-12 rounded object-cover border bg-background"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded border bg-background text-muted-foreground">
+                                <Icon icon="solar:box-bold-duotone" className="h-5 w-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{itemName}</p>
+                              {itemSku && <p className="truncate text-xs text-muted-foreground">SKU: {itemSku}</p>}
+                              <p className="text-xs text-muted-foreground">
+                                {item.quantity} x {formatCurrency(Number(item.unit_price))}
+                                {Number(item.tax_amount || 0) > 0 && ` • Tax ${formatCurrency(Number(item.tax_amount || 0))}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs text-muted-foreground">Qty {item.quantity}</p>
+                            <p className="font-medium">{formatCurrency(Number(item.line_total))}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
+
+                {selectedOrder.source === 'pos' && selectedOrder.payments?.length ? (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="mb-2 font-medium">Payment Entries</h4>
+                      <div className="space-y-2">
+                        {selectedOrder.payments.map((payment) => (
+                          <div key={payment.id} className="flex items-start justify-between gap-3 rounded-lg border border-green-200 bg-green-50/60 p-3 text-sm">
+                            <div>
+                              <p className="font-medium text-green-900">{formatPaymentMethod(payment)}</p>
+                              {payment.reference && <p className="text-xs text-green-700/80">Reference: {payment.reference}</p>}
+                              {payment.receivedBy?.name && <p className="text-xs text-green-700/80">Received by: {payment.receivedBy.name}</p>}
+                              {payment.notes && <p className="text-xs text-green-700/80">{payment.notes}</p>}
+                            </div>
+                            <p className="font-medium text-green-900">{formatCurrency(Number(payment.amount))}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                <Separator />
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{formatCurrency(Number(selectedOrder.subtotal))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span>{formatCurrency(Number(selectedOrder.tax_amount))}</span>
+                  </div>
+                  {selectedOrder.shipping_cost && selectedOrder.shipping_cost > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Shipping</span>
+                      <span>{formatCurrency(Number(selectedOrder.shipping_cost))}</span>
+                    </div>
+                  )}
+                  {selectedOrder.discount_amount && selectedOrder.discount_amount > 0 && (
+                    <div className="flex justify-between text-destructive">
+                      <span>Discount</span>
+                      <span>-{formatCurrency(Number(selectedOrder.discount_amount))}</span>
+                    </div>
+                  )}
+                  {selectedOrder.loyalty_discount && selectedOrder.loyalty_discount > 0 && (
+                    <div className="flex justify-between text-primary">
+                      <span>Loyalty Discount</span>
+                      <span>-{formatCurrency(Number(selectedOrder.loyalty_discount))}</span>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total</span>
+                    <span>{formatCurrency(Number(selectedOrder.total))}</span>
+                  </div>
+                </div>
+
+                {selectedOrder.notes && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="mb-1 font-medium text-sm">Notes</h4>
+                      <p className="text-sm text-muted-foreground">{selectedOrder.notes}</p>
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
+            </ScrollArea>
           )}
         </DialogContent>
       </Dialog>

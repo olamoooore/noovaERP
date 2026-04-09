@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
+import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface InvoiceLine {
@@ -260,7 +261,7 @@ export const CreateInvoicePage: React.FC = () => {
       toast({
         variant: 'destructive',
         title: `Failed to create ${documentLabel.toLowerCase()}`,
-        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
+        description: getApiErrorMessage(error),
       });
     },
   });
@@ -284,7 +285,7 @@ export const CreateInvoicePage: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Failed to create customer',
-        description: error.response?.data?.message || 'An error occurred',
+        description: getApiErrorMessage(error),
       });
     },
   });
@@ -309,7 +310,7 @@ export const CreateInvoicePage: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Failed to update customer',
-        description: error.response?.data?.message || 'An error occurred',
+        description: getApiErrorMessage(error),
       });
     },
   });

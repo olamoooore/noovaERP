@@ -348,7 +348,7 @@ class PaymentController extends Controller
      */
     public function status($transaction)
     {
-        $transaction = PaymentTransaction::findOrFail($transaction);
+        $transaction = $this->resolvePaymentTransaction($transaction);
         return response()->json($transaction->load(['gateway', 'invoice', 'customer']));
     }
 
@@ -658,7 +658,7 @@ class PaymentController extends Controller
      */
     public function refund(Request $request, $transaction)
     {
-        $transaction = PaymentTransaction::findOrFail($transaction);
+        $transaction = $this->resolvePaymentTransaction($transaction);
         \Log::info('Refund method called', [
             'transaction_id' => $transaction->transaction_id ?? 'NULL',
             'transaction_object' => get_class($transaction),
@@ -758,5 +758,13 @@ class PaymentController extends Controller
                 'message' => 'Failed to process refund: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function resolvePaymentTransaction($transaction): PaymentTransaction
+    {
+        return PaymentTransaction::query()
+            ->where('transaction_id', $transaction)
+            ->when(is_numeric($transaction), fn ($query) => $query->orWhereKey((int) $transaction))
+            ->firstOrFail();
     }
 }

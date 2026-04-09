@@ -8,6 +8,7 @@ import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { useSettingsStore } from '@/store/settingsStore'
+import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
 
 // Lazy load heavy pages for better initial load performance
 const ProductsPage = lazy(() => import('@/pages/ProductsPage').then(m => ({ default: m.ProductsPage })))
@@ -203,6 +204,8 @@ const queryClient = new QueryClient({
 function App() {
   // Subscribe at the top-level so currency changes re-render the app
   const currencyCode = useSettingsStore((s) => s.currencyCode)
+
+  useStripeDevtoolsGuard()
 
   return (
     <QueryClientProvider client={queryClient}>

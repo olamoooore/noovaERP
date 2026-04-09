@@ -5,6 +5,7 @@ namespace Modules\OCRBookkeeping\Tests\Feature;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrProcessingService;
 use App\Models\User;
@@ -22,6 +23,30 @@ class OcrExtractionTest extends TestCase
         
         $this->user = User::factory()->create();
         $this->service = app(OcrProcessingService::class);
+
+        Storage::fake('ocr-documents-local');
+    }
+
+    private function createStoredDocument(array $attributes = []): OcrDocument
+    {
+        $document = OcrDocument::factory()->create(array_merge([
+            'status' => 'PENDING',
+            'file_name' => 'receipt.jpg',
+            'file_path' => '2024/12/26/receipt.jpg',
+            'mime_type' => 'image/jpeg',
+            'created_by' => $this->user->id,
+        ], $attributes));
+
+        Storage::disk('ocr-documents-local')->put($document->file_path, 'fake-image-bytes');
+
+        return $document;
+    }
+
+    private function fakeOcrResponse(array $payload, int $status = 200): void
+    {
+        Http::fake([
+            config('ocr.service.url') . '/api/bookkeeping/upload' => Http::response($payload, $status),
+        ]);
     }
 
     /**
@@ -29,37 +54,28 @@ class OcrExtractionTest extends TestCase
      */
     public function test_ocr_extraction_produces_complete_data()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-            'file_path' => '2024/12/26/receipt.jpg',
-        ]);
+        $document = $this->createStoredDocument();
 
-        // Mock OCR service response
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'success',
-                'extracted_data' => [
-                    'vendor_customer_name' => 'ABC Supplies Ltd',
-                    'invoice_date' => '2024-12-20',
-                    'invoice_number' => 'INV-2024-001',
-                    'total_amount' => 1250.00,
-                    'currency' => 'USD',
-                    'line_items' => [
-                        [
-                            'description' => 'Office Supplies',
-                            'amount' => 1000.00,
-                            'quantity' => 1,
-                        ],
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'ABC Supplies Ltd',
+                'invoice_date' => '2024-12-20',
+                'invoice_number' => 'INV-2024-001',
+                'total_amount' => 1250.00,
+                'currency' => 'USD',
+                'line_items' => [
+                    [
+                        'description' => 'Office Supplies',
+                        'amount' => 1000.00,
+                        'quantity' => 1,
                     ],
-                    'tax_amount' => 250.00,
                 ],
-                'confidence_scores' => [
-                    'vendor_name' => 0.95,
-                    'document_date' => 0.92,
-                    'total_amount' => 0.98,
-                    'invoice_number' => 0.90,
-                ],
-            ], 200),
+                'tax_amount' => 250.00,
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 98,
+            ],
         ]);
 
         $this->service->processDocument($document);
@@ -83,21 +99,18 @@ class OcrExtractionTest extends TestCase
      */
     public function test_successful_extraction_updates_status()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-        ]);
+        $document = $this->createStoredDocument();
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'success',
-                'extracted_data' => [
-                    'vendor_customer_name' => 'Test Vendor',
-                    'total_amount' => 100.00,
-                ],
-                'confidence_scores' => [
-                    'vendor_name' => 0.85,
-                ],
-            ], 200),
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'Test Vendor',
+                'invoice_number' => 'INV-001',
+                'total_amount' => 100.00,
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 85,
+            ],
         ]);
 
         $this->service->processDocument($document);
@@ -111,16 +124,12 @@ class OcrExtractionTest extends TestCase
      */
     public function test_failed_extraction_updates_status()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PROCESSING',
-        ]);
+        $document = $this->createStoredDocument();
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'error',
-                'message' => 'Unable to extract text from image',
-            ], 400),
-        ]);
+        $this->fakeOcrResponse([
+            'status' => 'error',
+            'message' => 'Unable to extract text from image',
+        ], 400);
 
         try {
             $this->service->processDocument($document);
@@ -138,9 +147,7 @@ class OcrExtractionTest extends TestCase
      */
     public function test_raw_ocr_data_is_preserved()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-        ]);
+        $document = $this->createStoredDocument();
 
         $rawData = [
             'status' => 'success',
@@ -154,9 +161,7 @@ class OcrExtractionTest extends TestCase
             ],
         ];
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response($rawData, 200),
-        ]);
+        $this->fakeOcrResponse($rawData);
 
         $this->service->processDocument($document);
 
@@ -173,24 +178,18 @@ class OcrExtractionTest extends TestCase
      */
     public function test_low_confidence_fields_are_flagged()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-        ]);
+        $document = $this->createStoredDocument();
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'success',
-                'extracted_data' => [
-                    'vendor_customer_name' => 'Test Vendor',
-                    'invoice_number' => 'INV-001',
-                    'total_amount' => 100.00,
-                ],
-                'confidence_scores' => [
-                    'vendor_name' => 0.95, // High confidence
-                    'invoice_number' => 0.45, // Low confidence
-                    'total_amount' => 0.88, // Medium confidence
-                ],
-            ], 200),
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'Test Vendor',
+                'invoice_number' => 'INV-001',
+                'total_amount' => 100.00,
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 95,
+            ],
         ]);
 
         $this->service->processDocument($document);
@@ -212,12 +211,10 @@ class OcrExtractionTest extends TestCase
      */
     public function test_ocr_service_timeout_is_handled()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PROCESSING',
-        ]);
+        $document = $this->createStoredDocument();
 
         Http::fake([
-            config('ocr.service.url') . '/extract' => function () {
+            config('ocr.service.url') . '/api/bookkeeping/upload' => function () {
                 throw new \Illuminate\Http\Client\ConnectionException('Connection timeout');
             },
         ]);
@@ -235,22 +232,19 @@ class OcrExtractionTest extends TestCase
      */
     public function test_extraction_handles_missing_optional_fields()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-        ]);
+        $document = $this->createStoredDocument();
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'success',
-                'extracted_data' => [
-                    'vendor_customer_name' => 'Test Vendor',
-                    'total_amount' => 100.00,
-                    // Missing: invoice_number, line_items, tax_amount
-                ],
-                'confidence_scores' => [
-                    'vendor_name' => 0.85,
-                ],
-            ], 200),
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'Test Vendor',
+                'invoice_number' => 'INV-PARTIAL-001',
+                'total_amount' => 100.00,
+                // Missing: line_items, tax_amount, invoice_date
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 85,
+            ],
         ]);
 
         $this->service->processDocument($document);
@@ -269,27 +263,26 @@ class OcrExtractionTest extends TestCase
      */
     public function test_multiple_extractions_dont_duplicate_data()
     {
-        $document = OcrDocument::factory()->create([
-            'status' => 'PENDING',
-        ]);
+        $document = $this->createStoredDocument();
 
-        Http::fake([
-            config('ocr.service.url') . '/extract' => Http::response([
-                'status' => 'success',
-                'extracted_data' => [
-                    'vendor_customer_name' => 'Test Vendor',
-                    'total_amount' => 100.00,
-                ],
-                'confidence_scores' => [
-                    'vendor_name' => 0.85,
-                ],
-            ], 200),
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'Test Vendor',
+                'invoice_number' => 'INV-RETRY-001',
+                'total_amount' => 100.00,
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 85,
+            ],
         ]);
 
         // Process twice
         $this->service->processDocument($document);
         $document->refresh();
         $firstExtractedAt = $document->extracted_at;
+
+        $document->update(['status' => 'EXTRACTION_FAILED']);
 
         sleep(1);
 
