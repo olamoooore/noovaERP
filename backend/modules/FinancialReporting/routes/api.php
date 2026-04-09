@@ -19,6 +19,7 @@ Route::middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \App\Http\Middleware\ResolveEntityContext::class,
     \App\Http\Middleware\EnsureEntityAccess::class,
 ])->group(function () {

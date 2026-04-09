@@ -60,6 +60,7 @@ Route::middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     ResolveEntityContext::class,
     EnsureEntityAccess::class,
     EnsureAccountingWriteAccess::class,
@@ -71,7 +72,7 @@ Route::middleware([
 // All accounting routes require authentication — see EDR-ACC-ARCH-2026-03-29 §7
 
 // Protected routes (with tenant context)
-Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class])->group(function () {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     // Settings
