@@ -100,5 +100,19 @@ class LoyaltyTierSeeder extends Seeder
                 $tierData
             );
         }
+
+        $preferredActiveProgramId = LoyaltyProgram::query()
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN name = 'Default Loyalty Program' THEN 1 ELSE 0 END")
+            ->orderBy('id')
+            ->value('id') ?? $program->id;
+
+        LoyaltyProgram::query()
+            ->whereKeyNot($preferredActiveProgramId)
+            ->update(['is_active' => false]);
+
+        LoyaltyProgram::query()
+            ->whereKey($preferredActiveProgramId)
+            ->update(['is_active' => true]);
     }
 }
