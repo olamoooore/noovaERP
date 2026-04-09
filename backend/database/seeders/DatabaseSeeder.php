@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
         ];
 
         if (function_exists('tenant') && tenant()) {
+            $seeders[] = DepartmentLocationSeeder::class;
             $seeders[] = HRMPermissionSeeder::class;
         }
 

@@ -43,10 +43,12 @@ class HRMPermissionSeeder extends Seeder
             Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
 
-        // Grant all HRM permissions to the admin role if it exists
-        $adminRole = Role::where('name', 'admin')->first();
-        if ($adminRole) {
-            $adminRole->givePermissionTo($permissions);
+        $elevatedRoles = Role::query()
+            ->whereIn('name', ['admin', 'Admin', 'Owner', 'owner', 'super-admin', 'super_admin'])
+            ->get();
+
+        foreach ($elevatedRoles as $role) {
+            $role->givePermissionTo($permissions);
         }
 
         if (isset($this->command)) {
