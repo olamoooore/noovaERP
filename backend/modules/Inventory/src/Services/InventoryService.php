@@ -11,6 +11,23 @@ use Modules\Inventory\Models\StockLevel;
 
 class InventoryService
 {
+    private function lowStockProductsQuery()
+    {
+        return Product::where('is_active', true)
+            ->where('track_inventory', true)
+            ->where('stock_quantity', '>', 0)
+            ->whereRaw('stock_quantity <= COALESCE(NULLIF(min_stock_threshold, 0), NULLIF(reorder_level, 0), 10)')
+            ->orderBy('stock_quantity');
+    }
+
+    private function outOfStockProductsQuery()
+    {
+        return Product::where('is_active', true)
+            ->where('track_inventory', true)
+            ->where('stock_quantity', '<=', 0)
+            ->orderBy('updated_at', 'desc');
+    }
+
     /**
      * Adjust stock for a product in a specific warehouse
      */
@@ -194,25 +211,17 @@ class InventoryService
     /**
      * Get low stock products
      */
-    public function getLowStockProducts(int $limit = 50): \Illuminate\Database\Eloquent\Collection
+    public function getLowStockProducts(int $perPage = 50, int $page = 1): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return Product::where('is_active', true)
-            ->where('stock_quantity', '>', 0)
-            ->whereRaw('stock_quantity <= COALESCE(min_stock_threshold, 10)')
-            ->orderBy('stock_quantity')
-            ->limit($limit)
-            ->get();
+        return $this->lowStockProductsQuery()->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**
      * Get out of stock products
      */
-    public function getOutOfStockProducts(int $limit = 50): \Illuminate\Database\Eloquent\Collection
+    public function getOutOfStockProducts(int $perPage = 50, int $page = 1): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return Product::where('is_active', true)
-            ->where('stock_quantity', '<=', 0)
-            ->limit($limit)
-            ->get();
+        return $this->outOfStockProductsQuery()->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**

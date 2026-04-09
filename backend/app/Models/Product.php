@@ -522,9 +522,16 @@ class Product extends Model
 
     // ==================== STOCK METHODS ====================
 
+    public function getEffectiveLowStockThreshold(): int
+    {
+        return (int) ($this->min_stock_threshold ?: ($this->reorder_level ?: 10));
+    }
+
     public function isLowStock(): bool
     {
-        return $this->stock_quantity <= ($this->min_stock_threshold ?? $this->reorder_level ?? 0);
+        return (bool) $this->track_inventory
+            && $this->stock_quantity > 0
+            && $this->stock_quantity <= $this->getEffectiveLowStockThreshold();
     }
 
     public function isOutOfStock(): bool

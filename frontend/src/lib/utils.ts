@@ -86,12 +86,48 @@ export function getCurrencySymbol(currencyCode?: string): string {
   }
 }
 
-export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
+function normalizeDateValue(date?: string | Date | null): Date | null {
+  if (!date) {
+    return null
+  }
+
+  const parsedDate = date instanceof Date ? date : new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null
+  }
+
+  return parsedDate
+}
+
+export function formatDate(date?: string | Date | null, fallback: string = '-'): string {
+  const parsedDate = normalizeDateValue(date)
+
+  if (!parsedDate) {
+    return fallback
+  }
+
+  return parsedDate.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   })
+}
+
+export function formatDateTime(date?: string | Date | null, fallback: string = '-'): string {
+  const parsedDate = normalizeDateValue(date)
+
+  if (!parsedDate) {
+    return fallback
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsedDate)
 }
 
 export function formatNumber(value: number, decimals: number = 0): string {

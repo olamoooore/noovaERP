@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface DashboardData {
@@ -58,6 +58,7 @@ export function InventoryDashboard() {
   }
 
   const summary = data?.summary
+  const lowStockItems = Array.isArray(lowStockData) ? lowStockData : lowStockData?.data || []
 
   const getMovementTypeConfig = (type: string) => {
     const configs: Record<string, { color: string; icon: string; bg: string }> = {
@@ -313,7 +314,7 @@ export function InventoryDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            {!lowStockData || lowStockData.length === 0 ? (
+            {lowStockItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 mb-3">
                   <Icon icon="solar:check-circle-bold" className="h-7 w-7 text-primary" />
@@ -323,7 +324,7 @@ export function InventoryDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {lowStockData.slice(0, 4).map((item: any) => (
+                {lowStockItems.slice(0, 4).map((item: any) => (
                   <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
@@ -390,7 +391,7 @@ export function InventoryDashboard() {
                       <div>
                         <p className="font-medium text-sm">{movement.product?.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {movement.type.replace('_', ' ').toUpperCase()} • {new Date(movement.created_at).toLocaleDateString()}
+                          {movement.type.replace('_', ' ').toUpperCase()} • {formatDate(movement.created_at)}
                         </p>
                       </div>
                     </div>

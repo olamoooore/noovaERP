@@ -68,8 +68,8 @@ export function InvoicesPage() {
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
                   <TableCell>{invoice.customer?.name}</TableCell>
-                  <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                  <TableCell>{formatDate(invoice.due_date)}</TableCell>
+                  <TableCell>{formatDate(invoice.invoice_date || invoice.created_at)}</TableCell>
+                  <TableCell>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</TableCell>
                   <TableCell>{formatCurrency(invoice.total)}</TableCell>
                   <TableCell>{formatCurrency(invoice.balance)}</TableCell>
                   <TableCell>

@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { formatDateTime } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Warehouse {
@@ -172,7 +173,7 @@ export function StockMovementsPage() {
               ) : (
                 movements.map((movement: any) => (
                   <TableRow key={movement.id}>
-                    <TableCell>{new Date(movement.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{formatDateTime(movement.created_at)}</TableCell>
                     <TableCell>
                       <div>
                         <div className="font-medium">{movement.product?.name}</div>

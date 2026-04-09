@@ -22,22 +22,27 @@ class InventoryReportController extends Controller
      */
     public function dashboard()
     {
-        $totalProducts = Product::where('is_active', true)->count();
+        $inventoryProducts = Product::where('is_active', true)
+            ->where('track_inventory', true);
+
+        $totalProducts = (clone $inventoryProducts)->count();
         $totalWarehouses = Warehouse::where('is_active', true)->count();
         
         // Calculate stock values from products directly (since stock_quantity is on products)
-        $products = Product::where('is_active', true)->get();
+        $products = (clone $inventoryProducts)->get();
         
         $totalStockValue = $products->sum(fn($p) => ($p->stock_quantity ?? 0) * ($p->cost ?? 0));
         $totalRetailValue = $products->sum(fn($p) => ($p->stock_quantity ?? 0) * ($p->price ?? 0));
         
         // Count low stock and out of stock from products directly
         $lowStockCount = Product::where('is_active', true)
+            ->where('track_inventory', true)
             ->where('stock_quantity', '>', 0)
-            ->whereRaw('stock_quantity <= COALESCE(min_stock_threshold, 10)')
+            ->whereRaw('stock_quantity <= COALESCE(NULLIF(min_stock_threshold, 0), NULLIF(reorder_level, 0), 10)')
             ->count();
             
         $outOfStockCount = Product::where('is_active', true)
+            ->where('track_inventory', true)
             ->where('stock_quantity', '<=', 0)
             ->count();
 

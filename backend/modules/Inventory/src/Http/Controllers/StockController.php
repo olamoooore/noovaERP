@@ -194,8 +194,10 @@ class StockController extends Controller
      */
     public function lowStock(Request $request)
     {
-        $limit = min(100, max(1, (int) $request->input('limit', 50)));
-        return response()->json($this->inventoryService->getLowStockProducts($limit));
+        $perPage = min(100, max(1, (int) $request->input('per_page', $request->input('limit', 50))));
+        $page = max(1, (int) $request->input('page', 1));
+
+        return response()->json($this->inventoryService->getLowStockProducts($perPage, $page));
     }
 
     /**
@@ -203,8 +205,10 @@ class StockController extends Controller
      */
     public function outOfStock(Request $request)
     {
-        $limit = min(100, max(1, (int) $request->input('limit', 50)));
-        return response()->json($this->inventoryService->getOutOfStockProducts($limit));
+        $perPage = min(100, max(1, (int) $request->input('per_page', $request->input('limit', 50))));
+        $page = max(1, (int) $request->input('page', 1));
+
+        return response()->json($this->inventoryService->getOutOfStockProducts($perPage, $page));
     }
 
     /**

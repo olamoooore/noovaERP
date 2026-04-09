@@ -2,14 +2,13 @@ import { useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Invoice {
@@ -194,7 +193,7 @@ export function InvoiceDetailPage() {
           <div>
             <h1 className="text-2xl font-bold">Invoice {invoice.invoice_number}</h1>
             <p className="text-muted-foreground text-sm">
-              Created on {format(new Date(invoice.created_at), 'MMM d, yyyy')}
+              Created on {formatDate(invoice.created_at)}
             </p>
           </div>
         </div>
@@ -230,11 +229,11 @@ export function InvoiceDetailPage() {
               <div className="mt-4 space-y-1 text-sm">
                 <div className="flex justify-between gap-8">
                   <span className="text-muted-foreground">Invoice Date:</span>
-                  <span>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</span>
+                  <span>{formatDate(invoice.invoice_date || invoice.created_at)}</span>
                 </div>
                 <div className="flex justify-between gap-8">
                   <span className="text-muted-foreground">Due Date:</span>
-                  <span>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</span>
+                  <span>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</span>
                 </div>
               </div>
             </div>
@@ -369,7 +368,7 @@ export function InvoiceDetailPage() {
                 <TableBody>
                   {invoice.payments.map((payment) => (
                     <TableRow key={payment.id}>
-                      <TableCell>{format(new Date(payment.payment_date), 'MMM d, yyyy')}</TableCell>
+                      <TableCell>{formatDate(payment.payment_date)}</TableCell>
                       <TableCell className="capitalize">{payment.method.replace('_', ' ')}</TableCell>
                       <TableCell>{payment.reference || '-'}</TableCell>
                       <TableCell className="text-right text-green-600">

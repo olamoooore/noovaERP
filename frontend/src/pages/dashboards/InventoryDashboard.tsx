@@ -45,11 +45,11 @@ export const InventoryDashboard: React.FC = () => {
           reportApi.getInventoryTurnover(currentMonthFilters),
         ]);
 
-      // Count low stock and out of stock items
-      const lowStockCount = reorderReport?.items?.length ?? 0;
-      const outOfStockCount = (reorderReport?.items ?? []).filter(
-        (item) => item.current_stock === 0
-      ).length;
+      const reorderItems = reorderReport?.items ?? [];
+      const lowStockItems = reorderItems.filter((item) => Number(item.current_stock ?? 0) > 0);
+      const outOfStockItems = reorderItems.filter((item) => Number(item.current_stock ?? 0) <= 0);
+      const lowStockCount = lowStockItems.length;
+      const outOfStockCount = outOfStockItems.length;
 
       // Transform stock movement data for chart
       const movementsByPeriod = (stockMovement?.movements ?? []).reduce((acc, movement) => {
@@ -88,7 +88,7 @@ export const InventoryDashboard: React.FC = () => {
           low_stock_count: lowStockCount,
           out_of_stock_count: outOfStockCount,
         },
-        low_stock_alerts: (reorderReport?.items ?? []).slice(0, 10).map((item) => ({
+        low_stock_alerts: lowStockItems.slice(0, 10).map((item) => ({
           product: item.product_name,
           current_stock: item.current_stock,
           reorder_level: item.reorder_level,
@@ -96,7 +96,7 @@ export const InventoryDashboard: React.FC = () => {
         stock_movements: stockMovementsChart,
         inventory_turnover: inventoryTurnover?.average_turnover ?? 0,
         top_moving_products: topMovingProducts,
-        reorder_recommendations: (reorderReport?.items ?? []).slice(0, 10).map((item) => ({
+        reorder_recommendations: lowStockItems.slice(0, 10).map((item) => ({
           product: item.product_name,
           suggested_quantity: item.suggested_quantity,
         })),

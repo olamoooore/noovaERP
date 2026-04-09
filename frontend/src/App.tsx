@@ -44,6 +44,7 @@ const ExpenseAnalyticsPage = lazy(() => import('@/pages/reports/ExpenseAnalytics
 // Lazy load dashboard pages (heavy with charts)
 const ExecutiveDashboard = lazy(() => import('@/pages/dashboards/ExecutiveDashboard').then(m => ({ default: m.ExecutiveDashboard })))
 const SalesDashboard = lazy(() => import('@/pages/dashboards/SalesDashboard').then(m => ({ default: m.SalesDashboard })))
+const QuotesPage = lazy(() => import('@/pages/sales/QuotesPage').then(m => ({ default: m.QuotesPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -238,7 +239,9 @@ function App() {
                 {/* Sales Routes */}
                 <Route path="/sales" element={<SalesDashboard />} />
                 <Route path="/sales/orders" element={<POSOrdersPage />} />
-                <Route path="/sales/quotes" element={<InvoicesPage />} />
+                <Route path="/sales/quotes" element={<QuotesPage />} />
+                <Route path="/sales/quotes/create" element={<CreateInvoicePage />} />
+                <Route path="/sales/quotes/:id" element={<CustomerInvoiceDetail />} />
                 
                 {/* Customer Routes */}
                 <Route path="/customers" element={<CustomersPage />} />
