@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { eventManagementAPI, FeedbackData } from '@/lib/event-management-api';
+import { useCustomerDashboard } from '@/hooks/queries';
 import { 
   EventManagementErrorHandler, 
   ErrorSeverity
@@ -72,6 +73,7 @@ const FeedbackSystem: React.FC = () => {
   const [eventFeedback, setEventFeedback] = useState<FeedbackData[]>([]);
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const { data: dashboardData } = useCustomerDashboard();
   
   // Use standardized loading states
   const {
@@ -94,6 +96,14 @@ const FeedbackSystem: React.FC = () => {
     allow_public_display: true,
   });
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+
+  const availableEvents = (dashboardData?.upcoming_events ?? []).map((event: any) => ({
+    id: Number(event._eventId ?? event.event_id ?? event.id),
+    bookingId: Number(event.id),
+    title: event.name,
+    startDate: event.start_date,
+    venue: event.venue,
+  })).filter((event, index, list) => event.id && list.findIndex((candidate) => candidate.id === event.id) === index);
 
   useEffect(() => {
     fetchFeedbackTypes();
@@ -346,26 +356,54 @@ const FeedbackSystem: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="event_id">Event *</Label>
-                    <Input
-                      id="event_id"
-                      type="number"
-                      placeholder="Event ID"
+                    <Select
                       value={formData.event_id}
-                      onChange={(e) => setFormData({...formData, event_id: e.target.value})}
-                      required
-                    />
+                      onValueChange={(value) => {
+                        const matchedEvent = availableEvents.find((event) => String(event.id) === value)
+                        setFormData({
+                          ...formData,
+                          event_id: value,
+                          booking_id: matchedEvent ? String(matchedEvent.bookingId) : formData.booking_id,
+                        })
+                      }}
+                    >
+                      <SelectTrigger id="event_id">
+                        <SelectValue placeholder="Select an event" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableEvents.map((event) => (
+                          <SelectItem key={event.id} value={String(event.id)}>
+                            {event.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label htmlFor="booking_id">Booking ID (Optional)</Label>
-                    <Input
-                      id="booking_id"
-                      type="number"
-                      placeholder="Booking ID"
-                      value={formData.booking_id}
-                      onChange={(e) => setFormData({...formData, booking_id: e.target.value})}
-                    />
+                    <Select
+                      value={formData.booking_id || 'none'}
+                      onValueChange={(value) => setFormData({...formData, booking_id: value === 'none' ? '' : value})}
+                    >
+                      <SelectTrigger id="booking_id">
+                        <SelectValue placeholder="Select a booking" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No booking reference</SelectItem>
+                        {availableEvents.map((event) => (
+                          <SelectItem key={event.bookingId} value={String(event.bookingId)}>
+                            {event.title} #{event.bookingId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
+                {availableEvents.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Your upcoming bookings will appear here once events are available on your dashboard.
+                  </p>
+                )}
 
                 {/* Feedback Type */}
                 <div>
@@ -617,13 +655,22 @@ const FeedbackSystem: React.FC = () => {
             <CardContent>
               <div className="mb-4">
                 <Label htmlFor="event-select">Select Event to View Reviews</Label>
-                <Input
-                  id="event-select"
-                  type="number"
-                  placeholder="Enter Event ID"
-                  value={selectedEventId || ''}
-                  onChange={(e) => setSelectedEventId(e.target.value ? parseInt(e.target.value) : null)}
-                />
+                <Select
+                  value={selectedEventId ? String(selectedEventId) : 'none'}
+                  onValueChange={(value) => setSelectedEventId(value === 'none' ? null : parseInt(value))}
+                >
+                  <SelectTrigger id="event-select">
+                    <SelectValue placeholder="Select an event" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select an event</SelectItem>
+                    {availableEvents.map((event) => (
+                      <SelectItem key={event.id} value={String(event.id)}>
+                        {event.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {feedbackStats && (

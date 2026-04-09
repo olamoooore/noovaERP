@@ -104,6 +104,65 @@ interface Warehouse {
   name: string
 }
 
+interface PosPaymentResponse {
+  data?: {
+    id?: number
+    order_number?: string
+    receipt_number?: string | null
+    paid_at?: string | null
+  }
+  loyalty?: {
+    earned?: {
+      points?: number
+      new_balance?: number
+      tier_upgraded?: boolean
+    } | null
+    redeemed?: {
+      points?: number
+      discount?: number
+    } | null
+  }
+}
+
+interface PosReceiptOrder {
+  id?: number | null
+  orderNumber: string
+  receiptNumber: string
+  date: Date
+  customer: {
+    name: string
+    phone?: string
+    email?: string
+    loyaltyPoints?: number
+  }
+  items: Array<{
+    name: string
+    quantity: number
+    price: number
+    line_total: number
+  }>
+  subtotal: number
+  taxAmount: number
+  discountAmount: number
+  discountType: string
+  discountValue: number
+  coupon: {
+    code: string
+    discountAmount: number
+    discountType: 'fixed' | 'percent'
+    discountValue: number
+  } | null
+  loyaltyDiscountAmount: number
+  loyaltyPointsEarned?: number
+  loyaltyPointsUsed?: number
+  total: number
+  paymentMethod: string
+  amountPaid: number
+  change: number
+  terminal: number | null
+  transactionId?: string
+}
+
 export function POSTerminal() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -203,7 +262,7 @@ export function POSTerminal() {
   }, [])
   // Receipt Dialog State
   const [showReceiptDialog, setShowReceiptDialog] = useState(false)
-  const [lastOrder, setLastOrder] = useState<any>(null)
+  const [lastOrder, setLastOrder] = useState<PosReceiptOrder | null>(null)
   const receiptRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -743,6 +802,246 @@ export function POSTerminal() {
     }
   }
 
+  const resetTerminalForNextOrder = useCallback(() => {
+    clearSessionCart()
+    setSelectedCustomer(null)
+    setCustomerId('walk-in')
+    setCustomerInfo(null)
+    setCurrentOrderId(null)
+    setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+    setAppliedCoupon(null)
+    setDiscount({ type: 'fixed', value: 0 })
+    setActiveDiscountTab('discount')
+  }, [clearSessionCart, setCustomerId, setCustomerInfo, setDiscount])
+
+  const buildReceiptOrder = useCallback((
+    order: { id?: number | null; order_number?: string; receipt_number?: string | null; paid_at?: string | null },
+    paymentMethodLabel: string,
+    options?: { loyaltyPointsEarned?: number; transactionId?: string }
+  ): PosReceiptOrder => ({
+    id: order.id ?? null,
+    orderNumber: order.order_number || String(order.id || 'POS'),
+    receiptNumber: order.receipt_number || order.order_number || String(order.id || 'POS'),
+    date: order.paid_at ? new Date(order.paid_at) : new Date(),
+    customer: selectedCustomer ? {
+      name: selectedCustomer.name,
+      phone: selectedCustomer.phone,
+      email: selectedCustomer.email,
+      loyaltyPoints: selectedCustomer.current_points ?? selectedCustomer.loyalty_points,
+    } : { name: 'Walk-in Customer' },
+    items: cart.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      line_total: item.line_total,
+    })),
+    subtotal,
+    taxAmount,
+    discountAmount: regularDiscountAmount,
+    discountType: discount.type,
+    discountValue: discount.value,
+    coupon: appliedCoupon ? {
+      code: appliedCoupon.code,
+      discountAmount: couponDiscountAmount,
+      discountType: appliedCoupon.discount_type,
+      discountValue: appliedCoupon.discount_value,
+    } : null,
+    loyaltyDiscountAmount,
+    loyaltyPointsEarned: options?.loyaltyPointsEarned,
+    loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
+    total,
+    paymentMethod: paymentMethodLabel,
+    amountPaid: total,
+    change: 0,
+    terminal: activeTerminalId,
+    transactionId: options?.transactionId,
+  }), [
+    activeTerminalId,
+    appliedCoupon,
+    cart,
+    couponDiscountAmount,
+    discount.type,
+    discount.value,
+    loyaltyDiscountAmount,
+    loyaltyRedemption.pointsToRedeem,
+    regularDiscountAmount,
+    selectedCustomer,
+    subtotal,
+    taxAmount,
+    total,
+  ])
+
+  const finalizeCheckoutSuccess = useCallback((receiptData: PosReceiptOrder, description: string) => {
+    setLastOrder(receiptData)
+    setShowCheckoutDialog(false)
+    setShowReceiptDialog(true)
+
+    toast({
+      title: 'Payment Successful',
+      description,
+    })
+
+    resetTerminalForNextOrder()
+    void queryClient.invalidateQueries({ queryKey: ['pos-products'] })
+    void queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
+    void queryClient.invalidateQueries({ queryKey: ['customers-search'] })
+  }, [queryClient, resetTerminalForNextOrder, toast])
+
+  const downloadReceiptPdf = useCallback(async (orderId?: number | null, orderNumber?: string) => {
+    if (!orderId) {
+      toast({
+        title: 'Receipt Unavailable',
+        description: 'This receipt cannot be downloaded because no order ID was found.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const response = await api.get(`/pos/orders/${orderId}/receipt`, {
+        responseType: 'blob',
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `receipt-${orderNumber || orderId}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode?.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        title: 'Download Failed',
+        description: error.response?.data?.message || 'Could not download the receipt PDF.',
+        variant: 'destructive',
+      })
+    }
+  }, [toast])
+
+  const printReceiptPreview = useCallback(() => {
+    if (!receiptRef.current) {
+      return
+    }
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      toast({
+        title: 'Print Blocked',
+        description: 'Allow pop-ups for this site and try printing again.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Receipt - ${lastOrder?.receiptNumber || lastOrder?.orderNumber}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 12px;
+              line-height: 1.4;
+              color: #000;
+              background: #fff;
+              padding: 10px;
+              width: 80mm;
+              max-width: 80mm;
+            }
+            .receipt-container {
+              width: 100%;
+              max-width: 300px;
+              margin: 0 auto;
+              padding: 15px;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .text-left { text-align: left; }
+            .font-bold { font-weight: bold; }
+            .text-xl { font-size: 18px; }
+            .text-lg { font-size: 16px; }
+            .text-sm { font-size: 11px; }
+            .text-xs { font-size: 10px; }
+            .mb-1 { margin-bottom: 4px; }
+            .mb-2 { margin-bottom: 8px; }
+            .mb-3 { margin-bottom: 12px; }
+            .mb-4 { margin-bottom: 16px; }
+            .mt-1 { margin-top: 4px; }
+            .mt-2 { margin-top: 8px; }
+            .mt-4 { margin-top: 16px; }
+            .my-2 { margin: 8px 0; }
+            .my-3 { margin: 12px 0; }
+            .my-4 { margin: 16px 0; }
+            .pt-1 { padding-top: 4px; }
+            .pt-3 { padding-top: 12px; }
+            .p-2 { padding: 8px; }
+            .uppercase { text-transform: uppercase; }
+            .border-dashed {
+              border-style: dashed;
+              border-color: #999;
+            }
+            .border-b { border-bottom-width: 1px; }
+            .border-b-2 { border-bottom-width: 2px; }
+            .border-t { border-top-width: 1px; }
+            .border { border-width: 1px; border-style: solid; border-color: #ccc; }
+            .rounded { border-radius: 4px; }
+            .flex { display: flex; }
+            .justify-between { justify-content: space-between; }
+            .items-center { align-items: center; }
+            .flex-1 { flex: 1; }
+            .gap-1 { gap: 1px; }
+            .inline-flex { display: inline-flex; }
+            .flex-col { flex-direction: column; }
+            .space-y-1 > * + * { margin-top: 4px; }
+            .space-y-2 > * + * { margin-top: 8px; }
+            .divider {
+              border-bottom: 1px dashed #999;
+              margin: 8px 0;
+            }
+            .header { text-align: center; margin-bottom: 15px; }
+            .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; }
+            .header p { font-size: 11px; margin-top: 3px; }
+            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
+            .customer-box { border: 1px solid #ccc; border-radius: 4px; padding: 8px; margin-bottom: 10px; font-size: 11px; }
+            .items-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 8px; }
+            .item-row { margin-bottom: 8px; }
+            .item-name { font-size: 11px; font-weight: 500; }
+            .item-details { display: flex; justify-content: space-between; font-size: 11px; }
+            .totals-section { font-size: 11px; }
+            .total-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+            .grand-total { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; border-top: 1px solid #000; padding-top: 5px; margin-top: 5px; }
+            .payment-section { font-size: 11px; }
+            .barcode { display: flex; justify-content: center; gap: 1px; margin: 15px 0; }
+            .barcode-bar { background: #000; height: 40px; }
+            .barcode-text { font-size: 10px; text-align: center; margin-top: 5px; }
+            .footer { text-align: center; font-size: 11px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #999; }
+            .footer .thank-you { font-weight: bold; margin-bottom: 5px; }
+            .footer .powered { font-size: 9px; color: #666; margin-top: 10px; }
+            .bg-gray { background-color: #f3f4f6; padding: 8px; border-radius: 4px; text-align: center; margin-bottom: 10px; }
+            @media print {
+              body { padding: 0; width: 80mm; }
+              @page { margin: 5mm; size: 80mm auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            ${receiptRef.current.innerHTML}
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    window.setTimeout(() => {
+      printWindow.print()
+      printWindow.close()
+    }, 250)
+  }, [lastOrder, toast])
+
   // Handle Save Draft
   const handleSaveDraft = async () => {
       if (cart.length === 0) {
@@ -786,63 +1085,16 @@ export function POSTerminal() {
         reference: `POS-${Date.now()}`,
       }
 
-      await payOrderMutation.mutateAsync({ orderId: order.id, paymentData })
+      const paymentResult = await payOrderMutation.mutateAsync({ orderId: order.id, paymentData }) as PosPaymentResponse
+      const paidOrder = paymentResult.data || order
+      const loyaltyPointsEarned = paymentResult.loyalty?.earned?.points || 0
 
-      // Store order data for receipt
-      setLastOrder({
-        orderNumber: order.order_number,
-        receiptNumber: order.receipt_number || order.order_number,
-        date: new Date(),
-        customer: selectedCustomer ? {
-          name: selectedCustomer.name,
-          phone: selectedCustomer.phone,
-          email: selectedCustomer.email,
-          loyaltyPoints: selectedCustomer.loyalty_points
-        } : { name: 'Walk-in Customer' },
-        items: cart.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          line_total: item.line_total
-        })),
-        subtotal,
-        taxAmount,
-        discountAmount: regularDiscountAmount,
-        discountType: discount.type,
-        discountValue: discount.value,
-        coupon: appliedCoupon ? {
-          code: appliedCoupon.code,
-          discountAmount: couponDiscountAmount,
-          discountType: appliedCoupon.discount_type,
-          discountValue: appliedCoupon.discount_value,
-        } : null,
-        loyaltyDiscountAmount,
-        loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
-        total,
-        paymentMethod,
-        amountPaid: total,
-        change: 0,
-        terminal: activeTerminalId,
-      })
-
-      toast({
-        title: "Payment Successful",
-        description: `Order #${order.order_number} completed`,
-      })
-
-      // Close checkout dialog and show receipt
-      setShowCheckoutDialog(false)
-      setShowReceiptDialog(true)
-
-      // Clear cart and order tracking after showing receipt
-      clearSessionCart()
-      setSelectedCustomer(null)
-      setCurrentOrderId(null) // Reset order ID for next order
-      setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
-
-      // Refresh products to update stock
-      queryClient.invalidateQueries({ queryKey: ['pos-products'] })
-      queryClient.invalidateQueries({ queryKey: ['customers-pos'] }) // Refresh customer data
+      finalizeCheckoutSuccess(
+        buildReceiptOrder(paidOrder, paymentMethod, { loyaltyPointsEarned }),
+        loyaltyPointsEarned > 0
+          ? `Order #${paidOrder.order_number} completed. ${loyaltyPointsEarned} loyalty points earned.`
+          : `Order #${paidOrder.order_number} completed`
+      )
     } catch (error: any) {
       const errorMessage = extractErrorMessage(error)
       console.error('Checkout error:', error.response?.data || error)
@@ -906,63 +1158,16 @@ export function POSTerminal() {
 
       console.log('Processing payment for order ID:', order.id, 'with data:', paymentData)
 
-      await payOrderMutation.mutateAsync({ orderId: order.id, paymentData })
+      const paymentResult = await payOrderMutation.mutateAsync({ orderId: order.id, paymentData }) as PosPaymentResponse
+      const paidOrder = paymentResult.data || order
+      const loyaltyPointsEarned = paymentResult.loyalty?.earned?.points || 0
 
-      // Store order data for receipt
-      setLastOrder({
-        orderNumber: order.order_number,
-        receiptNumber: order.receipt_number || order.order_number,
-        date: new Date(),
-        customer: selectedCustomer ? {
-          name: selectedCustomer.name,
-          phone: selectedCustomer.phone,
-          email: selectedCustomer.email,
-          loyaltyPoints: selectedCustomer.loyalty_points
-        } : { name: 'Walk-in Customer' },
-        items: cart.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          line_total: item.line_total
-        })),
-        subtotal,
-        taxAmount,
-        discountAmount: regularDiscountAmount,
-        discountType: discount.type,
-        discountValue: discount.value,
-        coupon: appliedCoupon ? {
-          code: appliedCoupon.code,
-          discountAmount: couponDiscountAmount,
-          discountType: appliedCoupon.discount_type,
-          discountValue: appliedCoupon.discount_value,
-        } : null,
-        loyaltyDiscountAmount,
-        loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
-        total,
-        paymentMethod: method.name,
-        amountPaid: total,
-        change: 0,
-        terminal: activeTerminalId,
-      })
-
-      toast({
-        title: "Payment Successful",
-        description: `Order #${order.order_number} completed`,
-      })
-
-      // Close checkout dialog and show receipt
-      setShowCheckoutDialog(false)
-      setShowReceiptDialog(true)
-
-      // Clear cart and order tracking after showing receipt
-      clearSessionCart()
-      setSelectedCustomer(null)
-      setCurrentOrderId(null)
-      setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
-
-      // Refresh products to update stock
-      queryClient.invalidateQueries({ queryKey: ['pos-products'] })
-      queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
+      finalizeCheckoutSuccess(
+        buildReceiptOrder(paidOrder, method.name, { loyaltyPointsEarned }),
+        loyaltyPointsEarned > 0
+          ? `Order #${paidOrder.order_number} completed. ${loyaltyPointsEarned} loyalty points earned.`
+          : `Order #${paidOrder.order_number} completed`
+      )
     } catch (error: any) {
       const errorMessage = extractErrorMessage(error)
       console.error('Checkout error:', error)
@@ -1110,7 +1315,7 @@ export function POSTerminal() {
       </div>
 
       {/* Right: Cart */}
-      <Card className="flex w-96 shrink-0 flex-col h-full min-h-0 overflow-hidden">
+      <Card className="flex h-full w-full max-w-[24rem] min-w-[16rem] shrink flex-col overflow-hidden xl:w-96 xl:max-w-none">
         <CardHeader className="pb-3 space-y-3">
           {/* Top Row: Title, Items Badge, Customer Button */}
           <div className="flex items-center justify-between">
@@ -1194,7 +1399,7 @@ export function POSTerminal() {
         <ScrollArea className="flex-1 px-4">
           <div className="space-y-3">
             {cart.map((item) => (
-              <div key={item.id} className="flex gap-2 rounded-lg border p-2">
+              <div key={item.id} className="flex gap-2 rounded-lg border p-2 min-w-0">
                 {/* Product Image */}
                 <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
                   {item.image ? (
@@ -1224,9 +1429,9 @@ export function POSTerminal() {
                 </div>
                 
                 {/* Price and Actions - Fixed Width */}
-                <div className="flex flex-col items-end justify-between shrink-0" style={{ minWidth: '180px' }}>
+                <div className="flex min-w-[132px] flex-col items-end justify-between gap-1">
                   <span className="font-bold text-sm whitespace-nowrap">{formatCurrency(item.line_total)}</span>
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex flex-wrap items-center justify-end gap-0.5">
                     <Button
                       variant="outline"
                       size="icon"
@@ -1964,7 +2169,7 @@ export function POSTerminal() {
 
       {/* Receipt Dialog */}
       <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
-        <DialogContent className="sm:max-w-[400px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-[760px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Icon icon="solar:document-text-bold" className="h-5 w-5" />
@@ -1973,7 +2178,7 @@ export function POSTerminal() {
           </DialogHeader>
           
           {lastOrder && (
-            <div className="border rounded-lg overflow-hidden bg-white">
+            <div className="mx-auto w-full max-w-[360px] border rounded-lg overflow-hidden bg-white">
               <POSReceipt
                 ref={receiptRef}
                 data={lastOrder}
@@ -1992,14 +2197,7 @@ export function POSTerminal() {
               onClick={() => {
                 // Close receipt and start new order
                 setShowReceiptDialog(false)
-                // Ensure cart is cleared and reset everything
-                clearSessionCart()
-                setSelectedCustomer(null)
-                setCurrentOrderId(null)
-                setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
-                setAppliedCoupon(null)
-                setDiscount({ type: 'fixed', value: 0 })
-                setActiveDiscountTab('discount')
+                resetTerminalForNextOrder()
                 toast({ title: 'New Order', description: 'Ready for next customer' })
               }}
             >
@@ -2017,132 +2215,14 @@ export function POSTerminal() {
             <Button 
               variant="outline"
               className="flex-1"
-              onClick={() => {
-                // Email receipt functionality placeholder
-                toast({ 
-                  title: "Coming Soon", 
-                  description: "Email receipt feature coming soon" 
-                })
-              }}
+              onClick={() => void downloadReceiptPdf(lastOrder?.id, lastOrder?.orderNumber)}
             >
-              <Icon icon="solar:letter-bold" className="h-4 w-4 mr-2" />
-              Email
+              <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
+              PDF
             </Button>
             <Button 
               className="flex-1"
-              onClick={() => {
-                if (receiptRef.current) {
-                  const printWindow = window.open('', '_blank')
-                  if (printWindow) {
-                    printWindow.document.write(`
-                      <!DOCTYPE html>
-                      <html>
-                        <head>
-                          <title>Receipt - ${lastOrder?.receiptNumber || lastOrder?.orderNumber}</title>
-                          <style>
-                            * { margin: 0; padding: 0; box-sizing: border-box; }
-                            body { 
-                              font-family: 'Courier New', Courier, monospace;
-                              font-size: 12px;
-                              line-height: 1.4;
-                              color: #000;
-                              background: #fff;
-                              padding: 10px;
-                              width: 80mm;
-                              max-width: 80mm;
-                            }
-                            .receipt-container {
-                              width: 100%;
-                              max-width: 300px;
-                              margin: 0 auto;
-                              padding: 15px;
-                            }
-                            .text-center { text-align: center; }
-                            .text-right { text-align: right; }
-                            .text-left { text-align: left; }
-                            .font-bold { font-weight: bold; }
-                            .text-xl { font-size: 18px; }
-                            .text-lg { font-size: 16px; }
-                            .text-sm { font-size: 11px; }
-                            .text-xs { font-size: 10px; }
-                            .mb-1 { margin-bottom: 4px; }
-                            .mb-2 { margin-bottom: 8px; }
-                            .mb-3 { margin-bottom: 12px; }
-                            .mb-4 { margin-bottom: 16px; }
-                            .mt-1 { margin-top: 4px; }
-                            .mt-2 { margin-top: 8px; }
-                            .mt-4 { margin-top: 16px; }
-                            .my-2 { margin: 8px 0; }
-                            .my-3 { margin: 12px 0; }
-                            .my-4 { margin: 16px 0; }
-                            .pt-1 { padding-top: 4px; }
-                            .pt-3 { padding-top: 12px; }
-                            .p-2 { padding: 8px; }
-                            .uppercase { text-transform: uppercase; }
-                            .border-dashed { 
-                              border-style: dashed; 
-                              border-color: #999;
-                            }
-                            .border-b { border-bottom-width: 1px; }
-                            .border-b-2 { border-bottom-width: 2px; }
-                            .border-t { border-top-width: 1px; }
-                            .border { border-width: 1px; border-style: solid; border-color: #ccc; }
-                            .rounded { border-radius: 4px; }
-                            .flex { display: flex; }
-                            .justify-between { justify-content: space-between; }
-                            .items-center { align-items: center; }
-                            .flex-1 { flex: 1; }
-                            .gap-1 { gap: 1px; }
-                            .inline-flex { display: inline-flex; }
-                            .flex-col { flex-direction: column; }
-                            .space-y-1 > * + * { margin-top: 4px; }
-                            .space-y-2 > * + * { margin-top: 8px; }
-                            .divider {
-                              border-bottom: 1px dashed #999;
-                              margin: 8px 0;
-                            }
-                            .header { text-align: center; margin-bottom: 15px; }
-                            .header h1 { font-size: 20px; font-weight: bold; letter-spacing: 2px; }
-                            .header p { font-size: 11px; margin-top: 3px; }
-                            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
-                            .customer-box { border: 1px solid #ccc; border-radius: 4px; padding: 8px; margin-bottom: 10px; font-size: 11px; }
-                            .items-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 8px; }
-                            .item-row { margin-bottom: 8px; }
-                            .item-name { font-size: 11px; font-weight: 500; }
-                            .item-details { display: flex; justify-content: space-between; font-size: 11px; }
-                            .totals-section { font-size: 11px; }
-                            .total-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-                            .grand-total { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; border-top: 1px solid #000; padding-top: 5px; margin-top: 5px; }
-                            .payment-section { font-size: 11px; }
-                            .barcode { display: flex; justify-content: center; gap: 1px; margin: 15px 0; }
-                            .barcode-bar { background: #000; height: 40px; }
-                            .barcode-text { font-size: 10px; text-align: center; margin-top: 5px; }
-                            .footer { text-align: center; font-size: 11px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #999; }
-                            .footer .thank-you { font-weight: bold; margin-bottom: 5px; }
-                            .footer .powered { font-size: 9px; color: #666; margin-top: 10px; }
-                            .bg-gray { background-color: #f3f4f6; padding: 8px; border-radius: 4px; text-align: center; margin-bottom: 10px; }
-                            @media print {
-                              body { padding: 0; width: 80mm; }
-                              @page { margin: 5mm; size: 80mm auto; }
-                            }
-                          </style>
-                        </head>
-                        <body>
-                          <div class="receipt-container">
-                            ${receiptRef.current.innerHTML}
-                          </div>
-                        </body>
-                      </html>
-                    `)
-                    printWindow.document.close()
-                    printWindow.focus()
-                    setTimeout(() => {
-                      printWindow.print()
-                      printWindow.close()
-                    }, 250)
-                  }
-                }
-              }}
+              onClick={printReceiptPreview}
             >
               <Icon icon="solar:printer-bold" className="h-4 w-4 mr-2" />
               Print
@@ -2165,50 +2245,13 @@ export function POSTerminal() {
             description: `HitPay payment completed. Transaction: ${transactionId}`,
           })
           setShowHitPayDialog(false)
-          setLastOrder({
-            orderNumber: hitPayPaymentData.orderId?.toString() || 'ONLINE',
-            receiptNumber: `HITPAY-${Date.now()}`,
-            date: new Date(),
-            customer: selectedCustomer ? {
-              name: selectedCustomer.name,
-              phone: selectedCustomer.phone,
-              email: selectedCustomer.email,
-            } : { name: 'Walk-in Customer' },
-            items: cart.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              line_total: item.line_total
-            })),
-            subtotal,
-            taxAmount,
-            discountAmount: regularDiscountAmount,
-            discountType: discount.type,
-            discountValue: discount.value,
-            coupon: appliedCoupon ? {
-              code: appliedCoupon.code,
-              discountAmount: couponDiscountAmount,
-              discountType: appliedCoupon.discount_type,
-              discountValue: appliedCoupon.discount_value,
-            } : null,
-            loyaltyDiscountAmount,
-            loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
-            total,
-            paymentMethod: 'Card (HitPay)',
-            amountPaid: total,
-            change: 0,
-            terminal: activeTerminalId,
-            transactionId,
-          })
+          setLastOrder(buildReceiptOrder({
+            id: hitPayPaymentData.orderId,
+            order_number: hitPayPaymentData.orderId?.toString() || 'ONLINE',
+            receipt_number: `HITPAY-${Date.now()}`,
+          }, 'Card (HitPay)', { transactionId }))
           setShowReceiptDialog(true)
-          setTimeout(() => {
-            clearSessionCart()
-            setSelectedCustomer(null)
-            setCurrentOrderId(null)
-            setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
-            setAppliedCoupon(null)
-            setDiscount({ type: 'fixed', value: 0 })
-          }, 500)
+          resetTerminalForNextOrder()
         }}
         onError={(error) => {
           toast({
@@ -2236,54 +2279,16 @@ export function POSTerminal() {
           setShowStripeDialog(false)
           
           // Set receipt data BEFORE clearing cart
-          setLastOrder({
-            orderNumber: stripePaymentData.orderId?.toString() || 'ONLINE',
-            receiptNumber: `ONLINE-${Date.now()}`,
-            date: new Date(),
-            customer: selectedCustomer ? {
-              name: selectedCustomer.name,
-              phone: selectedCustomer.phone,
-              email: selectedCustomer.email,
-            } : { name: 'Walk-in Customer' },
-            items: cart.map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              line_total: item.line_total
-            })),
-            subtotal,
-            taxAmount,
-            discountAmount: regularDiscountAmount,
-            discountType: discount.type,
-            discountValue: discount.value,
-            coupon: appliedCoupon ? {
-              code: appliedCoupon.code,
-              discountAmount: couponDiscountAmount,
-              discountType: appliedCoupon.discount_type,
-              discountValue: appliedCoupon.discount_value,
-            } : null,
-            loyaltyDiscountAmount,
-            loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
-            total,
-            paymentMethod: 'Card (Stripe)',
-            amountPaid: total,
-            change: 0,
-            terminal: activeTerminalId,
-            transactionId,
-          })
+          setLastOrder(buildReceiptOrder({
+            id: stripePaymentData.orderId,
+            order_number: stripePaymentData.orderId?.toString() || 'ONLINE',
+            receipt_number: `ONLINE-${Date.now()}`,
+          }, 'Card (Stripe)', { transactionId }))
           
           // Show receipt dialog
           setShowReceiptDialog(true)
           
-          // Clear cart after setting receipt data
-          setTimeout(() => {
-            clearSessionCart()
-            setSelectedCustomer(null)
-            setCurrentOrderId(null)
-            setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
-            setAppliedCoupon(null)
-            setDiscount({ type: 'fixed', value: 0 })
-          }, 500)
+          resetTerminalForNextOrder()
         }}
         onError={(error) => {
           toast({

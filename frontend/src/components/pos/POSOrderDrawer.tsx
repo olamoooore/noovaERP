@@ -236,9 +236,46 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
     }
   }
   
-  const handlePrint = (order: any) => {
-      toast({ title: "Printing Receipt", description: `Printing for ${order.order_number}...` })
-      // Actual implementation would invoke window.print() on a receipt template or call backend
+  const handlePrint = async (order: any) => {
+      toast({ title: "Printing Receipt", description: `Preparing receipt for ${order.order_number}...` })
+
+      try {
+        const response = await api.get(`/pos/orders/${order.id}/receipt`, {
+          responseType: 'blob'
+        })
+
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+        const printWindow = window.open(url, '_blank')
+
+        if (!printWindow) {
+          window.URL.revokeObjectURL(url)
+          toast({
+            title: "Print Blocked",
+            description: "Allow pop-ups for this site and try again.",
+            variant: "destructive"
+          })
+          return
+        }
+
+        const cleanup = () => window.setTimeout(() => window.URL.revokeObjectURL(url), 60000)
+        printWindow.addEventListener('load', () => {
+          printWindow.focus()
+          printWindow.print()
+          cleanup()
+        }, { once: true })
+
+        toast({
+          title: "Receipt Ready",
+          description: `Opened receipt for ${order.order_number}`
+        })
+      } catch (error) {
+        console.error('Failed to print receipt:', error)
+        toast({
+          title: "Error",
+          description: "Failed to prepare the receipt for printing. Please try again.",
+          variant: "destructive"
+        })
+      }
   }
 
   const handleViewOrder = async (order: any) => {
