@@ -19,6 +19,8 @@ use Stancl\Tenancy\Tenancy;
  */
 class InitializeTenantForPublicAccess
 {
+    private const DEDICATED_STOREFRONT_TENANT_EMAIL = 'infinitikpop@noovaerp.com';
+
     protected $tenancy;
 
     public function __construct(Tenancy $tenancy)
@@ -30,6 +32,35 @@ class InitializeTenantForPublicAccess
     {
         // Skip if tenancy is already initialized
         if (tenancy()->initialized) {
+            return $next($request);
+        }
+
+        if ($this->isDedicatedStorefrontRoute($request)) {
+            $tenant = \App\Models\Tenant::query()
+                ->where('email', self::DEDICATED_STOREFRONT_TENANT_EMAIL)
+                ->first();
+
+            if (!$tenant) {
+                Log::warning('InitializeTenantForPublicAccess: Dedicated storefront tenant missing', [
+                    'tenant_email' => self::DEDICATED_STOREFRONT_TENANT_EMAIL,
+                    'path' => $request->path(),
+                    'host' => $request->getHost(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Storefront tenant could not be resolved.',
+                ], 404);
+            }
+
+            Log::info('InitializeTenantForPublicAccess: Dedicated storefront tenant resolved', [
+                'tenant_id' => $tenant->id,
+                'tenant_email' => $tenant->email,
+                'path' => $request->path(),
+                'host' => $request->getHost(),
+            ]);
+
+            $this->tenancy->initialize($tenant);
+
             return $next($request);
         }
 
@@ -112,5 +143,19 @@ class InitializeTenantForPublicAccess
         return response()->json([
             'message' => 'Tenant could not be resolved.',
         ], 404);
+    }
+
+    private function isDedicatedStorefrontRoute(Request $request): bool
+    {
+        $path = ltrim($request->path(), '/');
+
+        if (str_starts_with($path, 'api/v1/web-shop/')) {
+            return true;
+        }
+
+        return str_starts_with($path, 'api/v1/website-public/products')
+            || str_starts_with($path, 'api/v1/website-public/categories')
+            || str_starts_with($path, 'api/v1/website-public/tags')
+            || str_starts_with($path, 'api/v1/website-public/events');
     }
 }

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Controller for public website product API.
@@ -22,6 +24,8 @@ class WebsiteProductController extends Controller
             ->where('is_active', true)
             ->with(['category', 'brand'])
             ->orderBy('created_at', 'desc');
+
+        $this->applyWebsiteVisibilityFilter($query);
 
         // Filter by category
         if ($request->filled('category_id')) {
@@ -131,16 +135,8 @@ class WebsiteProductController extends Controller
         $query = Product::query()
             ->where('is_active', true)
             ->with(['category', 'brand', 'variants']);
-        
-        // Only filter by show_on_website if the column exists and some products have it enabled
-        try {
-            $hasWebsiteProducts = Product::where('show_on_website', true)->where('is_active', true)->exists();
-            if ($hasWebsiteProducts) {
-                $query->where('show_on_website', true);
-            }
-        } catch (\Exception $e) {
-            // Column may not exist yet - skip the filter
-        }
+
+        $this->applyWebsiteVisibilityFilter($query);
         
         $product = $query->findOrFail($id);
 
@@ -203,9 +199,11 @@ class WebsiteProductController extends Controller
         $query = \App\Models\ProductCategory::query()
             ->whereHas('products', function ($q) {
                 $q->where('is_active', true);
+                $this->applyWebsiteVisibilityFilter($q);
             })
             ->withCount(['products' => function ($q) {
                 $q->where('is_active', true);
+                $this->applyWebsiteVisibilityFilter($q);
             }]);
         
         $categories = $query->orderBy('name')
@@ -232,6 +230,8 @@ class WebsiteProductController extends Controller
             ->where('is_active', true)
             ->whereNotNull('meta_keywords')
             ->where('meta_keywords', '!=', '');
+
+        $this->applyWebsiteVisibilityFilter($query);
         
         $products = $query->pluck('meta_keywords');
         
@@ -359,5 +359,21 @@ class WebsiteProductController extends Controller
         
         // Default: assume it's a path relative to storage
         return $baseUrl . '/storage/' . $imagePath;
+    }
+
+    private function applyWebsiteVisibilityFilter(Builder $query): void
+    {
+        if (!Schema::hasColumn('products', 'show_on_website')) {
+            return;
+        }
+
+        $hasWebsiteProducts = Product::query()
+            ->where('show_on_website', true)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($hasWebsiteProducts) {
+            $query->where('show_on_website', true);
+        }
     }
 }
