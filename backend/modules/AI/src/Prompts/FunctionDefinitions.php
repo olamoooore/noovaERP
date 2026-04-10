@@ -42,6 +42,12 @@ class FunctionDefinitions
             self::listRecentStockMovements(),
             // Other Functions
             self::getInvoice(),
+            self::getOutstandingInvoices(),
+            self::getInvoiceDetails(),
+            self::getOverdueInvoices(),
+            self::getRecentPayments(),
+            self::getCustomerBalance(),
+            self::getRevenueSummary(),
             self::createTicket(),
         ];
     }
@@ -337,6 +343,126 @@ class FunctionDefinitions
                     ],
                 ],
                 'required' => ['invoice_number'],
+            ],
+        ];
+    }
+
+    protected static function getOutstandingInvoices(): array
+    {
+        return [
+            'name' => 'get_outstanding_invoices',
+            'description' => 'Get a list of outstanding or unpaid invoices. Use this when the user asks about unpaid invoices, outstanding invoices, invoices pending payment, or how much is owed.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of invoices to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getInvoiceDetails(): array
+    {
+        return [
+            'name' => 'get_invoice_details',
+            'description' => 'Get full details of a specific invoice by invoice number. Use this when the user asks about a specific invoice, wants to see invoice details, or asks about a particular invoice number.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'invoice_number' => [
+                        'type' => 'string',
+                        'description' => 'The invoice number to look up (e.g. INV-2026-0001)',
+                    ],
+                ],
+                'required' => ['invoice_number'],
+            ],
+        ];
+    }
+
+    protected static function getOverdueInvoices(): array
+    {
+        return [
+            'name' => 'get_overdue_invoices',
+            'description' => 'Get a list of overdue invoices where the due date has passed and there is still an outstanding balance. Use this when the user asks about overdue invoices, late payments, or past due invoices.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of invoices to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getRecentPayments(): array
+    {
+        return [
+            'name' => 'get_recent_payments',
+            'description' => 'Get a list of recent payments received. Use this when the user asks about recent payments, payment history, or payments received.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of payments to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getCustomerBalance(): array
+    {
+        return [
+            'name' => 'get_customer_balance',
+            'description' => 'Get the outstanding balance for a specific customer. Use this when the user asks about a customer\'s balance, how much a customer owes, or a customer\'s outstanding amount.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'customer_id' => [
+                        'type' => 'integer',
+                        'description' => 'The ID of the customer',
+                    ],
+                    'customer_name' => [
+                        'type' => 'string',
+                        'description' => 'The name of the customer to search for',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getRevenueSummary(): array
+    {
+        return [
+            'name' => 'get_revenue_summary',
+            'description' => 'Get a revenue summary for a given period. Use this when the user asks about revenue, total sales, income summary, or financial performance.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Period to summarise: this_month (default) or this_year',
+                    ],
+                    'date_from' => [
+                        'type' => 'string',
+                        'description' => 'Start date for custom range (YYYY-MM-DD)',
+                    ],
+                    'date_to' => [
+                        'type' => 'string',
+                        'description' => 'End date for custom range (YYYY-MM-DD)',
+                    ],
+                ],
+                'required' => [],
             ],
         ];
     }

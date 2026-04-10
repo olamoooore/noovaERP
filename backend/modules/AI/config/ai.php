@@ -17,8 +17,8 @@ return [
         'base_url' => env('OLLAMA_URL', 'http://localhost:11434/v1'),
         'model' => env('LLM_MODEL', 'llama3.2:3b'),
         'temperature' => (float) env('LLM_TEMPERATURE', 0.2), // Low temp for structured tasks (0.1-0.3)
-        'max_tokens' => (int) env('LLM_MAX_TOKENS', 500),
-        'timeout' => (int) env('LLM_TIMEOUT', 60),
+        'max_tokens' => (int) env('LLM_MAX_TOKENS', 300),
+        'timeout' => (int) env('LLM_TIMEOUT', 120),
         'top_p' => (float) env('LLM_TOP_P', 0.9), // Nucleus sampling
     ],
 

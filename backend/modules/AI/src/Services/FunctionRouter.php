@@ -10,6 +10,7 @@ use Modules\AI\Functions\ProductFunctions;
 use Modules\AI\Functions\InvoiceFunctions;
 use Modules\AI\Functions\TicketFunctions;
 use Modules\AI\Functions\InventoryFunctions;
+use Modules\AI\Functions\AccountingFunctions;
 
 /**
  * Function Router Service
@@ -62,6 +63,12 @@ class FunctionRouter
                 'list_warehouses' => InventoryFunctions::listWarehouses($arguments),
                 'list_recent_stock_movements' => InventoryFunctions::listRecentStockMovements($arguments),
                 'get_invoice' => InvoiceFunctions::getDetails($arguments),
+                'get_outstanding_invoices' => AccountingFunctions::getOutstandingInvoices($arguments),
+                'get_invoice_details' => AccountingFunctions::getInvoiceDetails($arguments),
+                'get_overdue_invoices' => AccountingFunctions::getOverdueInvoices($arguments),
+                'get_recent_payments' => AccountingFunctions::getRecentPayments($arguments),
+                'get_customer_balance' => AccountingFunctions::getCustomerBalance($arguments),
+                'get_revenue_summary' => AccountingFunctions::getRevenueSummary($arguments),
                 'create_ticket' => TicketFunctions::create($arguments, $customerId, $conversationId),
                 'transfer_to_human' => $this->transferToHuman($arguments),
                 default => [
