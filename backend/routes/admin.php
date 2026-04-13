@@ -4,6 +4,7 @@ use App\SuperAdmin\Http\Controllers\AdminAnalyticsController;
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
+use App\SuperAdmin\Http\Controllers\AdminCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
@@ -146,5 +147,35 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     Route::prefix('analytics')->group(function () {
         Route::get('/revenue', [AdminAnalyticsController::class, 'revenue']);
         Route::get('/plans',   [AdminAnalyticsController::class, 'plans']);
+    });
+
+    // --- Phase 6A: Product Catalog ---
+    Route::prefix('catalog')->middleware(DenyReadonlyRole::class)->group(function () {
+        // Item types — dynamic registry (no hardcoded enums)
+        Route::get('/types',  [AdminCatalogController::class, 'listTypes']);
+        Route::post('/types', [AdminCatalogController::class, 'createType']);
+
+        // Item CRUD
+        Route::get('/',       [AdminCatalogController::class, 'index']);   // tree
+        Route::get('/flat',   [AdminCatalogController::class, 'flat']);    // flat list for dropdowns
+        Route::post('/',      [AdminCatalogController::class, 'store']);
+        Route::get('/{item}', [AdminCatalogController::class, 'show']);
+        Route::put('/{item}', [AdminCatalogController::class, 'update']);
+        Route::delete('/{item}', [AdminCatalogController::class, 'deactivate']); // soft only
+
+        // Dependencies
+        Route::post('/{item}/dependencies',          [AdminCatalogController::class, 'addDependency']);
+        Route::delete('/dependencies/{dependency}',  [AdminCatalogController::class, 'removeDependency']);
+
+        // Incompatibilities
+        Route::post('/{item}/incompatibilities',              [AdminCatalogController::class, 'addIncompatibility']);
+        Route::delete('/incompatibilities/{incompatibility}', [AdminCatalogController::class, 'removeIncompatibility']);
+
+        // Visibility rules
+        Route::post('/{item}/visibility-rules',    [AdminCatalogController::class, 'addVisibilityRule']);
+        Route::delete('/visibility-rules/{rule}',  [AdminCatalogController::class, 'removeVisibilityRule']);
+
+        // Legacy migration — idempotent, safe to run multiple times
+        Route::post('/sync', [AdminCatalogController::class, 'syncFromLegacy']);
     });
 });

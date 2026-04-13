@@ -278,3 +278,80 @@ export interface SubscriptionInvoice {
   updated_at: string
   subscription?: Subscription
 }
+
+// =============================================================================
+// Phase 6A — Product Catalog
+// =============================================================================
+
+export interface CatalogItemType {
+  id: number
+  key: string
+  name: string
+  description: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type CatalogItemSource = 'catalog' | 'legacy_module'
+
+export interface CatalogDependency {
+  id: number
+  item_id: number
+  depends_on_item_id: number
+  type: 'required' | 'optional'
+  created_at: string
+  updated_at: string
+  depends_on?: CatalogItem
+  item?: CatalogItem
+}
+
+export interface CatalogIncompatibility {
+  id: number
+  item_id: number
+  incompatible_item_id: number
+  reason: string | null
+  created_at: string
+  updated_at: string
+  incompatible_item?: CatalogItem
+  item?: CatalogItem
+}
+
+export interface CatalogVisibilityRule {
+  id: number
+  item_id: number
+  rule_type: string
+  condition: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface CatalogItem {
+  id: number
+  key: string                          // immutable — module[.submodule[.feature]]
+  name: string
+  description: string | null
+  type_id: number
+  parent_id: number | null
+  is_active: boolean
+  sort_order: number
+  metadata: Record<string, unknown> | null
+  effective_from: string               // date string YYYY-MM-DD
+  effective_to: string | null
+  source: CatalogItemSource
+  created_at: string
+  updated_at: string
+  // Relations (loaded on demand)
+  type?: CatalogItemType
+  parent?: CatalogItem
+  children?: CatalogItem[]
+  dependencies?: CatalogDependency[]
+  incompatibilities?: CatalogIncompatibility[]
+  visibility_rules?: CatalogVisibilityRule[]
+}
+
+export interface CatalogSyncResult {
+  synced: number
+  skipped: number
+  keys: string[]
+}

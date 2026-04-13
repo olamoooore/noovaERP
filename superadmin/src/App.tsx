@@ -22,6 +22,7 @@ import AdminUsersPage from '@/pages/users/AdminUsersPage'
 import CollectionsPage from '@/pages/collections/CollectionsPage'
 import OperationsPage from '@/pages/operations/OperationsPage'
 import RevenueDashboardPage from '@/pages/analytics/RevenueDashboardPage'
+import CatalogManagerPage from '@/pages/catalog/CatalogManagerPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,9 @@ export default function App() {
                 <Route path="collections" element={<CollectionsPage />} />
                 <Route path="operations"  element={<OperationsPage />} />
                 <Route path="analytics"   element={<RevenueDashboardPage />} />
+
+                {/* Phase 6A — Product Catalog */}
+                <Route path="catalog" element={<CatalogManagerPage />} />
 
                 {/* Placeholder — future phases */}
                 <Route path="sales/*" element={<ComingSoon title="Sales Pipeline" description="Planned for a future phase." />} />

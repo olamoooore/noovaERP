@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Tenants',       path: '/tenants',         icon: 'solar:buildings-bold-duotone' },
   { label: 'Plans',         path: '/plans',           icon: 'solar:tag-price-bold-duotone' },
   { label: 'Modules',       path: '/modules',         icon: 'solar:widget-bold-duotone' },
+  { label: 'Catalog',       path: '/catalog',         icon: 'solar:box-bold-duotone' },
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },
