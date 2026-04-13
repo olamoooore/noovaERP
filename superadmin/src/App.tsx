@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AdminProtectedRoute } from '@/components/admin/AdminProtectedRoute'
 import { AdminLayout } from '@/components/admin/AdminLayout'
+import { ComingSoon } from '@/components/common/ComingSoon'
 import { AdminLoginPage } from '@/pages/auth/AdminLoginPage'
+import AcceptInvitePage from '@/pages/auth/AcceptInvitePage'
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
 import { PlanListPage } from '@/pages/plans/PlanListPage'
 import { PlanDetailPage } from '@/pages/plans/PlanDetailPage'
@@ -16,6 +18,10 @@ import SubscriptionDetailPage from '@/pages/subscriptions/SubscriptionDetailPage
 import BillingPage from '@/pages/billing/BillingPage'
 import AuditLogPage from '@/pages/audit/AuditLogPage'
 import ObservabilityPage from '@/pages/observability/ObservabilityPage'
+import AdminUsersPage from '@/pages/users/AdminUsersPage'
+import CollectionsPage from '@/pages/collections/CollectionsPage'
+import OperationsPage from '@/pages/operations/OperationsPage'
+import RevenueDashboardPage from '@/pages/analytics/RevenueDashboardPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,32 +47,40 @@ export default function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
             {/* Public */}
-            <Route path="/login" element={<AdminLoginPage />} />
+            <Route path="/login"         element={<AdminLoginPage />} />
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
             {/* Protected — requires valid admin token */}
             <Route element={<AdminProtectedRoute />}>
               <Route element={<AdminLayout />}>
                 <Route index element={<AdminDashboardPage />} />
 
-                {/* Phase 2 — Tenant 360 */}
-                <Route path="tenants"               element={<TenantListPage />} />
-                <Route path="tenants/:tenantId"     element={<TenantDetailPage />} />
-
-                {/* Phase 1 — live pages */}
+                {/* Phase 1 — Plans & Modules */}
                 <Route path="plans"           element={<PlanListPage />} />
                 <Route path="plans/:familyId" element={<PlanDetailPage />} />
                 <Route path="modules"         element={<ModuleCatalogPage />} />
+
+                {/* Phase 2 — Tenant 360 */}
+                <Route path="tenants"           element={<TenantListPage />} />
+                <Route path="tenants/:tenantId" element={<TenantDetailPage />} />
+
                 {/* Phase 3 — Subscriptions & Billing */}
-                <Route path="subscriptions"                    element={<SubscriptionListPage />} />
-                <Route path="subscriptions/:subscriptionId"    element={<SubscriptionDetailPage />} />
-                <Route path="billing"                          element={<BillingPage />} />
+                <Route path="subscriptions"                 element={<SubscriptionListPage />} />
+                <Route path="subscriptions/:subscriptionId" element={<SubscriptionDetailPage />} />
+                <Route path="billing"                       element={<BillingPage />} />
+
                 {/* Phase 4 — Audit Log & Observability */}
                 <Route path="audit"         element={<AuditLogPage />} />
                 <Route path="observability" element={<ObservabilityPage />} />
 
-                <Route path="collections/*" element={<ComingSoon title="Collections" />} />
-                <Route path="sales/*"       element={<ComingSoon title="Sales" />} />
-                <Route path="operations/*"  element={<ComingSoon title="Operations" />} />
+                {/* Phase 5 — Admin Users, Collections, Operations, Analytics */}
+                <Route path="users"       element={<AdminUsersPage />} />
+                <Route path="collections" element={<CollectionsPage />} />
+                <Route path="operations"  element={<OperationsPage />} />
+                <Route path="analytics"   element={<RevenueDashboardPage />} />
+
+                {/* Placeholder — future phases */}
+                <Route path="sales/*" element={<ComingSoon title="Sales Pipeline" description="Planned for a future phase." />} />
               </Route>
             </Route>
 
@@ -76,14 +90,5 @@ export default function App() {
         </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
-  )
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 text-center">
-      <p className="text-lg font-semibold text-gray-700">{title}</p>
-      <p className="text-sm text-gray-400">Coming in a future phase.</p>
-    </div>
   )
 }

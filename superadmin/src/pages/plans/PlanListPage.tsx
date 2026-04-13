@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { getPlanFamilies, createPlanFamily } from '@/lib/admin-api/plans'
+import { getPlanFamilies, createPlanFamily, deletePlanFamily } from '@/lib/admin-api/plans'
 import type { PlanFamily } from '@/types/admin'
 import { cn } from '@/lib/utils'
 
@@ -82,12 +82,26 @@ function CreateFamilyModal({ onClose }: { onClose: () => void }) {
 }
 
 export function PlanListPage() {
-  const navigate = useNavigate()
-  const [showModal, setShowModal] = useState(false)
+  const navigate    = useNavigate()
+  const queryClient = useQueryClient()
+  const [showModal, setShowModal]     = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data: families = [], isLoading, isError } = useQuery<PlanFamily[]>({
     queryKey: ['admin', 'plans'],
     queryFn: getPlanFamilies,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deletePlanFamily(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] })
+      setDeleteError(null)
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } }
+      setDeleteError(e.response?.data?.message ?? 'Failed to delete plan family.')
+    },
   })
 
   return (
@@ -109,6 +123,12 @@ export function PlanListPage() {
       {isLoading && <p className="text-sm text-gray-400">Loading plans…</p>}
       {isError  && <p className="text-sm text-red-500">Failed to load plans.</p>}
 
+      {deleteError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {deleteError}
+        </div>
+      )}
+
       {!isLoading && !isError && (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-sm">
@@ -119,11 +139,12 @@ export function PlanListPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Versions</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Created</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {families.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No plan families yet.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No plan families yet.</td></tr>
               )}
               {families.map((f) => (
                 <tr
@@ -136,6 +157,21 @@ export function PlanListPage() {
                   <td className="px-4 py-3 text-gray-700">{f.versions_count ?? f.versions?.length ?? 0}</td>
                   <td className="px-4 py-3"><Badge active={f.is_active} /></td>
                   <td className="px-4 py-3 text-gray-400">{new Date(f.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm(`Delete plan "${f.name}"? This cannot be undone.`)) {
+                          deleteMutation.mutate(f.id)
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+                    >
+                      <Icon icon="solar:trash-bin-minimalistic-bold-duotone" width={13} />
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

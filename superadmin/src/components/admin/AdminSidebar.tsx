@@ -16,8 +16,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },
-  { label: 'Sales',         path: '/sales',           icon: 'solar:chart-square-bold-duotone' },
   { label: 'Operations',    path: '/operations',      icon: 'solar:settings-bold-duotone' },
+  { label: 'Analytics',     path: '/analytics',       icon: 'solar:chart-square-bold-duotone' },
+  { label: 'Admin Users',   path: '/users',           icon: 'solar:users-group-rounded-bold-duotone' },
   { label: 'Audit Log',     path: '/audit',           icon: 'solar:shield-check-bold-duotone' },
   { label: 'Observability', path: '/observability',   icon: 'solar:graph-bold-duotone' },
 ]
@@ -63,7 +64,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 4 — Observability</p>
+        <p className="text-[10px] text-gray-400">Phase 5 — Admin Users & Analytics</p>
       </div>
     </aside>
   )

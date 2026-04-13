@@ -1,16 +1,20 @@
 <?php
 
+use App\SuperAdmin\Http\Controllers\AdminAnalyticsController;
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
+use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
+use App\SuperAdmin\Http\Controllers\AdminOperationsController;
 use App\SuperAdmin\Http\Controllers\AdminPlanController;
 use App\SuperAdmin\Http\Controllers\AdminSubscriptionController;
 use App\SuperAdmin\Http\Controllers\AdminTenantController;
 use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
 use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
 use App\SuperAdmin\Http\Controllers\AdminTenantTimelineController;
+use App\SuperAdmin\Http\Controllers\AdminUserController;
 use App\SuperAdmin\Http\Middleware\DenyReadonlyRole;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +32,7 @@ use Illuminate\Support\Facades\Route;
 
 // Public — no auth required
 Route::post('/auth/login', [AdminAuthController::class, 'login']);
+Route::post('/users/accept-invite', [AdminUserController::class, 'acceptInvite']);
 
 // Protected — requires valid Sanctum token + admin role
 Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
@@ -42,6 +47,7 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::post('/',   [AdminPlanController::class, 'store']);
         Route::get('/{family}',    [AdminPlanController::class, 'show']);
         Route::put('/{family}',    [AdminPlanController::class, 'update']);
+        Route::delete('/{family}', [AdminPlanController::class, 'destroy']);
 
         Route::prefix('{family}/versions')->group(function () {
             Route::post('/',                               [AdminPlanController::class, 'createVersion']);
@@ -113,5 +119,32 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::get('/export',    [AdminAuditLogController::class, 'export']);
         Route::get('/',          [AdminAuditLogController::class, 'index']);
         Route::get('/{log}',     [AdminAuditLogController::class, 'show']);
+    });
+
+    // --- Phase 5: Admin User Management (throttled, gate-enforced per method) ---
+    Route::prefix('users')->middleware('throttle:30,1')->group(function () {
+        Route::get('/',                [AdminUserController::class, 'index']);
+        Route::post('/invite',         [AdminUserController::class, 'invite']);
+        Route::put('/{user}/role',     [AdminUserController::class, 'updateRole']);
+        Route::delete('/{user}',       [AdminUserController::class, 'deactivate']);
+    });
+
+    // --- Phase 5: Collections — tracked at invoice level (throttled, gate-enforced per method) ---
+    Route::prefix('collections')->middleware(['throttle:30,1', DenyReadonlyRole::class])->group(function () {
+        Route::get('/',                         [AdminCollectionsController::class, 'index']);
+        Route::post('/{invoice}/advance',       [AdminCollectionsController::class, 'advance']);
+        Route::post('/{invoice}/clear',         [AdminCollectionsController::class, 'clear']);
+    });
+
+    // --- Phase 5: Bulk Operations ---
+    Route::prefix('operations')->middleware('throttle:10,1')->group(function () {
+        Route::post('/bulk-health',          [AdminOperationsController::class, 'bulkHealth']);
+        Route::get('/batch/{batchId}',       [AdminOperationsController::class, 'batchStatus']);
+    });
+
+    // --- Phase 5: Revenue Analytics ---
+    Route::prefix('analytics')->group(function () {
+        Route::get('/revenue', [AdminAnalyticsController::class, 'revenue']);
+        Route::get('/plans',   [AdminAnalyticsController::class, 'plans']);
     });
 });

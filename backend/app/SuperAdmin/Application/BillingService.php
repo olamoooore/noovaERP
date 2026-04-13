@@ -11,8 +11,9 @@ use Illuminate\Validation\ValidationException;
 
 class BillingService
 {
-    private const PAYABLE_STATUSES = ['open', 'draft'];
-    private const VOIDABLE_STATUSES = ['open', 'draft'];
+    private const PAYABLE_STATUSES   = ['open', 'draft'];
+    private const VOIDABLE_STATUSES  = ['open', 'draft'];
+    private const INVOICE_DUE_DAYS   = 14;
 
     public function __construct(
         private readonly AdminAuditLogger $auditLogger,
@@ -40,7 +41,7 @@ class BillingService
             'tax'              => 0,
             'total'            => $subtotal,
             'status'           => 'open',
-            'due_date'         => now()->addDays(14)->toDateString(),
+            'due_date'         => now()->addDays(self::INVOICE_DUE_DAYS)->toDateString(),
             'period_start'     => $subscription->current_period_start,
             'period_end'       => $subscription->current_period_end,
         ]);

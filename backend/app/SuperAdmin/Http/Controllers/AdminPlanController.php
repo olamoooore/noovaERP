@@ -61,6 +61,25 @@ class AdminPlanController extends Controller
         return response()->json(['data' => $family->load('versions')]);
     }
 
+    public function destroy(PlanFamily $family): JsonResponse
+    {
+        // Block deletion if any active subscriptions reference this family's versions
+        $activeCount = \App\SuperAdmin\Domain\Subscription::whereIn(
+            'plan_version_id',
+            $family->versions()->pluck('id'),
+        )->whereIn('status', ['active', 'trialing', 'past_due'])->count();
+
+        if ($activeCount > 0) {
+            return response()->json([
+                'message' => "Cannot delete: {$activeCount} active subscription(s) are on this plan.",
+            ], 422);
+        }
+
+        $family->delete();
+
+        return response()->json(['message' => 'Plan family deleted.']);
+    }
+
     // --- Versions ---
 
     public function createVersion(Request $request, PlanFamily $family): JsonResponse

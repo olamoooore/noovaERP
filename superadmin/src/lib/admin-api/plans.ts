@@ -26,6 +26,10 @@ export async function updatePlanFamily(
   return data.data
 }
 
+export async function deletePlanFamily(id: number): Promise<void> {
+  await adminApi.delete(`/plans/${id}`)
+}
+
 export async function createPlanVersion(
   familyId: number,
   payload: { version_label: string; description?: string; is_active?: boolean; is_publicly_listed?: boolean },

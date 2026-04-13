@@ -26,16 +26,24 @@ class SubscriptionInvoice extends Model
         'period_start',
         'period_end',
         'notes',
+        'is_prorated',
+        'proration_adjustment_amount',
+        'collection_stage',
+        'collection_stage_updated_at',
+        'collection_notes',
     ];
 
     protected $casts = [
-        'subtotal'     => 'integer',
-        'tax'          => 'integer',
-        'total'        => 'integer',
-        'due_date'     => 'date',
-        'paid_at'      => 'datetime',
-        'period_start' => 'datetime',
-        'period_end'   => 'datetime',
+        'subtotal'                     => 'integer',
+        'tax'                          => 'integer',
+        'total'                        => 'integer',
+        'due_date'                     => 'date',
+        'paid_at'                      => 'datetime',
+        'period_start'                 => 'datetime',
+        'period_end'                   => 'datetime',
+        'is_prorated'                  => 'boolean',
+        'proration_adjustment_amount'  => 'integer',
+        'collection_stage_updated_at'  => 'datetime',
     ];
 
     public function subscription(): BelongsTo
