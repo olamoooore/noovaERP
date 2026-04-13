@@ -15,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Modules',       path: '/modules',         icon: 'solar:widget-bold-duotone' },
   { label: 'Catalog',       path: '/catalog',         icon: 'solar:box-bold-duotone' },
   { label: 'Tier Matrix',   path: '/packaging',       icon: 'solar:widget-5-bold-duotone' },
+  { label: 'Pricing',       path: '/pricing',         icon: 'solar:calculator-bold-duotone' },
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },
@@ -66,7 +67,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 5 — Admin Users & Analytics</p>
+        <p className="text-[10px] text-gray-400">Phase 6D — Pricing Engine</p>
       </div>
     </aside>
   )

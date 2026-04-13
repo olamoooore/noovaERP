@@ -462,3 +462,73 @@ export interface EntitlementCheckResult {
   key: string
   is_entitled: boolean
 }
+
+// =============================================================================
+// Phase 6D — Pricing Engine
+// =============================================================================
+
+export type BillingInterval = 'monthly' | 'yearly'
+
+export type PriceRuleType =
+  | 'percentage_discount'
+  | 'fixed_discount'
+  | 'yearly_discount'
+  | 'volume_tier'
+
+export interface CatalogPrice {
+  id: number
+  catalog_item_id: number
+  billing_interval: BillingInterval
+  currency: string
+  unit_amount: number            // cents
+  created_at: string
+  updated_at: string
+  catalog_item?: CatalogItem
+}
+
+export interface CatalogPriceRule {
+  id: number
+  catalog_item_id: number | null  // null = global
+  name: string
+  rule_type: PriceRuleType
+  condition: Record<string, unknown>
+  modifier_value: string          // decimal as string from API
+  priority: number
+  is_exclusive: boolean
+  is_active: boolean
+  effective_from: string          // date
+  effective_to: string | null
+  created_at: string
+  updated_at: string
+  catalog_item?: CatalogItem
+}
+
+export interface QuoteLineItem {
+  catalog_item_id: number
+  item_key: string
+  item_name: string
+  source: EntitlementSource
+  unit_amount: number            // cents
+  quantity: number
+  discount_cents: number
+  line_total_cents: number
+  rules_applied: string[]
+}
+
+export interface TenantQuoteSnapshot {
+  id: number
+  tenant_id: string
+  plan_family_id: number | null
+  billing_interval: BillingInterval
+  currency: string
+  subtotal_cents: number
+  discount_cents: number
+  total_cents: number
+  line_items: QuoteLineItem[]
+  generated_by_admin_id: number | null
+  generated_at: string
+  created_at: string
+  updated_at: string
+  plan_family?: PlanFamily
+  generated_by_admin?: { id: number; name: string; email: string } | null
+}

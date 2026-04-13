@@ -6,6 +6,7 @@ use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPackagingController;
+use App\SuperAdmin\Http\Controllers\AdminPricingController;
 use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
@@ -198,6 +199,31 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::get('/entitlements/check',     [AdminTenantConfigurationController::class, 'checkEntitlement']);
         Route::get('/entitlements/jobs',      [AdminTenantConfigurationController::class, 'rebuildJobs']);
         Route::post('/entitlements/rebuild',  [AdminTenantConfigurationController::class, 'rebuild'])->middleware(DenyReadonlyRole::class);
+    });
+
+    // --- Phase 6D: Pricing Engine ---
+    Route::prefix('pricing')->group(function () {
+        // Prices (read — all roles; write — deny readonly)
+        Route::get('/prices', [AdminPricingController::class, 'listPrices']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::put('/prices',          [AdminPricingController::class, 'upsertPrice']);
+            Route::delete('/prices/{priceId}', [AdminPricingController::class, 'deletePrice']);
+        });
+
+        // Rules
+        Route::get('/rules', [AdminPricingController::class, 'listRules']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/rules',          [AdminPricingController::class, 'createRule']);
+            Route::put('/rules/{rule}',    [AdminPricingController::class, 'updateRule']);
+            Route::delete('/rules/{ruleId}', [AdminPricingController::class, 'deleteRule']);
+        });
+
+        // Quotes — static sub-routes BEFORE parameterised
+        Route::get('/quotes/{tenantId}/latest', [AdminPricingController::class, 'latestQuote']);
+        Route::get('/quotes/{tenantId}',        [AdminPricingController::class, 'quoteHistory']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/quotes/{tenantId}', [AdminPricingController::class, 'generateQuote']);
+        });
     });
 
     // --- Phase 6B: Tier Matrix (Packaging Layer) ---

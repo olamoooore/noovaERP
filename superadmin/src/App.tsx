@@ -25,6 +25,7 @@ import RevenueDashboardPage from '@/pages/analytics/RevenueDashboardPage'
 import CatalogManagerPage from '@/pages/catalog/CatalogManagerPage'
 import TierMatrixPage from '@/pages/packaging/TierMatrixPage'
 import TenantConfigurationPage from '@/pages/tenants/TenantConfigurationPage'
+import PricingCalculatorPage from '@/pages/pricing/PricingCalculatorPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,9 @@ export default function App() {
 
                 {/* Phase 6B — Tier Matrix */}
                 <Route path="packaging" element={<TierMatrixPage />} />
+
+                {/* Phase 6D — Pricing Engine */}
+                <Route path="pricing" element={<PricingCalculatorPage />} />
 
                 {/* Placeholder — future phases */}
                 <Route path="sales/*" element={<ComingSoon title="Sales Pipeline" description="Planned for a future phase." />} />
