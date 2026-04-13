@@ -6,6 +6,7 @@ use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPackagingController;
+use App\SuperAdmin\Http\Controllers\AdminPlanChangeController;
 use App\SuperAdmin\Http\Controllers\AdminPricingController;
 use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
@@ -223,6 +224,25 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::get('/quotes/{tenantId}',        [AdminPricingController::class, 'quoteHistory']);
         Route::middleware(DenyReadonlyRole::class)->group(function () {
             Route::post('/quotes/{tenantId}', [AdminPricingController::class, 'generateQuote']);
+        });
+    });
+
+    // --- Phase 6E: Plan Change Engine ---
+    // Tenant-scoped — history and preview (read all roles; write deny readonly)
+    Route::prefix('tenants/{tenantId}/plan-changes')->group(function () {
+        Route::get('/', [AdminPlanChangeController::class, 'history']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/',        [AdminPlanChangeController::class, 'store']);
+            Route::post('/preview', [AdminPlanChangeController::class, 'preview']);
+        });
+    });
+
+    // Global pending queue + apply/cancel actions
+    Route::prefix('plan-changes')->group(function () {
+        Route::get('/', [AdminPlanChangeController::class, 'pending']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/{change}/apply',  [AdminPlanChangeController::class, 'apply']);
+            Route::post('/{change}/cancel', [AdminPlanChangeController::class, 'cancel']);
         });
     });
 

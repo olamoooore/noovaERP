@@ -10,6 +10,13 @@ import {
   resetTenantConfiguration,
   rebuildTenantEntitlements,
 } from '@/lib/admin-api/entitlements'
+import {
+  getPlanChangeHistory,
+  requestPlanChange,
+  previewProration,
+  applyPlanChange,
+  cancelPlanChange,
+} from '@/lib/admin-api/plan-changes'
 import type {
   CatalogItem,
   SelectionType,
@@ -18,6 +25,8 @@ import type {
   PlanItemDefault,
   EntitlementRebuildJob,
   ItemAvailability,
+  TenantPlanChange,
+  ProrationPreview,
 } from '@/types/admin'
 
 // =============================================================================
@@ -186,14 +195,190 @@ function AddSelectionModal({
 }
 
 // =============================================================================
+// Request Plan Change Modal
+// =============================================================================
+
+function RequestPlanChangeModal({
+  tenantId,
+  onClose,
+}: {
+  tenantId: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+
+  // Fetch plan families for the selector
+  const { data: plansData } = useQuery({
+    queryKey: ['admin', 'plans'],
+    queryFn: async () => {
+      const { adminApi } = await import('@/lib/admin-api/client')
+      const r = await adminApi.get('/plans')
+      return r.data.data as Array<{ id: number; name: string; key: string; is_active: boolean }>
+    },
+  })
+
+  const today = new Date().toISOString().slice(0, 10)
+  const [toFamilyId, setToFamilyId] = useState<number | ''>('')
+  const [effectiveDate, setEffectiveDate] = useState(today)
+  const [reason, setReason] = useState('')
+  const [preview, setPreview] = useState<ProrationPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const families = (plansData ?? []).filter(f => f.is_active)
+
+  async function loadPreview() {
+    if (!toFamilyId || !effectiveDate) return
+    setPreviewLoading(true)
+    setError(null)
+    try {
+      const p = await previewProration(tenantId, { to_family_id: Number(toFamilyId), effective_date: effectiveDate })
+      setPreview(p)
+    } catch {
+      setError('Could not load proration preview.')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const submit = useMutation({
+    mutationFn: () =>
+      requestPlanChange(tenantId, {
+        to_family_id:   Number(toFamilyId),
+        effective_date: effectiveDate,
+        reason:         reason || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'plan-changes', tenantId] })
+      qc.invalidateQueries({ queryKey: ['plan-changes', 'pending'] })
+      onClose()
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } }
+      setError(e.response?.data?.message ?? 'Failed to request plan change.')
+    },
+  })
+
+  function cents(n: number) {
+    return '$' + (n / 100).toFixed(2)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Request Plan Change</h2>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">New Plan Family <span className="text-red-500">*</span></label>
+            <select
+              value={toFamilyId}
+              onChange={e => { setToFamilyId(e.target.value === '' ? '' : Number(e.target.value)); setPreview(null) }}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            >
+              <option value="">— Select target plan —</option>
+              {families.map(f => (
+                <option key={f.id} value={f.id}>{f.name} ({f.key})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Effective Date <span className="text-red-500">*</span></label>
+            <input
+              type="date"
+              min={today}
+              value={effectiveDate}
+              onChange={e => { setEffectiveDate(e.target.value); setPreview(null) }}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={2}
+              placeholder="Why is the plan being changed?"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            />
+          </div>
+
+          {/* Preview proration */}
+          <div>
+            <button
+              type="button"
+              onClick={loadPreview}
+              disabled={!toFamilyId || previewLoading}
+              className="text-sm text-brand-600 hover:underline disabled:opacity-40"
+            >
+              {previewLoading ? 'Loading preview…' : 'Preview proration amounts →'}
+            </button>
+
+            {preview && (
+              <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">From</span>
+                  <span className="font-medium">{preview.from_family?.name ?? '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">To</span>
+                  <span className="font-medium">{preview.to_family?.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Current period ends</span>
+                  <span>{preview.current_period_end ?? '—'}</span>
+                </div>
+                <hr className="my-1" />
+                <div className="flex justify-between text-green-700">
+                  <span>Credit (unused days)</span>
+                  <span className="font-semibold">{cents(preview.credit_cents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Charge (new plan)</span>
+                  <span className="font-semibold">{cents(preview.charge_cents)}</span>
+                </div>
+                <div className="flex justify-between font-bold border-t pt-1 mt-1">
+                  <span>Net amount due</span>
+                  <span className={preview.net_cents <= 0 ? 'text-green-700' : 'text-gray-900'}>
+                    {preview.net_cents < 0 ? `−${cents(Math.abs(preview.net_cents))}` : cents(preview.net_cents)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
+            Cancel
+          </button>
+          <button
+            onClick={() => submit.mutate()}
+            disabled={!toFamilyId || !effectiveDate || submit.isPending}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submit.isPending ? 'Requesting…' : 'Request Change'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
 // Main page
 // =============================================================================
 
 export default function TenantConfigurationPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'builder' | 'entitlements' | 'jobs'>('builder')
+  const [tab, setTab] = useState<'builder' | 'entitlements' | 'jobs' | 'plan-changes'>('builder')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showPlanChangeModal, setShowPlanChangeModal] = useState(false)
   const [rebuildReason, setRebuildReason] = useState('')
 
   const { data, isLoading, isError } = useQuery({
@@ -218,6 +403,25 @@ export default function TenantConfigurationPage() {
       qc.invalidateQueries({ queryKey: ['admin', 'tenant-config', tenantId] })
       setRebuildReason('')
     },
+  })
+
+  const { data: planChanges = [] } = useQuery({
+    queryKey: ['admin', 'plan-changes', tenantId],
+    queryFn: () => getPlanChangeHistory(tenantId!),
+    enabled: !!tenantId,
+  })
+
+  const applyChangeMut = useMutation({
+    mutationFn: (id: number) => applyPlanChange(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'plan-changes', tenantId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'tenant-config', tenantId] })
+    },
+  })
+
+  const cancelChangeMut = useMutation({
+    mutationFn: (id: number) => cancelPlanChange(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'plan-changes', tenantId] }),
   })
 
   if (isLoading) {
@@ -246,10 +450,13 @@ export default function TenantConfigurationPage() {
   const entitled        = entitlementList.filter(e => e.is_entitled)
   const blocked         = entitlementList.filter(e => !e.is_entitled)
 
+  const pendingCount = (planChanges as TenantPlanChange[]).filter(c => c.status === 'pending').length
+
   const TABS = [
     { key: 'builder',      label: 'Configuration Builder' },
     { key: 'entitlements', label: `Resolved Entitlements (${entitled.length})` },
     { key: 'jobs',         label: `Rebuild History (${recent_jobs.length})` },
+    { key: 'plan-changes', label: `Plan Changes${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
   ] as const
 
   return (
@@ -557,12 +764,117 @@ export default function TenantConfigurationPage() {
         </div>
       )}
 
+      {/* ===== PLAN CHANGES TAB ===== */}
+      {tab === 'plan-changes' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">
+              Plan changes update the tenant's subscription tier, rebuild entitlements, and generate proration invoices.
+            </p>
+            <button
+              onClick={() => setShowPlanChangeModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Icon icon="solar:arrow-right-up-bold-duotone" width={16} />
+              Request Plan Change
+            </button>
+          </div>
+
+          {(planChanges as TenantPlanChange[]).length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-14 text-center">
+              <p className="text-sm text-gray-400">No plan changes recorded for this tenant.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Change</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Effective</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Charge</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(planChanges as TenantPlanChange[]).map(change => {
+                    const statusColors: Record<string, string> = {
+                      pending:   'bg-yellow-100 text-yellow-800',
+                      applied:   'bg-green-100 text-green-800',
+                      cancelled: 'bg-gray-100 text-gray-500',
+                    }
+                    return (
+                      <tr key={change.id} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-3 text-sm">
+                          <span className="text-gray-400">{change.from_family?.name ?? '—'}</span>
+                          <span className="mx-1.5 text-gray-300">→</span>
+                          <span className="font-medium text-gray-900">{change.to_family?.name}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{change.effective_date}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', statusColors[change.status])}>
+                            {change.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm text-green-600">
+                          {change.proration_credit_cents > 0
+                            ? '$' + (change.proration_credit_cents / 100).toFixed(2)
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-700">
+                          {change.proration_charge_cents > 0
+                            ? '$' + (change.proration_charge_cents / 100).toFixed(2)
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                          {change.reason ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {change.status === 'pending' && (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => applyChangeMut.mutate(change.id)}
+                                disabled={applyChangeMut.isPending}
+                                className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                              >
+                                Apply
+                              </button>
+                              <button
+                                onClick={() => cancelChangeMut.mutate(change.id)}
+                                disabled={cancelChangeMut.isPending}
+                                className="text-xs text-red-500 hover:text-red-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add selection modal */}
       {showAddModal && (
         <AddSelectionModal
           tenantId={tenantId!}
           items={items}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {/* Request plan change modal */}
+      {showPlanChangeModal && (
+        <RequestPlanChangeModal
+          tenantId={tenantId!}
+          onClose={() => setShowPlanChangeModal(false)}
         />
       )}
     </div>

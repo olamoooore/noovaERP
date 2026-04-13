@@ -515,6 +515,57 @@ export interface QuoteLineItem {
   rules_applied: string[]
 }
 
+// =============================================================================
+// Phase 6E — Plan Change Engine
+// =============================================================================
+
+export type PlanChangeStatus = 'pending' | 'applied' | 'cancelled'
+export type PlanChangeInvoiceType = 'credit' | 'charge'
+
+export interface TenantPlanChange {
+  id: number
+  tenant_id: string
+  from_family_id: number | null
+  to_family_id: number
+  effective_date: string          // YYYY-MM-DD
+  status: PlanChangeStatus
+  proration_credit_cents: number
+  proration_charge_cents: number
+  reason: string | null
+  applied_at: string | null
+  applied_by_admin_id: number | null
+  created_by_admin_id: number | null
+  created_at: string
+  updated_at: string
+  // Relations
+  from_family?: PlanFamily | null
+  to_family?: PlanFamily
+  applied_by_admin?: { id: number; name: string; email: string } | null
+  created_by_admin?: { id: number; name: string; email: string } | null
+  change_invoices?: TenantPlanChangeInvoice[]
+}
+
+export interface TenantPlanChangeInvoice {
+  id: number
+  plan_change_id: number
+  invoice_id: number
+  type: PlanChangeInvoiceType
+  amount_cents: number
+  created_at: string
+  updated_at: string
+  invoice?: SubscriptionInvoice
+}
+
+export interface ProrationPreview {
+  from_family: PlanFamily | null
+  to_family: PlanFamily
+  credit_cents: number
+  charge_cents: number
+  net_cents: number
+  effective_date: string
+  current_period_end: string | null
+}
+
 export interface TenantQuoteSnapshot {
   id: number
   tenant_id: string
