@@ -220,7 +220,10 @@ def parse_financial_data(raw_text: str) -> dict:
 
     # --- Vendor / Customer Name ---
     vendor_name = None
-    # Common heuristic: first non-empty line that isn't a date or number
+    # Common heuristic: first non-empty line that isn't a date, number, or
+    # common header word (INVOICE, RECEIPT, etc.)
+    _header_words = {"invoice", "receipt", "bill", "quotation", "estimate",
+                     "credit note", "debit note", "purchase order", "statement"}
     for line in lines:
         stripped = line.strip()
         if not stripped:
@@ -230,24 +233,41 @@ def parse_financial_data(raw_text: str) -> dict:
             continue
         if re.match(r"^[\d\s.,$]+$", stripped):
             continue
+        # skip standalone header labels
+        if stripped.lower().rstrip('.') in _header_words:
+            continue
         vendor_name = stripped
         break
 
-    # Try explicit patterns
+    # Try explicit patterns – only accept "from/vendor/supplier/company" as
+    # label, NOT "bill to" / "ship to" which are address labels.
     for pattern in [
-        r"(?:from|vendor|supplier|company|bill\s*to)[:\s]*(.+)",
-        r"^([A-Z][A-Za-z &.,]+(?:Ltd|LLC|Inc|Corp|Co|Pty|Pvt|Limited|Sdn|Bhd)?\.?)\s*$",
+        r"(?:from|vendor|supplier|company)[:\s]+(.+)",
+        r"^([A-Z][A-Za-z &.,]+(?:Ltd|LLC|Inc|Corp|Co|Pty|Pvt|Limited|Sdn|Bhd)\.?)\s*$",
     ]:
         m = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
         if m:
-            vendor_name = m.group(1).strip()
-            break
+            candidate = m.group(1).strip()
+            # Don't accept very short or suspicious matches
+            if len(candidate) > 2:
+                vendor_name = candidate
+                break
+
+    # Clean trailing document-type words from the vendor name, e.g.
+    # "East Repair Inc RECEIPT" → "East Repair Inc"
+    if vendor_name:
+        vendor_name = re.sub(
+            r"\s+(?:RECEIPT|INVOICE|BILL|QUOTATION|ESTIMATE|CREDIT\s*NOTE|DEBIT\s*NOTE)\s*$",
+            "", vendor_name, flags=re.IGNORECASE,
+        ).strip() or vendor_name
 
     # --- Invoice Number ---
     invoice_number = None
+    # Require the label keyword and a '#' / 'no' / 'number' separator so we
+    # don't accidentally match the word "RECEIPT" in a header.
     for pattern in [
-        r"(?:invoice|inv|bill|receipt)\s*(?:#|no\.?|number)?[:\s]*([A-Za-z0-9\-/]+)",
-        r"(?:ref(?:erence)?|doc)\s*(?:#|no\.?)?[:\s]*([A-Za-z0-9\-/]+)",
+        r"(?:invoice|inv|bill|receipt)\s*(?:#|no\.?|number)\s*[:\s]*([A-Za-z0-9\-/]+)",
+        r"(?:ref(?:erence)?|doc)\s*(?:#|no\.?|number)?\s*[:\s]*([A-Za-z0-9\-/]+)",
     ]:
         m = re.search(pattern, raw_text, re.IGNORECASE)
         if m:
@@ -257,7 +277,7 @@ def parse_financial_data(raw_text: str) -> dict:
     # --- Invoice Date ---
     invoice_date = None
     for pattern in [
-        r"(?:date|dated|invoice\s*date|bill\s*date)[:\s]*([\d]{1,4}[/\-.][\d]{1,2}[/\-.][\d]{1,4})",
+        r"(?:date|dated|invoice\s*date|bill\s*date|receipt\s*date)[:\s]*([\d]{1,4}[/\-.][\d]{1,2}[/\-.][\d]{1,4})",
         r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})",
         r"(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})",
         r"(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})",
@@ -298,18 +318,26 @@ def parse_financial_data(raw_text: str) -> dict:
     # --- Amounts ---
     def find_amount(keywords: list[str]) -> float | None:
         for kw in keywords:
-            pattern = rf"{kw}\s*[:\s]*[\$€£¥₹RM]*\s*([\d,]+\.?\d*)"
+            # Use word boundary (\b) to avoid "subtotal" matching a "total"
+            # keyword.  Allow an optional percentage token (e.g. "6.25%")
+            # between the label and the actual dollar amount so we grab the
+            # amount, not the rate.
+            pattern = rf"\b{kw}\b[:\s]*(?:[\d,.]+%\s*)?[\$€£¥₹RM]*\s*([\d,]+\.?\d*)"
             m = re.search(pattern, raw_text, re.IGNORECASE)
             if m:
                 try:
-                    return float(m.group(1).replace(",", ""))
+                    val = float(m.group(1).replace(",", ""))
+                    if val > 0:
+                        return val
                 except ValueError:
                     continue
         return None
 
-    total_amount = find_amount(["total", "amount due", "grand total", "balance due", "total due"])
+    # Search subtotal BEFORE total so we have it available; then search total
+    # with keywords ordered from most-specific to least-specific.
     subtotal = find_amount(["subtotal", "sub-total", "sub total"])
-    tax_amount = find_amount(["tax", "vat", "gst", "sst", "sales tax"])
+    tax_amount = find_amount(["sales tax", "tax", "vat", "gst", "sst"])
+    total_amount = find_amount(["grand total", "total due", "amount due", "balance due", "total amount", "total"])
 
     # Fallback: find the largest currency amount in the text
     if total_amount is None:
@@ -318,16 +346,21 @@ def parse_financial_data(raw_text: str) -> dict:
             parsed = [float(a.replace(",", "")) for a in amounts]
             total_amount = max(parsed)
 
+    # If total equals subtotal but we have tax, the real total is likely subtotal + tax
+    if total_amount and subtotal and tax_amount:
+        if abs(total_amount - subtotal) < 0.01:
+            total_amount = round(subtotal + tax_amount, 2)
+
     # --- Line Items ---
     line_items = []
-    # Pattern: description  qty  unit_price  amount  (flexible)
+
+    # Pattern 1: description  qty  unit_price  amount  on one line
     item_pattern = re.compile(
         r"^(.{3,50}?)\s+(\d+)\s+[\$€£¥₹RM]*\s*([\d,]+\.?\d*)\s+[\$€£¥₹RM]*\s*([\d,]+\.?\d*)\s*$",
         re.MULTILINE,
     )
     for m in item_pattern.finditer(raw_text):
         description = m.group(1).strip()
-        # Skip header rows
         if any(h in description.lower() for h in ("description", "item", "qty", "quantity", "price", "amount")):
             continue
         try:
@@ -339,6 +372,102 @@ def parse_financial_data(raw_text: str) -> dict:
             })
         except ValueError:
             continue
+
+    # Pattern 2: qty  description  unit_price  amount  (number-first layout)
+    if not line_items:
+        item_pattern2 = re.compile(
+            r"^(\d+)\s+(.{3,50}?)\s+[\$€£¥₹RM]*\s*([\d,]+\.?\d{2})\s+[\$€£¥₹RM]*\s*([\d,]+\.?\d{2})\s*$",
+            re.MULTILINE,
+        )
+        for m in item_pattern2.finditer(raw_text):
+            description = m.group(2).strip()
+            if any(h in description.lower() for h in ("description", "item", "qty", "quantity", "price", "amount")):
+                continue
+            try:
+                line_items.append({
+                    "description": description,
+                    "quantity": int(m.group(1)),
+                    "unit_price": float(m.group(3).replace(",", "")),
+                    "amount": float(m.group(4).replace(",", "")),
+                })
+            except ValueError:
+                continue
+
+    # Pattern 3: Split layout – descriptions and amounts on separate lines.
+    # Very common in OCR where table columns are recognized as separate blocks,
+    # e.g.:
+    #   1 Front and rear brake cables     ← description block
+    #   2 New set of pedal arms
+    #   ...
+    #   100.00 100.00                      ← amount block
+    #   15.00  30.00
+    if not line_items:
+        # Step 1: Collect amount-pair lines (unit_price  amount)
+        amount_pair_re = re.compile(
+            r"^\s*[\$€£¥₹RM]*\s*([\d,]+\.\d{2})\s+[\$€£¥₹RM]*\s*([\d,]+\.\d{2})\s*$"
+        )
+        summary_kw = {"subtotal", "sub-total", "sub total", "total", "tax",
+                       "vat", "gst", "sst", "grand total", "amount due",
+                       "balance", "discount"}
+        amount_pairs = []
+        for i, line in enumerate(lines):
+            m = amount_pair_re.match(line)
+            if not m:
+                continue
+            # Skip if the previous line contains a summary keyword
+            ctx = (lines[i - 1].lower() if i > 0 else "") + " " + line.lower()
+            if any(kw in ctx for kw in summary_kw):
+                continue
+            amount_pairs.append({
+                "line_idx": i,
+                "unit_price": float(m.group(1).replace(",", "")),
+                "amount": float(m.group(2).replace(",", "")),
+            })
+
+        if amount_pairs:
+            # Step 2: Collect numbered description lines *before* the first
+            # amount line (these are the item rows in the description column).
+            first_amt_idx = amount_pairs[0]["line_idx"]
+            desc_re = re.compile(r"^\s*(\d{1,3})\s+(.{3,}?)\s*$")
+            header_words = {"description", "qty", "quantity", "price",
+                            "amount", "unit", "item", "no"}
+            desc_candidates = []
+            for i in range(first_amt_idx):
+                dm = desc_re.match(lines[i])
+                if not dm:
+                    continue
+                qty = int(dm.group(1))
+                desc = dm.group(2).strip()
+                # Skip if qty looks like a year (1900+)
+                if qty >= 1900:
+                    continue
+                # Skip address lines (contain state + ZIP)
+                if re.search(r"[A-Z]{2}\s+\d{5}", lines[i]):
+                    continue
+                # Skip header-like lines
+                if any(h in desc.lower() for h in header_words):
+                    continue
+                # Clean OCR pipe artifacts from table borders
+                desc = re.sub(r"^\|\s*", "", desc).strip()
+                if len(desc) >= 3:
+                    desc_candidates.append({
+                        "line_idx": i,
+                        "quantity": qty,
+                        "description": desc,
+                    })
+
+            # Step 3: Match — take the last N descriptions closest to the
+            # amount block, where N = len(amount_pairs).
+            n = len(amount_pairs)
+            if len(desc_candidates) >= n:
+                matched = desc_candidates[-n:]
+                for d_info, a_info in zip(matched, amount_pairs):
+                    line_items.append({
+                        "description": d_info["description"],
+                        "quantity": d_info["quantity"],
+                        "unit_price": a_info["unit_price"],
+                        "amount": a_info["amount"],
+                    })
 
     # If no line items found, create a single catch-all item
     if not line_items and total_amount:

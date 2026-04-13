@@ -302,8 +302,15 @@ class PostingEngine implements PostingEngineInterface
             }
         }
 
-        $latest = JournalEntry::orderBy('id', 'desc')->first();
+        $prefix = 'JE-' . date('Y') . '-';
+
+        // Find the highest existing sequence for this year's prefix
+        $latest = JournalEntry::where('entry_number', 'like', $prefix . '%')
+            ->orderByRaw("CAST(SUBSTRING(entry_number FROM '.{4}$') AS INTEGER) DESC")
+            ->first();
+
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
-        return 'JE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }

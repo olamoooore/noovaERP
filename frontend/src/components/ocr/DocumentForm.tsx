@@ -22,11 +22,17 @@ interface DocumentFormProps {
   readOnly: boolean
 }
 
+function toDateInputValue(val: string | null | undefined): string {
+  if (!val) return ''
+  // Handle ISO datetime ("2019-02-11T00:00:00.000000Z") → "2019-02-11"
+  return val.substring(0, 10)
+}
+
 export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly }: DocumentFormProps) {
   const [formData, setFormData] = useState({
     vendor_name: document.vendor_name || '',
     vendor_id: document.vendor_id || null,
-    document_date: document.document_date || '',
+    document_date: toDateInputValue(document.document_date),
     document_reference: document.document_reference || '',
     subtotal: document.subtotal || 0,
     tax_amount: document.tax_amount || 0,
@@ -43,7 +49,7 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
     setFormData({
       vendor_name: document.vendor_name || '',
       vendor_id: document.vendor_id || null,
-      document_date: document.document_date || '',
+      document_date: toDateInputValue(document.document_date),
       document_reference: document.document_reference || '',
       subtotal: document.subtotal || 0,
       tax_amount: document.tax_amount || 0,
@@ -229,13 +235,24 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <div className="space-y-2">
                   <Label>Quantity</Label>
                   <Input
                     type="number"
                     value={item.quantity || 1}
                     onChange={(e) => handleLineItemChange(index, 'quantity', parseFloat(e.target.value))}
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Unit Price</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={item.unit_price || 0}
+                    onChange={(e) => handleLineItemChange(index, 'unit_price', parseFloat(e.target.value))}
                     disabled={readOnly}
                   />
                 </div>
