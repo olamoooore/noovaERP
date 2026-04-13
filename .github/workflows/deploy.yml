@@ -224,6 +224,9 @@ jobs:
             # Restart queue workers to pick up new code
             supervisorctl restart noovaerp-worker:* || true
             
+            # Restart OCR service to pick up new code
+            systemctl restart ocr-service || true
+            
             # Restart PHP-FPM
             systemctl restart php8.2-fpm || systemctl restart php8.1-fpm || true
             
