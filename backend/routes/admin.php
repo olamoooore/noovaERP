@@ -6,6 +6,7 @@ use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPackagingController;
+use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
@@ -178,6 +179,25 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
 
         // Legacy migration — idempotent, safe to run multiple times
         Route::post('/sync', [AdminCatalogController::class, 'syncFromLegacy']);
+    });
+
+    // --- Phase 6C: Tenant Selection + Entitlements ---
+    Route::prefix('tenants/{tenantId}')->group(function () {
+        // Configuration view (full: tier + defaults + selections + entitlements)
+        Route::get('/configuration', [AdminTenantConfigurationController::class, 'show']);
+
+        // Selections (add-ons + overrides)
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/configuration/selections',         [AdminTenantConfigurationController::class, 'addSelection']);
+            Route::delete('/configuration/selections/{item}', [AdminTenantConfigurationController::class, 'removeSelection']);
+            Route::post('/configuration/reset',              [AdminTenantConfigurationController::class, 'reset']);
+        });
+
+        // Entitlements
+        Route::get('/entitlements',           [AdminTenantConfigurationController::class, 'entitlements']);
+        Route::get('/entitlements/check',     [AdminTenantConfigurationController::class, 'checkEntitlement']);
+        Route::get('/entitlements/jobs',      [AdminTenantConfigurationController::class, 'rebuildJobs']);
+        Route::post('/entitlements/rebuild',  [AdminTenantConfigurationController::class, 'rebuild'])->middleware(DenyReadonlyRole::class);
     });
 
     // --- Phase 6B: Tier Matrix (Packaging Layer) ---

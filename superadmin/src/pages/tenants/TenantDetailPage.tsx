@@ -466,7 +466,15 @@ export default function TenantDetailPage() {
           <h1 className="text-2xl font-bold text-gray-900">{tenant.name ?? tenant.id}</h1>
           <p className="text-sm text-gray-500 mt-1">{tenant.domain ?? 'No domain'}</p>
         </div>
-        <StatusBadge status={tenant.status} />
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/tenants/${tenant.id}/configuration`}
+            className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+          >
+            ⚙ Configure
+          </Link>
+          <StatusBadge status={tenant.status} />
+        </div>
       </div>
 
       <div className="border-b border-gray-200">

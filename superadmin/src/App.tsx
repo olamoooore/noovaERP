@@ -24,6 +24,7 @@ import OperationsPage from '@/pages/operations/OperationsPage'
 import RevenueDashboardPage from '@/pages/analytics/RevenueDashboardPage'
 import CatalogManagerPage from '@/pages/catalog/CatalogManagerPage'
 import TierMatrixPage from '@/pages/packaging/TierMatrixPage'
+import TenantConfigurationPage from '@/pages/tenants/TenantConfigurationPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,8 +64,9 @@ export default function App() {
                 <Route path="modules"         element={<ModuleCatalogPage />} />
 
                 {/* Phase 2 — Tenant 360 */}
-                <Route path="tenants"           element={<TenantListPage />} />
-                <Route path="tenants/:tenantId" element={<TenantDetailPage />} />
+                <Route path="tenants"                              element={<TenantListPage />} />
+                <Route path="tenants/:tenantId"                    element={<TenantDetailPage />} />
+                <Route path="tenants/:tenantId/configuration"      element={<TenantConfigurationPage />} />
 
                 {/* Phase 3 — Subscriptions & Billing */}
                 <Route path="subscriptions"                 element={<SubscriptionListPage />} />

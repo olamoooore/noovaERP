@@ -392,3 +392,73 @@ export interface TierMatrix {
 export interface BulkSetResult {
   updated: number
 }
+
+// =============================================================================
+// Phase 6C — Tenant Selection Model
+// =============================================================================
+
+export type SelectionType = 'add_on_purchased' | 'override_include' | 'override_exclude'
+
+export type EntitlementSource =
+  | 'tier_included'
+  | 'add_on_purchased'
+  | 'override_include'
+  | 'override_exclude'
+
+export interface TenantSelectedItem {
+  id: number
+  tenant_id: string
+  catalog_item_id: number
+  selection_type: SelectionType
+  notes: string | null
+  selected_by_admin_id: number | null
+  created_at: string
+  updated_at: string
+  catalog_item?: CatalogItem
+}
+
+export interface TenantEntitlement {
+  id: number
+  tenant_id: string
+  catalog_item_id: number
+  is_entitled: boolean
+  source: EntitlementSource
+  resolved_at: string
+  created_at: string
+  updated_at: string
+  catalog_item?: CatalogItem
+}
+
+export type RebuildJobStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface EntitlementRebuildJob {
+  id: number
+  tenant_id: string | null
+  status: RebuildJobStatus
+  reason: string | null
+  triggered_by_admin_id: number | null
+  items_processed: number
+  tenants_processed: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Full configuration view for one tenant */
+export interface TenantConfigurationView {
+  tenant_id: string
+  active_tier: PlanFamily | null
+  items: CatalogItem[]
+  tier_defaults: Record<number, PlanItemDefault>    // keyed by catalog_item_id
+  selections: Record<number, TenantSelectedItem>    // keyed by catalog_item_id
+  entitlements: Record<number, TenantEntitlement>   // keyed by catalog_item_id
+  recent_jobs: EntitlementRebuildJob[]
+}
+
+export interface EntitlementCheckResult {
+  tenant_id: string
+  key: string
+  is_entitled: boolean
+}
