@@ -1,6 +1,7 @@
 <?php
 
 use App\SuperAdmin\Http\Controllers\AdminAnalyticsController;
+use App\SuperAdmin\Http\Controllers\AdminCatalogAnalyticsController;
 use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
@@ -151,6 +152,17 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     Route::prefix('analytics')->group(function () {
         Route::get('/revenue', [AdminAnalyticsController::class, 'revenue']);
         Route::get('/plans',   [AdminAnalyticsController::class, 'plans']);
+
+        // --- Phase 6F: Catalog Intelligence Analytics ---
+        Route::prefix('catalog')->group(function () {
+            Route::get('/overview',             [AdminCatalogAnalyticsController::class, 'overview']);
+            Route::get('/entitlement-heatmap',  [AdminCatalogAnalyticsController::class, 'entitlementHeatmap']);
+            Route::get('/addon-adoption',       [AdminCatalogAnalyticsController::class, 'addonAdoption']);
+            Route::get('/revenue',              [AdminCatalogAnalyticsController::class, 'revenueByItem']);
+            Route::get('/plan-distribution',    [AdminCatalogAnalyticsController::class, 'planDistribution']);
+            Route::get('/plan-changes',         [AdminCatalogAnalyticsController::class, 'planChangeActivity']);
+            Route::get('/pricing-rules',        [AdminCatalogAnalyticsController::class, 'pricingRuleImpact']);
+        });
     });
 
     // --- Phase 6A: Product Catalog ---

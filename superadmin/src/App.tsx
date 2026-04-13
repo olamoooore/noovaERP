@@ -27,6 +27,7 @@ import TierMatrixPage from '@/pages/packaging/TierMatrixPage'
 import TenantConfigurationPage from '@/pages/tenants/TenantConfigurationPage'
 import PricingCalculatorPage from '@/pages/pricing/PricingCalculatorPage'
 import PendingPlanChangesPage from '@/pages/plan-changes/PendingPlanChangesPage'
+import CatalogAnalyticsPage from '@/pages/analytics/CatalogAnalyticsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -96,6 +97,9 @@ export default function App() {
 
                 {/* Phase 6E — Plan Change Engine */}
                 <Route path="plan-changes" element={<PendingPlanChangesPage />} />
+
+                {/* Phase 6F — Catalog Intelligence Analytics */}
+                <Route path="analytics/catalog" element={<CatalogAnalyticsPage />} />
 
                 {/* Placeholder — future phases */}
                 <Route path="sales/*" element={<ComingSoon title="Sales Pipeline" description="Planned for a future phase." />} />

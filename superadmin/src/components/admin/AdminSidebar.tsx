@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Tier Matrix',   path: '/packaging',       icon: 'solar:widget-5-bold-duotone' },
   { label: 'Pricing',       path: '/pricing',         icon: 'solar:calculator-bold-duotone' },
   { label: 'Plan Changes',  path: '/plan-changes',    icon: 'solar:arrow-right-up-bold-duotone' },
+  { label: 'Catalog Intel',path: '/analytics/catalog',icon: 'solar:graph-bold-duotone' },
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },
@@ -68,7 +69,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 6E — Plan Change Engine</p>
+        <p className="text-[10px] text-gray-400">Phase 6F — Catalog Intelligence</p>
       </div>
     </aside>
   )

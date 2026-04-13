@@ -566,6 +566,91 @@ export interface ProrationPreview {
   current_period_end: string | null
 }
 
+// =============================================================================
+// Phase 6F — Catalog Analytics
+// =============================================================================
+
+export interface CatalogAnalyticsOverview {
+  total_active_items: number
+  total_prices: number
+  total_active_rules: number
+  tenants_with_entitlements: number
+  total_quote_snapshots: number
+  total_discount_cents: number
+  total_revenue_cents: number
+  pending_plan_changes: number
+  plan_changes_this_month: number
+  total_selections: number
+  add_on_selections: number
+}
+
+export interface EntitlementHeatmapRow {
+  item_id: number
+  item_key: string
+  item_name: string
+  entitled_count: number
+  blocked_count: number
+  entitlement_pct: number
+  tier_included_count: number
+  add_on_count: number
+  override_include_count: number
+  override_exclude_count: number
+}
+
+export interface AddonAdoptionRow {
+  item_id: number
+  item_key: string
+  item_name: string
+  adoption_count: number
+  pct_of_max: number
+}
+
+export interface RevenueByItemRow {
+  item_id: number
+  item_key: string
+  item_name: string
+  total_revenue_cents: number
+  total_discount_cents: number
+  appearance_count: number
+  pct_of_max: number
+}
+
+export interface PlanDistributionRow {
+  family_id: number
+  family_key: string
+  family_name: string
+  tenant_count: number
+  trialing_count: number
+  active_count: number
+  pct: number
+}
+
+export interface PlanChangeRecentRow {
+  id: number
+  tenant_id: string
+  status: string
+  effective_date: string
+  proration_credit_cents: number
+  proration_charge_cents: number
+  created_at: string
+  from_family_name: string | null
+  to_family_name: string
+}
+
+export interface PlanChangeActivity {
+  by_status: { pending: number; applied: number; cancelled: number }
+  this_month: number
+  last_month: number
+  recent_changes: PlanChangeRecentRow[]
+}
+
+export interface PricingRuleImpactRow {
+  rule_name: string
+  application_count: number
+  total_discount_cents: number
+  pct_of_max: number
+}
+
 export interface TenantQuoteSnapshot {
   id: number
   tenant_id: string
