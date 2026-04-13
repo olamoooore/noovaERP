@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Plans',         path: '/plans',           icon: 'solar:tag-price-bold-duotone' },
   { label: 'Modules',       path: '/modules',         icon: 'solar:widget-bold-duotone' },
   { label: 'Catalog',       path: '/catalog',         icon: 'solar:box-bold-duotone' },
+  { label: 'Tier Matrix',   path: '/packaging',       icon: 'solar:widget-5-bold-duotone' },
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },

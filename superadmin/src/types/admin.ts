@@ -355,3 +355,40 @@ export interface CatalogSyncResult {
   skipped: number
   keys: string[]
 }
+
+// =============================================================================
+// Phase 6B — Tier Matrix (Packaging Layer)
+// =============================================================================
+
+export type ItemAvailability = 'included' | 'add_on' | 'hidden' | 'custom_only'
+
+export interface PlanItemDefault {
+  id: number
+  plan_family_id: number
+  catalog_item_id: number
+  availability: ItemAvailability
+  notes: string | null
+  created_at: string
+  updated_at: string
+  // Relations
+  plan_family?: PlanFamily
+  catalog_item?: CatalogItem
+}
+
+/** A single matrix cell, keyed by "familyId:itemId" */
+export interface MatrixCell {
+  id: number
+  availability: ItemAvailability
+  notes: string | null
+}
+
+/** Full matrix response from GET /packaging/matrix */
+export interface TierMatrix {
+  tiers: PlanFamily[]
+  items: CatalogItem[]
+  matrix: Record<string, MatrixCell>   // key: "familyId:itemId"
+}
+
+export interface BulkSetResult {
+  updated: number
+}

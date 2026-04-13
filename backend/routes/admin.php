@@ -5,6 +5,7 @@ use App\SuperAdmin\Http\Controllers\AdminAuthController;
 use App\SuperAdmin\Http\Controllers\AdminAuditLogController;
 use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminCatalogController;
+use App\SuperAdmin\Http\Controllers\AdminPackagingController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
 use App\SuperAdmin\Http\Controllers\AdminDashboardController;
 use App\SuperAdmin\Http\Controllers\AdminModuleCatalogController;
@@ -177,5 +178,22 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
 
         // Legacy migration — idempotent, safe to run multiple times
         Route::post('/sync', [AdminCatalogController::class, 'syncFromLegacy']);
+    });
+
+    // --- Phase 6B: Tier Matrix (Packaging Layer) ---
+    Route::prefix('packaging')->middleware(DenyReadonlyRole::class)->group(function () {
+        // Full matrix — tiers × catalog items
+        Route::get('/matrix', [AdminPackagingController::class, 'matrix']);
+
+        // Single cell — set or clear
+        Route::put('/matrix/{family}/{item}',    [AdminPackagingController::class, 'setDefault']);
+        Route::delete('/matrix/{family}/{item}', [AdminPackagingController::class, 'clearDefault']);
+
+        // Tier-level views and bulk operations
+        Route::get('/tiers/{family}',        [AdminPackagingController::class, 'tierDefaults']);
+        Route::post('/tiers/{family}/bulk',  [AdminPackagingController::class, 'bulkSetTier']);
+
+        // Item-level view
+        Route::get('/items/{item}', [AdminPackagingController::class, 'itemDefaults']);
     });
 });
