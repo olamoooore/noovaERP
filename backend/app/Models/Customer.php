@@ -215,6 +215,11 @@ class Customer extends Model
         return $this->hasMany(\Modules\Ecommerce\Models\WebOrder::class);
     }
 
+    public function salesOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Sales\Models\SalesOrder::class);
+    }
+
     // ==========================================
     // ACCESSORS
     // ==========================================

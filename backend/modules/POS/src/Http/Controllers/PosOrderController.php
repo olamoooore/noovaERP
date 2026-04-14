@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Invoice;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Setting;
 use App\Models\Tax;
+use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosPayment;
@@ -394,12 +397,44 @@ class PosOrderController extends Controller
                 'received_by' => auth()->id(),
             ]);
 
-            foreach ($posOrder->items()->with(['product', 'variant'])->get() as $item) {
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($item->quantity, 'out', $posOrder->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($item->quantity, 'out', $posOrder->order_number);
+            // Deduct stock via InventoryService (canonical path — stock_levels stays authoritative).
+            // Resolve warehouse from the POS terminal; fall back to default warehouse.
+            $terminal = $posOrder->terminal()->with('warehouse')->first();
+            $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($posOrder->items()->with(['product', 'variant'])->get() as $item) {
+                    $productId    = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if ($productId && $trackInventory) {
+                        try {
+                            $inventoryService->adjustStock(
+                                productId:     $productId,
+                                warehouseId:   $warehouseId,
+                                quantity:      $item->quantity,
+                                type:          'sale',
+                                reference:     $posOrder->order_number,
+                                referenceType: 'PosOrder',
+                                referenceId:   $posOrder->id,
+                            );
+                        } catch (\Exception $e) {
+                            Log::error('POS stock deduction failed', [
+                                'order_number' => $posOrder->order_number,
+                                'product_id'   => $productId,
+                                'error'        => $e->getMessage(),
+                            ]);
+                            throw $e;
+                        }
+                    }
                 }
+            } else {
+                Log::warning('POS pay: no warehouse found for stock deduction — stock not updated', [
+                    'order_number' => $posOrder->order_number,
+                ]);
             }
 
             $entry = $posting->postPaidOrder(
@@ -520,14 +555,39 @@ class PosOrderController extends Controller
         return DB::transaction(function () use ($validated, $posOrder) {
             $returnOrder = $posOrder->createReturn($validated['items'], $validated['notes']);
 
-            // Process stock returns
-            foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
-                $qty = abs($item->quantity); // Returns are stored as negative
-                
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
+            // Restore stock via InventoryService (canonical path).
+            $terminal     = $posOrder->terminal()->with('warehouse')->first();
+            $warehouseId  = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
+                    $qty        = abs($item->quantity); // Returns stored as negative
+                    $productId  = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if ($productId && $trackInventory && $qty > 0) {
+                        try {
+                            $inventoryService->adjustStock(
+                                productId:     $productId,
+                                warehouseId:   $warehouseId,
+                                quantity:      $qty,
+                                type:          'return',
+                                reference:     'Return: ' . $returnOrder->order_number,
+                                referenceType: 'PosOrder',
+                                referenceId:   $returnOrder->id,
+                            );
+                        } catch (\Exception $e) {
+                            Log::error('POS stock return failed', [
+                                'return_order' => $returnOrder->order_number,
+                                'product_id'   => $productId,
+                                'error'        => $e->getMessage(),
+                            ]);
+                            throw $e;
+                        }
+                    }
                 }
             }
 

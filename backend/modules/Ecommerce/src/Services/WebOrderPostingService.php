@@ -5,65 +5,114 @@ namespace Modules\Ecommerce\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Warehouse;
 use App\Models\JournalEntryLink;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\Inventory\Services\InventoryService;
 
 class WebOrderPostingService
 {
     public function __construct(
         private readonly PostingEngineInterface $postingEngine,
+        private readonly InventoryService $inventoryService,
     ) {}
     /**
-     * Deduct stock for web order items
+     * Deduct stock for web order items via InventoryService (canonical path).
+     *
+     * Uses the default warehouse. Web orders don't carry a warehouse context today;
+     * when multi-warehouse ecommerce is supported, pass the fulfilment warehouse here.
      */
     public function deductStock(WebOrder $order): void
     {
+        $warehouseId = Warehouse::getDefault()?->id;
+
+        if (!$warehouseId) {
+            Log::warning('WebOrderPostingService::deductStock — no default warehouse, stock not updated', [
+                'order_id' => $order->id,
+            ]);
+            return;
+        }
+
         foreach ($order->items as $item) {
-            if ($item->product_variant_id) {
-                $variant = ProductVariant::find($item->product_variant_id);
-                if ($variant && $variant->track_inventory) {
-                    $variant->adjustStock($item->quantity, 'out', $order->order_number);
-                }
-            } elseif ($item->product_id) {
-                $product = Product::find($item->product_id);
-                if ($product && $product->track_inventory) {
-                    $product->adjustStock($item->quantity, 'out', $order->order_number);
+            $productId      = $item->product_id;
+            $trackInventory = $item->product?->track_inventory ?? false;
+
+            if ($productId && $trackInventory) {
+                try {
+                    $this->inventoryService->adjustStock(
+                        productId:     $productId,
+                        warehouseId:   $warehouseId,
+                        quantity:      $item->quantity,
+                        type:          'sale',
+                        reference:     $order->order_number,
+                        referenceType: 'WebOrder',
+                        referenceId:   $order->id,
+                    );
+                } catch (\Exception $e) {
+                    Log::error('WebOrderPostingService::deductStock item failed', [
+                        'order_id'   => $order->id,
+                        'product_id' => $productId,
+                        'error'      => $e->getMessage(),
+                    ]);
+                    throw $e;
                 }
             }
         }
-        
+
         Log::info('Stock deducted for web order', [
-            'order_id' => $order->id,
+            'order_id'     => $order->id,
             'order_number' => $order->order_number,
         ]);
     }
-    
+
     /**
-     * Restore stock for web order items (for cancellations/refunds)
+     * Restore stock for web order items (cancellations/refunds) via InventoryService.
      */
     public function restoreStock(WebOrder $order): void
     {
+        $warehouseId = Warehouse::getDefault()?->id;
+
+        if (!$warehouseId) {
+            Log::warning('WebOrderPostingService::restoreStock — no default warehouse, stock not restored', [
+                'order_id' => $order->id,
+            ]);
+            return;
+        }
+
         foreach ($order->items as $item) {
-            if ($item->product_variant_id) {
-                $variant = ProductVariant::find($item->product_variant_id);
-                if ($variant && $variant->track_inventory) {
-                    $variant->adjustStock($item->quantity, 'in', 'Return: ' . $order->order_number);
-                }
-            } elseif ($item->product_id) {
-                $product = Product::find($item->product_id);
-                if ($product && $product->track_inventory) {
-                    $product->adjustStock($item->quantity, 'in', 'Return: ' . $order->order_number);
+            $productId      = $item->product_id;
+            $trackInventory = $item->product?->track_inventory ?? false;
+
+            if ($productId && $trackInventory) {
+                try {
+                    $this->inventoryService->adjustStock(
+                        productId:     $productId,
+                        warehouseId:   $warehouseId,
+                        quantity:      $item->quantity,
+                        type:          'return',
+                        reference:     'Return: ' . $order->order_number,
+                        referenceType: 'WebOrder',
+                        referenceId:   $order->id,
+                    );
+                } catch (\Exception $e) {
+                    Log::error('WebOrderPostingService::restoreStock item failed', [
+                        'order_id'   => $order->id,
+                        'product_id' => $productId,
+                        'error'      => $e->getMessage(),
+                    ]);
+                    throw $e;
                 }
             }
         }
-        
+
         Log::info('Stock restored for web order', [
-            'order_id' => $order->id,
+            'order_id'     => $order->id,
             'order_number' => $order->order_number,
         ]);
     }
@@ -238,11 +287,14 @@ class WebOrderPostingService
         // Restore stock first
         $this->restoreStock($order);
 
-        $result = $this->postingEngine->reverse(
+        $result = $this->postingEngine->reverse(new ReversalRequest(
             journalEntryId: $link->journal_entry_id,
-            reason: $reason,
-            approvedBy: auth()->id(),
-        );
+            reversalDate:   now()->toDateString(),
+            reason:         $reason,
+            reasonCode:     'WEB_ORDER_CANCEL',
+            actorUserId:    auth()->id() ?? 1,
+            approvalUserId: null,
+        ));
 
         if (!$result->success) {
             Log::warning('Web order reversal failed', [

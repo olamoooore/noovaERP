@@ -10,6 +10,21 @@ use Modules\EventManagement\Models\IpRestriction;
 use Modules\EventManagement\Models\FraudDetectionRule;
 use Modules\EventManagement\Http\Middleware\RBACMiddleware;
 
+/**
+ * AntiAbuseController
+ *
+ * ── X-Tenant-ID header REMOVED ──────────────────────────────────────────────
+ * Previously every method read tenant identity from an arbitrary `X-Tenant-ID`
+ * request header, falling back to the string literal `'default'` when the
+ * header was absent. This pattern:
+ *   - Bypasses the platform tenancy runtime (schema-per-tenant isolation)
+ *   - Allows callers to cross tenant boundaries by sending any tenant ID
+ *   - Silently processes requests against a fake `'default'` tenant
+ *
+ * Tenant identity is now resolved once per request via resolveTenantId(),
+ * which reads the stancl/tenancy runtime (already active for authenticated
+ * routes) and fails closed (403) when no tenant context can be established.
+ */
 class AntiAbuseController extends Controller
 {
     private AntiAbuseService $antiAbuseService;
@@ -22,53 +37,51 @@ class AntiAbuseController extends Controller
         $this->middleware([RBACMiddleware::class . ':admin']);
     }
 
+    // ── IP Restriction Management ─────────────────────────────────────────────
+
     /**
      * Get IP restrictions with filtering and pagination.
      * Requirements: 14.5 - IP restriction management
      */
     public function getIpRestrictions(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
             'restriction_type' => 'nullable|in:blocked,allowed,flagged',
-            'is_active' => 'nullable|boolean',
-            'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            'is_active'        => 'nullable|boolean',
+            'page'             => 'nullable|integer|min:1',
+            'per_page'         => 'nullable|integer|min:1|max:100',
         ]);
 
         try {
             $query = IpRestriction::forTenant($tenantId)
                 ->orderBy('created_at', 'desc');
 
-            // Apply filters
             if ($request->has('restriction_type')) {
                 $query->where('restriction_type', $request->restriction_type);
             }
-
             if ($request->has('is_active')) {
                 $query->where('is_active', $request->boolean('is_active'));
             }
 
-            // Pagination
-            $perPage = $request->query('per_page', 20);
-            $restrictions = $query->paginate($perPage);
+            $restrictions = $query->paginate($request->query('per_page', 20));
 
             return response()->json([
-                'success' => true,
-                'data' => $restrictions->items(),
+                'success'    => true,
+                'data'       => $restrictions->items(),
                 'pagination' => [
                     'current_page' => $restrictions->currentPage(),
-                    'per_page' => $restrictions->perPage(),
-                    'total' => $restrictions->total(),
-                    'last_page' => $restrictions->lastPage(),
+                    'per_page'     => $restrictions->perPage(),
+                    'total'        => $restrictions->total(),
+                    'last_page'    => $restrictions->lastPage(),
                 ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve IP restrictions',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -79,34 +92,32 @@ class AntiAbuseController extends Controller
      */
     public function blockIpAddress(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
-            'ip_address' => 'required|ip',
-            'reason' => 'required|string|max:500',
-            'duration_hours' => 'nullable|integer|min:1|max:8760', // Max 1 year
+            'ip_address'     => 'required|ip',
+            'reason'         => 'required|string|max:500',
+            'duration_hours' => 'nullable|integer|min:1|max:8760',
         ]);
 
         try {
-            $durationHours = $request->query('duration_hours', 24);
-
             $restriction = $this->antiAbuseService->blockIpAddress(
                 $tenantId,
                 $request->ip_address,
                 $request->reason,
-                $durationHours
+                $request->query('duration_hours', 24)
             );
 
             return response()->json([
                 'success' => true,
                 'message' => 'IP address blocked successfully',
-                'data' => $restriction,
+                'data'    => $restriction,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to block IP address',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -117,11 +128,11 @@ class AntiAbuseController extends Controller
      */
     public function allowlistIpAddress(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
             'ip_address' => 'required|ip',
-            'reason' => 'required|string|max:500',
+            'reason'     => 'required|string|max:500',
         ]);
 
         try {
@@ -134,13 +145,13 @@ class AntiAbuseController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'IP address added to allowlist successfully',
-                'data' => $restriction,
+                'data'    => $restriction,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to allowlist IP address',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -151,11 +162,11 @@ class AntiAbuseController extends Controller
      */
     public function flagIpAddress(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
             'ip_address' => 'required|ip',
-            'reason' => 'required|string|max:500',
+            'reason'     => 'required|string|max:500',
         ]);
 
         try {
@@ -168,13 +179,13 @@ class AntiAbuseController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'IP address flagged for monitoring',
-                'data' => $restriction,
+                'data'    => $restriction,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to flag IP address',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -185,26 +196,27 @@ class AntiAbuseController extends Controller
      */
     public function removeIpRestriction(Request $request, int $restrictionId): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         try {
             $restriction = IpRestriction::forTenant($tenantId)->findOrFail($restrictionId);
-
             $restriction->update(['is_active' => false]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'IP restriction removed successfully',
-                'data' => $restriction->fresh(),
+                'data'    => $restriction->fresh(),
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to remove IP restriction',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
+
+    // ── Fraud Detection Rules ─────────────────────────────────────────────────
 
     /**
      * Get fraud detection rules.
@@ -212,13 +224,13 @@ class AntiAbuseController extends Controller
      */
     public function getFraudRules(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
             'rule_type' => 'nullable|in:velocity,pattern,identity,ip_reputation',
             'is_active' => 'nullable|boolean',
-            'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            'page'      => 'nullable|integer|min:1',
+            'per_page'  => 'nullable|integer|min:1|max:100',
         ]);
 
         try {
@@ -226,34 +238,30 @@ class AntiAbuseController extends Controller
                 ->orderBy('priority', 'desc')
                 ->orderBy('created_at', 'desc');
 
-            // Apply filters
             if ($request->has('rule_type')) {
                 $query->where('rule_type', $request->rule_type);
             }
-
             if ($request->has('is_active')) {
                 $query->where('is_active', $request->boolean('is_active'));
             }
 
-            // Pagination
-            $perPage = $request->query('per_page', 20);
-            $rules = $query->paginate($perPage);
+            $rules = $query->paginate($request->query('per_page', 20));
 
             return response()->json([
-                'success' => true,
-                'data' => $rules->items(),
+                'success'    => true,
+                'data'       => $rules->items(),
                 'pagination' => [
                     'current_page' => $rules->currentPage(),
-                    'per_page' => $rules->perPage(),
-                    'total' => $rules->total(),
-                    'last_page' => $rules->lastPage(),
+                    'per_page'     => $rules->perPage(),
+                    'total'        => $rules->total(),
+                    'last_page'    => $rules->lastPage(),
                 ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve fraud rules',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -264,42 +272,42 @@ class AntiAbuseController extends Controller
      */
     public function createFraudRule(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
-            'rule_name' => 'required|string|max:255',
-            'rule_type' => 'required|in:velocity,pattern,identity,ip_reputation',
+            'rule_name'   => 'required|string|max:255',
+            'rule_type'   => 'required|in:velocity,pattern,identity,ip_reputation',
             'description' => 'nullable|string|max:1000',
-            'conditions' => 'required|array',
-            'actions' => 'required|array',
-            'risk_score' => 'required|integer|min:1|max:100',
-            'priority' => 'nullable|integer|min:1|max:100',
-            'is_active' => 'nullable|boolean',
+            'conditions'  => 'required|array',
+            'actions'     => 'required|array',
+            'risk_score'  => 'required|integer|min:1|max:100',
+            'priority'    => 'nullable|integer|min:1|max:100',
+            'is_active'   => 'nullable|boolean',
         ]);
 
         try {
             $rule = FraudDetectionRule::create([
-                'tenant_id' => $tenantId,
-                'rule_name' => $request->rule_name,
-                'rule_type' => $request->rule_type,
+                'tenant_id'   => $tenantId,
+                'rule_name'   => $request->rule_name,
+                'rule_type'   => $request->rule_type,
                 'description' => $request->description,
-                'conditions' => $request->conditions,
-                'actions' => $request->actions,
-                'risk_score' => $request->risk_score,
-                'priority' => $request->priority ?? 50,
-                'is_active' => $request->boolean('is_active', true),
+                'conditions'  => $request->conditions,
+                'actions'     => $request->actions,
+                'risk_score'  => $request->risk_score,
+                'priority'    => $request->priority ?? 50,
+                'is_active'   => $request->boolean('is_active', true),
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fraud detection rule created successfully',
-                'data' => $rule,
+                'data'    => $rule,
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create fraud rule',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -310,41 +318,36 @@ class AntiAbuseController extends Controller
      */
     public function updateFraudRule(Request $request, int $ruleId): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
-            'rule_name' => 'nullable|string|max:255',
+            'rule_name'   => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'conditions' => 'nullable|array',
-            'actions' => 'nullable|array',
-            'risk_score' => 'nullable|integer|min:1|max:100',
-            'priority' => 'nullable|integer|min:1|max:100',
-            'is_active' => 'nullable|boolean',
+            'conditions'  => 'nullable|array',
+            'actions'     => 'nullable|array',
+            'risk_score'  => 'nullable|integer|min:1|max:100',
+            'priority'    => 'nullable|integer|min:1|max:100',
+            'is_active'   => 'nullable|boolean',
         ]);
 
         try {
             $rule = FraudDetectionRule::forTenant($tenantId)->findOrFail($ruleId);
 
             $rule->update($request->only([
-                'rule_name',
-                'description',
-                'conditions',
-                'actions',
-                'risk_score',
-                'priority',
-                'is_active'
+                'rule_name', 'description', 'conditions',
+                'actions', 'risk_score', 'priority', 'is_active',
             ]));
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fraud detection rule updated successfully',
-                'data' => $rule->fresh(),
+                'data'    => $rule->fresh(),
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update fraud rule',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -355,12 +358,10 @@ class AntiAbuseController extends Controller
      */
     public function deleteFraudRule(Request $request, int $ruleId): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         try {
             $rule = FraudDetectionRule::forTenant($tenantId)->findOrFail($ruleId);
-
-            // Soft delete by deactivating
             $rule->update(['is_active' => false]);
 
             return response()->json([
@@ -371,7 +372,7 @@ class AntiAbuseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete fraud rule',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -382,13 +383,13 @@ class AntiAbuseController extends Controller
      */
     public function testFraudRule(Request $request, int $ruleId): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
-            'test_data' => 'required|array',
-            'test_data.customer_id' => 'nullable|integer',
-            'test_data.ip_address' => 'nullable|ip',
-            'test_data.event_id' => 'required|integer',
+            'test_data'                   => 'required|array',
+            'test_data.customer_id'       => 'nullable|integer',
+            'test_data.ip_address'        => 'nullable|ip',
+            'test_data.event_id'          => 'required|integer',
             'test_data.tickets_requested' => 'nullable|integer|min:1',
         ]);
 
@@ -396,35 +397,33 @@ class AntiAbuseController extends Controller
             $rule = FraudDetectionRule::forTenant($tenantId)->findOrFail($ruleId);
 
             $testData = array_merge($request->test_data, [
-                'tenant_id' => $tenantId,
-                'ip_address' => $request->test_data['ip_address'] ?? '127.0.0.1',
-                'tickets_requested' => $request->test_data['tickets_requested'] ?? 1,
+                'tenant_id'          => $tenantId,
+                'ip_address'         => $request->test_data['ip_address'] ?? '127.0.0.1',
+                'tickets_requested'  => $request->test_data['tickets_requested'] ?? 1,
             ]);
 
             $shouldEvaluate = $rule->shouldEvaluate($testData);
-            $result = null;
-
-            if ($shouldEvaluate) {
-                $result = $rule->evaluate($testData);
-            }
+            $result         = $shouldEvaluate ? $rule->evaluate($testData) : null;
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'rule_name' => $rule->rule_name,
-                    'should_evaluate' => $shouldEvaluate,
+                'data'    => [
+                    'rule_name'         => $rule->rule_name,
+                    'should_evaluate'   => $shouldEvaluate,
                     'evaluation_result' => $result,
-                    'test_data' => $testData,
+                    'test_data'         => $testData,
                 ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to test fraud rule',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
+
+    // ── Rate Limiting ─────────────────────────────────────────────────────────
 
     /**
      * Check rate limit status for an entity.
@@ -432,19 +431,19 @@ class AntiAbuseController extends Controller
      */
     public function checkRateLimit(Request $request): JsonResponse
     {
-        $tenantId = $request->header('X-Tenant-ID', 'default');
+        $tenantId = $this->resolveTenantId($request);
 
         $request->validate([
             'customer_id' => 'nullable|integer',
-            'ip_address' => 'nullable|ip',
-            'session_id' => 'nullable|string',
+            'ip_address'  => 'nullable|ip',
+            'session_id'  => 'nullable|string',
         ]);
 
         try {
             $context = array_filter([
                 'customer_id' => $request->customer_id,
-                'ip_address' => $request->ip_address,
-                'session_id' => $request->session_id,
+                'ip_address'  => $request->ip_address,
+                'session_id'  => $request->session_id,
             ]);
 
             if (empty($context)) {
@@ -458,14 +457,35 @@ class AntiAbuseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $rateLimitStatus,
+                'data'    => $rateLimitStatus,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to check rate limit',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ── Private Helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Resolve the current tenant ID from the stancl/tenancy runtime.
+     *
+     * Fails closed with a 403 when no tenant context is active — prevents
+     * cross-tenant data access that the old X-Tenant-ID/default fallback enabled.
+     *
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException (403)
+     */
+    private function resolveTenantId(Request $request): string
+    {
+        // Primary: stancl/tenancy runtime (initialized by route middleware)
+        if (function_exists('tenant') && tenant()) {
+            return (string) tenant('id');
+        }
+
+        // Fail closed — no fallback to arbitrary header or fake 'default'
+        abort(403, 'No tenant context could be established for this request. Ensure you are authenticated on a tenant route.');
     }
 }

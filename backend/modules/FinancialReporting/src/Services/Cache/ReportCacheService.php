@@ -36,8 +36,9 @@ class ReportCacheService
 
         $cacheKey = $this->generateCacheKey($reportType, $filter);
         
-        // Try to get from cache
-        $cached = ReportCache::getCached($cacheKey);
+        // Try to get from cache — scoped to current tenant
+        $tenantId = $this->currentTenantId();
+        $cached = ReportCache::getCached($cacheKey, $tenantId);
         
         if ($cached && $cached->isValid()) {
             Log::info("Report cache hit", [
@@ -93,16 +94,24 @@ class ReportCacheService
             data: $this->serializeReportData($reportData),
             ttl: $ttl,
             userId: $userId,
-            metadata: $metadata
+            metadata: $metadata,
+            tenantId: $this->currentTenantId(),
         );
     }
 
     /**
-     * Generate cache key from report type and filters
+     * Generate cache key from report type, filters, and tenant identity.
+     *
+     * The tenant ID is prepended to prevent cross-tenant cache collisions:
+     * two tenants producing the same filters + report_type would previously
+     * produce the same MD5 and overwrite each other's cached report.
      */
     public function generateCacheKey(string $reportType, ReportFilter $filter): string
     {
+        $tenantId = $this->currentTenantId() ?? 'central';
+
         $parts = [
+            $tenantId,
             $reportType,
             $filter->startDate?->format('Y-m-d'),
             $filter->endDate?->format('Y-m-d'),
@@ -122,7 +131,7 @@ class ReportCacheService
         ];
 
         $keyString = implode(':', array_filter($parts, fn($v) => $v !== null));
-        
+
         return md5($keyString);
     }
 
@@ -341,5 +350,18 @@ class ReportCacheService
         }
 
         return $summary;
+    }
+
+    /**
+     * Resolve the current tenant ID from the tenancy runtime.
+     * Returns null when no tenant context is active (central admin, CLI).
+     */
+    private function currentTenantId(): ?string
+    {
+        if (function_exists('tenant') && tenant()) {
+            return (string) tenant('id');
+        }
+
+        return null;
     }
 }

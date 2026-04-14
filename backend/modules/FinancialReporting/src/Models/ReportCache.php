@@ -15,6 +15,7 @@ class ReportCache extends Model
     protected $table = 'report_cache';
 
     protected $fillable = [
+        'tenant_id',        // Added: prevents cross-tenant cache reads
         'cache_key',
         'report_type',
         'filters',
@@ -28,12 +29,13 @@ class ReportCache extends Model
     ];
 
     protected $casts = [
-        'filters' => 'array',
-        'data' => 'array',
-        'metadata' => 'array',
+        'tenant_id'     => 'string',
+        'filters'        => 'array',
+        'data'          => 'array',
+        'metadata'      => 'array',
         'last_accessed_at' => 'datetime',
-        'expires_at' => 'datetime',
-        'generated_at' => 'datetime',
+        'expires_at'     => 'datetime',
+        'generated_at'  => 'datetime',
     ];
 
     /**
@@ -72,6 +74,15 @@ class ReportCache extends Model
         return $query->where('user_id', $userId);
     }
 
+    public function scopeForTenant($query, ?string $tenantId)
+    {
+        if ($tenantId !== null) {
+            return $query->where('tenant_id', $tenantId);
+        }
+
+        return $query->whereNull('tenant_id');
+    }
+
     /**
      * Methods
      */
@@ -100,11 +111,15 @@ class ReportCache extends Model
     /**
      * Static methods
      */
-    public static function getCached(string $cacheKey): ?self
+    public static function getCached(string $cacheKey, ?string $tenantId = null): ?self
     {
-        return static::valid()
-            ->byCacheKey($cacheKey)
-            ->first();
+        $query = static::valid()->byCacheKey($cacheKey);
+
+        if ($tenantId !== null) {
+            $query->where('tenant_id', $tenantId);
+        }
+
+        return $query->first();
     }
 
     public static function store(
@@ -114,19 +129,22 @@ class ReportCache extends Model
         array $data,
         int $ttl = 3600,
         ?int $userId = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        ?string $tenantId = null,
     ): self {
+        $resolvedTenantId = $tenantId ?? (function_exists('tenant') && tenant() ? (string) tenant('id') : null);
+
         return static::updateOrCreate(
-            ['cache_key' => $cacheKey],
+            ['cache_key' => $cacheKey, 'tenant_id' => $resolvedTenantId],
             [
-                'report_type' => $reportType,
-                'filters' => $filters,
-                'data' => $data,
-                'metadata' => $metadata,
-                'expires_at' => now()->addSeconds($ttl),
-                'generated_at' => now(),
-                'user_id' => $userId,
-                'hit_count' => 0,
+                'report_type'   => $reportType,
+                'filters'       => $filters,
+                'data'          => $data,
+                'metadata'      => $metadata,
+                'expires_at'    => now()->addSeconds($ttl),
+                'generated_at'  => now(),
+                'user_id'       => $userId,
+                'hit_count'     => 0,
             ]
         );
     }

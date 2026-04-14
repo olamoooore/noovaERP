@@ -14,6 +14,15 @@ return [
         env('CENTRAL_DOMAINS', 'localhost'),
     ],
 
+    // ── Dedicated storefront tenant ─────────────────────────────────────────
+    // When public ecommerce / website-public routes are hit without a domain
+    // or subdomain that maps to a specific tenant, this tenant is used.
+    //
+    // Prefer STOREFRONT_TENANT_ID (UUID) over STOREFRONT_TENANT_EMAIL.
+    // Leave both null to rely on domain/subdomain resolution only.
+    'storefront_tenant_id'    => env('STOREFRONT_TENANT_ID'),
+    'storefront_tenant_email' => env('STOREFRONT_TENANT_EMAIL'),
+
     'bootstrappers' => [
         Stancl\Tenancy\Bootstrappers\DatabaseTenancyBootstrapper::class,
         Stancl\Tenancy\Bootstrappers\CacheTenancyBootstrapper::class,

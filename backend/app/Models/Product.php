@@ -556,28 +556,70 @@ class Product extends Model
         return $stockLevel ? $stockLevel->available_quantity : 0;
     }
 
+    /**
+     * Adjust stock for this product.
+     *
+     * @deprecated This method is retained for backward compatibility only.
+     *             All new code MUST call InventoryService::adjustStock() directly so that
+     *             stock_levels (the operational source of truth) and stock_movements
+     *             are updated atomically. Direct mutation of products.stock_quantity
+     *             via this method bypasses warehouse tracking and the inventory ledger.
+     *
+     * Migration path: replace $product->adjustStock($qty, $type, $ref) with
+     *   app(InventoryService::class)->adjustStock($productId, $warehouseId, $qty, $type, $ref)
+     */
     public function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
+        // Resolve warehouse: use provided ID, else fall back to the default warehouse.
+        // Without a warehouse all stock changes are untrackable at the location level.
+        $resolvedWarehouseId = $warehouseId ?? Warehouse::getDefault()?->id;
+
+        if ($resolvedWarehouseId) {
+            // Delegate to the central InventoryService so stock_levels stays authoritative.
+            // products.stock_quantity will be re-synced inside adjustStock() via updateProductTotalStock().
+            try {
+                app(\Modules\Inventory\Services\InventoryService::class)->adjustStock(
+                    productId:   $this->id,
+                    warehouseId: $resolvedWarehouseId,
+                    quantity:    abs($quantity),
+                    type:        $type,
+                    reference:   $reference,
+                );
+                return;
+            } catch (\Throwable $e) {
+                // Log the failure but do not silently swallow critical stock errors
+                \Illuminate\Support\Facades\Log::error('Product::adjustStock delegation failed', [
+                    'product_id'  => $this->id,
+                    'warehouse_id' => $resolvedWarehouseId,
+                    'type'        => $type,
+                    'quantity'    => $quantity,
+                    'error'       => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        }
+
+        // Last-resort legacy path: no warehouse available at all.
+        // This should only occur during seeding or in environments without a default warehouse.
+        \Illuminate\Support\Facades\Log::warning('Product::adjustStock falling back to legacy direct mutation — no warehouse available', [
+            'product_id' => $this->id,
+            'type'       => $type,
+            'quantity'   => $quantity,
+        ]);
+
         $oldQuantity = $this->stock_quantity;
         $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
         $this->save();
 
-        $movementData = [
-            'product_id' => $this->id,
-            'type' => $type,
-            'quantity' => abs($quantity),
+        StockMovement::create([
+            'product_id'   => $this->id,
+            'type'         => $type,
+            'quantity'     => abs($quantity),
             'old_quantity' => $oldQuantity,
-            'reference' => $reference,
+            'reference'    => $reference,
             'balance_after' => $this->stock_quantity,
-            'created_by' => auth()->id() ?? 1, // Default to system user if no auth
-        ];
-        
-        // Only add warehouse_id if the column exists
-        if ($warehouseId && \Schema::hasColumn('stock_movements', 'warehouse_id')) {
-            $movementData['warehouse_id'] = $warehouseId;
-        }
-        
-        StockMovement::create($movementData);
+            'created_by'   => auth()->id() ?? 1,
+        ]);
 
         ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STOCK_CHANGED, 'stock_quantity', $oldQuantity, $this->stock_quantity);
     }

@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Models\AIConversation;
 use Modules\AI\Models\AIMessage;
@@ -16,6 +15,7 @@ use Modules\AI\Services\FunctionRouter;
 use Modules\AI\Services\SubModuleManager;
 use Modules\AI\Prompts\SystemPrompt;
 use Modules\AI\Prompts\FunctionDefinitions;
+use Stancl\Tenancy\Facades\Tenancy;
 
 class ProcessAIMessage implements ShouldQueue
 {
@@ -38,8 +38,10 @@ class ProcessAIMessage implements ShouldQueue
     public function handle(OllamaService $ollama, FunctionRouter $router, SubModuleManager $moduleManager): void
     {
         try {
-            // Set tenant search path
-            DB::statement("SET search_path TO \"{$this->tenantId}\", public");
+            // Initialize tenancy context using the platform runtime helper
+            // instead of raw SET search_path — ensures all bootstrappers
+            // (cache, filesystem, events) also switch, not just the DB schema.
+            Tenancy::initialize($this->tenantId);
 
             $conversation = AIConversation::findOrFail($this->conversationId);
             $pendingMessage = AIMessage::findOrFail($this->pendingMessageId);
@@ -138,7 +140,11 @@ class ProcessAIMessage implements ShouldQueue
 
             // Update pending message with error fallback
             try {
-                DB::statement("SET search_path TO \"{$this->tenantId}\", public");
+                // Ensure tenancy is active for the error update
+                if (!Tenancy::getTenant()) {
+                    Tenancy::initialize($this->tenantId);
+                }
+
                 $pendingMessage = AIMessage::find($this->pendingMessageId);
                 if ($pendingMessage) {
                     $pendingMessage->update([

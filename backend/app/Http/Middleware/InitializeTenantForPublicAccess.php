@@ -10,17 +10,30 @@ use Stancl\Tenancy\Tenancy;
 
 /**
  * Resolve tenant for public (unauthenticated) API routes.
- * 
+ *
  * Resolution order:
- * 1. From Host header (domain-based) via the domains table
- * 2. From subdomain (exact match only)
- * 3. From authenticated user preference (if token present)
- * 4. Fail closed with 404 if no tenant resolved
+ *   1. Configured storefront tenant (config key: tenancy.storefront_tenant_id or storefront_tenant_email)
+ *   2. Host header domain lookup via the domains table
+ *   3. Subdomain exact-match
+ *   4. Authenticated user preference (optional Sanctum token)
+ *   5. Fail closed with 404 if no tenant resolved
+ *
+ * ── Hardcoded tenant email REMOVED ──────────────────────────────────────────
+ * The previous implementation keyed the dedicated storefront off a hardcoded
+ * email address (`infinitikpop@noovaerp.com`). This violated tenant-agnostic
+ * platform design: any tenant could become "the storefront" simply by changing
+ * their email, and there was no way to configure a different storefront tenant
+ * without editing code.
+ *
+ * Configuration:
+ *   # config/tenancy.php (or .env)
+ *   STOREFRONT_TENANT_ID=<uuid>           # preferred — directly addresses a tenant
+ *   STOREFRONT_TENANT_EMAIL=<email>        # fallback when no ID is configured
+ *
+ * If neither is set, domain/subdomain resolution handles all public routes.
  */
 class InitializeTenantForPublicAccess
 {
-    private const DEDICATED_STOREFRONT_TENANT_EMAIL = 'infinitikpop@noovaerp.com';
-
     protected $tenancy;
 
     public function __construct(Tenancy $tenancy)
@@ -36,13 +49,10 @@ class InitializeTenantForPublicAccess
         }
 
         if ($this->isDedicatedStorefrontRoute($request)) {
-            $tenant = \App\Models\Tenant::query()
-                ->where('email', self::DEDICATED_STOREFRONT_TENANT_EMAIL)
-                ->first();
+            $tenant = $this->resolveStorefrontTenant();
 
             if (!$tenant) {
-                Log::warning('InitializeTenantForPublicAccess: Dedicated storefront tenant missing', [
-                    'tenant_email' => self::DEDICATED_STOREFRONT_TENANT_EMAIL,
+                Log::warning('InitializeTenantForPublicAccess: storefront tenant not resolved — check STOREFRONT_TENANT_ID / STOREFRONT_TENANT_EMAIL in config', [
                     'path' => $request->path(),
                     'host' => $request->getHost(),
                 ]);
@@ -52,11 +62,10 @@ class InitializeTenantForPublicAccess
                 ], 404);
             }
 
-            Log::info('InitializeTenantForPublicAccess: Dedicated storefront tenant resolved', [
+            Log::info('InitializeTenantForPublicAccess: storefront tenant resolved', [
                 'tenant_id' => $tenant->id,
-                'tenant_email' => $tenant->email,
-                'path' => $request->path(),
-                'host' => $request->getHost(),
+                'path'      => $request->path(),
+                'host'      => $request->getHost(),
             ]);
 
             $this->tenancy->initialize($tenant);
@@ -143,6 +152,48 @@ class InitializeTenantForPublicAccess
         return response()->json([
             'message' => 'Tenant could not be resolved.',
         ], 404);
+    }
+
+    /**
+     * Resolve the dedicated storefront tenant from config.
+     *
+     * Config priority:
+     *   1. tenancy.storefront_tenant_id  (STOREFRONT_TENANT_ID in .env)
+     *   2. tenancy.storefront_tenant_email (STOREFRONT_TENANT_EMAIL in .env)
+     *
+     * Returns null when neither config value is set — domain resolution handles
+     * all public routes in that case.
+     */
+    private function resolveStorefrontTenant(): ?\App\Models\Tenant
+    {
+        // ── 1. Try direct tenant-ID lookup ────────────────────────────────────
+        $tenantId = config('tenancy.storefront_tenant_id');
+        if ($tenantId) {
+            $tenant = \App\Models\Tenant::find($tenantId);
+            if ($tenant) {
+                return $tenant;
+            }
+
+            Log::warning('InitializeTenantForPublicAccess: STOREFRONT_TENANT_ID is set but no matching tenant found', [
+                'storefront_tenant_id' => $tenantId,
+            ]);
+        }
+
+        // ── 2. Fall back to email lookup ─────────────────────────────────────
+        $email = config('tenancy.storefront_tenant_email');
+        if ($email) {
+            $tenant = \App\Models\Tenant::where('email', $email)->first();
+            if ($tenant) {
+                return $tenant;
+            }
+
+            Log::warning('InitializeTenantForPublicAccess: STOREFRONT_TENANT_EMAIL is set but no matching tenant found', [
+                'storefront_tenant_email' => $email,
+            ]);
+        }
+
+        // Neither config value is set — caller handles the null case
+        return null;
     }
 
     private function isDedicatedStorefrontRoute(Request $request): bool

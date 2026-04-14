@@ -1,78 +1,38 @@
 <?php
 
-/**
- * PHASE 1 - Sales Module Routes
- * 
- * Core sales functionality:
- * - Customers management
- * - Invoices with auto-posting to accounting
- * - Payments with ledger integration
- * 
- * Note: Main routes are in Core module (customers, invoices, payments)
- * This file contains sales-specific extensions
- */
-
 use Illuminate\Support\Facades\Route;
+use Modules\Sales\Http\Controllers\SalesOrderController;
 
-Route::middleware('auth:sanctum')->group(function () {
-    // Health check
-    Route::get('/sales/health', function () {
-        return ['module' => 'sales', 'ok' => true, 'phase' => 1];
-    });
+Route::middleware([
+    'auth:sanctum',
+    \App\Http\Middleware\SetTenantFromUserPreference::class,
+    \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+])->group(function () {
 
-    // Sales Dashboard Stats
-    Route::get('/sales/dashboard', function () {
-        $today = now()->startOfDay();
-        $thisMonth = now()->startOfMonth();
+    Route::middleware([
+        \App\Http\Middleware\ResolveEntityContext::class,
+        \App\Http\Middleware\EnsureEntityAccess::class,
+    ])->group(function () {
 
-        return response()->json([
-            'today' => [
-                'invoices' => \App\Models\Invoice::whereDate('invoice_date', $today)->count(),
-                'revenue' => \App\Models\Invoice::whereDate('invoice_date', $today)->where('status', 'paid')->sum('total'),
-                'payments' => \App\Models\Payment::whereDate('payment_date', $today)->sum('amount'),
-            ],
-            'this_month' => [
-                'invoices' => \App\Models\Invoice::where('invoice_date', '>=', $thisMonth)->count(),
-                'revenue' => \App\Models\Invoice::where('invoice_date', '>=', $thisMonth)->where('status', 'paid')->sum('total'),
-                'payments' => \App\Models\Payment::where('payment_date', '>=', $thisMonth)->sum('amount'),
-                'outstanding' => \App\Models\Invoice::whereIn('status', ['sent', 'overdue'])->sum('balance'),
-            ],
-            'customers' => [
-                'total' => \App\Models\Customer::count(),
-                'with_balance' => \App\Models\Customer::where('outstanding_balance', '>', 0)->count(),
-            ],
-        ]);
-    });
+        // Sales Orders — Core lifecycle
+        Route::apiResource('sales/orders', SalesOrderController::class);
 
-    // Sales Reports
-    Route::prefix('sales/reports')->group(function () {
-        // Revenue by period
-        Route::get('/revenue', function () {
-            $start = request('start_date', now()->startOfMonth()->format('Y-m-d'));
-            $end = request('end_date', now()->format('Y-m-d'));
+        // Lifecycle transitions
+        Route::post('/sales/orders/{id}/confirm', [SalesOrderController::class, 'confirm']);
+        Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
+        Route::post('/sales/orders/{id}/fulfil', [SalesOrderController::class, 'fulfil']);
+        Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
 
-            $daily = \App\Models\Invoice::where('status', 'paid')
-                ->whereBetween('invoice_date', [$start, $end])
-                ->selectRaw('DATE(invoice_date) as date, SUM(total) as revenue, COUNT(*) as count')
-                ->groupByRaw('DATE(invoice_date)')
-                ->orderBy('date')
-                ->get();
+        // Linked documents
+        Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
+        Route::get('/sales/orders/{id}/invoice-links', [SalesOrderController::class, 'invoiceLinks']);
+        Route::get('/sales/orders/{id}/channel-references', [SalesOrderController::class, 'channelReferences']);
 
-            return response()->json([
-                'period' => ['start' => $start, 'end' => $end],
-                'daily' => $daily,
-                'total' => $daily->sum('revenue'),
-            ]);
-        });
+        // Lifecycle history (immutable audit)
+        Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
 
-        // Top customers
-        Route::get('/top-customers', function () {
-            return response()->json(
-                \App\Models\Customer::withSum(['invoices' => fn($q) => $q->where('status', 'paid')], 'total')
-                    ->orderByDesc('invoices_sum_total')
-                    ->limit(10)
-                    ->get()
-            );
-        });
+        // Credit preview
+        Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
     });
 });

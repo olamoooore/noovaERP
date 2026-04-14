@@ -30,8 +30,8 @@ class OcrPromotionService
         $this->validatePromotionEligibility($doc);
 
         return DB::transaction(function () use ($doc) {
-            // Create canonical bill record
-            $billId = DB::table('vendor_bills')->insertGetId([
+            // Create canonical bill record — targets the live `bills` table
+            $billId = DB::table('bills')->insertGetId([
                 'vendor_id'          => $doc->vendor_id,
                 'bill_number'        => $doc->document_reference ?? $this->generateBillNumber(),
                 'bill_date'          => $doc->document_date,
@@ -53,7 +53,8 @@ class OcrPromotionService
             // Create bill line items from OCR line items
             if ($doc->line_items && is_array($doc->line_items)) {
                 foreach ($doc->line_items as $index => $item) {
-                    DB::table('vendor_bill_items')->insert([
+                    // Create bill line items — targets live `bill_lines` table
+                    DB::table('bill_lines')->insert([
                         'bill_id'     => $billId,
                         'account_id'  => $item['account_id'] ?? null,
                         'description' => $item['description'] ?? 'Line item',
@@ -175,7 +176,7 @@ class OcrPromotionService
 
     private function generateBillNumber(): string
     {
-        $last = DB::table('vendor_bills')->max('id') ?? 0;
+        $last = DB::table('bills')->max('id') ?? 0;
         return 'BILL-' . str_pad($last + 1, 6, '0', STR_PAD_LEFT);
     }
 

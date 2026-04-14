@@ -3,9 +3,12 @@
 namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\Inventory\Services\InventoryService;
 use Modules\PaymentGateway\Services\PaymentService;
 
 class WebOrderController extends Controller
@@ -212,10 +215,30 @@ class WebOrderController extends Controller
             $updateData['delivered_at'] = now();
         }
         if ($newStatus === 'cancelled') {
-            // If cancelling, refund stock
-            foreach ($order->items as $item) {
-                if ($item->product) {
-                    $item->product->increment('stock_quantity', $item->quantity);
+            // Restore stock via InventoryService (canonical path — no direct increment).
+            $warehouseId = Warehouse::getDefault()?->id;
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($order->items as $item) {
+                    if ($item->product && $item->product->track_inventory) {
+                        try {
+                            $inventoryService->adjustStock(
+                                productId:     $item->product->id,
+                                warehouseId:   $warehouseId,
+                                quantity:      $item->quantity,
+                                type:          'return',
+                                reference:     'Cancel: ' . $order->order_number,
+                                referenceType: 'WebOrder',
+                                referenceId:   $order->id,
+                            );
+                        } catch (\Exception $e) {
+                            Log::error('WebOrderController: stock restore on cancel failed', [
+                                'order_id'   => $order->id,
+                                'product_id' => $item->product->id,
+                                'error'      => $e->getMessage(),
+                            ]);
+                        }
+                    }
                 }
             }
             // Could also trigger refund if paid
@@ -259,10 +282,30 @@ class WebOrderController extends Controller
             ], 422);
         }
 
-        // Refund stock
-        foreach ($order->items as $item) {
-            if ($item->product && $item->product->stock_quantity !== null) {
-                $item->product->increment('stock_quantity', $item->quantity);
+        // Restore stock via InventoryService (canonical path).
+        $warehouseId = Warehouse::getDefault()?->id;
+        if ($warehouseId) {
+            $inventoryService = app(InventoryService::class);
+            foreach ($order->items as $item) {
+                if ($item->product && $item->product->track_inventory) {
+                    try {
+                        $inventoryService->adjustStock(
+                            productId:     $item->product->id,
+                            warehouseId:   $warehouseId,
+                            quantity:      $item->quantity,
+                            type:          'return',
+                            reference:     'Cancel: ' . $order->order_number,
+                            referenceType: 'WebOrder',
+                            referenceId:   $order->id,
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('WebOrderController::cancelOrder stock restore failed', [
+                            'order_id'   => $order->id,
+                            'product_id' => $item->product->id,
+                            'error'      => $e->getMessage(),
+                        ]);
+                    }
+                }
             }
         }
 

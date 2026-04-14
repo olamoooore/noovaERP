@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductSerial;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\InventoryService;
 
 /**
  * Product Tracking Controller
@@ -100,13 +102,29 @@ class ProductTrackingController extends Controller
             ], 422);
         }
 
+        $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
+        if (!$warehouseId) {
+            return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
+        }
+
         $batch = $product->batches()->create(array_merge($validated, [
-            'status' => 'available',
+            'warehouse_id'      => $warehouseId,
+            'status'            => 'available',
             'quantity_reserved' => 0,
         ]));
 
-        // Update product stock
-        $product->adjustStock($validated['quantity'], 'in', "Batch received: {$validated['batch_number']}");
+        // Update stock via InventoryService — canonical path, stock_levels stays authoritative
+        app(InventoryService::class)->adjustStock(
+            productId:     $product->id,
+            warehouseId:   $warehouseId,
+            quantity:      $validated['quantity'],
+            type:          'purchase',
+            reference:     "Batch received: {$validated['batch_number']}",
+            referenceType: 'ProductBatch',
+            referenceId:   $batch->id,
+            batchNumber:   $validated['batch_number'],
+            expiryDate:    isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
+        );
 
         return response()->json([
             'message' => 'Batch created successfully',
@@ -178,12 +196,21 @@ class ProductTrackingController extends Controller
             $oldQuantity = $batch->quantity;
             $batch->update(['quantity' => $newQuantity]);
 
-            // Adjust product stock accordingly
-            $adjustment = $validated['adjustment'];
-            if ($adjustment > 0) {
-                $product->adjustStock($adjustment, 'in', "Batch adjustment: {$validated['reason']}");
-            } else {
-                $product->adjustStock(abs($adjustment), 'out', "Batch adjustment: {$validated['reason']}");
+            // Adjust stock via InventoryService — canonical path
+            $adjustment  = $validated['adjustment'];
+            $warehouseId = $batch->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId && $adjustment !== 0) {
+                app(InventoryService::class)->adjustStock(
+                    productId:     $product->id,
+                    warehouseId:   $warehouseId,
+                    quantity:      abs($adjustment),
+                    type:          $adjustment > 0 ? 'in' : 'out',
+                    reference:     "Batch adjustment: {$validated['reason']}",
+                    referenceType: 'ProductBatch',
+                    referenceId:   $batch->id,
+                    batchNumber:   $batch->batch_number,
+                );
             }
         });
 
@@ -358,12 +385,26 @@ class ProductTrackingController extends Controller
             ], 422);
         }
 
+        $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
+        if (!$warehouseId) {
+            return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
+        }
+
         $serial = $product->serials()->create(array_merge($validated, [
-            'status' => 'available',
+            'warehouse_id' => $warehouseId,
+            'status'       => 'available',
         ]));
 
-        // Update product stock
-        $product->adjustStock(1, 'in', "Serial number received: {$validated['serial_number']}");
+        // Update stock via InventoryService — canonical path (1 unit per serial number)
+        app(InventoryService::class)->adjustStock(
+            productId:     $product->id,
+            warehouseId:   $warehouseId,
+            quantity:      1,
+            type:          'purchase',
+            reference:     "Serial number received: {$validated['serial_number']}",
+            referenceType: 'ProductSerial',
+            referenceId:   $serial->id,
+        );
 
         return response()->json([
             'message' => 'Serial number created successfully',
@@ -404,22 +445,37 @@ class ProductTrackingController extends Controller
             ], 422);
         }
 
+        $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
+        if (!$warehouseId) {
+            return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
+        }
+
         $created = [];
-        DB::transaction(function () use ($product, $validated, &$created) {
+        DB::transaction(function () use ($product, $validated, $warehouseId, &$created) {
             foreach ($validated['serial_numbers'] as $serialNumber) {
                 $serial = $product->serials()->create([
                     'serial_number' => $serialNumber,
-                    'warehouse_id' => $validated['warehouse_id'] ?? null,
-                    'batch_id' => $validated['batch_id'] ?? null,
-                    'supplier_id' => $validated['supplier_id'] ?? null,
-                    'cost' => $validated['cost'] ?? null,
-                    'status' => 'available',
+                    'warehouse_id'  => $warehouseId,
+                    'batch_id'      => $validated['batch_id'] ?? null,
+                    'supplier_id'   => $validated['supplier_id'] ?? null,
+                    'cost'          => $validated['cost'] ?? null,
+                    'status'        => 'available',
                 ]);
                 $created[] = $serial;
             }
 
-            // Update product stock
-            $product->adjustStock(count($created), 'in', "Bulk serial numbers received");
+            // Update stock via InventoryService — all serials go to the same warehouse as a single movement
+            if (count($created) > 0) {
+                app(InventoryService::class)->adjustStock(
+                    productId:     $product->id,
+                    warehouseId:   $warehouseId,
+                    quantity:      count($created),
+                    type:          'purchase',
+                    reference:     'Bulk serial numbers received',
+                    referenceType: 'ProductSerial',
+                    referenceId:   null,
+                );
+            }
         });
 
         return response()->json([

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -47,20 +48,64 @@ class ProductVariant extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Adjust stock for this variant.
+     *
+     * @deprecated All new code must call InventoryService::adjustStock() directly.
+     *             This method retains backward compatibility but now delegates to
+     *             InventoryService so that stock_levels stays authoritative.
+     *             No warehouse context is available here — default warehouse is used.
+     */
     public function adjustStock(int $quantity, string $type, ?string $reference = null): void
     {
+        $defaultWarehouse = Warehouse::getDefault();
+
+        if ($defaultWarehouse) {
+            try {
+                app(\Modules\Inventory\Services\InventoryService::class)->adjustStock(
+                    productId:     $this->product_id,
+                    warehouseId:   $defaultWarehouse->id,
+                    quantity:      abs($quantity),
+                    type:          $type,
+                    reference:     $reference,
+                    referenceType: 'ProductVariant',
+                    referenceId:   $this->id,
+                );
+
+                // Keep the variant's own stock_quantity in sync as a projection
+                $this->stock_quantity += ($type === 'in' ? abs($quantity) : -abs($quantity));
+                $this->saveQuietly();
+                return;
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('ProductVariant::adjustStock delegation failed', [
+                    'variant_id'  => $this->id,
+                    'product_id'  => $this->product_id,
+                    'type'        => $type,
+                    'quantity'    => $quantity,
+                    'error'       => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        }
+
+        // Legacy fallback: no warehouse available
+        \Illuminate\Support\Facades\Log::warning('ProductVariant::adjustStock falling back to legacy path — no default warehouse', [
+            'variant_id' => $this->id,
+            'product_id' => $this->product_id,
+        ]);
+
         $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
         $this->save();
 
         StockMovement::create([
-            'product_id' => $this->product_id,
-            'type' => $type,
-            'quantity' => abs($quantity),
-            'reference' => $reference,
+            'product_id'    => $this->product_id,
+            'type'          => $type,
+            'quantity'      => abs($quantity),
+            'reference'     => $reference,
             'reference_type' => 'ProductVariant',
-            'reference_id' => $this->id,
+            'reference_id'  => $this->id,
             'balance_after' => $this->stock_quantity,
-            'created_by' => auth()->id(),
+            'created_by'    => auth()->id(),
         ]);
     }
 }
