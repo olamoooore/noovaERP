@@ -42,7 +42,7 @@ class AuthenticateTenantApiKey
         }
 
         // Record last usage without blocking the request
-        $apiKey->touch();
+        $apiKey->recordUsage();
 
         // Attach tenant context to the request for the controller
         $request->attributes->set('tenant_id', $apiKey->tenant_id);

@@ -92,8 +92,9 @@ class TenantApiKey extends Model
 
     /**
      * Mark this key as used right now.
+     * Renamed to avoid conflicting with Eloquent\Model::touch($attribute = null).
      */
-    public function touch(): bool
+    public function recordUsage(): bool
     {
         return $this->update(['last_used_at' => now()]);
     }
