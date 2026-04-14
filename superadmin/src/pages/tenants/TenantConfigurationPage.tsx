@@ -914,7 +914,7 @@ export default function TenantConfigurationPage() {
             <h3 className="text-sm font-semibold text-gray-900">Generate New API Key</h3>
             <p className="text-xs text-gray-500">
               API keys allow ERP modules to call the feature gate endpoint
-              (<code className="font-mono bg-gray-100 px-1 rounded">GET /v1/features</code>) to check runtime entitlements.
+              (<code className="font-mono bg-gray-100 px-1 rounded">GET /api/v1/feature-gate</code>) to check runtime entitlements.
               The raw key is shown <strong>only once</strong> — store it securely.
             </p>
 
