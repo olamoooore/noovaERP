@@ -41,6 +41,19 @@ Route::prefix('v1/admin')->middleware([
     require __DIR__.'/admin.php';
 });
 
+// ── Phase 7: Runtime Feature Gate API ──────────────────────────────────────
+// Called by ERP modules at runtime to check entitlements.
+// Auth: Authorization: Bearer ten_{key}
+// No tenant schema switching needed — reads from public.tenant_entitlements.
+Route::prefix('v1/features')->middleware([
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    'auth.tenant_key',
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+    'throttle:120,1',    // 120 requests per minute per key
+])->group(function () {
+    require __DIR__.'/feature-gate.php';
+});
+
 // Legacy auth routes (keep for backwards compatibility)
 Route::prefix('auth')->group(function () {
     Route::post('/signup', [TenantController::class, 'signup']);

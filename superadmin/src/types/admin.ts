@@ -516,6 +516,23 @@ export interface QuoteLineItem {
 }
 
 // =============================================================================
+// Phase 7 — Feature Gate API Keys
+// =============================================================================
+
+export interface TenantApiKey {
+  id: number
+  tenant_id: string
+  name: string
+  key_prefix: string             // first 12 chars of raw key, for identification
+  is_active: boolean
+  last_used_at: string | null
+  expires_at: string | null
+  created_at: string
+  // Only present in the create response
+  raw_key?: string
+}
+
+// =============================================================================
 // Phase 6E — Plan Change Engine
 // =============================================================================
 

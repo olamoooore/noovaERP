@@ -9,6 +9,7 @@ use App\SuperAdmin\Domain\PlanItemDefault;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use App\SuperAdmin\Domain\TenantSelectedItem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class EntitlementService
@@ -148,6 +149,9 @@ class EntitlementService
             });
 
             $job->markCompleted($itemCount);
+
+            // Invalidate the feature gate cache so the next API call gets fresh data
+            Cache::forget("feature_gate:{$tenantId}");
 
             $this->audit->log(
                 'entitlements.rebuilt',

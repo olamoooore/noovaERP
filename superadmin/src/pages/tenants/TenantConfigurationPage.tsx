@@ -17,6 +17,7 @@ import {
   applyPlanChange,
   cancelPlanChange,
 } from '@/lib/admin-api/plan-changes'
+import { listApiKeys, createApiKey, updateApiKey, revokeApiKey } from '@/lib/admin-api/api-keys'
 import type {
   CatalogItem,
   SelectionType,
@@ -27,6 +28,7 @@ import type {
   ItemAvailability,
   TenantPlanChange,
   ProrationPreview,
+  TenantApiKey,
 } from '@/types/admin'
 
 // =============================================================================
@@ -376,7 +378,7 @@ function RequestPlanChangeModal({
 export default function TenantConfigurationPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'builder' | 'entitlements' | 'jobs' | 'plan-changes'>('builder')
+  const [tab, setTab] = useState<'builder' | 'entitlements' | 'jobs' | 'plan-changes' | 'api-keys'>('builder')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showPlanChangeModal, setShowPlanChangeModal] = useState(false)
   const [rebuildReason, setRebuildReason] = useState('')
@@ -409,6 +411,48 @@ export default function TenantConfigurationPage() {
     queryKey: ['admin', 'plan-changes', tenantId],
     queryFn: () => getPlanChangeHistory(tenantId!),
     enabled: !!tenantId,
+  })
+
+  // API Keys state
+  const [newKeyName, setNewKeyName]       = useState('')
+  const [newKeyExpiry, setNewKeyExpiry]   = useState('')
+  const [revealedKey, setRevealedKey]     = useState<string | null>(null)
+  const [apiKeyError, setApiKeyError]     = useState<string | null>(null)
+
+  const { data: apiKeys = [], refetch: refetchKeys } = useQuery({
+    queryKey: ['admin', 'api-keys', tenantId],
+    queryFn: () => listApiKeys(tenantId!),
+    enabled: !!tenantId,
+  })
+
+  const createKeyMut = useMutation({
+    mutationFn: () =>
+      createApiKey(tenantId!, {
+        name:       newKeyName.trim(),
+        expires_at: newKeyExpiry || null,
+      }),
+    onSuccess: (result) => {
+      setRevealedKey(result.raw_key)
+      setNewKeyName('')
+      setNewKeyExpiry('')
+      setApiKeyError(null)
+      refetchKeys()
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } }
+      setApiKeyError(e.response?.data?.message ?? 'Failed to create API key.')
+    },
+  })
+
+  const toggleKeyMut = useMutation({
+    mutationFn: ({ keyId, is_active }: { keyId: number; is_active: boolean }) =>
+      updateApiKey(tenantId!, keyId, { is_active }),
+    onSuccess: () => refetchKeys(),
+  })
+
+  const revokeKeyMut = useMutation({
+    mutationFn: (keyId: number) => revokeApiKey(tenantId!, keyId),
+    onSuccess: () => refetchKeys(),
   })
 
   const applyChangeMut = useMutation({
@@ -457,6 +501,7 @@ export default function TenantConfigurationPage() {
     { key: 'entitlements', label: `Resolved Entitlements (${entitled.length})` },
     { key: 'jobs',         label: `Rebuild History (${recent_jobs.length})` },
     { key: 'plan-changes', label: `Plan Changes${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` },
+    { key: 'api-keys',     label: `API Keys (${apiKeys.length})` },
   ] as const
 
   return (
@@ -854,6 +899,183 @@ export default function TenantConfigurationPage() {
                       </tr>
                     )
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== API KEYS TAB ===== */}
+      {tab === 'api-keys' && (
+        <div className="space-y-5">
+          {/* Generate new key form */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900">Generate New API Key</h3>
+            <p className="text-xs text-gray-500">
+              API keys allow ERP modules to call the feature gate endpoint
+              (<code className="font-mono bg-gray-100 px-1 rounded">GET /v1/features</code>) to check runtime entitlements.
+              The raw key is shown <strong>only once</strong> — store it securely.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Key Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newKeyName}
+                  onChange={e => setNewKeyName(e.target.value)}
+                  placeholder="e.g. Production ERP Server"
+                  maxLength={100}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Expires At <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={newKeyExpiry}
+                  onChange={e => setNewKeyExpiry(e.target.value)}
+                  min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
+            </div>
+
+            {apiKeyError && <p className="text-sm text-red-600">{apiKeyError}</p>}
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => createKeyMut.mutate()}
+                disabled={!newKeyName.trim() || createKeyMut.isPending}
+                className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Icon icon="solar:key-bold-duotone" width={15} />
+                {createKeyMut.isPending ? 'Generating…' : 'Generate Key'}
+              </button>
+            </div>
+          </div>
+
+          {/* Revealed raw key (shown only once) */}
+          {revealedKey && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-amber-800">
+                <Icon icon="solar:danger-triangle-bold-duotone" width={18} />
+                <span className="text-sm font-semibold">Save this key now — it will not be shown again</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg bg-white border border-amber-200 px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
+                  {revealedKey}
+                </code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(revealedKey); }}
+                  className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                >
+                  Copy
+                </button>
+              </div>
+              <button
+                onClick={() => setRevealedKey(null)}
+                className="text-xs text-amber-600 hover:underline"
+              >
+                I've saved it — dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Existing keys table */}
+          {apiKeys.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-14 text-center">
+              <Icon icon="solar:key-bold-duotone" width={32} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm text-gray-400">No API keys yet. Generate one above.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prefix</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Used</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(apiKeys as TenantApiKey[]).map(key => (
+                    <tr key={key.id} className={cn('hover:bg-gray-50/50', !key.is_active && 'opacity-50')}>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">
+                          {key.key_prefix}…
+                        </code>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-800 font-medium">{key.name}</td>
+                      <td className="px-4 py-3">
+                        <span className={cn(
+                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                          key.is_active
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-500',
+                        )}>
+                          {key.is_active ? 'Active' : 'Revoked'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : 'Never'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {key.expires_at
+                          ? new Date(key.expires_at) < new Date()
+                            ? <span className="text-red-500 font-medium">Expired {new Date(key.expires_at).toLocaleDateString()}</span>
+                            : new Date(key.expires_at).toLocaleDateString()
+                          : <span className="text-gray-300">Never</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {new Date(key.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {key.is_active ? (
+                            <>
+                              <button
+                                onClick={() => toggleKeyMut.mutate({ keyId: key.id, is_active: false })}
+                                disabled={toggleKeyMut.isPending}
+                                className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                              >
+                                Disable
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Permanently revoke "${key.name}"? This cannot be undone.`)) {
+                                    revokeKeyMut.mutate(key.id)
+                                  }
+                                }}
+                                disabled={revokeKeyMut.isPending}
+                                className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
+                              >
+                                Revoke
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => toggleKeyMut.mutate({ keyId: key.id, is_active: true })}
+                              disabled={toggleKeyMut.isPending}
+                              className="text-xs text-brand-600 hover:text-brand-700 disabled:opacity-40"
+                            >
+                              Re-enable
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

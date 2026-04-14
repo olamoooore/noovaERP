@@ -8,6 +8,7 @@ use App\SuperAdmin\Http\Controllers\AdminBillingController;
 use App\SuperAdmin\Http\Controllers\AdminCatalogController;
 use App\SuperAdmin\Http\Controllers\AdminPackagingController;
 use App\SuperAdmin\Http\Controllers\AdminPlanChangeController;
+use App\SuperAdmin\Http\Controllers\AdminTenantApiKeyController;
 use App\SuperAdmin\Http\Controllers\AdminPricingController;
 use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminCollectionsController;
@@ -236,6 +237,16 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::get('/quotes/{tenantId}',        [AdminPricingController::class, 'quoteHistory']);
         Route::middleware(DenyReadonlyRole::class)->group(function () {
             Route::post('/quotes/{tenantId}', [AdminPricingController::class, 'generateQuote']);
+        });
+    });
+
+    // --- Phase 7: Tenant API Keys (Feature Gate) ---
+    Route::prefix('tenants/{tenantId}/api-keys')->group(function () {
+        Route::get('/', [AdminTenantApiKeyController::class, 'index']);
+        Route::middleware(DenyReadonlyRole::class)->group(function () {
+            Route::post('/',         [AdminTenantApiKeyController::class, 'store']);
+            Route::patch('/{key}',   [AdminTenantApiKeyController::class, 'update']);
+            Route::delete('/{key}',  [AdminTenantApiKeyController::class, 'destroy']);
         });
     });
 
