@@ -23,7 +23,7 @@ class AdminDashboardController extends Controller
             'plan_family_count' => $planFamilyCount,
             'module_count'      => $moduleCount,
             'phase'             => 'Phase 1 — Data Foundation',
-            'message'           => 'Plan catalog and module catalog are operational. Tenant 360 coming in Phase 2.',
+            'message'           => 'NoovaERP Superadmin Control Plane — Phase 7 complete.',
         ]);
     }
 }

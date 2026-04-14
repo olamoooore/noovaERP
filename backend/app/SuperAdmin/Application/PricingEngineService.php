@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\SuperAdmin\Application;
 
 use App\SuperAdmin\Domain\CatalogItem;
@@ -136,14 +138,6 @@ class PricingEngineService
         // ── Step 3: Fetch effective rules (global + item-specific) ────────────
         $rules = CatalogPriceRule::effective()
             ->byPriority()
-            ->whereIn(DB::raw('COALESCE(catalog_item_id::text, \'global\')'),
-                array_merge(['global'], array_map('strval', $itemIds)))
-            ->orWhereNull('catalog_item_id')
-            ->get();
-
-        // Re-fetch properly: global + item-specific
-        $rules = CatalogPriceRule::effective()
-            ->byPriority()
             ->where(function ($q) use ($itemIds) {
                 $q->whereNull('catalog_item_id')
                   ->orWhereIn('catalog_item_id', $itemIds);
@@ -189,7 +183,7 @@ class PricingEngineService
 
             $lineItems[] = [
                 'catalog_item_id'  => $entitlement->catalog_item_id,
-                'item_key'         => $item?->item_key ?? '',
+                'item_key'         => $item?->key ?? '',
                 'item_name'        => $item?->name ?? 'Unknown',
                 'source'           => $entitlement->source,
                 'unit_amount'      => $unitAmount,

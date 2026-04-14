@@ -71,10 +71,10 @@ class PlanChangeService
         ]);
 
         $this->audit->log(
-            action:     'plan_change.requested',
-            targetType: 'tenant',
-            targetId:   $tenantId,
-            after:      $change->toAuditSnapshot(),
+            action:  'plan_change.requested',
+            target:  null,
+            before:  [],
+            after:   $change->toAuditSnapshot(),
         );
 
         return $change->load('fromFamily', 'toFamily', 'createdByAdmin');
@@ -211,10 +211,10 @@ class PlanChangeService
             ]);
 
             $this->audit->log(
-                action:     'plan_change.applied',
-                targetType: 'tenant',
-                targetId:   $planChange->tenant_id,
-                after:      $planChange->fresh()->toAuditSnapshot(),
+                action:  'plan_change.applied',
+                target:  null,
+                before:  [],
+                after:   $planChange->fresh()->toAuditSnapshot(),
             );
 
             return $planChange->fresh()->load('fromFamily', 'toFamily', 'appliedByAdmin', 'changeInvoices.invoice');
@@ -232,10 +232,10 @@ class PlanChangeService
         $planChange->update(['status' => TenantPlanChange::STATUS_CANCELLED]);
 
         $this->audit->log(
-            action:     'plan_change.cancelled',
-            targetType: 'tenant',
-            targetId:   $planChange->tenant_id,
-            after:      $planChange->fresh()->toAuditSnapshot(),
+            action:  'plan_change.cancelled',
+            target:  null,
+            before:  [],
+            after:   $planChange->fresh()->toAuditSnapshot(),
         );
 
         return $planChange->fresh()->load('fromFamily', 'toFamily');

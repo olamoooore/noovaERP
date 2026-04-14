@@ -18,6 +18,7 @@ import {
   cancelPlanChange,
 } from '@/lib/admin-api/plan-changes'
 import { listApiKeys, createApiKey, updateApiKey, revokeApiKey } from '@/lib/admin-api/api-keys'
+import { getPlanFamilies } from '@/lib/admin-api/plans'
 import type {
   CatalogItem,
   SelectionType,
@@ -58,6 +59,12 @@ const AVAILABILITY_COLOR: Record<ItemAvailability, string> = {
   add_on:      'text-blue-700 bg-blue-50',
   hidden:      'text-gray-400 bg-gray-50',
   custom_only: 'text-purple-700 bg-purple-50',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending:   'bg-yellow-100 text-yellow-800',
+  applied:   'bg-green-100 text-green-800',
+  cancelled: 'bg-gray-100 text-gray-500',
 }
 
 function JobStatusBadge({ status }: { status: EntitlementRebuildJob['status'] }) {
@@ -212,11 +219,7 @@ function RequestPlanChangeModal({
   // Fetch plan families for the selector
   const { data: plansData } = useQuery({
     queryKey: ['admin', 'plans'],
-    queryFn: async () => {
-      const { adminApi } = await import('@/lib/admin-api/client')
-      const r = await adminApi.get('/plans')
-      return r.data.data as Array<{ id: number; name: string; key: string; is_active: boolean }>
-    },
+    queryFn: getPlanFamilies,
   })
 
   const today = new Date().toISOString().slice(0, 10)
@@ -845,11 +848,6 @@ export default function TenantConfigurationPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {(planChanges as TenantPlanChange[]).map(change => {
-                    const statusColors: Record<string, string> = {
-                      pending:   'bg-yellow-100 text-yellow-800',
-                      applied:   'bg-green-100 text-green-800',
-                      cancelled: 'bg-gray-100 text-gray-500',
-                    }
                     return (
                       <tr key={change.id} className="hover:bg-gray-50/50">
                         <td className="px-4 py-3 text-sm">
@@ -859,7 +857,7 @@ export default function TenantConfigurationPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{change.effective_date}</td>
                         <td className="px-4 py-3">
-                          <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', statusColors[change.status])}>
+                          <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', STATUS_COLORS[change.status])}>
                             {change.status}
                           </span>
                         </td>

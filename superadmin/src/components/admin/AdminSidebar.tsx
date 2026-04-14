@@ -69,7 +69,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 6F — Catalog Intelligence</p>
+        <p className="text-[10px] text-gray-400">Phase 7 — Feature Gate API</p>
       </div>
     </aside>
   )

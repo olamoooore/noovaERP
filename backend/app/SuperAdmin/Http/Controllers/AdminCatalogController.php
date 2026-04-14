@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\SuperAdmin\Http\Controllers;
 
 use App\SuperAdmin\Application\CatalogService;

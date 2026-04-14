@@ -37,7 +37,7 @@ class AdminTenantOperationController extends Controller
     public function store(Request $request, string $tenantId): JsonResponse
     {
         $validated = $request->validate([
-            'operation' => ['required', 'string', 'in:suspend,reinstate,ping_health,migrate_plan,run_seeder'],
+            'operation' => ['required', 'string', 'in:suspend,reinstate,ping_health,migrate_plan'],
             'reason'    => ['nullable', 'string', 'max:500'],
             'payload'   => ['nullable', 'array'],
         ]);

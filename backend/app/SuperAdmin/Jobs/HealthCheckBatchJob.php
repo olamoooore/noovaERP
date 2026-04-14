@@ -113,7 +113,7 @@ class HealthCheckBatchJob implements ShouldQueue
                 'success_count' => $successCount,
                 'failure_count' => $failureCount,
             ],
-            status: $failureCount === 0 ? 'success' : 'success',
+            status: $failureCount === 0 ? 'success' : 'failure',
         );
     }
 
