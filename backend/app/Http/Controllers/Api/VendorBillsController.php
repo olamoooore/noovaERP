@@ -249,7 +249,17 @@ class VendorBillsController extends Controller
                 ], 404);
             }
 
-            // Validate request
+            // Immutability guard: posted/paid/cancelled bills cannot be edited directly.
+            // Use the dedicated service methods (postBill, cancelBill) for status transitions.
+            if (in_array($bill->status, ['posted', 'paid', 'cancelled'])) {
+                return response()->json([
+                    'message' => "Cannot edit a vendor bill with status '{$bill->status}'. " .
+                                 'Use the dedicated post/cancel endpoints for status transitions.',
+                ], 422);
+            }
+
+            // Validate request — 'status' is intentionally excluded: status transitions
+            // must go through VendorBillService state-machine methods, not direct mutation.
             $validator = Validator::make($request->all(), [
                 'bill_number' => 'nullable|string|unique:bills,bill_number,' . $id,
                 'vendor_id' => 'nullable|exists:vendors,id',
@@ -264,7 +274,6 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => 'nullable|string',
                 'company_registration_number' => 'nullable|string|max:100',
                 'tax_registration_number' => 'nullable|string|max:100',
-                'status' => 'nullable|in:draft,posted,paid,overdue,cancelled',
                 'notes' => 'nullable|string',
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -285,7 +294,7 @@ class VendorBillsController extends Controller
 
             DB::beginTransaction();
 
-            // Update bill
+            // Update bill — 'status' is intentionally excluded from this list.
             $bill->update($request->only([
                 'bill_number',
                 'vendor_id',
@@ -300,7 +309,6 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot',
                 'company_registration_number',
                 'tax_registration_number',
-                'status',
                 'notes',
                 'terms',
                 'discount_amount',

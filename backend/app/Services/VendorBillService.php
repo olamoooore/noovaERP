@@ -29,11 +29,23 @@ class VendorBillService
 
         $lines = [];
 
+        // Validate all bill lines have an explicit GL account before attempting to post.
+        // Without this guard a null account_id falls through to the 'general_expense'
+        // mapping key which resolves to the SUSPENSE account — silently wrong.
+        foreach ($bill->lines as $billLine) {
+            if (!$billLine->account_id) {
+                return PostingResult::failure(
+                    "Bill line '{$billLine->description}' (line #{$billLine->id}) has no GL account assigned. " .
+                    'All bill lines must have an account selected before the bill can be posted.'
+                );
+            }
+        }
+
         // DR each expense/inventory line
         foreach ($bill->lines as $billLine) {
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'general_expense',
-                accountId: $billLine->account_id, // explicit account from bill line
+                accountId: $billLine->account_id, // explicit account from bill line (guaranteed non-null above)
                 debit: (float) $billLine->line_total,
                 credit: 0,
                 description: $billLine->description ?? "Bill {$bill->bill_number}",

@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class PostingAuditLog extends Model
 {
-    public $timestamps = false;
+    /**
+     * Disable the updated_at column (audit logs are immutable — never updated).
+     * Eloquent will still manage created_at automatically.
+     */
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'document_type',
@@ -17,11 +21,12 @@ class PostingAuditLog extends Model
         'approval_user_id',
         'reason_code',
         'payload_snapshot',
-        'created_at',
+        // created_at is intentionally excluded from $fillable:
+        // Eloquent sets it automatically via timestamps; callers must not override it.
     ];
 
     protected $casts = [
         'payload_snapshot' => 'array',
-        'created_at' => 'datetime',
+        'created_at'       => 'datetime',
     ];
 }

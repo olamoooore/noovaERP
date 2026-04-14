@@ -4,6 +4,7 @@ namespace App\Accounting\Services;
 
 use App\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * AccountRoleResolver — Phase 2 account resolution service.
@@ -68,6 +69,23 @@ class AccountRoleResolver
 
         // 1. Try entity_account_roles via role code mapping
         $roleCode = self::KEY_TO_ROLE[$key] ?? null;
+
+        if ($roleCode === null) {
+            // This key has no direct role mapping — falls through to legacy mapper.
+            // NOTE: 'general_expense' maps to SUSPENSE which is intentionally wrong for
+            // expense lines — callers must supply an explicit accountId for expense postings.
+            Log::debug('AccountRoleResolver: no role mapping for key, using legacy mapper', [
+                'key'           => $key,
+                'document_type' => $documentType,
+                'legal_entity'  => $legalEntityId,
+            ]);
+        } elseif ($roleCode === 'SUSPENSE') {
+            Log::warning('AccountRoleResolver: key resolves to SUSPENSE account — verify this is intentional', [
+                'key'           => $key,
+                'document_type' => $documentType,
+            ]);
+        }
+
         if ($roleCode) {
             $account = $this->resolveByRole($roleCode, $legalEntityId);
             if ($account) {

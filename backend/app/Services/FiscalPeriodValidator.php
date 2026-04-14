@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FiscalPeriod;
+use App\Models\LockDateOverride;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -36,14 +37,12 @@ class FiscalPeriodValidator
         $period = FiscalPeriod::getPeriodForDate($date);
 
         if (!$period) {
-            // No period defined - allow posting with warning
-            Log::warning("No fiscal period defined for date: {$date->toDateString()}");
-            
+            Log::warning("Posting blocked: no fiscal period defined for date: {$date->toDateString()}");
+
             return [
-                'allowed' => true,
-                'reason' => null,
-                'period' => null,
-                'warning' => 'No fiscal period defined for this date',
+                'allowed' => false,
+                'reason'  => "No fiscal period is defined for {$date->toDateString()}. Create or open a fiscal period covering this date before posting.",
+                'period'  => null,
             ];
         }
 
@@ -121,27 +120,38 @@ class FiscalPeriodValidator
     }
 
     /**
-     * Create audit log entry for fiscal override
-     * 
+     * Create a DB-backed audit record for fiscal period overrides.
+     *
+     * Reuses the lock_date_overrides table (transaction_type = 'fiscal_period')
+     * so all accounting overrides are queryable from a single table.
+     * The Log::warning() is kept alongside for real-time observability.
+     *
      * @param FiscalPeriod $period
-     * @param User $user
-     * @param string $action Description of the action
+     * @param User         $user
+     * @param string       $action Description of the action (e.g. 'manual_journal_post')
      * @return void
      */
     public function logOverride(FiscalPeriod $period, User $user, string $action): void
     {
-        Log::warning("Fiscal period override", [
-            'period_id' => $period->id,
+        Log::warning('Fiscal period override', [
+            'period_id'   => $period->id,
             'period_code' => $period->code,
             'period_name' => $period->name,
-            'user_id' => $user->id,
-            'user_email' => $user->email,
-            'action' => $action,
-            'timestamp' => now()->toIso8601String(),
+            'user_id'     => $user->id,
+            'user_email'  => $user->email,
+            'action'      => $action,
+            'timestamp'   => now()->toIso8601String(),
         ]);
 
-        // TODO: Create audit log entry in database
-        // This can be implemented with an AuditLog model
+        // Persist to DB via lock_date_overrides (transaction_type = 'fiscal_period')
+        LockDateOverride::logOverride(
+            userId:          $user->id,
+            transactionType: 'fiscal_period',
+            transactionId:   $period->id,
+            transactionDate: $period->period_start,
+            reason:          "Fiscal period override: {$action} on period '{$period->code}'",
+            approvedBy:      null,
+        );
     }
 
     /**

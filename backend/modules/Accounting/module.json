@@ -1,8 +1,0 @@
-{
-  "key": "accounting",
-  "name": "Accounting",
-  "type": "core",
-  "providers": [
-    "Modules\\Accounting\\Providers\\AccountingServiceProvider"
-  ]
-}

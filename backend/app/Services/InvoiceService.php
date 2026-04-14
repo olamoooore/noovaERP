@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Models\BankAccount;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Payment;
@@ -156,9 +157,10 @@ class InvoiceService
                 throw new \Exception($result->error);
             }
 
+            // Status transitions to 'posted' (accounting released to GL).
+            // The operational 'sent' status is set separately via InvoiceController::send().
             $invoice->update([
-                'status' => 'sent',
-                'sent_at' => now(),
+                'status'           => 'posted',
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
@@ -195,19 +197,36 @@ class InvoiceService
         
         try {
             $paymentData['customer_id'] = $invoice->customer_id;
-            $paymentData['invoice_id'] = $invoice->id;
+            $paymentData['invoice_id']  = $invoice->id;
             $paymentData['payment_date'] = $paymentData['payment_date'] ?? now();
             $paymentData['received_by'] = auth()->id();
+            // bank_account_id is passed through from the caller if provided
 
             $payment = Payment::create($paymentData);
 
             // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
             $lines = [];
 
+            // Resolve the cash/bank GL account based on payment method + bank account.
+            // bank_account_id (if provided) takes precedence and gives the exact GL account.
+            // Otherwise fall back to a mapping key derived from the payment method.
+            $bankAccountId  = $paymentData['bank_account_id'] ?? null;
+            $bankGlAccountId = null;
+
+            if ($bankAccountId) {
+                $bankAccount = BankAccount::find($bankAccountId);
+                $bankGlAccountId = $bankAccount?->gl_account_id;
+            }
+
+            $cashMappingKey = match ($payment->method ?? 'cash') {
+                'bank_transfer' => 'bank',
+                default         => 'cash',
+            };
+
             // DR Cash/Bank
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'cash',
-                accountId: null,
+                accountMappingKey: $cashMappingKey,
+                accountId: $bankGlAccountId,   // explicit GL account wins when bank account is set
                 debit: (float) $payment->amount,
                 credit: 0,
                 description: "Payment {$payment->payment_number}",

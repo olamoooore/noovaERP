@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\EntityManagementController;
+use App\Http\Controllers\Api\FiscalPeriodsController;
 use App\Http\Middleware\ResolveEntityContext;
 use App\Http\Middleware\EnsureEntityAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
@@ -242,6 +243,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
         Route::get('/lock-dates/overrides/history', [LockDatesController::class, 'overrides']);
         
+        // Fiscal Periods — CRUD + lifecycle (lock / unlock / close / reopen)
+        Route::get('/fiscal-periods', [FiscalPeriodsController::class, 'index']);
+        Route::post('/fiscal-periods', [FiscalPeriodsController::class, 'store']);
+        Route::post('/fiscal-periods/generate-year', [FiscalPeriodsController::class, 'generateYear']);
+        Route::get('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'show']);
+        Route::put('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'update']);
+        Route::delete('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'destroy']);
+        Route::post('/fiscal-periods/{id}/lock', [FiscalPeriodsController::class, 'lock']);
+        Route::post('/fiscal-periods/{id}/unlock', [FiscalPeriodsController::class, 'unlock']);
+        Route::post('/fiscal-periods/{id}/close', [FiscalPeriodsController::class, 'close']);
+        Route::post('/fiscal-periods/{id}/reopen', [FiscalPeriodsController::class, 'reopen']);
+
         // Account Roles (Phase 2 — role-based account resolution)
         Route::get('/account-roles', [AccountRolesController::class, 'index']);
         Route::post('/account-roles/assign', [AccountRolesController::class, 'assign']);
