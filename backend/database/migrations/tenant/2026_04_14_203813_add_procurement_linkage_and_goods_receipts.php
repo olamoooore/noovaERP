@@ -17,22 +17,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // ── 1. Add procurement linkage to bills ──────────────────────────────
-        Schema::table('bills', function (Blueprint $table) {
-            $table->foreignId('purchase_order_id')
-                ->nullable()
-                ->after('vendor_id')
-                ->constrained('purchase_orders')
-                ->nullOnDelete();
-
-            $table->foreignId('goods_receipt_id')
-                ->nullable()
-                ->after('purchase_order_id')
-                ->constrained('goods_receipts')
-                ->nullOnDelete();
-        });
-
-        // ── 2. Goods Receipt Header ─────────────────────────────────────────
+        // ── 1. Goods Receipt Header ─────────────────────────────────────────
         Schema::create('goods_receipts', function (Blueprint $table) {
             $table->id();
 
@@ -55,7 +40,7 @@ return new class extends Migration
             $table->index('status');
         });
 
-        // ── 3. Goods Receipt Lines ───────────────────────────────────────────
+        // ── 2. Goods Receipt Lines ───────────────────────────────────────────
         Schema::create('goods_receipt_lines', function (Blueprint $table) {
             $table->id();
 
@@ -75,6 +60,21 @@ return new class extends Migration
 
             $table->index('goods_receipt_id');
             $table->index('product_id');
+        });
+
+        // ── 3. Add procurement linkage to bills ──────────────────────────────
+        Schema::table('bills', function (Blueprint $table) {
+            $table->foreignId('purchase_order_id')
+                ->nullable()
+                ->after('vendor_id')
+                ->constrained('purchase_orders')
+                ->nullOnDelete();
+
+            $table->foreignId('goods_receipt_id')
+                ->nullable()
+                ->after('purchase_order_id')
+                ->constrained('goods_receipts')
+                ->nullOnDelete();
         });
     }
 

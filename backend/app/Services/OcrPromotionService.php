@@ -155,9 +155,9 @@ class OcrPromotionService
      */
     private function validatePromotionEligibility(OcrDocument $doc): void
     {
-        if ($doc->status !== 'NEEDS_REVIEW' && $doc->status !== 'POSTED') {
+        if ($doc->status !== 'NEEDS_REVIEW') {
             throw new \RuntimeException(
-                "OCR document {$doc->uuid} cannot be promoted. Status must be NEEDS_REVIEW or POSTED, got {$doc->status}."
+                "OCR document {$doc->uuid} cannot be promoted. Status must be NEEDS_REVIEW, got {$doc->status}."
             );
         }
 

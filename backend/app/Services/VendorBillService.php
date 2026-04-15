@@ -23,7 +23,7 @@ class VendorBillService
      */
     public function postBill(Bill $bill): PostingResult
     {
-        if ($bill->status === 'posted') {
+        if ($bill->journal_entry_id || $bill->status !== 'draft') {
             return PostingResult::failure('Bill is already posted.');
         }
 

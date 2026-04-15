@@ -234,7 +234,7 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
 
-        if (!in_array($purchaseOrder->status, ['approved', 'pending'])) {
+        if ($purchaseOrder->status !== 'approved') {
             return response()->json(['message' => 'Order must be approved first'], 422);
         }
 
@@ -265,16 +265,19 @@ class PurchaseOrderController extends Controller
             foreach ($validated['items'] as $itemData) {
                 $item = PurchaseOrderItem::find($itemData['id']);
                 if ($item && $item->purchase_order_id === $purchaseOrder->id) {
-                    $newReceived = $item->quantity_received + $itemData['quantity_received'];
+                    $requestedQty = (int) $itemData['quantity_received'];
+                    $remainingQty = max(0, (int) $item->quantity_ordered - (int) $item->quantity_received);
+                    $acceptedQty = min($requestedQty, $remainingQty);
+                    $newReceived = $item->quantity_received + $acceptedQty;
                     $item->quantity_received = min($newReceived, $item->quantity_ordered);
                     $item->save();
 
                     // Add stock for received items
-                    if ($itemData['quantity_received'] > 0) {
+                    if ($acceptedQty > 0) {
                         $this->inventoryService->adjustStock(
                             $item->product_id,
                             $purchaseOrder->warehouse_id,
-                            $itemData['quantity_received'],
+                            $acceptedQty,
                             'purchase',
                             $purchaseOrder->po_number,
                             'PurchaseOrder',

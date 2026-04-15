@@ -61,7 +61,7 @@ return new class extends Migration
             $foreignKeys = DB::select("
                 SELECT conname
                 FROM pg_constraint
-                WHERE conrelid = 'tenant.bank_reconciliations'::regclass
+                WHERE conrelid = to_regclass('bank_reconciliations')
                   AND contype = 'f'
             ");
 
@@ -91,7 +91,7 @@ return new class extends Migration
             $foreignKeys = DB::select("
                 SELECT conname
                 FROM pg_constraint
-                WHERE conrelid = 'tenant.bank_reconciliations'::regclass
+                WHERE conrelid = to_regclass('bank_reconciliations')
                   AND contype = 'f'
             ");
 

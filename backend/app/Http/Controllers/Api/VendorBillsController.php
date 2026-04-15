@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillLine;
+use App\Models\GoodsReceipt;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,12 +28,17 @@ class VendorBillsController extends Controller
             $status = $request->get('status');
             $vendorId = $request->get('vendor_id');
 
-            $query = Bill::with(['vendor', 'lines'])
+            $query = Bill::with(['vendor', 'lines', 'purchaseOrder', 'goodsReceipt'])
                 ->orderBy('bill_date', 'desc');
 
             // Filter by status
             if ($status) {
-                $query->where('status', $status);
+                $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $status))));
+                if (count($statuses) > 1) {
+                    $query->whereIn('status', $statuses);
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Filter by vendor
@@ -88,7 +94,7 @@ class VendorBillsController extends Controller
     public function show($id)
     {
         try {
-            $bill = Bill::with(['vendor', 'lines.account', 'journalEntry'])
+            $bill = Bill::with(['vendor', 'lines.account', 'journalEntry', 'purchaseOrder', 'goodsReceipt'])
                 ->find($id);
 
             if (!$bill) {
@@ -123,6 +129,8 @@ class VendorBillsController extends Controller
             $validator = Validator::make($request->all(), [
                 'bill_number' => 'nullable|string|unique:bills,bill_number',
                 'vendor_id' => 'required|exists:vendors,id',
+                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
                 'bill_date' => 'required|date',
                 'due_date' => 'nullable|date',
                 'vendor_reference' => 'nullable|string|max:100',
@@ -134,7 +142,6 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => 'nullable|string',
                 'company_registration_number' => 'nullable|string|max:100',
                 'tax_registration_number' => 'nullable|string|max:100',
-                'status' => 'nullable|in:draft,posted,paid,overdue,cancelled',
                 'notes' => 'nullable|string',
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -155,10 +162,27 @@ class VendorBillsController extends Controller
 
             DB::beginTransaction();
 
+            $goodsReceipt = null;
+            if ($request->filled('goods_receipt_id')) {
+                $goodsReceipt = GoodsReceipt::findOrFail((int) $request->goods_receipt_id);
+            }
+
+            $resolvedPurchaseOrderId = $request->purchase_order_id;
+            if ($goodsReceipt) {
+                if ($resolvedPurchaseOrderId && (int) $resolvedPurchaseOrderId !== (int) $goodsReceipt->purchase_order_id) {
+                    return response()->json([
+                        'message' => 'goods_receipt_id does not belong to the provided purchase_order_id',
+                    ], 422);
+                }
+                $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
+            }
+
             // Create bill
             $bill = Bill::create([
                 'bill_number' => $request->bill_number,
                 'vendor_id' => $request->vendor_id,
+                'purchase_order_id' => $resolvedPurchaseOrderId,
+                'goods_receipt_id' => $goodsReceipt?->id,
                 'bill_date' => $request->bill_date,
                 'due_date' => $request->due_date,
                 'vendor_reference' => $request->vendor_reference,
@@ -170,7 +194,7 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => $request->remittance_address_snapshot,
                 'company_registration_number' => $request->company_registration_number,
                 'tax_registration_number' => $request->tax_registration_number,
-                'status' => $request->status ?? 'draft',
+                'status' => 'draft',
                 'notes' => $request->notes,
                 'terms' => $request->terms,
                 'discount_amount' => $request->discount_amount ?? 0,
@@ -214,7 +238,7 @@ class VendorBillsController extends Controller
             DB::commit();
 
             // Reload with relationships
-            $bill->load(['vendor', 'lines.account']);
+            $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
 
             return response()->json([
                 'message' => 'Vendor bill created successfully',
@@ -263,6 +287,8 @@ class VendorBillsController extends Controller
             $validator = Validator::make($request->all(), [
                 'bill_number' => 'nullable|string|unique:bills,bill_number,' . $id,
                 'vendor_id' => 'nullable|exists:vendors,id',
+                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
                 'bill_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
                 'vendor_reference' => 'nullable|string|max:100',
@@ -294,10 +320,25 @@ class VendorBillsController extends Controller
 
             DB::beginTransaction();
 
+            $resolvedPurchaseOrderId = $request->has('purchase_order_id') ? $request->purchase_order_id : $bill->purchase_order_id;
+            $resolvedGoodsReceiptId = $request->has('goods_receipt_id') ? $request->goods_receipt_id : $bill->goods_receipt_id;
+
+            if ($resolvedGoodsReceiptId) {
+                $goodsReceipt = GoodsReceipt::findOrFail((int) $resolvedGoodsReceiptId);
+                if ($resolvedPurchaseOrderId && (int) $resolvedPurchaseOrderId !== (int) $goodsReceipt->purchase_order_id) {
+                    return response()->json([
+                        'message' => 'goods_receipt_id does not belong to the provided purchase_order_id',
+                    ], 422);
+                }
+                $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
+            }
+
             // Update bill — 'status' is intentionally excluded from this list.
             $bill->update($request->only([
                 'bill_number',
                 'vendor_id',
+                'purchase_order_id',
+                'goods_receipt_id',
                 'bill_date',
                 'due_date',
                 'vendor_reference',
@@ -313,6 +354,11 @@ class VendorBillsController extends Controller
                 'terms',
                 'discount_amount',
             ]));
+
+            $bill->update([
+                'purchase_order_id' => $resolvedPurchaseOrderId,
+                'goods_receipt_id' => $resolvedGoodsReceiptId,
+            ]);
 
             // Update lines if provided
             if ($request->has('lines')) {
@@ -352,7 +398,7 @@ class VendorBillsController extends Controller
             DB::commit();
 
             // Reload with relationships
-            $bill->load(['vendor', 'lines.account']);
+            $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
 
             return response()->json([
                 'message' => 'Vendor bill updated successfully',
