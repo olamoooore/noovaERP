@@ -60,12 +60,22 @@ class StockValuationService extends BaseReportService
      */
     protected function getStockValuation(Carbon $asOfDate, ?int $categoryId = null)
     {
+        $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         $query = DB::table('products as p')
             ->where('p.is_active', true)
             ->where('p.track_inventory', true);
 
         // Note: Category filtering not available as products table doesn't have category_id
         // If needed in future, add category_id column to products table
+
+        if ($stockLevelsExists) {
+            $query->leftJoin(
+                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                'sl.product_id',
+                '=',
+                'p.id'
+            );
+        }
 
         $products = $query->select([
                 'p.id',
@@ -74,15 +84,22 @@ class StockValuationService extends BaseReportService
                 'p.cost',
                 'p.unit',
                 'p.reorder_level',
+                DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
             ])
             ->get();
 
-        // Calculate current stock from stock_movements for each product
+        // Preserve historical behavior when a past as-of date is requested.
+        if ($stockLevelsExists && !$asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
+            $stockLevelsExists = false;
+        }
+
+        // Calculate current stock from stock_levels when available
         $valuations = collect();
         
         foreach ($products as $product) {
-            // Get current quantity from latest stock movement
-            $quantity = $this->getQuantityAsOfDate($product->id, $asOfDate);
+            $quantity = $stockLevelsExists
+                ? (int) $product->current_quantity
+                : $this->getQuantityAsOfDate($product->id, $asOfDate);
             
             // Only include products with stock
             if ($quantity > 0) {
@@ -111,6 +128,7 @@ class StockValuationService extends BaseReportService
      */
     public function getHistoricalValuation(Carbon $asOfDate, ?int $categoryId = null): array
     {
+        $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         // Get all products
         $query = DB::table('products as p')
             ->where('p.is_active', true)
@@ -118,21 +136,37 @@ class StockValuationService extends BaseReportService
 
         // Note: Category filtering not available as products table doesn't have category_id
 
+        if ($stockLevelsExists) {
+            $query->leftJoin(
+                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                'sl.product_id',
+                '=',
+                'p.id'
+            );
+        }
+
         $products = $query->select([
                 'p.id',
                 'p.sku',
                 'p.name',
                 'p.cost',
                 'p.unit',
+                DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
             ])
             ->get();
+
+        // Preserve historical behavior when a past as-of date is requested.
+        if ($stockLevelsExists && !$asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
+            $stockLevelsExists = false;
+        }
 
         $valuations = [];
         $totalValue = 0;
 
         foreach ($products as $product) {
-            // Calculate quantity as of date from stock movements
-            $quantity = $this->getQuantityAsOfDate($product->id, $asOfDate);
+            $quantity = $stockLevelsExists
+                ? (int) $product->current_quantity
+                : $this->getQuantityAsOfDate($product->id, $asOfDate);
 
             if ($quantity > 0) {
                 $value = $quantity * $product->cost;
@@ -185,22 +219,44 @@ class StockValuationService extends BaseReportService
      */
     public function getLowStockProducts(): array
     {
+        $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         $products = DB::table('products as p')
             ->where('p.is_active', true)
             ->where('p.track_inventory', true)
-            ->whereRaw('p.stock_quantity < p.reorder_level')
-            ->select([
-                'p.id',
-                'p.sku',
-                'p.name',
-                'p.stock_quantity',
-                'p.reorder_level',
-                'p.cost',
-                'p.unit',
-                DB::raw('(p.reorder_level - p.stock_quantity) as shortage'),
-                DB::raw('((p.reorder_level - p.stock_quantity) * p.cost) as reorder_value'),
-            ])
-            ->orderBy('shortage', 'desc')
+            ->when($stockLevelsExists, function ($query) {
+                $query->leftJoin(
+                    DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                    'sl.product_id',
+                    '=',
+                    'p.id'
+                )->whereRaw('COALESCE(sl.total_quantity, 0) < p.reorder_level')
+                  ->select([
+                      'p.id',
+                      'p.sku',
+                      'p.name',
+                      DB::raw('COALESCE(sl.total_quantity, 0) as stock_quantity'),
+                      'p.reorder_level',
+                      'p.cost',
+                      'p.unit',
+                      DB::raw('(p.reorder_level - COALESCE(sl.total_quantity, 0)) as shortage'),
+                      DB::raw('((p.reorder_level - COALESCE(sl.total_quantity, 0)) * p.cost) as reorder_value'),
+                  ])
+                  ->orderBy('shortage', 'desc');
+            }, function ($query) {
+                $query->whereRaw('p.stock_quantity < p.reorder_level')
+                    ->select([
+                        'p.id',
+                        'p.sku',
+                        'p.name',
+                        'p.stock_quantity',
+                        'p.reorder_level',
+                        'p.cost',
+                        'p.unit',
+                        DB::raw('(p.reorder_level - p.stock_quantity) as shortage'),
+                        DB::raw('((p.reorder_level - p.stock_quantity) * p.cost) as reorder_value'),
+                    ])
+                    ->orderBy('shortage', 'desc');
+            })
             ->get();
 
         return [

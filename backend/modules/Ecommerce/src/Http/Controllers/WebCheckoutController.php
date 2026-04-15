@@ -17,11 +17,13 @@ use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
+use Modules\Inventory\Services\InventoryService;
 
 class WebCheckoutController extends Controller
 {
     public function __construct(
-        private PaymentService $paymentService
+        private PaymentService $paymentService,
+        private InventoryService $inventoryService
     ) {}
 
     /**
@@ -68,6 +70,21 @@ class WebCheckoutController extends Controller
                         'available' => 0,
                         'reason' => 'Product not available',
                     ];
+                } elseif ($product->track_inventory) {
+                    $availability = $this->inventoryService->checkAvailability(
+                        (int) $product->id,
+                        (int) $item['quantity']
+                    );
+
+                    if (!($availability['is_available'] ?? false)) {
+                        $insufficientStock[] = [
+                            'product_id' => $item['product_id'],
+                            'name' => $product->name,
+                            'requested' => $item['quantity'],
+                            'available' => (int) ($availability['total_available'] ?? 0),
+                            'reason' => 'Insufficient stock',
+                        ];
+                    }
                 } elseif (($product->stock_quantity ?? PHP_INT_MAX) < $item['quantity']) {
                     $insufficientStock[] = [
                         'product_id' => $item['product_id'],

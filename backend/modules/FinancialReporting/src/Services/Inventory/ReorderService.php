@@ -47,13 +47,29 @@ class ReorderService extends BaseReportService
     {
         // Check if categories table exists
         $categoriesExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'categories')")[0]->exists;
+        $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
 
         $query = DB::table('products as p')
             ->where('p.is_active', true)
             ->where('p.track_inventory', true)
             ->where('p.deleted_at', null)
-            ->whereNotNull('p.reorder_level')
-            ->whereRaw('p.stock_quantity <= p.reorder_level');
+            ->whereNotNull('p.reorder_level');
+
+        if ($stockLevelsExists) {
+            $query->leftJoin(
+                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                'sl.product_id',
+                '=',
+                'p.id'
+            );
+            $currentStockSelect = DB::raw('COALESCE(sl.total_quantity, 0) as current_stock');
+            $query->whereRaw('COALESCE(sl.total_quantity, 0) <= p.reorder_level');
+            $query->orderByRaw('COALESCE(sl.total_quantity, 0) asc');
+        } else {
+            $currentStockSelect = 'p.stock_quantity as current_stock';
+            $query->whereRaw('p.stock_quantity <= p.reorder_level');
+            $query->orderBy('p.stock_quantity', 'asc');
+        }
 
         // Only join categories if the table exists
         if ($categoriesExists) {
@@ -72,14 +88,13 @@ class ReorderService extends BaseReportService
                 'p.id',
                 'p.sku',
                 'p.name',
-                'p.stock_quantity as current_stock',
+                $currentStockSelect,
                 'p.reorder_level',
                 'p.cost as unit_cost',
                 'p.price as unit_price',
                 $categorySelect,
                 'p.unit',
             ])
-            ->orderBy('p.stock_quantity', 'asc')
             ->get();
 
         // Calculate suggested order quantities and additional metrics

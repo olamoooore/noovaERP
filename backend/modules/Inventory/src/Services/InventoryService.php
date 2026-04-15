@@ -116,6 +116,8 @@ class InventoryService
                 case 'adjustment':
                     $newQuantity = $quantity; // Direct set for adjustments
                     break;
+                default:
+                    throw new \InvalidArgumentException("Unsupported stock movement type: {$type}");
             }
 
             // Check for negative stock
@@ -131,6 +133,11 @@ class InventoryService
             $this->updateProductTotalStock($productId);
 
             // Create stock movement record
+            $createdBy = auth()->id() ?? DB::table('users')->value('id');
+            if (!$createdBy) {
+                throw new \RuntimeException('Cannot create stock movement without a valid user.');
+            }
+
             return StockMovement::create([
                 'product_id' => $productId,
                 'warehouse_id' => $warehouseId,
@@ -145,7 +152,7 @@ class InventoryService
                 'notes' => $notes,
                 'batch_number' => $batchNumber,
                 'expiry_date' => $expiryDate,
-                'created_by' => auth()->id(),
+                'created_by' => $createdBy,
             ]);
         });
     }

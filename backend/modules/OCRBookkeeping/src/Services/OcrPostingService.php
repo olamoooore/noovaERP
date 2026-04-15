@@ -8,11 +8,13 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\Services\AccountMappingService;
 use App\Models\JournalEntry;
 use App\Models\ChartOfAccount;
+use App\Models\Warehouse;
 use App\Services\FiscalPeriodValidator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Inventory\Services\InventoryService;
 
 /**
  * OCR Posting Service
@@ -28,6 +30,7 @@ class OcrPostingService
         private ExchangeRateService $exchangeRateService,
         private PostingEngineInterface $postingEngine,
         private AccountMappingService $accountMapper,
+        private InventoryService $inventoryService,
     ) {}
 
     /**
@@ -344,7 +347,11 @@ class OcrPostingService
             }
 
             // Create stock movement (IN for purchases)
-            $quantity = $item['quantity'] ?? 1;
+            $quantity = max(0, (int) ($item['quantity'] ?? 1));
+            if ($quantity <= 0) {
+                continue;
+            }
+
             $unitCost = isset($item['amount']) && $quantity > 0 
                 ? $item['amount'] / $quantity 
                 : $product->cost;
@@ -354,7 +361,8 @@ class OcrPostingService
                 $quantity,
                 $unitCost,
                 $document,
-                $journalEntry
+                $journalEntry,
+                $item
             );
 
             Log::info("Stock movement created for OCR document", [
@@ -401,6 +409,7 @@ class OcrPostingService
      * @param float $unitCost
      * @param OcrDocument $document
      * @param JournalEntry $journalEntry
+     * @param array $item
      * @return void
      */
     private function createStockMovement(
@@ -408,8 +417,11 @@ class OcrPostingService
         int $quantity,
         float $unitCost,
         OcrDocument $document,
-        JournalEntry $journalEntry
+        JournalEntry $journalEntry,
+        array $item
     ): void {
+        $warehouseId = $this->resolveWarehouseIdForItem($item);
+
         // Calculate new WAC before updating stock
         $oldQuantity = $product->stock_quantity;
         $oldCost = $product->cost;
@@ -420,34 +432,61 @@ class OcrPostingService
         if ($newQuantity > 0) {
             $newWac = (($oldQuantity * $oldCost) + ($quantity * $unitCost)) / $newQuantity;
             $product->cost = round($newWac, 2);
+            $product->save();
         }
 
-        // Update stock quantity
-        $product->stock_quantity = $newQuantity;
-        $product->save();
+        $this->inventoryService->adjustStock(
+            productId: $product->id,
+            warehouseId: $warehouseId,
+            quantity: $quantity,
+            type: 'purchase',
+            reference: "OCR-{$document->uuid}",
+            referenceType: 'ocr_document',
+            referenceId: $document->id,
+            notes: "Inventory receipt from OCR document: {$document->vendor_name} - {$document->document_reference}"
+        );
 
-        // Create stock movement record
-        \App\Models\StockMovement::create([
-            'product_id' => $product->id,
-            'type' => 'in', // Purchase increases inventory
-            'quantity' => $quantity,
-            'reference' => "OCR-{$document->uuid}",
-            'reference_type' => 'ocr_document',
-            'reference_id' => $document->id,
-            'notes' => "Inventory receipt from OCR document: {$document->vendor_name} - {$document->document_reference}",
-            'balance_after' => $newQuantity,
-            'created_by' => $document->posted_by ?? TenantUserHelper::getTenantUserId(),
-        ]);
+        $product->refresh();
 
         Log::info("WAC updated for product", [
             'product_id' => $product->id,
             'sku' => $product->sku,
             'old_quantity' => $oldQuantity,
-            'new_quantity' => $newQuantity,
+            'new_quantity' => $product->stock_quantity,
             'old_cost' => $oldCost,
             'new_cost' => $product->cost,
             'unit_cost' => $unitCost,
         ]);
+    }
+
+    /**
+     * Resolve the warehouse used for OCR inventory posting.
+     */
+    private function resolveWarehouseIdForItem(array $item): int
+    {
+        $lineWarehouseId = isset($item['warehouse_id']) ? (int) $item['warehouse_id'] : null;
+
+        if ($lineWarehouseId) {
+            $lineWarehouse = Warehouse::where('id', $lineWarehouseId)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$lineWarehouse) {
+                throw new \InvalidArgumentException("OCR line item warehouse_id {$lineWarehouseId} is invalid or inactive.");
+            }
+
+            return (int) $lineWarehouse->id;
+        }
+
+        $defaultWarehouse = Warehouse::where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$defaultWarehouse) {
+            throw new \RuntimeException('Cannot post OCR inventory movement: no active default warehouse and no line-item warehouse_id.');
+        }
+
+        return (int) $defaultWarehouse->id;
     }
 
     /**

@@ -38,6 +38,7 @@ class InventoryTurnoverService
     protected function getProductsWithTurnover(Carbon $startDate, Carbon $endDate, ?int $categoryId): array
     {
         $days = $startDate->diffInDays($endDate);
+        $stockLevelsExists = $this->tableExists('stock_levels');
         
         // Base query for products
         $query = DB::table('products as p')
@@ -45,10 +46,20 @@ class InventoryTurnoverService
                 'p.id',
                 'p.sku',
                 'p.name',
-                'p.stock_quantity',
                 'p.cost',
                 'p.price',
             ]);
+
+        if ($stockLevelsExists) {
+            $query->leftJoin(
+                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                'sl.product_id',
+                '=',
+                'p.id'
+            )->addSelect(DB::raw('COALESCE(sl.total_quantity, 0) as stock_quantity'));
+        } else {
+            $query->addSelect('p.stock_quantity');
+        }
         
         // Add category if table exists
         if ($this->tableExists('categories')) {
@@ -137,7 +148,17 @@ class InventoryTurnoverService
     protected function calculateAverageInventory(int $productId, Carbon $startDate, Carbon $endDate): float
     {
         if (!$this->tableExists('stock_movements')) {
-            // Fallback: use current stock value
+            // Fallback: use current stock_levels aggregate if available
+            if ($this->tableExists('stock_levels')) {
+                $totalQuantity = (float) DB::table('stock_levels')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+
+                $cost = (float) (DB::table('products')->where('id', $productId)->value('cost') ?? 0);
+                return $totalQuantity * $cost;
+            }
+
+            // Final fallback: products.stock_quantity
             $product = DB::table('products')
                 ->where('id', $productId)
                 ->first(['stock_quantity', 'cost']);
