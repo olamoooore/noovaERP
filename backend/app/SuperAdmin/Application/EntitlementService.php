@@ -28,11 +28,13 @@ class EntitlementService
      */
     public function getEntitlements(string $tenantId): array
     {
-        return TenantEntitlement::with('catalogItem.type')
-            ->forTenant($tenantId)
-            ->orderBy('is_entitled', 'desc')
-            ->get()
-            ->toArray();
+        return $this->onCentralSchema(function () use ($tenantId) {
+            return TenantEntitlement::with('catalogItem.type')
+                ->forTenant($tenantId)
+                ->orderBy('is_entitled', 'desc')
+                ->get()
+                ->toArray();
+        });
     }
 
     /**
@@ -41,16 +43,18 @@ class EntitlementService
      */
     public function isEntitled(string $tenantId, string $catalogItemKey): bool
     {
-        $item = CatalogItem::where('key', $catalogItemKey)->first();
-        if (! $item) {
-            return false;
-        }
+        return $this->onCentralSchema(function () use ($tenantId, $catalogItemKey) {
+            $item = CatalogItem::where('key', $catalogItemKey)->first();
+            if (! $item) {
+                return false;
+            }
 
-        $entitlement = TenantEntitlement::forTenant($tenantId)
-            ->where('catalog_item_id', $item->id)
-            ->first();
+            $entitlement = TenantEntitlement::forTenant($tenantId)
+                ->where('catalog_item_id', $item->id)
+                ->first();
 
-        return $entitlement?->is_entitled ?? false;
+            return $entitlement?->is_entitled ?? false;
+        });
     }
 
     /**
@@ -62,44 +66,46 @@ class EntitlementService
      */
     public function getConfigurationView(string $tenantId): array
     {
-        $tier = $this->resolveActiveTier($tenantId);
+        return $this->onCentralSchema(function () use ($tenantId) {
+            $tier = $this->resolveActiveTier($tenantId);
 
-        $tierDefaults = $tier
-            ? PlanItemDefault::with('catalogItem.type')
-                ->where('plan_family_id', $tier->id)
+            $tierDefaults = $tier
+                ? PlanItemDefault::with('catalogItem.type')
+                    ->where('plan_family_id', $tier->id)
+                    ->get()
+                    ->keyBy('catalog_item_id')
+                : collect();
+
+            $selections = TenantSelectedItem::with('catalogItem.type')
+                ->forTenant($tenantId)
                 ->get()
-                ->keyBy('catalog_item_id')
-            : collect();
+                ->keyBy('catalog_item_id');
 
-        $selections = TenantSelectedItem::with('catalogItem.type')
-            ->forTenant($tenantId)
-            ->get()
-            ->keyBy('catalog_item_id');
+            $entitlements = TenantEntitlement::with('catalogItem.type')
+                ->forTenant($tenantId)
+                ->get()
+                ->keyBy('catalog_item_id');
 
-        $entitlements = TenantEntitlement::with('catalogItem.type')
-            ->forTenant($tenantId)
-            ->get()
-            ->keyBy('catalog_item_id');
+            $allItems = CatalogItem::with('type')
+                ->active()
+                ->effective()
+                ->ordered()
+                ->get();
 
-        $allItems = CatalogItem::with('type')
-            ->active()
-            ->effective()
-            ->ordered()
-            ->get();
+            $recentJobs = EntitlementRebuildJob::forTenant($tenantId)
+                ->recent(5)
+                ->get();
 
-        $recentJobs = EntitlementRebuildJob::forTenant($tenantId)
-            ->recent(5)
-            ->get();
-
-        return [
-            'tenant_id'     => $tenantId,
-            'active_tier'   => $tier,
-            'items'         => $allItems,
-            'tier_defaults' => $tierDefaults,
-            'selections'    => $selections,
-            'entitlements'  => $entitlements,
-            'recent_jobs'   => $recentJobs,
-        ];
+            return [
+                'tenant_id'     => $tenantId,
+                'active_tier'   => $tier,
+                'items'         => $allItems,
+                'tier_defaults' => $tierDefaults,
+                'selections'    => $selections,
+                'entitlements'  => $entitlements,
+                'recent_jobs'   => $recentJobs,
+            ];
+        });
     }
 
     // =========================================================================
@@ -120,53 +126,52 @@ class EntitlementService
      */
     public function rebuild(string $tenantId, ?int $adminId = null, ?string $reason = null): EntitlementRebuildJob
     {
-        $job = EntitlementRebuildJob::create([
-            'tenant_id'              => $tenantId,
-            'status'                 => EntitlementRebuildJob::STATUS_PENDING,
-            'reason'                 => $reason ?? 'manual_rebuild',
-            'triggered_by_admin_id'  => $adminId,
-        ]);
+        return $this->onCentralSchema(function () use ($tenantId, $adminId, $reason) {
+            $job = EntitlementRebuildJob::create([
+                'tenant_id'              => $tenantId,
+                'status'                 => EntitlementRebuildJob::STATUS_PENDING,
+                'reason'                 => $reason ?? 'manual_rebuild',
+                'triggered_by_admin_id'  => $adminId,
+            ]);
 
-        try {
-            $job->markRunning();
+            try {
+                $job->markRunning();
 
-            $resolved   = $this->resolveEntitlements($tenantId);
-            $itemCount  = count($resolved);
+                $resolved   = $this->resolveEntitlementsInner($tenantId);
+                $itemCount  = count($resolved);
 
-            DB::transaction(function () use ($tenantId, $resolved) {
-                // Delete all existing entitlements for this tenant
-                TenantEntitlement::forTenant($tenantId)->delete();
+                DB::transaction(function () use ($tenantId, $resolved) {
+                    TenantEntitlement::forTenant($tenantId)->delete();
 
-                // Insert fresh resolved set
-                $now = now();
-                $rows = array_map(fn ($row) => array_merge($row, [
-                    'resolved_at' => $now,
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
-                ]), $resolved);
+                    $now = now();
+                    $rows = array_map(fn ($row) => array_merge($row, [
+                        'resolved_at' => $now,
+                        'created_at'  => $now,
+                        'updated_at'  => $now,
+                    ]), $resolved);
 
-                foreach (array_chunk($rows, 200) as $chunk) {
-                    TenantEntitlement::insert($chunk);
-                }
-            });
+                    foreach (array_chunk($rows, 200) as $chunk) {
+                        TenantEntitlement::insert($chunk);
+                    }
+                });
 
-            $job->markCompleted($itemCount);
+                $job->markCompleted($itemCount);
 
-            // Invalidate the feature gate cache so the next API call gets fresh data
-            Cache::forget("feature_gate:{$tenantId}");
+                Cache::forget("feature_gate:{$tenantId}");
 
-            $this->audit->log(
-                'entitlements.rebuilt',
-                null,
-                [],
-                ['tenant_id' => $tenantId, 'items_resolved' => $itemCount, 'reason' => $reason],
-            );
-        } catch (\Throwable $e) {
-            $job->markFailed($e->getMessage());
-            throw $e;
-        }
+                $this->audit->log(
+                    'entitlements.rebuilt',
+                    null,
+                    [],
+                    ['tenant_id' => $tenantId, 'items_resolved' => $itemCount, 'reason' => $reason],
+                );
+            } catch (\Throwable $e) {
+                $job->markFailed($e->getMessage());
+                throw $e;
+            }
 
-        return $job->fresh();
+            return $job->fresh();
+        });
     }
 
     // =========================================================================
@@ -177,7 +182,7 @@ class EntitlementService
      * Core resolution algorithm.
      * Returns array of rows ready for tenant_entitlements insert.
      */
-    private function resolveEntitlements(string $tenantId): array
+    private function resolveEntitlementsInner(string $tenantId): array
     {
         $tier = $this->resolveActiveTier($tenantId);
 
@@ -247,17 +252,37 @@ class EntitlementService
      */
     public function resolveActiveTier(string $tenantId): ?PlanFamily
     {
-        $subscription = Subscription::where('tenant_id', $tenantId)
-            ->whereIn('status', ['active', 'trialing', 'past_due'])
-            ->latest()
-            ->first();
+        return $this->onCentralSchema(function () use ($tenantId) {
+            $subscription = Subscription::where('tenant_id', $tenantId)
+                ->whereIn('status', ['active', 'trialing', 'past_due'])
+                ->latest()
+                ->first();
 
-        if (! $subscription) {
-            return null;
+            if (! $subscription) {
+                return null;
+            }
+
+            return PlanFamily::whereHas('versions', function ($q) use ($subscription) {
+                $q->where('id', $subscription->plan_version_id);
+            })->first();
+        });
+    }
+
+    private function onCentralSchema(callable $callback): mixed
+    {
+        $inTenantContext = function_exists('tenant') && tenant();
+
+        if ($inTenantContext) {
+            $previousPath = DB::connection()->getPdo()->query('SHOW search_path')->fetchColumn();
+            DB::statement('SET search_path TO public');
         }
 
-        return PlanFamily::whereHas('versions', function ($q) use ($subscription) {
-            $q->where('id', $subscription->plan_version_id);
-        })->first();
+        try {
+            return $callback();
+        } finally {
+            if ($inTenantContext && isset($previousPath)) {
+                DB::statement("SET search_path TO {$previousPath}");
+            }
+        }
     }
 }

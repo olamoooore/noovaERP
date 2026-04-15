@@ -5,7 +5,6 @@ namespace Modules\Ecommerce\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Customer;
-use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +12,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Models\WebOrderItem;
-use Modules\Inventory\Services\InventoryService;
 use Modules\PaymentGateway\Services\PaymentService;
 use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
@@ -246,21 +244,6 @@ class WebCheckoutController extends Controller
                     'line_total' => $item['line_total'],
                 ]);
 
-                // Deduct stock via InventoryService (canonical path — no direct decrement).
-                if ($item['product']->track_inventory) {
-                    $warehouseId = Warehouse::getDefault()?->id;
-                    if ($warehouseId) {
-                        app(InventoryService::class)->adjustStock(
-                            productId:     $item['product']->id,
-                            warehouseId:   $warehouseId,
-                            quantity:      $item['quantity'],
-                            type:          'sale',
-                            reference:     $order->order_number ?? null,
-                            referenceType: 'WebOrder',
-                            referenceId:   $order->id,
-                        );
-                    }
-                }
             }
 
             // ── Create payment intent ────────────────────────────────────

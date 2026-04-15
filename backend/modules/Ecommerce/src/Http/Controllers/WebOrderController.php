@@ -3,6 +3,7 @@
 namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -215,32 +216,7 @@ class WebOrderController extends Controller
             $updateData['delivered_at'] = now();
         }
         if ($newStatus === 'cancelled') {
-            // Restore stock via InventoryService (canonical path — no direct increment).
-            $warehouseId = Warehouse::getDefault()?->id;
-            if ($warehouseId) {
-                $inventoryService = app(InventoryService::class);
-                foreach ($order->items as $item) {
-                    if ($item->product && $item->product->track_inventory) {
-                        try {
-                            $inventoryService->adjustStock(
-                                productId:     $item->product->id,
-                                warehouseId:   $warehouseId,
-                                quantity:      $item->quantity,
-                                type:          'return',
-                                reference:     'Cancel: ' . $order->order_number,
-                                referenceType: 'WebOrder',
-                                referenceId:   $order->id,
-                            );
-                        } catch (\Exception $e) {
-                            Log::error('WebOrderController: stock restore on cancel failed', [
-                                'order_id'   => $order->id,
-                                'product_id' => $item->product->id,
-                                'error'      => $e->getMessage(),
-                            ]);
-                        }
-                    }
-                }
-            }
+            $this->restoreStockForCancellation($order, 'WebOrderController::updateStatus');
             // Could also trigger refund if paid
             if ($order->payment_status === 'paid') {
                 $updateData['payment_status'] = 'refund_pending';
@@ -282,32 +258,7 @@ class WebOrderController extends Controller
             ], 422);
         }
 
-        // Restore stock via InventoryService (canonical path).
-        $warehouseId = Warehouse::getDefault()?->id;
-        if ($warehouseId) {
-            $inventoryService = app(InventoryService::class);
-            foreach ($order->items as $item) {
-                if ($item->product && $item->product->track_inventory) {
-                    try {
-                        $inventoryService->adjustStock(
-                            productId:     $item->product->id,
-                            warehouseId:   $warehouseId,
-                            quantity:      $item->quantity,
-                            type:          'return',
-                            reference:     'Cancel: ' . $order->order_number,
-                            referenceType: 'WebOrder',
-                            referenceId:   $order->id,
-                        );
-                    } catch (\Exception $e) {
-                        Log::warning('WebOrderController::cancelOrder stock restore failed', [
-                            'order_id'   => $order->id,
-                            'product_id' => $item->product->id,
-                            'error'      => $e->getMessage(),
-                        ]);
-                    }
-                }
-            }
-        }
+        $this->restoreStockForCancellation($order, 'WebOrderController::cancelOrder');
 
         $order->update([
             'status' => 'cancelled',
@@ -501,5 +452,61 @@ class WebOrderController extends Controller
             'shipped_at' => $order->shipped_at?->toISOString(),
             'delivered_at' => $order->delivered_at?->toISOString(),
         ];
+    }
+
+    private function restoreStockForCancellation(WebOrder $order, string $context): void
+    {
+        $warehouseId = Warehouse::getDefault()?->id;
+        if (!$warehouseId) {
+            Log::warning("{$context} stock restore skipped - no default warehouse", [
+                'order_id' => $order->id,
+            ]);
+            return;
+        }
+
+        $inventoryService = app(InventoryService::class);
+        foreach ($order->items as $item) {
+            if ($item->product && $item->product->track_inventory) {
+                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
+                    ->where('reference_id', $order->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $item->product->id)
+                    ->sum('quantity');
+                $alreadyRestored = (int) StockMovement::where('reference_type', 'WebOrder')
+                    ->where('reference_id', $order->id)
+                    ->where('type', 'return')
+                    ->where('product_id', $item->product->id)
+                    ->sum('quantity');
+                $remainingToRestore = $alreadyDeducted - $alreadyRestored;
+
+                if ($remainingToRestore <= 0) {
+                    Log::info("{$context} stock restore skipped for line", [
+                        'order_id' => $order->id,
+                        'product_id' => $item->product->id,
+                        'already_deducted' => $alreadyDeducted,
+                        'already_restored' => $alreadyRestored,
+                    ]);
+                    continue;
+                }
+
+                try {
+                    $inventoryService->adjustStock(
+                        productId:     $item->product->id,
+                        warehouseId:   $warehouseId,
+                        quantity:      $remainingToRestore,
+                        type:          'return',
+                        reference:     'Cancel: ' . $order->order_number,
+                        referenceType: 'WebOrder',
+                        referenceId:   $order->id,
+                    );
+                } catch (\Exception $e) {
+                    Log::warning("{$context} stock restore failed", [
+                        'order_id'   => $order->id,
+                        'product_id' => $item->product->id,
+                        'error'      => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
     }
 }

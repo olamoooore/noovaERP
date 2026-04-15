@@ -17,23 +17,38 @@ use Carbon\Carbon;
 class CacheController extends Controller
 {
     /**
-     * Get cache statistics
+     * Get current tenant ID from tenancy runtime
+     */
+    private function currentTenantId(): ?string
+    {
+        if (function_exists('tenant') && tenant()) {
+            return (string) tenant('id');
+        }
+        return null;
+    }
+
+    /**
+     * Get cache statistics (tenant-scoped)
      */
     public function stats(): JsonResponse
     {
-        $totalEntries = ReportCache::count();
-        $expiredEntries = ReportCache::where('expires_at', '<', Carbon::now())->count();
+        $tenantId = $this->currentTenantId();
+        $baseQuery = $tenantId ? ReportCache::where('tenant_id', $tenantId) : ReportCache::query();
+
+        $totalEntries = (clone $baseQuery)->count();
+        $expiredEntries = (clone $baseQuery)->where('expires_at', '<', Carbon::now())->count();
         $activeEntries = $totalEntries - $expiredEntries;
 
         // Get cache by report type
-        $byType = ReportCache::selectRaw('report_type, COUNT(*) as count')
+        $byType = (clone $baseQuery)
+            ->selectRaw('report_type, COUNT(*) as count')
             ->groupBy('report_type')
             ->get()
             ->pluck('count', 'report_type');
 
         // Get oldest and newest cache entries
-        $oldest = ReportCache::orderBy('created_at', 'asc')->first();
-        $newest = ReportCache::orderBy('created_at', 'desc')->first();
+        $oldest = (clone $baseQuery)->orderBy('created_at', 'asc')->first();
+        $newest = (clone $baseQuery)->orderBy('created_at', 'desc')->first();
 
         return response()->json([
             'success' => true,

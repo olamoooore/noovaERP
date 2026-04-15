@@ -7,10 +7,9 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Models\JournalEntry;
-use App\Models\Product;
-use App\Models\ProductVariant;
 use App\Models\Warehouse;
 use App\Models\JournalEntryLink;
+use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
@@ -44,11 +43,28 @@ class WebOrderPostingService
             $trackInventory = $item->product?->track_inventory ?? false;
 
             if ($productId && $trackInventory) {
+                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
+                    ->where('reference_id', $order->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+
+                if ($remainingToDeduct <= 0) {
+                    Log::info('WebOrderPostingService::deductStock skip already deducted line', [
+                        'order_id' => $order->id,
+                        'product_id' => $productId,
+                        'ordered_qty' => (int) $item->quantity,
+                        'already_deducted' => $alreadyDeducted,
+                    ]);
+                    continue;
+                }
+
                 try {
                     $this->inventoryService->adjustStock(
                         productId:     $productId,
                         warehouseId:   $warehouseId,
-                        quantity:      $item->quantity,
+                        quantity:      $remainingToDeduct,
                         type:          'sale',
                         reference:     $order->order_number,
                         referenceType: 'WebOrder',
@@ -148,7 +164,7 @@ class WebOrderPostingService
             return JournalEntry::find($existingLink->journal_entry_id);
         }
         
-        // Deduct stock first
+        // Deduct stock per-line idempotently.
         $this->deductStock($order);
 
         $subtotal = (float) $order->subtotal;

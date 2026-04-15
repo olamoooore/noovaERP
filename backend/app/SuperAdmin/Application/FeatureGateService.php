@@ -6,6 +6,7 @@ namespace App\SuperAdmin\Application;
 
 use App\SuperAdmin\Domain\TenantEntitlement;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class FeatureGateService
 {
@@ -102,8 +103,8 @@ class FeatureGateService
             return;
         }
 
-        // Fallback: iterate known tenant IDs from DB
-        $tenantIds = TenantEntitlement::distinct()->pluck('tenant_id');
+        // Fallback: iterate known tenant IDs from DB (use central connection)
+        $tenantIds = TenantEntitlement::on('public')->distinct()->pluck('tenant_id');
         foreach ($tenantIds as $tenantId) {
             $this->invalidate($tenantId);
         }
@@ -118,17 +119,45 @@ class FeatureGateService
 
     private function resolveFromDb(string $tenantId): array
     {
-        return TenantEntitlement::where('tenant_id', $tenantId)
-            ->where('is_entitled', true)
-            ->with('catalogItem:id,key,name')
-            ->get()
-            ->map(fn ($e) => [
-                'key'    => $e->catalogItem?->key ?? '',
-                'name'   => $e->catalogItem?->name ?? '',
-                'source' => $e->source,
-            ])
-            ->filter(fn ($e) => $e['key'] !== '')
-            ->values()
-            ->all();
+        $previousSchema = $this->ensureCentralSchema();
+
+        try {
+            return TenantEntitlement::where('tenant_id', $tenantId)
+                ->where('is_entitled', true)
+                ->with('catalogItem:id,key,name')
+                ->get()
+                ->map(fn ($e) => [
+                    'key'    => $e->catalogItem?->key ?? '',
+                    'name'   => $e->catalogItem?->name ?? '',
+                    'source' => $e->source,
+                ])
+                ->filter(fn ($e) => $e['key'] !== '')
+                ->values()
+                ->all();
+        } finally {
+            $this->restoreSchema($previousSchema);
+        }
+    }
+
+    private function ensureCentralSchema(): ?string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return null;
+        }
+
+        $row = DB::selectOne('SHOW search_path');
+        $previous = $row->search_path ?? null;
+
+        DB::statement("SET search_path TO public");
+        return $previous;
+    }
+
+    private function restoreSchema(?string $previous): void
+    {
+        if ($previous === null) {
+            return;
+        }
+
+        DB::statement("SET search_path TO {$previous}");
     }
 }
