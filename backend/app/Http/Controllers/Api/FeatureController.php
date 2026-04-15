@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Feature;
 use App\Models\TenantFeature;
 use App\SuperAdmin\Application\FeatureGateService;
+use App\SuperAdmin\Application\TenantConfigurationService;
+use App\SuperAdmin\Domain\CatalogItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * FeatureController — lists and toggles features for the current tenant.
@@ -15,14 +18,14 @@ use Illuminate\Http\Request;
  * (the canonical platform entitlement snapshot) rather than the legacy
  * `tenant_features` table, which lacks tenant identity and is being retired.
  *
- * The `toggle()` action still writes to `tenant_features` for backward-compat
- * with any existing consumers; this will be migrated to the control-plane
- * selection API in Phase 3.
+ * The `toggle()` action now writes through to the canonical entitlement system
+ * via TenantConfigurationService to keep both systems in sync during the migration period.
  */
 class FeatureController extends Controller
 {
     public function __construct(
         private readonly FeatureGateService $featureGate,
+        private readonly TenantConfigurationService $configService,
     ) {}
 
     public function index()
@@ -61,25 +64,72 @@ class FeatureController extends Controller
             return response()->json(['message' => 'Cannot disable core features'], 403);
         }
 
-        $tenantFeature = TenantFeature::firstOrNew(['feature_id' => $feature->id]);
-        $tenantFeature->is_enabled = $request->boolean('enabled');
+        $tenantId = $this->currentTenantId();
+        if ($tenantId === null) {
+            return response()->json(['message' => 'No tenant context available'], 403);
+        }
 
-        if ($tenantFeature->is_enabled && !$tenantFeature->enabled_at) {
+        $enabled = $request->boolean('enabled');
+
+        // Legacy: Update tenant_features table for backward compatibility
+        $tenantFeature = TenantFeature::firstOrNew(['feature_id' => $feature->id]);
+        $tenantFeature->is_enabled = $enabled;
+        if ($enabled && !$tenantFeature->enabled_at) {
             $tenantFeature->enabled_at = now();
         }
-
         $tenantFeature->save();
 
-        // Invalidate the canonical entitlement cache so the new state is visible immediately.
-        $tenantId = $this->currentTenantId();
-        if ($tenantId !== null) {
-            $this->featureGate->invalidate($tenantId);
-        }
+        // Canonical: Sync to entitlement system via catalog item
+        $this->syncToCanonicalEntitlements($tenantId, $feature, $enabled);
+
+        // Invalidate the canonical entitlement cache so the new state is visible immediately
+        $this->featureGate->invalidate($tenantId);
 
         return response()->json([
-            'message' => $tenantFeature->is_enabled ? 'Feature enabled' : 'Feature disabled',
-            'enabled' => $tenantFeature->is_enabled,
+            'message' => $enabled ? 'Feature enabled' : 'Feature disabled',
+            'enabled' => $enabled,
         ]);
+    }
+
+    /**
+     * Sync the feature toggle to the canonical entitlement system.
+     */
+    private function syncToCanonicalEntitlements(string $tenantId, Feature $feature, bool $enabled): void
+    {
+        // Find the corresponding catalog item by key
+        $catalogItem = CatalogItem::where('key', $feature->key)->first();
+
+        if (!$catalogItem) {
+            Log::warning('Feature toggle: No catalog item found for feature key', [
+                'feature_id' => $feature->id,
+                'feature_key' => $feature->key,
+                'tenant_id' => $tenantId,
+            ]);
+            return;
+        }
+
+        // Check if there's an existing selection
+        $existingSelection = \App\SuperAdmin\Domain\TenantSelectedItem::where('tenant_id', $tenantId)
+            ->where('catalog_item_id', $catalogItem->id)
+            ->first();
+
+        if ($enabled) {
+            // Enable: Add override_include selection
+            if (!$existingSelection) {
+                $this->configService->addSelection(
+                    $tenantId,
+                    $catalogItem,
+                    \App\SuperAdmin\Domain\TenantSelectedItem::TYPE_OVERRIDE_INCLUDE,
+                    "Legacy feature toggle enabled: {$feature->key}",
+                    null
+                );
+            }
+        } else {
+            // Disable: Remove selection or add override_exclude
+            if ($existingSelection) {
+                $this->configService->removeSelection($tenantId, $catalogItem, null);
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

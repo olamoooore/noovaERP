@@ -45,6 +45,9 @@ use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
+use App\Http\Controllers\Api\AutoMatchController;
+use App\Http\Controllers\Api\SubledgerReconciliationController;
+use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\FiscalPeriodsController;
@@ -220,7 +223,30 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
         Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
-        
+
+        // Auto-Matching
+        Route::post('/reconciliation/auto-match/suggest', [AutoMatchController::class, 'suggestMatches']);
+        Route::post('/reconciliation/auto-match/accept', [AutoMatchController::class, 'acceptMatches']);
+        Route::post('/reconciliation/auto-match/bulk-accept', [AutoMatchController::class, 'bulkAcceptHighConfidence']);
+        Route::get('/reconciliation/auto-match/statistics/{bankAccountId}', [AutoMatchController::class, 'getStatistics']);
+
+        // Subledger to GL Reconciliation
+        Route::post('/accounting/reconciliation/ar-gl', [SubledgerReconciliationController::class, 'reconcileAR']);
+        Route::post('/accounting/reconciliation/ap-gl', [SubledgerReconciliationController::class, 'reconcileAP']);
+        Route::get('/accounting/reports/ar-gl-reconciliation', [SubledgerReconciliationController::class, 'getARReport']);
+        Route::get('/accounting/reports/ap-gl-reconciliation', [SubledgerReconciliationController::class, 'getAPReport']);
+        Route::get('/accounting/reconciliation/history/{type}', [SubledgerReconciliationController::class, 'getHistory']);
+
+        // Reconciliation Exceptions
+        Route::get('/reconciliation/exceptions', [ReconciliationExceptionController::class, 'index']);
+        Route::post('/reconciliation/exceptions', [ReconciliationExceptionController::class, 'store']);
+        Route::get('/reconciliation/exceptions/{id}', [ReconciliationExceptionController::class, 'show']);
+        Route::put('/reconciliation/exceptions/{id}', [ReconciliationExceptionController::class, 'update']);
+        Route::post('/reconciliation/exceptions/{id}/resolve', [ReconciliationExceptionController::class, 'resolve']);
+        Route::post('/reconciliation/exceptions/{id}/escalate', [ReconciliationExceptionController::class, 'escalate']);
+        Route::get('/reconciliation/exceptions/aging', [ReconciliationExceptionController::class, 'agingStatistics']);
+        Route::post('/reconciliation/exceptions/age-all', [ReconciliationExceptionController::class, 'ageAll']);
+
         // Fixed Assets
         Route::get('/assets', [FixedAssetsController::class, 'index']);
         Route::get('/assets/{id}', [FixedAssetsController::class, 'show']);

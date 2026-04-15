@@ -122,11 +122,18 @@ class CacheController extends Controller
     }
 
     /**
-     * Get cache entry details
+     * Get cache entry details (tenant-scoped)
      */
     public function show(string $cacheKey): JsonResponse
     {
-        $entry = ReportCache::where('cache_key', $cacheKey)->first();
+        $tenantId = $this->currentTenantId();
+        $query = ReportCache::where('cache_key', $cacheKey);
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $entry = $query->first();
 
         if (!$entry) {
             return response()->json([
@@ -142,11 +149,18 @@ class CacheController extends Controller
     }
 
     /**
-     * Delete specific cache entry
+     * Delete specific cache entry (tenant-scoped)
      */
     public function destroy(string $cacheKey): JsonResponse
     {
-        $deleted = ReportCache::where('cache_key', $cacheKey)->delete();
+        $tenantId = $this->currentTenantId();
+        $query = ReportCache::where('cache_key', $cacheKey);
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $deleted = $query->delete();
 
         if ($deleted === 0) {
             return response()->json([

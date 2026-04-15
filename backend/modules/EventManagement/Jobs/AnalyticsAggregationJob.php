@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Exception;
+use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * AnalyticsAggregationJob
@@ -63,9 +64,8 @@ class AnalyticsAggregationJob implements ShouldQueue
                 'hour' => $this->targetHour,
             ]);
 
-            // Set tenant context
-            config(['database.connections.tenant.database' => "tenant_{$this->tenantId}"]);
-            DB::setDefaultConnection('tenant');
+            // Initialize tenancy properly using stancl/tenancy
+            Tenancy::initialize($this->tenantId);
 
             if ($this->aggregationType === 'hourly') {
                 $this->processHourlyAggregation($analyticsService);
@@ -102,6 +102,13 @@ class AnalyticsAggregationJob implements ShouldQueue
 
             // Re-throw to trigger job retry mechanism
             throw $e;
+        } finally {
+            // End tenancy to clean up
+            try {
+                Tenancy::end();
+            } catch (Exception $endEx) {
+                // Ignore errors during tenancy cleanup
+            }
         }
     }
 

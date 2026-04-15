@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialReporting\Models\ReportCache;
 use Carbon\Carbon;
+use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * Job to clear expired report cache entries
@@ -21,15 +22,18 @@ class ClearReportCache implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected bool $clearAll;
+    protected ?string $tenantId;
 
     /**
      * Create a new job instance.
      *
      * @param bool $clearAll Clear all cache entries, not just expired ones
+     * @param string|null $tenantId Specific tenant to clear (null = current context)
      */
-    public function __construct(bool $clearAll = false)
+    public function __construct(bool $clearAll = false, ?string $tenantId = null)
     {
         $this->clearAll = $clearAll;
+        $this->tenantId = $tenantId;
     }
 
     /**
@@ -38,21 +42,32 @@ class ClearReportCache implements ShouldQueue
     public function handle(): void
     {
         try {
+            // If tenant ID provided, initialize tenancy for that tenant
+            if ($this->tenantId) {
+                Tenancy::initialize($this->tenantId);
+            }
+
+            $tenantId = $this->currentTenantId();
+            
             Log::info('Starting report cache cleanup', [
                 'clear_all' => $this->clearAll,
+                'tenant_id' => $tenantId,
             ]);
 
             if ($this->clearAll) {
-                $this->clearAllCache();
+                $this->clearAllCache($tenantId);
             } else {
-                $this->clearExpiredCache();
+                $this->clearExpiredCache($tenantId);
             }
 
-            Log::info('Report cache cleanup completed successfully');
+            Log::info('Report cache cleanup completed successfully', [
+                'tenant_id' => $tenantId,
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to clear report cache', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'tenant_id' => $this->tenantId,
             ]);
 
             throw $e;
@@ -60,13 +75,34 @@ class ClearReportCache implements ShouldQueue
     }
 
     /**
-     * Clear all cache entries
+     * Get current tenant ID from tenancy runtime
      */
-    protected function clearAllCache(): void
+    private function currentTenantId(): ?string
     {
-        // Clear database cache
-        $count = ReportCache::count();
-        ReportCache::truncate();
+        if (function_exists('tenant') && tenant()) {
+            return (string) tenant('id');
+        }
+        return null;
+    }
+
+    /**
+     * Clear all cache entries (tenant-scoped)
+     */
+    protected function clearAllCache(?string $tenantId): void
+    {
+        $query = ReportCache::query();
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $count = $query->count();
+        
+        if ($tenantId) {
+            ReportCache::where('tenant_id', $tenantId)->delete();
+        } else {
+            ReportCache::truncate();
+        }
 
         // Clear Redis cache with report tags (only works with tag-supporting drivers)
         try {
@@ -77,22 +113,29 @@ class ClearReportCache implements ShouldQueue
 
         Log::info('Cleared all report cache', [
             'database_entries_cleared' => $count,
+            'tenant_id' => $tenantId,
         ]);
     }
 
     /**
-     * Clear only expired cache entries
+     * Clear only expired cache entries (tenant-scoped)
      */
-    protected function clearExpiredCache(): void
+    protected function clearExpiredCache(?string $tenantId): void
     {
         $now = Carbon::now();
 
-        // Clear expired database cache
-        $expiredCount = ReportCache::where('expires_at', '<', $now)->count();
-        ReportCache::where('expires_at', '<', $now)->delete();
+        $query = ReportCache::where('expires_at', '<', $now);
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $expiredCount = $query->count();
+        $query->delete();
 
         Log::info('Cleared expired report cache', [
             'expired_entries_cleared' => $expiredCount,
+            'tenant_id' => $tenantId,
         ]);
 
         // Note: Redis cache with TTL will expire automatically
@@ -100,11 +143,17 @@ class ClearReportCache implements ShouldQueue
     }
 
     /**
-     * Clear cache for specific report type
+     * Clear cache for specific report type (tenant-scoped)
      */
-    public static function clearByReportType(string $reportType): void
+    public static function clearByReportType(string $reportType, ?string $tenantId = null): void
     {
-        ReportCache::where('report_type', $reportType)->delete();
+        $query = ReportCache::where('report_type', $reportType);
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $query->delete();
         
         // Clear Redis cache for this report type (only works with tag-supporting drivers)
         try {
@@ -115,21 +164,27 @@ class ClearReportCache implements ShouldQueue
 
         Log::info('Cleared cache for report type', [
             'report_type' => $reportType,
+            'tenant_id' => $tenantId,
         ]);
     }
 
     /**
-     * Clear cache for specific date range
+     * Clear cache for specific date range (tenant-scoped)
      */
-    public static function clearByDateRange(Carbon $startDate, Carbon $endDate): void
+    public static function clearByDateRange(Carbon $startDate, Carbon $endDate, ?string $tenantId = null): void
     {
-        // This is a simplified approach - in production you might want to
-        // parse the parameters JSONB field to match date ranges
-        ReportCache::whereBetween('created_at', [$startDate, $endDate])->delete();
+        $query = ReportCache::whereBetween('created_at', [$startDate, $endDate]);
+        
+        if ($tenantId) {
+            $query->where('tenant_id', $tenantId);
+        }
+        
+        $query->delete();
 
         Log::info('Cleared cache for date range', [
             'start_date' => $startDate->toDateString(),
             'end_date' => $endDate->toDateString(),
+            'tenant_id' => $tenantId,
         ]);
     }
 }
