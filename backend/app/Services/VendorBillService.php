@@ -7,6 +7,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Models\Bill;
+use Illuminate\Support\Facades\DB;
 
 class VendorBillService
 {
@@ -20,6 +21,11 @@ class VendorBillService
      * DR  Expense / Inventory  (per line account)
      * DR  Input Tax            (if tax > 0)
      * CR  Accounts Payable     (total)
+     *
+     * Hardening (2026-04-15): Wrapped entire operation in a DB transaction so
+     * the PostingEngine journal entry and the bill status update are atomic.
+     * Previously, the bill status update happened outside the posting transaction
+     * and could diverge if it failed.
      */
     public function postBill(Bill $bill): PostingResult
     {
@@ -41,56 +47,58 @@ class VendorBillService
             }
         }
 
-        // DR each expense/inventory line
-        foreach ($bill->lines as $billLine) {
+        return DB::transaction(function () use ($bill, &$lines) {
+            // DR each expense/inventory line
+            foreach ($bill->lines as $billLine) {
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'general_expense',
+                    accountId: $billLine->account_id, // explicit account from bill line (guaranteed non-null above)
+                    debit: (float) $billLine->line_total,
+                    credit: 0,
+                    description: $billLine->description ?? "Bill {$bill->bill_number}",
+                );
+
+                // DR input tax per line
+                if ((float) $billLine->tax_amount > 0) {
+                    $lines[] = new PostingRequestLine(
+                        accountMappingKey: 'input_tax',
+                        accountId: null,
+                        debit: (float) $billLine->tax_amount,
+                        credit: 0,
+                        description: "Tax - Bill {$bill->bill_number}",
+                    );
+                }
+            }
+
+            // CR accounts payable for the total
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'general_expense',
-                accountId: $billLine->account_id, // explicit account from bill line (guaranteed non-null above)
-                debit: (float) $billLine->line_total,
-                credit: 0,
-                description: $billLine->description ?? "Bill {$bill->bill_number}",
+                accountMappingKey: 'accounts_payable',
+                accountId: null,
+                debit: 0,
+                credit: (float) $bill->total,
+                description: "AP - Bill {$bill->bill_number}",
             );
 
-            // DR input tax per line
-            if ((float) $billLine->tax_amount > 0) {
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'input_tax',
-                    accountId: null,
-                    debit: (float) $billLine->tax_amount,
-                    credit: 0,
-                    description: "Tax - Bill {$bill->bill_number}",
-                );
+            $request = new PostingRequest(
+                documentType: 'bill',
+                documentId: $bill->id,
+                postingDate: $bill->bill_date->toDateString(),
+                description: "Vendor Bill #{$bill->bill_number} - {$bill->vendor->name}",
+                lines: $lines,
+                reference: $bill->bill_number,
+                userId: auth()->id(),
+            );
+
+            $result = $this->postingEngine->post($request);
+
+            if ($result->success) {
+                $bill->update([
+                    'status' => 'posted',
+                    'journal_entry_id' => $result->journalEntryId,
+                ]);
             }
-        }
 
-        // CR accounts payable for the total
-        $lines[] = new PostingRequestLine(
-            accountMappingKey: 'accounts_payable',
-            accountId: null,
-            debit: 0,
-            credit: (float) $bill->total,
-            description: "AP - Bill {$bill->bill_number}",
-        );
-
-        $request = new PostingRequest(
-            documentType: 'bill',
-            documentId: $bill->id,
-            postingDate: $bill->bill_date->toDateString(),
-            description: "Vendor Bill #{$bill->bill_number} - {$bill->vendor->name}",
-            lines: $lines,
-            reference: $bill->bill_number,
-            userId: auth()->id(),
-        );
-
-        $result = $this->postingEngine->post($request);
-
-        if ($result->success) {
-            $bill->update([
-                'status' => 'posted',
-                'journal_entry_id' => $result->journalEntryId,
-            ]);
-        }
-
-        return $result;
+            return $result;
+        });
     }
 }

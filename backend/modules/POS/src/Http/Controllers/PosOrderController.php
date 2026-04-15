@@ -640,8 +640,8 @@ class PosOrderController extends Controller
             ], 422);
         }
 
-        // Try to find existing invoice linked to this POS order
-        $invoice = Invoice::where('notes', 'like', "%POS Order: {$posOrder->order_number}%")
+        // Try to find existing invoice linked to this POS order via FK
+        $invoice = Invoice::where('pos_order_id', $posOrder->id)
             ->with(['customer', 'lines.product'])
             ->first();
 
@@ -660,6 +660,7 @@ class PosOrderController extends Controller
                     'paid_amount'      => $posOrder->total,
                     'balance'          => 0,
                     'notes'            => "POS Order: {$posOrder->order_number}",
+                    'pos_order_id'     => $posOrder->id,
                     'journal_entry_id' => $posOrder->journal_entry_id,
                     'created_by'       => auth()->id(),
                 ]);

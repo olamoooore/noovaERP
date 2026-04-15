@@ -42,4 +42,15 @@ class Vendor extends Model
     {
         return $this->hasMany(Payment::class, 'vendor_id');
     }
+
+    public function billPayments(): HasMany
+    {
+        return $this->hasMany(BillPayment::class);
+    }
+
+    public function updateSpending(): void
+    {
+        $this->total_spending = $this->billPayments()->sum('amount');
+        $this->save();
+    }
 }

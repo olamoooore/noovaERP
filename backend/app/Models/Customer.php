@@ -260,7 +260,7 @@ class Customer extends Model
     public function updateOutstanding(): void
     {
         $this->total_outstanding = $this->invoices()
-            ->whereIn('status', ['sent', 'overdue'])
+            ->whereIn('status', ['posted', 'sent', 'overdue', 'partial'])
             ->sum('balance');
         $this->save();
     }

@@ -147,9 +147,22 @@ class CustomerCreditNoteService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Update invoice balance
-            $invoice->balance -= $creditNote->total_amount;
-            $invoice->save();
+            // Atomically reduce invoice balance and update status.
+            // Uses WHERE + decrement to avoid TOCTOU race on concurrent credit notes.
+            \App\Models\Invoice::where('id', $invoice->id)
+                ->update([
+                    'balance' => DB::raw('GREATEST(balance - ' . (float) $creditNote->total_amount . ', 0)'),
+                ]);
+
+            $invoice->refresh();
+            if ($invoice->balance <= 0 && $invoice->status !== 'paid') {
+                $invoice->update(['status' => 'paid']);
+            }
+
+            // Update customer outstanding after credit note
+            if ($invoice->customer) {
+                $invoice->customer->updateOutstanding();
+            }
 
             DB::commit();
             

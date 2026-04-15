@@ -4,6 +4,7 @@ namespace Modules\PaymentGateway\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
@@ -40,48 +41,70 @@ class PaymentWebhookController extends Controller
      */
     public function stripe(Request $request)
     {
-        // Find the Stripe gateway
-        $gateway = PaymentGateway::where('gateway_name', 'stripe')
-            ->where('is_active', true)
-            ->first();
+        // Extract transaction ID from Stripe payload to identify tenant
+        $payload = $request->all();
+        $transactionId = $payload['data']['object']['id'] 
+            ?? $payload['data']['object']['payment_intent'] 
+            ?? null;
 
-        if (!$gateway) {
-            Log::error('Stripe webhook received but no active Stripe gateway found');
-            return response()->json(['error' => 'Gateway not configured'], 400);
+        if (!$transactionId) {
+            Log::error('Stripe webhook missing transaction identifier', ['payload' => $payload]);
+            return response()->json(['error' => 'Missing transaction identifier'], 400);
         }
 
-        try {
-            $service = PaymentGatewayFactory::create($gateway);
+        // Find and initialize the tenant for this transaction
+        $tenant = $this->initializeTenancyForTransaction($transactionId);
 
-            // Verify webhook signature
-            if (!$service->verifyWebhook($request)) {
-                Log::error('Stripe webhook signature verification failed');
-                return response()->json(['error' => 'Invalid signature'], 400);
-            }
-
-            // Process webhook
-            $webhookData = $service->processWebhook($request);
-
-            Log::info('Stripe webhook received', [
-                'event' => $webhookData['event'],
-                'transaction_id' => $webhookData['transaction_id'],
-            ]);
-
-            // Handle different event types
-            if (in_array($webhookData['event'], ['payment_intent.succeeded', 'charge.succeeded'])) {
-                $this->handlePaymentSuccess($webhookData, $gateway);
-            } elseif (in_array($webhookData['event'], ['payment_intent.payment_failed', 'charge.failed'])) {
-                $this->handlePaymentFailed($webhookData, $gateway);
-            }
-
-            return response()->json(['status' => 'success']);
-        } catch (\Exception $e) {
-            Log::error('Stripe webhook processing error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Webhook processing failed'], 500);
+        if (!$tenant) {
+            Log::error('Stripe transaction not found in any tenant', ['transaction_id' => $transactionId]);
+            return response()->json(['error' => 'Transaction not found'], 404);
         }
+
+        // Now we're in the correct tenant context, process the webhook
+        return $tenant->run(function () use ($request) {
+            // Find the Stripe gateway
+            $gateway = PaymentGateway::where('gateway_name', 'stripe')
+                ->where('is_active', true)
+                ->first();
+
+            if (!$gateway) {
+                Log::error('Stripe webhook received but no active Stripe gateway found');
+                return response()->json(['error' => 'Gateway not configured'], 400);
+            }
+
+            try {
+                $service = PaymentGatewayFactory::create($gateway);
+
+                // Verify webhook signature
+                if (!$service->verifyWebhook($request)) {
+                    Log::error('Stripe webhook signature verification failed');
+                    return response()->json(['error' => 'Invalid signature'], 400);
+                }
+
+                // Process webhook
+                $webhookData = $service->processWebhook($request);
+
+                Log::info('Stripe webhook received', [
+                    'event' => $webhookData['event'],
+                    'transaction_id' => $webhookData['transaction_id'],
+                ]);
+
+                // Handle different event types
+                if (in_array($webhookData['event'], ['payment_intent.succeeded', 'charge.succeeded'])) {
+                    $this->handlePaymentSuccess($webhookData, $gateway);
+                } elseif (in_array($webhookData['event'], ['payment_intent.payment_failed', 'charge.failed'])) {
+                    $this->handlePaymentFailed($webhookData, $gateway);
+                }
+
+                return response()->json(['status' => 'success']);
+            } catch (\Exception $e) {
+                Log::error('Stripe webhook processing error', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                return response()->json(['error' => 'Webhook processing failed'], 500);
+            }
+        });
     }
 
     /**
@@ -374,13 +397,11 @@ class PaymentWebhookController extends Controller
             'order_number' => $webOrder->order_number,
         ]);
         
-        // Update web order status
-        $webOrder->update([
-            'payment_status' => 'paid',
-            'status' => 'confirmed',
-            'paid_at' => now(),
-            'confirmed_at' => now(),
-        ]);
+        // Update web order status via state machine
+        if ($webOrder->status === \Modules\Ecommerce\Models\WebOrder::STATUS_PENDING) {
+            $webOrder->confirm();
+        }
+        $webOrder->markPaid();
         
         // Convert to invoice
         $invoice = null;
@@ -554,23 +575,29 @@ class PaymentWebhookController extends Controller
     }
 
     /**
-     * Update invoice with payment
+     * Update invoice with payment using atomic operations to prevent race conditions
      */
     protected function updateInvoice($invoice, $amount)
     {
-        $newPaidAmount = $invoice->paid_amount + $amount;
-        $newBalance = $invoice->total - $newPaidAmount;
+        // Use atomic increment to prevent lost updates under concurrency
+        \App\Models\Invoice::where('id', $invoice->id)
+            ->increment('paid_amount', $amount);
 
-        $invoice->paid_amount = $newPaidAmount;
-        $invoice->balance = $newBalance;
+        $invoice->refresh();
 
-        if ($newBalance <= 0) {
-            $invoice->status = 'paid';
-        } elseif ($newPaidAmount > 0) {
-            $invoice->status = 'partial';
+        $newBalance = $invoice->total - $invoice->paid_amount;
+
+        \App\Models\Invoice::where('id', $invoice->id)->update([
+            'balance' => $newBalance,
+            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+        ]);
+
+        $invoice->refresh();
+
+        // Update customer outstanding
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
         }
-
-        $invoice->save();
 
         Log::info('Invoice updated via webhook', [
             'invoice_id' => $invoice->id,
@@ -700,10 +727,10 @@ class PaymentWebhookController extends Controller
             try {
                 $service = PaymentGatewayFactory::create($gateway);
 
-                // Verify webhook signature (optional for PayPal)
+                // Verify webhook signature
                 if (!$service->verifyWebhook($request)) {
-                    Log::warning('PayPal webhook signature verification failed - processing anyway');
-                    // PayPal verification is complex, so we proceed but log the warning
+                    Log::error('PayPal webhook signature verification failed');
+                    return response()->json(['error' => 'Invalid signature'], 400);
                 }
 
                 // Process webhook

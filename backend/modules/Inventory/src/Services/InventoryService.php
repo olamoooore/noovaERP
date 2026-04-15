@@ -91,11 +91,21 @@ class InventoryService
                 throw new \InvalidArgumentException("Product ID {$productId} does not exist.");
             }
 
-            // Get or create stock level for this product/warehouse
-            $stockLevel = StockLevel::firstOrCreate(
-                ['product_id' => $productId, 'warehouse_id' => $warehouseId],
-                ['quantity' => 0, 'reserved_quantity' => 0, 'min_quantity' => 0]
-            );
+            // Get or create stock level for this product/warehouse with row-level locking
+            $stockLevel = StockLevel::where('product_id', $productId)
+                ->where('warehouse_id', $warehouseId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$stockLevel) {
+                $stockLevel = StockLevel::create([
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'quantity' => 0,
+                    'reserved_quantity' => 0,
+                    'min_quantity' => 0,
+                ]);
+            }
 
             $oldQuantity = $stockLevel->quantity;
             $newQuantity = $oldQuantity;

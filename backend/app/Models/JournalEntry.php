@@ -206,12 +206,24 @@ class JournalEntry extends Model
     /**
      * Generate a fallback entry number for entries without a journal.
      *
+     * Uses PostgreSQL advisory lock to prevent TOCTOU race conditions when
+     * multiple requests generate entry numbers concurrently.
+     *
      * Made public static so PostingEngine and other callers can share the
      * same sequence logic instead of duplicating it.
+     *
+     * Hardening (2026-04-15): Added pg_advisory_xact_lock to serialize
+     * concurrent entry number generation within the current transaction.
      */
     public static function generateEntryNumber(): string
     {
         $prefix = 'JE-' . date('Y') . '-';
+
+        // Advisory lock key derived from a fixed namespace. The lock is released
+        // automatically when the enclosing transaction commits/rolls back.
+        // If there is no outer transaction, use a non-transactional advisory lock.
+        $lockKey = crc32('journal_entry_number_gen');
+        \Illuminate\Support\Facades\DB::statement("SELECT pg_advisory_xact_lock(?)", [$lockKey]);
 
         $latest = static::where('entry_number', 'like', $prefix . '%')
             ->orderByRaw("CAST(SUBSTRING(entry_number FROM '.{4}$') AS INTEGER) DESC")

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillLine;
 use App\Models\GoodsReceipt;
+use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -116,6 +117,10 @@ class VendorBillsController extends Controller
         }
     }
 
+    public function __construct(
+        private readonly ThreeWayMatchService $threeWayMatchService,
+    ) {}
+
     /**
      * Create a new vendor bill
      * 
@@ -175,6 +180,23 @@ class VendorBillsController extends Controller
                     ], 422);
                 }
                 $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
+            }
+
+            // Run three-way match validation if PO or GRN is linked
+            if ($resolvedPurchaseOrderId || $goodsReceipt) {
+                $tempBillForValidation = new Bill([
+                    'purchase_order_id' => $resolvedPurchaseOrderId,
+                    'goods_receipt_id' => $goodsReceipt?->id,
+                ]);
+                $matchResult = $this->threeWayMatchService->validate($tempBillForValidation);
+                if (!$matchResult['valid']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
             }
 
             // Create bill

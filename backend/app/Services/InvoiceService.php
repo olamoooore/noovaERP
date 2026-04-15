@@ -70,13 +70,15 @@ class InvoiceService
      */
     public function postInvoice(Invoice $invoice): Invoice
     {
-        if ($invoice->status !== 'draft') {
-            throw new \Exception('Only draft invoices can be posted');
-        }
-
         DB::beginTransaction();
         
         try {
+            // Re-fetch with lock to prevent concurrent posting
+            $invoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
+
+            if ($invoice->status !== 'draft') {
+                throw new \Exception('Only draft invoices can be posted');
+            }
             // ── Build posting lines ──────────────────────────
             $lines = [];
 
@@ -261,15 +263,20 @@ class InvoiceService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Update invoice paid amount and balance
-            $invoice->paid_amount += $payment->amount;
-            $invoice->balance = $invoice->total - $invoice->paid_amount;
-            
-            if ($invoice->balance <= 0) {
-                $invoice->status = 'paid';
-            }
-            
-            $invoice->save();
+            // Update invoice paid amount and balance using atomic operations
+            Invoice::where('id', $invoice->id)
+                ->increment('paid_amount', (float) $payment->amount);
+
+            $invoice->refresh();
+
+            $newBalance = $invoice->total - $invoice->paid_amount;
+
+            Invoice::where('id', $invoice->id)->update([
+                'balance' => $newBalance,
+                'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+            ]);
+
+            $invoice->refresh();
 
             // Update customer outstanding
             $invoice->customer->updateOutstanding();

@@ -17,8 +17,9 @@ class ChartOfAccountsController extends Controller
         try {
             $query = ChartOfAccount::with(['parent', 'children']);
 
-            // Filter by type
+            // Filter by type with validation
             if ($request->has('type')) {
+                $request->validate(['type' => 'string|in:asset,liability,equity,revenue,expense']);
                 $query->where('type', $request->type);
             }
 

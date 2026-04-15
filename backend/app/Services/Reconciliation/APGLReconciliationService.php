@@ -4,7 +4,7 @@ namespace App\Services\Reconciliation;
 
 use App\Models\APTransaction;
 use App\Models\JournalEntryLine;
-use App\Models\ChartOfAccounts;
+use App\Models\ChartOfAccount;
 use App\Models\ReconciliationControlResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +15,16 @@ use Carbon\Carbon;
  * 
  * Provides monthly reconciliation between AP subledger and GL control account.
  * Identifies discrepancies and generates control reports.
+ *
+ * Hardening notes (2026-04-15):
+ *   - Fixed class name: ChartOfAccounts → ChartOfAccount
+ *   - Fixed column name: posting_date → entry_date (journal_entries table)
+ *   - Fixed AP control account resolution to use account_mappings table
+ *   - Fixed MySQL-specific DATEDIFF / INTERVAL syntax → PostgreSQL
+ *   - Fixed references to non-existent columns: journal_entry_lines.transaction_date
+ *   - Fixed view column names: id → transaction_id, reference → document_number,
+ *     balance → amount (ap_transactions is a VIEW, not a table)
+ *   - Created missing APTransaction Eloquent model for the ap_transactions view
  */
 class APGLReconciliationService
 {
@@ -79,19 +89,34 @@ class APGLReconciliationService
     }
     
     /**
-     * Get AP control account from chart of accounts
+     * Get AP control account from chart of accounts.
+     *
+     * Resolution order:
+     *   1. account_mappings table (mapping_key = 'accounts_payable')
+     *   2. COA code '2100' (seeded default for AP)
+     *   3. Name-based fallback
      */
-    private function getAPControlAccount(): ?ChartOfAccounts
+    private function getAPControlAccount(): ?ChartOfAccount
     {
-        return ChartOfAccounts::where('account_type', 'ap')
-            ->orWhere('account_code', '2000')
+        // Prefer the configured AP mapping
+        $mapping = \App\Models\AccountMapping::where('mapping_key', 'accounts_payable')
+            ->whereNull('document_type')
+            ->where('is_active', true)
+            ->first();
+
+        if ($mapping) {
+            return $mapping->account;
+        }
+
+        return ChartOfAccount::where('code', '2100')
             ->orWhere('name', 'like', '%Accounts Payable%')
             ->first();
     }
     
     /**
-     * Get AP subledger balance as of date
-     * Note: For AP, balance = credit - debit (liability)
+     * Get AP subledger balance as of date.
+     *
+     * For AP (a liability): balance = SUM(credit) - SUM(debit) = net payable outstanding.
      */
     private function getSubledgerBalance(Carbon $asOfDate): float
     {
@@ -108,7 +133,7 @@ class APGLReconciliationService
     {
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
-                $q->where('posting_date', '<=', $asOfDate)
+                $q->where('entry_date', '<=', $asOfDate)
                   ->where('status', 'posted');
             })
             ->selectRaw('SUM(credit - debit) as balance')
@@ -173,47 +198,52 @@ class APGLReconciliationService
     }
     
     /**
-     * Find bills in subledger not posted to GL
+     * Find bills in subledger not posted to GL.
+     *
+     * View columns: transaction_id, document_number, vendor_id, credit, transaction_date, status
      */
     private function findUnpostedBills(Carbon $asOfDate): array
     {
         return APTransaction::where('transaction_type', 'bill')
             ->where('transaction_date', '<=', $asOfDate)
             ->where('status', 'open') // Not posted
-            ->select('id', 'vendor_id', 'reference', 'credit as amount', 'transaction_date')
+            ->select('transaction_id', 'vendor_id', 'document_number', 'credit as amount', 'transaction_date')
             ->limit(100)
             ->get()
             ->toArray();
     }
     
     /**
-     * Find payments in subledger not posted to GL
+     * Find payments in subledger not posted to GL.
+     *
+     * We look for AP payment records whose document_number does not appear as
+     * a reference on any journal_entry_line.
      */
     private function findUnpostedPayments(Carbon $asOfDate): array
     {
-        return APTransaction::where('transaction_type', 'payment')
+        return APTransaction::where('transaction_type', 'bill_payment')
             ->where('transaction_date', '<=', $asOfDate)
-            ->where('status', 'partial')
             ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('journal_entry_lines')
-                    ->whereColumn('journal_entry_lines.reference', 'ap_transactions.reference')
-                    ->whereColumn('journal_entry_lines.debit', 'ap_transactions.debit');
+                    ->whereColumn('journal_entry_lines.reference', 'ap_transactions.document_number');
             })
-            ->select('id', 'vendor_id', 'reference', 'debit as amount', 'transaction_date')
+            ->select('transaction_id', 'vendor_id', 'document_number', 'debit as amount', 'transaction_date')
             ->limit(100)
             ->get()
             ->toArray();
     }
     
     /**
-     * Find GL entries without subledger record
+     * Find GL entries on the AP control account without a corresponding subledger record.
+     *
+     * Joins through journal_entries to get entry_date (journal_entry_lines has no date column).
      */
     private function findGLEntriesWithoutSubledger(Carbon $asOfDate, int $controlAccountId): array
     {
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
-                $q->where('posting_date', '<=', $asOfDate)
+                $q->where('entry_date', '<=', $asOfDate)
                   ->where('status', 'posted');
             })
             ->where(function ($q) {
@@ -221,34 +251,54 @@ class APGLReconciliationService
                   ->orWhereNotExists(function ($sub) {
                       $sub->select(DB::raw(1))
                           ->from('ap_transactions')
-                          ->whereColumn('ap_transactions.reference', 'journal_entry_lines.reference');
+                          ->whereColumn('ap_transactions.document_number', 'journal_entry_lines.reference');
                   });
             })
-            ->select('id', 'journal_entry_id', 'reference', 'debit', 'credit', 'transaction_date')
+            ->join('journal_entries as je', 'je.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->select(
+                'journal_entry_lines.id',
+                'journal_entry_lines.journal_entry_id',
+                'journal_entry_lines.reference',
+                'journal_entry_lines.debit',
+                'journal_entry_lines.credit',
+                'je.entry_date'
+            )
             ->limit(100)
             ->get()
+            ->map(fn ($row) => [
+                'id' => $row->id,
+                'journal_entry_id' => $row->journal_entry_id,
+                'reference' => $row->reference,
+                'amount' => (float) $row->credit - (float) $row->debit,
+                'debit' => $row->debit,
+                'credit' => $row->credit,
+                'entry_date' => $row->entry_date,
+            ])
             ->toArray();
     }
     
     /**
-     * Find timing differences between subledger and GL posting
+     * Find timing differences between subledger and GL posting.
+     *
+     * PostgreSQL-compatible: uses (date1 - date2) which returns an integer (days).
+     * Joins journal_entry_lines → journal_entries for the GL posting date.
      */
     private function findTimingDifferences(Carbon $asOfDate, int $controlAccountId): array
     {
         return DB::select("
             SELECT 
-                ap.id as ap_transaction_id,
-                ap.reference,
+                ap.transaction_id as ap_transaction_id,
+                ap.document_number,
                 ap.transaction_date as ap_date,
-                jel.transaction_date as gl_date,
-                ABS(DATEDIFF(ap.transaction_date, jel.transaction_date)) as days_difference
+                je.entry_date as gl_date,
+                ABS(ap.transaction_date::date - je.entry_date::date) as days_difference
             FROM ap_transactions ap
-            JOIN journal_entry_lines jel ON ap.reference = jel.reference
+            JOIN journal_entry_lines jel ON ap.document_number = jel.reference
             JOIN journal_entries je ON jel.journal_entry_id = je.id
             WHERE ap.transaction_date <= ?
                 AND jel.account_id = ?
                 AND je.status = 'posted'
-                AND ABS(DATEDIFF(ap.transaction_date, jel.transaction_date)) > 0
+                AND ABS(ap.transaction_date::date - je.entry_date::date) > 0
             LIMIT 100
         ", [$asOfDate->toDateString(), $controlAccountId]);
     }
@@ -264,10 +314,10 @@ class APGLReconciliationService
         $result = $this->reconcile($asOfDate);
         
         // Get aging summary
-        $agingSummary = $this->getAgingSummary($asOfDate);
+        $agingSummary = $this->getAgingSummary(Carbon::parse($asOfDate));
         
         // Get vendor balances
-        $vendorBalances = $this->getVendorBalances($asOfDate);
+        $vendorBalances = $this->getVendorBalances(Carbon::parse($asOfDate));
         
         return [
             'report_date' => now()->toDateTimeString(),
@@ -286,22 +336,28 @@ class APGLReconciliationService
     }
     
     /**
-     * Get aging summary for AP
+     * Get aging summary for AP.
+     *
+     * PostgreSQL-compatible: uses (date - INTERVAL 'N days') syntax.
+     * Uses 'amount' column from the ap_transactions view (not 'balance').
      */
     private function getAgingSummary(Carbon $asOfDate): array
     {
+        $date = $asOfDate->toDateString();
+
         return DB::select("
             SELECT 
-                SUM(CASE WHEN due_date >= ? THEN balance ELSE 0 END) as current,
-                SUM(CASE WHEN due_date BETWEEN ? - INTERVAL 30 DAY AND ? - INTERVAL 1 DAY THEN balance ELSE 0 END) as days_1_30,
-                SUM(CASE WHEN due_date BETWEEN ? - INTERVAL 60 DAY AND ? - INTERVAL 31 DAY THEN balance ELSE 0 END) as days_31_60,
-                SUM(CASE WHEN due_date BETWEEN ? - INTERVAL 90 DAY AND ? - INTERVAL 61 DAY THEN balance ELSE 0 END) as days_61_90,
-                SUM(CASE WHEN due_date < ? - INTERVAL 90 DAY THEN balance ELSE 0 END) as days_90_plus,
-                SUM(balance) as total
+                COALESCE(SUM(CASE WHEN due_date >= ?::date THEN amount ELSE 0 END), 0) as current,
+                COALESCE(SUM(CASE WHEN due_date BETWEEN (?::date - INTERVAL '30 days') AND (?::date - INTERVAL '1 day') THEN amount ELSE 0 END), 0) as days_1_30,
+                COALESCE(SUM(CASE WHEN due_date BETWEEN (?::date - INTERVAL '60 days') AND (?::date - INTERVAL '31 days') THEN amount ELSE 0 END), 0) as days_31_60,
+                COALESCE(SUM(CASE WHEN due_date BETWEEN (?::date - INTERVAL '90 days') AND (?::date - INTERVAL '61 days') THEN amount ELSE 0 END), 0) as days_61_90,
+                COALESCE(SUM(CASE WHEN due_date < (?::date - INTERVAL '90 days') THEN amount ELSE 0 END), 0) as days_90_plus,
+                COALESCE(SUM(amount), 0) as total
             FROM ap_transactions
             WHERE status IN ('open', 'approved', 'partial', 'overdue')
-                AND transaction_date <= ?
-        ", array_fill(0, 11, $asOfDate->toDateString()));
+                AND transaction_type = 'bill'
+                AND transaction_date <= ?::date
+        ", [$date, $date, $date, $date, $date, $date, $date, $date, $date]);
     }
     
     /**
@@ -313,7 +369,7 @@ class APGLReconciliationService
             ->where('transaction_date', '<=', $asOfDate)
             ->selectRaw('vendor_id, SUM(credit - debit) as balance')
             ->groupBy('vendor_id')
-            ->having('balance', '!=', 0)
+            ->havingRaw('ABS(SUM(credit - debit)) > 0.01')
             ->orderByDesc('balance')
             ->limit(100)
             ->with('vendor:id,name')

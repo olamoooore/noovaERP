@@ -281,11 +281,10 @@ class HitPayGateway implements PaymentGatewayInterface
         $data = $request->all();
         $receivedHmac = $data['hmac'] ?? null;
 
-        // If no HMAC, this is a payment request webhook
-        // These are safe because we verify the transaction exists in our DB
+        // If no HMAC, reject the webhook — all HitPay webhooks must include a valid signature
         if (!$receivedHmac) {
-            \Log::info('HitPay payment request webhook received (verified by transaction lookup)');
-            return true;
+            \Log::error('HitPay webhook rejected: missing HMAC signature');
+            return false;
         }
 
         // Payment webhook with HMAC - MUST verify signature
@@ -331,8 +330,9 @@ class HitPayGateway implements PaymentGatewayInterface
         // Extract the payment request ID (our transaction_id)
         $transactionId = $data['payment_request_id'] ?? $data['id'] ?? null;
 
-        // Generate webhook_id for duplicate detection
-        $webhookId = md5(json_encode($data) . time());
+        // Generate deterministic webhook_id for duplicate detection
+        // Uses only payload data (no time()) so the same HitPay event always produces the same ID
+        $webhookId = 'hitpay_' . hash('sha256', json_encode($data));
 
         // Extract payment details from nested payments array if present
         $payment = null;

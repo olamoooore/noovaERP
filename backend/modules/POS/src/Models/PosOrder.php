@@ -5,6 +5,7 @@ namespace Modules\POS\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyProgram;
 use App\Models\JournalEntry;
@@ -12,6 +13,7 @@ use App\Models\User;
 
 class PosOrder extends Model
 {
+    use SoftDeletes;
     protected $table = 'pos_orders';
 
     protected $fillable = [

@@ -33,6 +33,27 @@ class PostingEngine implements PostingEngineInterface
      */
     public function post(PostingRequest $request): PostingResult
     {
+        // ── 0. Idempotency guard ─────────────────────────────
+        if ($request->documentId !== null) {
+            $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
+                ->where('source_document_id', $request->documentId)
+                ->where('relation_type', 'post')
+                ->first();
+
+            if ($existingLink) {
+                Log::info('PostingEngine::post — duplicate posting prevented', [
+                    'document_type' => $request->documentType,
+                    'document_id'   => $request->documentId,
+                    'entry_id'      => $existingLink->journal_entry_id,
+                ]);
+
+                return PostingResult::success(
+                    JournalEntry::find($existingLink->journal_entry_id),
+                    null,
+                );
+            }
+        }
+
         // ── 1. Pre-flight validation ──────────────────────────
         try {
             $this->validateRequest($request);

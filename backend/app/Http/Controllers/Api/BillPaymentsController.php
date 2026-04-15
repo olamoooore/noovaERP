@@ -171,20 +171,20 @@ class BillPaymentsController extends Controller
 
             $payment->update(['journal_entry_id' => $result->journalEntryId]);
 
-            // Update bill if bill_id provided
+            // Update bill if bill_id provided using atomic operations
             if (!empty($validated['bill_id'])) {
                 $bill = Bill::findOrFail($validated['bill_id']);
-                $bill->paid_amount += $validated['amount'];
-                $bill->balance = $bill->total - $bill->paid_amount;
-                
-                // Update status
-                if ($bill->balance <= 0) {
-                    $bill->status = 'paid';
-                } elseif ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                }
-                
-                $bill->save();
+                Bill::where('id', $bill->id)->increment('paid_amount', (float) $validated['amount']);
+                $bill->refresh();
+
+                $newBalance = $bill->total - $bill->paid_amount;
+                Bill::where('id', $bill->id)->update([
+                    'balance' => $newBalance,
+                    'status' => $newBalance <= 0 ? 'paid' : ($bill->paid_amount > 0 ? 'partial' : $bill->status),
+                ]);
+
+                // Update vendor spending total
+                $vendor->updateSpending();
             }
 
             DB::commit();
@@ -246,21 +246,17 @@ class BillPaymentsController extends Controller
             $payment->update($validated);
 
             // Update bill balance if amount changed and bill exists
+            // Hardening (2026-04-15): Use atomic DB operations to prevent race conditions.
             if (isset($validated['amount']) && $payment->bill_id && $validated['amount'] != $oldAmount) {
+                $amountDelta = $validated['amount'] - $oldAmount;
+                Bill::where('id', $payment->bill_id)->increment('paid_amount', $amountDelta);
                 $bill = Bill::findOrFail($payment->bill_id);
-                $bill->paid_amount = $bill->paid_amount - $oldAmount + $validated['amount'];
-                $bill->balance = $bill->total - $bill->paid_amount;
+                $newBalance = $bill->total - $bill->paid_amount;
 
-                if ($bill->balance <= 0) {
-                    $bill->status = 'paid';
-                } elseif ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                } else {
-                    // Only 'posted' if the bill has a GL journal entry; otherwise 'draft'
-                    $bill->status = $bill->journal_entry_id ? 'posted' : 'draft';
-                }
-
-                $bill->save();
+                Bill::where('id', $bill->id)->update([
+                    'balance' => max($newBalance, 0),
+                    'status' => $newBalance <= 0 ? 'paid' : ($bill->paid_amount > 0 ? 'partial' : ($bill->journal_entry_id ? 'posted' : 'draft')),
+                ]);
             }
 
             DB::commit();
@@ -298,20 +294,16 @@ class BillPaymentsController extends Controller
             DB::beginTransaction();
 
             // Update bill balance if bill exists
+            // Hardening (2026-04-15): Use atomic DB operations to prevent race conditions.
             if ($payment->bill_id) {
+                Bill::where('id', $payment->bill_id)->decrement('paid_amount', (float) $payment->amount);
                 $bill = Bill::findOrFail($payment->bill_id);
-                $bill->paid_amount -= $payment->amount;
-                $bill->balance = $bill->total - $bill->paid_amount;
+                $newBalance = $bill->total - $bill->paid_amount;
 
-                // Status logic: 'posted' means "released to GL" — only applicable when the
-                // bill has a journal entry. If the bill was never posted to GL, reset to 'draft'.
-                if ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                } else {
-                    $bill->status = $bill->journal_entry_id ? 'posted' : 'draft';
-                }
-
-                $bill->save();
+                Bill::where('id', $bill->id)->update([
+                    'balance' => max($newBalance, 0),
+                    'status' => $bill->paid_amount > 0 ? 'partial' : ($bill->journal_entry_id ? 'posted' : 'draft'),
+                ]);
             }
 
             $payment->delete();
