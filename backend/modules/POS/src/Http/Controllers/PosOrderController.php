@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Invoice;
 use App\Models\Warehouse;
+use App\Services\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -645,38 +646,45 @@ class PosOrderController extends Controller
             ->with(['customer', 'lines.product'])
             ->first();
 
-        // Auto-create invoice from POS order if none exists
+        // Auto-create invoice from POS order via InvoiceService if none exists
         if (!$invoice) {
             $invoice = DB::transaction(function () use ($posOrder) {
-                $inv = Invoice::create([
-                    'customer_id'      => $posOrder->customer_id,
-                    'invoice_date'     => $posOrder->paid_at ?? $posOrder->created_at,
-                    'due_date'         => $posOrder->paid_at ?? $posOrder->created_at,
-                    'status'           => 'paid',
+                /** @var InvoiceService $invoiceService */
+                $invoiceService = app(InvoiceService::class);
+
+                $lines = [];
+                foreach ($posOrder->items as $item) {
+                    $lines[] = [
+                        'product_id'      => $item->product_id,
+                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
+                        'quantity'        => $item->quantity,
+                        'unit_price'      => $item->unit_price,
+                        'tax_rate'        => $item->tax_rate ?? 0,
+                        'discount_amount' => 0,
+                    ];
+                }
+
+                $inv = $invoiceService->createInvoice([
+                    'customer_id'  => $posOrder->customer_id,
+                    'invoice_date' => $posOrder->paid_at ?? $posOrder->created_at,
+                    'due_date'     => $posOrder->paid_at ?? $posOrder->created_at,
+                    'notes'        => "POS Order: {$posOrder->order_number}",
+                    'lines'        => $lines,
+                ]);
+
+                // Override totals and status to match the already-paid POS order.
+                // No GL posting needed — that was already done by PosPostingService.
+                $inv->update([
                     'subtotal'         => $posOrder->subtotal,
                     'tax_amount'       => $posOrder->tax_amount ?? 0,
                     'discount_amount'  => $posOrder->discount_amount ?? 0,
                     'total'            => $posOrder->total,
                     'paid_amount'      => $posOrder->total,
                     'balance'          => 0,
-                    'notes'            => "POS Order: {$posOrder->order_number}",
+                    'status'           => 'paid',
                     'pos_order_id'     => $posOrder->id,
                     'journal_entry_id' => $posOrder->journal_entry_id,
-                    'created_by'       => auth()->id(),
                 ]);
-
-                foreach ($posOrder->items as $item) {
-                    $inv->lines()->create([
-                        'product_id'      => $item->product_id,
-                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
-                        'quantity'        => $item->quantity,
-                        'unit_price'      => $item->unit_price,
-                        'tax_rate'        => $item->tax_rate ?? 0,
-                        'tax_amount'      => $item->tax_amount ?? 0,
-                        'discount_amount' => 0,
-                        'line_total'      => $item->line_total,
-                    ]);
-                }
 
                 return $inv->load(['customer', 'lines.product']);
             });

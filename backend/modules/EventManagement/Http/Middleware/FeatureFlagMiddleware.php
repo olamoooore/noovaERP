@@ -6,7 +6,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Models\Feature;
-use App\Models\TenantFeature;
 use App\SuperAdmin\Application\FeatureGateService;
 
 class FeatureFlagMiddleware
@@ -43,12 +42,6 @@ class FeatureFlagMiddleware
             if ($check['is_entitled']) {
                 return $next($request);
             }
-        }
-
-        // Legacy fallback: check TenantFeature table
-        $tenantFeature = TenantFeature::where('feature_id', $featureRecord->id)->first();
-        if ($tenantFeature && $tenantFeature->is_enabled) {
-            return $next($request);
         }
 
         return response()->json([

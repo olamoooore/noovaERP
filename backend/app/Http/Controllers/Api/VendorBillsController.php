@@ -156,6 +156,8 @@ class VendorBillsController extends Controller
                 'lines.*.quantity' => 'required|numeric|min:0',
                 'lines.*.unit_price' => 'required|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+                'lines.*.purchase_order_item_id' => 'nullable|integer',
+                'lines.*.goods_receipt_line_id' => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
@@ -183,21 +185,8 @@ class VendorBillsController extends Controller
             }
 
             // Run three-way match validation if PO or GRN is linked
-            if ($resolvedPurchaseOrderId || $goodsReceipt) {
-                $tempBillForValidation = new Bill([
-                    'purchase_order_id' => $resolvedPurchaseOrderId,
-                    'goods_receipt_id' => $goodsReceipt?->id,
-                ]);
-                $matchResult = $this->threeWayMatchService->validate($tempBillForValidation);
-                if (!$matchResult['valid']) {
-                    DB::rollBack();
-                    return response()->json([
-                        'message' => 'Three-way match validation failed',
-                        'errors' => $matchResult['errors'],
-                        'warnings' => $matchResult['warnings'],
-                    ], 422);
-                }
-            }
+            // NOTE: Deferred to after bill+lines creation so the service can inspect real lines.
+            // See validation block below (after line creation).
 
             // Create bill
             $bill = Bill::create([
@@ -246,6 +235,8 @@ class VendorBillsController extends Controller
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxAmount,
                     'line_total' => $lineTotal,
+                    'purchase_order_item_id' => $lineData['purchase_order_item_id'] ?? null,
+                    'goods_receipt_line_id' => $lineData['goods_receipt_line_id'] ?? null,
                 ]);
             }
 
@@ -256,6 +247,21 @@ class VendorBillsController extends Controller
             $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
+
+            // Run three-way match validation AFTER lines exist so the service
+            // can actually compare bill line quantities/prices against PO/GRN.
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $bill->load(['purchaseOrder.items.product', 'goodsReceipt.lines.product']);
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
+            }
 
             DB::commit();
 
@@ -331,6 +337,8 @@ class VendorBillsController extends Controller
                 'lines.*.quantity' => 'required_with:lines|numeric|min:0',
                 'lines.*.unit_price' => 'required_with:lines|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+                'lines.*.purchase_order_item_id' => 'nullable|integer',
+                'lines.*.goods_receipt_line_id' => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
@@ -405,6 +413,8 @@ class VendorBillsController extends Controller
                         'tax_rate' => $taxRate,
                         'tax_amount' => $taxAmount,
                         'line_total' => $lineTotal,
+                        'purchase_order_item_id' => $lineData['purchase_order_item_id'] ?? null,
+                        'goods_receipt_line_id' => $lineData['goods_receipt_line_id'] ?? null,
                     ]);
                 }
 
@@ -415,6 +425,20 @@ class VendorBillsController extends Controller
                 $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
                 $bill->balance = $bill->total - $bill->paid_amount;
                 $bill->save();
+            }
+
+            // Re-validate three-way match after update (lines may have changed)
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $bill->load(['lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product']);
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
             }
 
             DB::commit();
@@ -447,10 +471,22 @@ class VendorBillsController extends Controller
     public function post($id, VendorBillService $billService)
     {
         try {
-            $bill = Bill::with(['vendor', 'lines'])->find($id);
+            $bill = Bill::with(['vendor', 'lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product'])->find($id);
 
             if (!$bill) {
                 return response()->json(['message' => 'Vendor bill not found'], 404);
+            }
+
+            // Three-way match gate: reject posting if PO/GRN constraints are violated.
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    return response()->json([
+                        'message' => 'Cannot post: three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
             }
 
             $result = $billService->postBill($bill);

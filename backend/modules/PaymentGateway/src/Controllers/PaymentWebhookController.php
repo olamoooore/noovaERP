@@ -463,14 +463,16 @@ class PaymentWebhookController extends Controller
             ]);
         }
         
-        // Award loyalty points
+        // Post to accounting FIRST — this is the financial truth.
+        // If GL posting fails, we must NOT proceed with downstream mutations
+        // (loyalty, customer stats) that assume a successful sale.
+        $this->postToAccounting($webOrder, $transaction);
+        
+        // Award loyalty points (only after accounting succeeds)
         $this->awardLoyaltyPoints($webOrder);
         
-        // Update customer stats
+        // Update customer stats (only after accounting succeeds)
         $this->updateCustomerStats($webOrder);
-        
-        // Post to accounting (journal entries)
-        $this->postToAccounting($webOrder, $transaction);
         
         // Mark transaction as processed
         $transaction->update(['processed_at' => now()]);
@@ -484,6 +486,7 @@ class PaymentWebhookController extends Controller
     
     /**
      * Post web order to accounting system.
+     * Throws on failure so the caller can abort downstream mutations.
      */
     protected function postToAccounting(\Modules\Ecommerce\Models\WebOrder $order, PaymentTransaction $transaction): void
     {
@@ -509,6 +512,7 @@ class PaymentWebhookController extends Controller
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+            throw $e; // Re-throw — GL failure must abort the webhook flow
         }
     }
     

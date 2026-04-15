@@ -5,13 +5,17 @@
          colors="true"
 >
     <testsuites>
-        <testsuite name="Unit">
-            <directory>tests/Unit</directory>
-        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
             <directory>modules/FinancialReporting/tests/Feature</directory>
             <directory>modules/HRM/tests/Feature</directory>
+        </testsuite>
+        <testsuite name="OCR">
+            <directory>modules/OCRBookkeeping/tests/Feature</directory>
+        </testsuite>
+        <testsuite name="FinancialReporting">
+            <directory>modules/FinancialReporting/tests/Unit</directory>
+            <directory>modules/FinancialReporting/tests/Feature</directory>
         </testsuite>
     </testsuites>
     <source>

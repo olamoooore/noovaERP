@@ -9,7 +9,9 @@ use App\Models\BankAccount;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Payment;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\InventoryService;
 
 /**
  * Invoice Service - Handles invoice workflow
@@ -20,6 +22,7 @@ class InvoiceService
 {
     public function __construct(
         private PostingEngineInterface $postingEngine,
+        private InventoryService $inventoryService,
     ) {}
 
     /**
@@ -166,14 +169,21 @@ class InvoiceService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Reduce inventory for product lines
-            foreach ($invoice->lines as $line) {
-                if ($line->product && $line->product->track_inventory) {
-                    $line->product->adjustStock(
-                        $line->quantity,
-                        'out',
-                        $invoice->invoice_number
-                    );
+            // Reduce inventory for product lines via canonical InventoryService path
+            $defaultWarehouseId = Warehouse::getDefault()?->id;
+            if ($defaultWarehouseId) {
+                foreach ($invoice->lines as $line) {
+                    if ($line->product && $line->product->track_inventory) {
+                        $this->inventoryService->adjustStock(
+                            productId:     $line->product_id,
+                            warehouseId:   $defaultWarehouseId,
+                            quantity:      $line->quantity,
+                            type:          'sale',
+                            reference:     $invoice->invoice_number,
+                            referenceType: 'Invoice',
+                            referenceId:   $invoice->id,
+                        );
+                    }
                 }
             }
 

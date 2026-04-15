@@ -4,6 +4,7 @@ namespace Modules\Ecommerce\Models;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Services\InvoiceService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -34,6 +35,7 @@ class WebOrder extends Model
         'total',
         'currency',
         'invoice_id',
+        'fulfillment_warehouse_id',
         'payment_transaction_id',
         'loyalty_points_earned',
         'loyalty_points_redeemed',
@@ -200,51 +202,55 @@ class WebOrder extends Model
         return $prefix . str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
-    // Convert WebOrder to Invoice
+    // Convert WebOrder to Invoice via canonical InvoiceService
     public function convertToInvoice(): Invoice
     {
-        $invoice = Invoice::create([
-            'customer_id' => $this->customer_id,
-            'invoice_number' => Invoice::generateInvoiceNumber(),
-            'invoice_date' => now(),
-            'due_date' => now()->addDays(30),
-            'subtotal' => $this->subtotal,
-            'tax_amount' => $this->tax_amount,
-            'discount_amount' => $this->discount_amount + $this->loyalty_discount,
-            'total' => $this->total,
-            'balance' => 0, // Paid
-            'status' => 'paid',
-            'notes' => "Web Order: {$this->order_number}",
-            'created_by' => \App\Models\User::first()?->id ?? 1,
+        /** @var InvoiceService $invoiceService */
+        $invoiceService = app(InvoiceService::class);
+
+        $lines = [];
+        foreach ($this->items as $item) {
+            $lines[] = [
+                'product_id'  => $item->product_id,
+                'description' => $item->product_name,
+                'quantity'    => $item->quantity,
+                'unit_price'  => $item->unit_price,
+                'tax_rate'    => $item->tax_rate ?? 0,
+                'discount_amount' => 0,
+            ];
+        }
+
+        $invoice = $invoiceService->createInvoice([
+            'customer_id'     => $this->customer_id,
+            'invoice_date'    => now(),
+            'due_date'        => now()->addDays(30),
+            'notes'           => "Web Order: {$this->order_number}",
+            'lines'           => $lines,
         ]);
 
-        // Create invoice lines
-        foreach ($this->items as $item) {
-            $invoice->lines()->create([
-                'product_id' => $item->product_id,
-                'description' => $item->product_name,
-                'quantity' => $item->quantity,
-                'unit_price' => $item->unit_price,
-                'tax_rate' => $item->tax_rate,
-                'tax_amount' => $item->tax_amount,
-                'line_total' => $item->line_total,
-            ]);
-        }
+        // The invoice is created as 'draft' by InvoiceService. Update totals
+        // to reflect the already-paid web order values, then mark as paid.
+        $invoice->update([
+            'subtotal'        => $this->subtotal,
+            'tax_amount'      => $this->tax_amount,
+            'discount_amount' => $this->discount_amount + $this->loyalty_discount,
+            'total'           => $this->total,
+            'paid_amount'     => $this->total,
+            'balance'         => 0,
+            'status'          => 'paid',
+        ]);
 
         // Update order with invoice reference
         $this->update(['invoice_id' => $invoice->id]);
 
         // Update redemption with invoice_id if points were redeemed
-        // The redemption is linked via the loyalty_transaction which has reference_type='web_order'
         if ($this->loyalty_points_redeemed > 0) {
-            // Find the loyalty transaction for this web order redemption
             $loyaltyTransaction = \Modules\Loyalty\Models\LoyaltyTransaction::where('reference_type', 'web_order')
                 ->where('reference_id', $this->id)
                 ->where('type', 'redeem')
                 ->first();
             
             if ($loyaltyTransaction) {
-                // Update the redemption record linked to this transaction
                 \Modules\Loyalty\Models\LoyaltyRedemption::where('loyalty_transaction_id', $loyaltyTransaction->id)
                     ->update(['invoice_id' => $invoice->id]);
             }

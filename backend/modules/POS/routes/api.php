@@ -12,7 +12,7 @@ use Modules\POS\Http\Controllers\PosHeldOrderController;
 use Modules\POS\Http\Controllers\PosPaymentMethodController;
 use App\Http\Controllers\SalesOrderController;
 
-Route::middleware(['auth:sanctum', 'feature:pos', 'ensure.tenant.search_path'])->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path'])->group(function () {
     Route::get('/pos/health', function () {
         return ['module' => 'pos', 'ok' => true];
     });
