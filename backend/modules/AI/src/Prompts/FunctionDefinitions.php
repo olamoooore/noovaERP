@@ -48,6 +48,11 @@ class FunctionDefinitions
             self::getRecentPayments(),
             self::getCustomerBalance(),
             self::getRevenueSummary(),
+            self::getJournalEntries(),
+            self::getSupplierInvoices(),
+            self::getFinancialReport(),
+            self::getCustomerLedger(),
+            self::getSupplierLedger(),
             self::createTicket(),
         ];
     }
@@ -460,6 +465,108 @@ class FunctionDefinitions
                     'date_to' => [
                         'type' => 'string',
                         'description' => 'End date for custom range (YYYY-MM-DD)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getJournalEntries(): array
+    {
+        return [
+            'name' => 'get_journal_entries',
+            'description' => 'Retrieves recent journal entries from the general ledger. Use this when the user asks about journal entries, GL entries, or posted transactions.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'type' => [
+                        'type' => 'string',
+                        'description' => 'Filter by journal entry type e.g. payment, manual.',
+                    ],
+                    'status' => [
+                        'type' => 'string',
+                        'description' => 'Filter by status e.g. posted, draft.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    public static function getSupplierInvoices(): array
+    {
+        return [
+            'name' => 'get_supplier_invoices',
+            'description' => 'Get a list of supplier bills/invoices. Use this when the user asks about supplier bills, vendor invoices, bills to pay, or AP (accounts payable). Present results as a numbered list showing bill number, vendor ID, total, balance, and due date.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => [
+                        'type' => 'string',
+                        'description' => 'Optional filter by status, e.g. unpaid, partial, paid',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    public static function getFinancialReport(): array
+    {
+        return [
+            'name' => 'get_financial_report',
+            'description' => 'Get a P&L summary showing total revenue, expenses and net income for a period. Use when user asks about profit and loss, financial performance, income summary, or revenue vs expenses.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Reporting period: this_month, last_month, or this_year. Defaults to this_month.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    public static function getCustomerLedger(): array
+    {
+        return [
+            'name' => 'get_customer_ledger',
+            'description' => 'Get a customer ledger showing their invoice history and outstanding balance. Use when the user asks about a specific customer ledger, customer account, or customer invoice history.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'customer_name' => [
+                        'type' => 'string',
+                        'description' => 'Name of the customer to look up',
+                    ],
+                    'customer_id' => [
+                        'type' => 'integer',
+                        'description' => 'ID of the customer to look up',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    public static function getSupplierLedger(): array
+    {
+        return [
+            'name' => 'get_supplier_ledger',
+            'description' => 'Get a supplier ledger showing their bill history and total spending. Use when the user asks about a specific supplier or vendor ledger, vendor account, or vendor bill history.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'vendor_name' => [
+                        'type' => 'string',
+                        'description' => 'Name of the vendor to look up',
+                    ],
+                    'vendor_id' => [
+                        'type' => 'string',
+                        'description' => 'ID of the vendor to look up',
                     ],
                 ],
                 'required' => [],

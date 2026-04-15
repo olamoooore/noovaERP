@@ -54,6 +54,11 @@ class InvoicesModule extends BaseModule
             'get_recent_payments',
             'get_customer_balance',
             'get_revenue_summary',
+            'get_journal_entries',
+            'get_supplier_invoices',
+            'get_financial_report',
+            'get_customer_ledger',
+            'get_supplier_ledger',
         ];
     }
     
@@ -79,6 +84,11 @@ Available functions:
 - get_recent_payments: Get a list of recent payments received
 - get_customer_balance: Get the outstanding balance for a specific customer by name or ID
 - get_revenue_summary: Get a revenue summary for this month, this year, or a custom date range
+- get_journal_entries: Retrieve recent journal entries from the general ledger, can filter by type and status
+- get_supplier_invoices: Get a list of supplier bills or vendor invoices
+- get_financial_report: Get a P&L summary with revenue, expenses and net income for a given period
+- get_customer_ledger: Get a customer ledger showing invoice history and outstanding balance for a specific customer
+- get_supplier_ledger: Get a supplier ledger showing bill history and total spending for a specific vendor
 
 When displaying invoice results:
 - Always list invoices in ascending order by invoice number
