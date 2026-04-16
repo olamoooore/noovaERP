@@ -599,29 +599,12 @@ class Product extends Model
             }
         }
 
-        // Last-resort legacy path: no warehouse available at all.
-        // This should only occur during seeding or in environments without a default warehouse.
-        \Illuminate\Support\Facades\Log::warning('Product::adjustStock falling back to legacy direct mutation — no warehouse available', [
-            'product_id' => $this->id,
-            'type'       => $type,
-            'quantity'   => $quantity,
-        ]);
-
-        $oldQuantity = $this->stock_quantity;
-        $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
-        $this->save();
-
-        StockMovement::create([
-            'product_id'   => $this->id,
-            'type'         => $type,
-            'quantity'     => abs($quantity),
-            'old_quantity' => $oldQuantity,
-            'reference'    => $reference,
-            'balance_after' => $this->stock_quantity,
-            'created_by'   => auth()->id() ?? 1,
-        ]);
-
-        ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STOCK_CHANGED, 'stock_quantity', $oldQuantity, $this->stock_quantity);
+        // Hard fail: no warehouse means no trackable stock mutation.
+        // All callers must provide or resolve a warehouse.
+        throw new \RuntimeException(
+            "Cannot adjust stock for product {$this->id}: no warehouse available. "
+            . "All stock mutations must go through InventoryService with an explicit warehouse."
+        );
     }
 
     // ==================== PRICING METHODS ====================

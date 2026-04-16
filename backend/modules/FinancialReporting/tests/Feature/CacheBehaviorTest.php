@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use App\Models\User;
@@ -15,10 +14,8 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class CacheBehaviorTest extends TestCase
+class CacheBehaviorTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected ReportCacheService $cacheService;
 

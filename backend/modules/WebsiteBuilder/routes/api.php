@@ -17,7 +17,7 @@ use Modules\WebsiteBuilder\Http\Controllers\PublicSiteController;
 // as this file is loaded inside the AUTHENTICATED middleware group which
 // would override the public routes and require auth:sanctum.
 
-Route::middleware(['auth:sanctum', 'feature:website-builder'])->prefix('website-builder')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:website-builder'])->prefix('website-builder')->group(function () {
     // Health check
     Route::get('/health', function () {
         return ['module' => 'website-builder', 'ok' => true];

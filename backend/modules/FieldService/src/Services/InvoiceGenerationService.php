@@ -3,8 +3,7 @@
 namespace Modules\FieldService\Services;
 
 use App\Models\Invoice;
-use App\Models\InvoiceLine;
-use Illuminate\Support\Facades\Auth;
+use App\Services\InvoiceService;
 use Illuminate\Support\Facades\DB;
 use Modules\FieldService\Models\WorkOrder;
 
@@ -23,8 +22,7 @@ class InvoiceGenerationService
         return DB::transaction(function () use ($wo) {
             $wo->load(['parts.product', 'timeLogs', 'customer']);
 
-            $lines   = [];
-            $subtotal = 0.0;
+            $lines = [];
 
             // ── Labor lines ──────────────────────────────────────────
             foreach ($wo->timeLogs->where('is_billable', true) as $log) {
@@ -39,14 +37,12 @@ class InvoiceGenerationService
                 }
 
                 $lines[] = [
-                    'description' => $desc,
-                    'quantity'    => (float) $log->duration_hours,
-                    'unit_price'  => (float) $log->hourly_rate,
-                    'tax_rate'    => 0,
-                    'discount'    => 0,
-                    'line_total'  => $amount,
+                    'description'     => $desc,
+                    'quantity'        => (float) $log->duration_hours,
+                    'unit_price'      => (float) $log->hourly_rate,
+                    'tax_rate'        => 0,
+                    'discount_amount' => 0,
                 ];
-                $subtotal += $amount;
             }
 
             // ── Parts lines ──────────────────────────────────────────
@@ -59,49 +55,36 @@ class InvoiceGenerationService
                 $desc = $part->description ?: ($part->product->name ?? 'Part/Material');
 
                 $lines[] = [
-                    'description' => $desc,
-                    'quantity'    => (float) $part->quantity,
-                    'unit_price'  => (float) $part->unit_price,
-                    'tax_rate'    => 0,
-                    'discount'    => 0,
-                    'line_total'  => $amount,
+                    'description'     => $desc,
+                    'product_id'      => $part->product_id ?? null,
+                    'quantity'        => (float) $part->quantity,
+                    'unit_price'      => (float) $part->unit_price,
+                    'tax_rate'        => 0,
+                    'discount_amount' => 0,
                 ];
-                $subtotal += $amount;
             }
 
             // ── Fallback line if no billable items ───────────────────
             if (empty($lines)) {
                 $lines[] = [
-                    'description' => "Field Service — {$wo->title}",
-                    'quantity'    => 1,
-                    'unit_price'  => 0.00,
-                    'tax_rate'    => 0,
-                    'discount'    => 0,
-                    'line_total'  => 0.00,
+                    'description'     => "Field Service — {$wo->title}",
+                    'quantity'        => 1,
+                    'unit_price'      => 0.00,
+                    'tax_rate'        => 0,
+                    'discount_amount' => 0,
                 ];
             }
 
-            // ── Create Invoice header ────────────────────────────────
-            $invoice = Invoice::create([
-                'invoice_number'  => $this->generateInvoiceNumber(),
-                'customer_id'     => $wo->customer_id,
-                'invoice_date'    => now()->toDateString(),
-                'due_date'        => now()->addDays(30)->toDateString(),
-                'status'          => 'draft',
-                'subtotal'        => $subtotal,
-                'tax_amount'      => 0,
-                'discount_amount' => 0,
-                'total'           => $subtotal,
-                'paid_amount'     => 0,
-                'balance'         => $subtotal,
-                'notes'           => "Generated from Work Order {$wo->reference}: {$wo->title}",
-                'created_by'      => Auth::id(),
+            // ── Create Invoice via canonical InvoiceService ──────────
+            /** @var InvoiceService $invoiceService */
+            $invoiceService = app(InvoiceService::class);
+            $invoice = $invoiceService->createInvoice([
+                'customer_id'  => $wo->customer_id,
+                'invoice_date' => now()->toDateString(),
+                'due_date'     => now()->addDays(30)->toDateString(),
+                'notes'        => "Generated from Work Order {$wo->reference}: {$wo->title}",
+                'lines'        => $lines,
             ]);
-
-            // ── Create Invoice lines ─────────────────────────────────
-            foreach ($lines as $line) {
-                InvoiceLine::create(array_merge($line, ['invoice_id' => $invoice->id]));
-            }
 
             // ── Link invoice back to WO ──────────────────────────────
             $wo->invoice_id = $invoice->id;
@@ -109,12 +92,5 @@ class InvoiceGenerationService
 
             return $invoice;
         });
-    }
-
-    private function generateInvoiceNumber(): string
-    {
-        $year  = now()->format('Y');
-        $count = Invoice::whereYear('created_at', $year)->count() + 1;
-        return sprintf('INV-%s-%05d', $year, $count);
     }
 }

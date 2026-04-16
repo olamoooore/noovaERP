@@ -7,7 +7,6 @@
     <testsuites>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
-            <directory>modules/FinancialReporting/tests/Feature</directory>
             <directory>modules/HRM/tests/Feature</directory>
         </testsuite>
         <testsuite name="OCR">

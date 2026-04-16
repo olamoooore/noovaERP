@@ -2,17 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrVendorMapping;
 use Modules\OCRBookkeeping\Services\VendorMappingService;
 use App\Models\Vendor;
 use App\Models\User;
 
-class VendorMappingTest extends TestCase
+class VendorMappingTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected VendorMappingService $service;
 

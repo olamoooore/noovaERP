@@ -2,15 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
 
-class SalesAnalyticsServiceTest extends TestCase
+class SalesAnalyticsServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected SalesAnalyticsService $service;
 

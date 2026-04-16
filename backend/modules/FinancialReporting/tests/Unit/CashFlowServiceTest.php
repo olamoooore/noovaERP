@@ -2,15 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Reports\CashFlowService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
 
-class CashFlowServiceTest extends TestCase
+class CashFlowServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected CashFlowService $service;
 

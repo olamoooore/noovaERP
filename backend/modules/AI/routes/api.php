@@ -14,7 +14,7 @@ use Modules\AI\Http\Controllers\ModuleController;
 |
 */
 
-Route::middleware(['auth:sanctum', 'feature:ai'])->prefix('ai')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:ai'])->prefix('ai')->group(function () {
     
     // AI Service Status
     Route::get('/health', [AIStatusController::class, 'health']);

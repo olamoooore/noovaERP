@@ -2,18 +2,15 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrProcessingService;
 use App\Models\User;
 
-class OcrExtractionTest extends TestCase
+class OcrExtractionTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected OcrProcessingService $service;
 

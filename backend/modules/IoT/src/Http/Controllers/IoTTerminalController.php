@@ -9,6 +9,8 @@ use Modules\IoT\Services\DeviceManager;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Services\PosPostingService;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\InventoryService;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -344,21 +346,30 @@ class IoTTerminalController extends Controller
                 'received_by' => $order->created_by,
             ]);
 
-            // Adjust inventory
-            foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($item->quantity, 'out', $order->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($item->quantity, 'out', $order->order_number);
-                }
-            }
-
-            // Post to accounting
+            // Post to accounting FIRST — GL must succeed before stock mutation
             $entry = $this->postingService->postPaidOrder(
                 $order->load('items.variant', 'items.product'),
                 $amount,
                 $paymentMethod
             );
+
+            // Adjust inventory via canonical InventoryService
+            $inventoryService = app(InventoryService::class);
+            $defaultWarehouse = Warehouse::getDefault();
+            if ($defaultWarehouse) {
+                foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
+                    $productId = $item->product_id;
+                    if (($item->variant && $item->variant->track_inventory) || ($item->product && $item->product->track_inventory)) {
+                        $inventoryService->adjustStock(
+                            productId: $productId,
+                            warehouseId: $defaultWarehouse->id,
+                            quantity: $item->quantity,
+                            type: 'out',
+                            reference: $order->order_number,
+                        );
+                    }
+                }
+            }
 
             // Update order
             $order->update([

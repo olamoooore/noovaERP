@@ -2,8 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use Modules\OCRBookkeeping\Exceptions\FiscalPeriodLockedException;
@@ -13,10 +12,8 @@ use App\Models\Vendor;
 use App\Models\User;
 use Carbon\Carbon;
 
-class FiscalPeriodTest extends TestCase
+class FiscalPeriodTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected User $adminUser;
     protected OcrPostingService $service;

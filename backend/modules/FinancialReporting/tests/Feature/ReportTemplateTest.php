@@ -2,16 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Modules\FinancialReporting\Models\ReportTemplate;
 use App\Models\User;
 
-class ReportTemplateTest extends TestCase
+class ReportTemplateTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

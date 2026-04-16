@@ -2,15 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\StockMovementService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
 
-class StockMovementServiceTest extends TestCase
+class StockMovementServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected StockMovementService $service;
 

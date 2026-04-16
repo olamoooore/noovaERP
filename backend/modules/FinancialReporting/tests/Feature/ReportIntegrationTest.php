@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use App\Models\User;
 use App\Models\ChartOfAccount;
@@ -11,10 +10,8 @@ use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use Carbon\Carbon;
 
-class ReportIntegrationTest extends TestCase
+class ReportIntegrationTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

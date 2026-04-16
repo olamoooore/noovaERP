@@ -2,16 +2,14 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Queue;
 use Modules\FinancialReporting\Jobs\ClearReportCache;
 use Modules\FinancialReporting\Models\ReportCache;
 use Carbon\Carbon;
 
-class ClearReportCacheJobTest extends TestCase
+class ClearReportCacheJobTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function it_can_be_dispatched()

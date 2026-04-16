@@ -191,7 +191,7 @@ foreach ($rows as $index => $row) {
             'cost'              => $cost,
             'price'             => $price,
             'track_inventory'   => true,
-            'stock_quantity'    => isset($row['stock_quantity']) && $row['stock_quantity'] !== '' ? (int)$row['stock_quantity'] : 0,
+            'stock_quantity'    => 0, // Initial stock is zero; use InventoryService to set real quantities
             'is_active'         => true,
             'image'             => $imageValue,
             'manufacturer'      => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,

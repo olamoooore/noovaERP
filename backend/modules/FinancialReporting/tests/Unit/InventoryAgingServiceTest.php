@@ -2,15 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\InventoryAgingService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
 
-class InventoryAgingServiceTest extends TestCase
+class InventoryAgingServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected InventoryAgingService $service;
 

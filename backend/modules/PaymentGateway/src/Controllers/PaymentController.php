@@ -568,7 +568,7 @@ class PaymentController extends Controller
     protected function createInvoiceFromPosOrder(PosOrder $posOrder, PaymentTransaction $transaction): ?Invoice
     {
         try {
-            // Get or create walk-in customer for orders without customer_id
+            // Ensure customer_id exists (walk-in customer for anonymous POS orders)
             $customerId = $posOrder->customer_id;
             if (!$customerId) {
                 $walkInCustomer = \App\Models\Customer::firstOrCreate(
@@ -581,45 +581,62 @@ class PaymentController extends Controller
                     ]
                 );
                 $customerId = $walkInCustomer->id;
-                
+                $posOrder->update(['customer_id' => $customerId]);
+
                 \Log::info('Using walk-in customer for invoice', [
                     'pos_order_id' => $posOrder->id,
                     'walk_in_customer_id' => $customerId,
                 ]);
             }
 
-            // Create invoice
-            $invoice = Invoice::create([
-                'customer_id' => $customerId,
-                'invoice_date' => now(),
-                'due_date' => now(),
-                'status' => 'paid',
-                'subtotal' => $posOrder->subtotal,
-                'tax_amount' => $posOrder->tax_amount,
-                'discount_amount' => $posOrder->discount_amount ?? 0,
-                'total' => $posOrder->total,
-                'paid_amount' => $posOrder->total,
-                'balance' => 0,
-                'notes' => "Generated from POS Order: {$posOrder->order_number}",
-                'created_by' => $posOrder->created_by,
-            ]);
+            /** @var \Modules\Sales\Services\SalesOrderService $salesOrderService */
+            $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
 
-            // Create invoice lines from POS order items
-            foreach ($posOrder->items as $item) {
-                $description = $item->product_name ?? $item->product?->name ?? 'Product';
-                $invoice->lines()->create([
-                    'product_id' => $item->product_id,
-                    'description' => $description,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'tax_rate' => 0, // POS items already include tax in tax_amount
-                    'tax_amount' => $item->tax_amount / $item->quantity, // per unit
-                    'discount_amount' => 0,
-                    'line_total' => $item->total_price,
-                ]);
+            // Create SalesOrder (idempotent via SalesChannelReference)
+            $salesOrder = $salesOrderService->createFromPosOrder($posOrder);
+
+            // If already invoiced, retrieve existing invoice
+            if ($salesOrder->isInvoiced()) {
+                $link = \Modules\Sales\Models\SalesInvoiceLink::where('sales_order_id', $salesOrder->id)
+                    ->where('link_state', 'active')
+                    ->first();
+                if ($link) {
+                    $invoice = Invoice::find($link->invoice_id);
+                    \Log::info('Returning existing invoice from SalesOrder', [
+                        'invoice_id' => $invoice?->id,
+                        'pos_order_id' => $posOrder->id,
+                    ]);
+                    return $invoice;
+                }
             }
 
-            \Log::info('Invoice created from POS order', [
+            // Fast-track through lifecycle for already-paid POS order
+            if ($salesOrder->isDraft()) {
+                $salesOrder = $salesOrderService->confirmOrder($salesOrder);
+            }
+            if ($salesOrder->isConfirmed()) {
+                $salesOrder = $salesOrderService->allocateOrder($salesOrder);
+            }
+            if ($salesOrder->isAllocated()) {
+                $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
+            }
+
+            // Create invoice via canonical SalesOrderService → InvoiceService path
+            $invoice = $salesOrderService->createInvoice($salesOrder);
+
+            // Override totals and status to match the already-paid POS order
+            $invoice->update([
+                'subtotal'        => $posOrder->subtotal,
+                'tax_amount'      => $posOrder->tax_amount ?? 0,
+                'discount_amount' => $posOrder->discount_amount ?? 0,
+                'total'           => $posOrder->total,
+                'paid_amount'     => $posOrder->total,
+                'balance'         => 0,
+                'status'          => 'paid',
+                'pos_order_id'    => $posOrder->id,
+            ]);
+
+            \Log::info('Invoice created from POS order via SalesOrderService', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'pos_order_id' => $posOrder->id,

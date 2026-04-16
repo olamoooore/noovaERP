@@ -2,15 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use App\Models\User;
 
-class InventoryReportsApiTest extends TestCase
+class InventoryReportsApiTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

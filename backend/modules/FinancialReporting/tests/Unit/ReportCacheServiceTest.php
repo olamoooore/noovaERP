@@ -2,17 +2,15 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Cache\ReportCacheService;
 use Modules\FinancialReporting\Models\ReportCache;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class ReportCacheServiceTest extends TestCase
+class ReportCacheServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected ReportCacheService $service;
 

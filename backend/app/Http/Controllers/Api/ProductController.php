@@ -608,10 +608,17 @@ class ProductController extends Controller
         $customFieldValues = $validated['custom_field_values'] ?? null;
         $suppliersData = $validated['suppliers'] ?? null;
         $stockQuantityWasProvided = array_key_exists('stock_quantity', $validated);
-        unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers']);
+        $desiredStockQuantity = $validated['stock_quantity'] ?? null;
+        unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers'], $validated['stock_quantity']);
 
-        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData, $stockQuantityWasProvided) {
+        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData, $stockQuantityWasProvided, $desiredStockQuantity) {
             $product->update($validated);
+
+            // Set desired stock in-memory for syncWarehouseStockForProduct to read.
+            // Never write stock_quantity directly — InventoryService is the sole path.
+            if ($desiredStockQuantity !== null) {
+                $product->stock_quantity = $desiredStockQuantity;
+            }
 
             if (is_array($featureValues)) {
                 foreach ($featureValues as $row) {
@@ -794,13 +801,18 @@ class ProductController extends Controller
                         'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
                     ];
 
+                $desiredStock = $productData['stock_quantity'] ?? 0;
+                unset($productData['stock_quantity']);
+
                 try {
                     if ($existingProduct) {
                         $existingProduct->update($productData);
+                        $existingProduct->stock_quantity = $desiredStock;
                         $this->syncWarehouseStockForProduct($existingProduct, true);
                         $updated++;
                     } else {
                         $product = Product::create($productData);
+                        $product->stock_quantity = $desiredStock;
                         $this->syncWarehouseStockForProduct($product, true);
                         $created++;
                     }

@@ -7,7 +7,6 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Invoice;
 use App\Models\Warehouse;
-use App\Services\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -646,31 +645,47 @@ class PosOrderController extends Controller
             ->with(['customer', 'lines.product'])
             ->first();
 
-        // Auto-create invoice from POS order via InvoiceService if none exists
+        // Auto-create invoice from POS order via SalesOrderService (canonical path)
         if (!$invoice) {
             $invoice = DB::transaction(function () use ($posOrder) {
-                /** @var InvoiceService $invoiceService */
-                $invoiceService = app(InvoiceService::class);
-
-                $lines = [];
-                foreach ($posOrder->items as $item) {
-                    $lines[] = [
-                        'product_id'      => $item->product_id,
-                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
-                        'quantity'        => $item->quantity,
-                        'unit_price'      => $item->unit_price,
-                        'tax_rate'        => $item->tax_rate ?? 0,
-                        'discount_amount' => 0,
-                    ];
+                // Ensure customer_id exists (walk-in customer for anonymous POS orders)
+                if (!$posOrder->customer_id) {
+                    $walkIn = \App\Models\Customer::firstOrCreate(
+                        ['email' => 'walkin@system.local'],
+                        ['name' => 'Walk-in Customer', 'notes' => 'System customer for walk-in POS transactions']
+                    );
+                    $posOrder->update(['customer_id' => $walkIn->id]);
                 }
 
-                $inv = $invoiceService->createInvoice([
-                    'customer_id'  => $posOrder->customer_id,
-                    'invoice_date' => $posOrder->paid_at ?? $posOrder->created_at,
-                    'due_date'     => $posOrder->paid_at ?? $posOrder->created_at,
-                    'notes'        => "POS Order: {$posOrder->order_number}",
-                    'lines'        => $lines,
-                ]);
+                /** @var \Modules\Sales\Services\SalesOrderService $salesOrderService */
+                $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
+
+                // Create SalesOrder (idempotent via SalesChannelReference)
+                $salesOrder = $salesOrderService->createFromPosOrder($posOrder);
+
+                // If already invoiced, retrieve existing invoice
+                if ($salesOrder->isInvoiced()) {
+                    $link = \Modules\Sales\Models\SalesInvoiceLink::where('sales_order_id', $salesOrder->id)
+                        ->where('link_state', 'active')
+                        ->first();
+                    if ($link) {
+                        return \App\Models\Invoice::with(['customer', 'lines.product'])->findOrFail($link->invoice_id);
+                    }
+                }
+
+                // Fast-track through lifecycle for already-paid POS order
+                if ($salesOrder->isDraft()) {
+                    $salesOrder = $salesOrderService->confirmOrder($salesOrder);
+                }
+                if ($salesOrder->isConfirmed()) {
+                    $salesOrder = $salesOrderService->allocateOrder($salesOrder);
+                }
+                if ($salesOrder->isAllocated()) {
+                    $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
+                }
+
+                // Create invoice via canonical SalesOrderService → InvoiceService path
+                $inv = $salesOrderService->createInvoice($salesOrder);
 
                 // Override totals and status to match the already-paid POS order.
                 // No GL posting needed — that was already done by PosPostingService.

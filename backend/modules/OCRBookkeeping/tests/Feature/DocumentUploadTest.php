@@ -2,8 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
@@ -11,10 +10,8 @@ use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
 use App\Models\User;
 
-class DocumentUploadTest extends TestCase
+class DocumentUploadTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

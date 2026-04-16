@@ -2,17 +2,15 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Mail;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Modules\FinancialReporting\Models\ReportSchedule;
 use Carbon\Carbon;
 
-class GenerateScheduledReportJobTest extends TestCase
+class GenerateScheduledReportJobTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function it_can_be_dispatched()

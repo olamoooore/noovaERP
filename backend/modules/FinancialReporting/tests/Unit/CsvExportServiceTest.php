@@ -2,14 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 use Illuminate\Support\Facades\Storage;
 
-class CsvExportServiceTest extends TestCase
+class CsvExportServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected CsvExportService $service;
 

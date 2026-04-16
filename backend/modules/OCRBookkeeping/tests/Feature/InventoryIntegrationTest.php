@@ -2,8 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use App\Models\Product;
@@ -13,10 +12,8 @@ use App\Models\Vendor;
 use App\Models\User;
 use Carbon\Carbon;
 
-class InventoryIntegrationTest extends TestCase
+class InventoryIntegrationTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected OcrPostingService $service;
     protected Vendor $vendor;

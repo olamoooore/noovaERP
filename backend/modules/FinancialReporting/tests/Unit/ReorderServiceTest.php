@@ -2,14 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\ReorderService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 
-class ReorderServiceTest extends TestCase
+class ReorderServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected ReorderService $service;
 

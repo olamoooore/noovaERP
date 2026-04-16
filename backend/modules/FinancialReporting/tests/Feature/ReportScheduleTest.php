@@ -2,18 +2,15 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Modules\FinancialReporting\Models\ReportSchedule;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use App\Models\User;
 
-class ReportScheduleTest extends TestCase
+class ReportScheduleTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

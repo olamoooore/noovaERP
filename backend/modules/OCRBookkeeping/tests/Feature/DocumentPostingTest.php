@@ -2,8 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
@@ -13,10 +12,8 @@ use App\Models\Vendor;
 use App\Models\User;
 use Carbon\Carbon;
 
-class DocumentPostingTest extends TestCase
+class DocumentPostingTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected OcrPostingService $service;
     protected Vendor $vendor;

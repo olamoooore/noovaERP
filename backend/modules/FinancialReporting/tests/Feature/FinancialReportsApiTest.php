@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use App\Models\User;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
@@ -11,10 +10,8 @@ use App\Models\JournalEntryLine;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Artisan;
 
-class FinancialReportsApiTest extends TestCase
+class FinancialReportsApiTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

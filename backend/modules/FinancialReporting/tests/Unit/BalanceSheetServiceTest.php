@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Reports\BalanceSheetService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
@@ -11,9 +10,8 @@ use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use Carbon\Carbon;
 
-class BalanceSheetServiceTest extends TestCase
+class BalanceSheetServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected BalanceSheetService $service;
 

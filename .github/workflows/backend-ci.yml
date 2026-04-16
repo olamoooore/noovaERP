@@ -94,3 +94,15 @@ jobs:
       - name: Run PostgreSQL tenant provisioning smoke test
         working-directory: backend
         run: php scripts/assert_tenant_provisioning.php
+
+      - name: Run Feature test suite
+        working-directory: backend
+        run: php -d memory_limit=256M artisan test --testsuite=Feature
+
+      - name: Run OCR test suite
+        working-directory: backend
+        run: php -d memory_limit=256M artisan test --testsuite=OCR
+
+      - name: Run FinancialReporting test suite
+        working-directory: backend
+        run: php -d memory_limit=256M artisan test --testsuite=FinancialReporting

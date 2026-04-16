@@ -29,7 +29,7 @@ use Modules\EventManagement\Http\Controllers\BiddingController;
 
 // Admin/Authenticated API Routes
 Route::prefix('event-management')
-    ->middleware(['auth:sanctum', 'request.validation', 'feature.event_management', 'rate_limit:admin_api'])
+    ->middleware(['auth:sanctum', 'request.validation', 'entitlement:event_management', 'rate_limit:admin_api'])
     ->group(function () {
 
         // Event management routes
@@ -510,7 +510,7 @@ Route::prefix('event-management')
 
 // Public API Routes (no authentication required, but rate limited)
 Route::prefix('public/event-management')
-    ->middleware(['request.validation', 'feature.event_management', 'rate_limit:public_api'])
+    ->middleware(['request.validation', 'entitlement:event_management', 'rate_limit:public_api'])
     ->group(function () {
 
         // Public event routes
@@ -553,14 +553,14 @@ Route::prefix('public/event-management')
 
 // Payment callback routes (special rate limiting)
 Route::prefix('webhooks/event-management')
-    ->middleware(['request.validation', 'feature.event_management', 'rate_limit:payment_callback'])
+    ->middleware(['request.validation', 'entitlement:event_management', 'rate_limit:payment_callback'])
     ->group(function () {
 
         Route::post('/payment-callback', [BookingController::class, 'paymentCallback']);
     });
 
 // Customer Hub Routes
-Route::prefix('customer')->middleware(['auth:sanctum', 'request.validation', 'feature.event_management'])->group(function () {
+Route::prefix('customer')->middleware(['auth:sanctum', 'request.validation', 'entitlement:event_management'])->group(function () {
     Route::get('/dashboard', [Modules\EventManagement\Http\Controllers\CustomerHubController::class, 'getDashboard']);
     Route::post('/dashboard/recommendations/{recommendationId}/track', [Modules\EventManagement\Http\Controllers\CustomerHubController::class, 'trackRecommendation']);
 
@@ -577,6 +577,6 @@ Route::prefix('customer')->middleware(['auth:sanctum', 'request.validation', 'fe
 });
 
 // Ticket Download Route
-Route::prefix('bookings')->middleware(['request.validation', 'feature.event_management'])->group(function () {
+Route::prefix('bookings')->middleware(['request.validation', 'entitlement:event_management'])->group(function () {
     Route::get('/{bookingId}/tickets/download', [Modules\EventManagement\Http\Controllers\TicketController::class, 'download']);
 });
