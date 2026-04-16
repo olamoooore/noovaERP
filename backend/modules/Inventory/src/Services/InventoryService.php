@@ -6,13 +6,56 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\InventorySettings;
 use Modules\Inventory\Models\StockLevel;
 
 class InventoryService
 {
     /**
-     * Adjust stock for a product in a specific warehouse
+     * Low-stock query sourced from stock_levels (the operational source of truth).
+     *
+     * A product is low-stock when ANY warehouse has quantity > 0 but at or below
+     * its configured min_quantity (and min_quantity > 0).
+     * Falls back to a system-wide default of 10 when no min is configured.
+     */
+    private function lowStockProductsQuery()
+    {
+        return Product::where('is_active', true)
+            ->where('track_inventory', true)
+            ->whereHas('stockLevels', function ($q) {
+                $q->where('quantity', '>', 0)
+                  ->where(function ($inner) {
+                      $inner->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+                            ->orWhere(function ($fallback) {
+                                $fallback->whereRaw('(min_quantity IS NULL OR min_quantity = 0)')
+                                         ->where('quantity', '<=', 10);
+                            });
+                  });
+            })
+            ->orderBy('id');
+    }
+
+    /**
+     * Out-of-stock query sourced from stock_levels.
+     *
+     * A product is out-of-stock when the SUM of quantity across all warehouses is <= 0.
+     */
+    private function outOfStockProductsQuery()
+    {
+        return Product::where('is_active', true)
+            ->where('track_inventory', true)
+            ->whereDoesntHave('stockLevels', function ($q) {
+                $q->where('quantity', '>', 0);
+            })
+            ->orderBy('updated_at', 'desc');
+    }
+
+    /**
+     * Adjust stock for a product in a specific warehouse.
+     *
+     * This is the ONLY authorised path for all stock mutations.
+     * All callers (POS, Ecommerce, Procurement, Tracking, etc.) must go through here.
      */
     public function adjustStock(
         int $productId,
@@ -33,12 +76,36 @@ class InventoryService
             $batchNumber, $expiryDate
         ) {
             $settings = InventorySettings::current();
-            
-            // Get or create stock level for this product/warehouse
-            $stockLevel = StockLevel::firstOrCreate(
-                ['product_id' => $productId, 'warehouse_id' => $warehouseId],
-                ['quantity' => 0, 'reserved_quantity' => 0, 'min_quantity' => 0]
-            );
+
+            // ── Guard: warehouse must be active ──────────────────────────────
+            $warehouse = Warehouse::where('id', $warehouseId)->where('is_active', true)->first();
+            if (!$warehouse) {
+                throw new \InvalidArgumentException(
+                    "Warehouse ID {$warehouseId} does not exist or is not active."
+                );
+            }
+
+            // ── Guard: product must exist and track inventory ─────────────────
+            $product = Product::find($productId);
+            if (!$product) {
+                throw new \InvalidArgumentException("Product ID {$productId} does not exist.");
+            }
+
+            // Get or create stock level for this product/warehouse with row-level locking
+            $stockLevel = StockLevel::where('product_id', $productId)
+                ->where('warehouse_id', $warehouseId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$stockLevel) {
+                $stockLevel = StockLevel::create([
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'quantity' => 0,
+                    'reserved_quantity' => 0,
+                    'min_quantity' => 0,
+                ]);
+            }
 
             $oldQuantity = $stockLevel->quantity;
             $newQuantity = $oldQuantity;
@@ -59,6 +126,8 @@ class InventoryService
                 case 'adjustment':
                     $newQuantity = $quantity; // Direct set for adjustments
                     break;
+                default:
+                    throw new \InvalidArgumentException("Unsupported stock movement type: {$type}");
             }
 
             // Check for negative stock
@@ -74,6 +143,11 @@ class InventoryService
             $this->updateProductTotalStock($productId);
 
             // Create stock movement record
+            $createdBy = auth()->id() ?? DB::table('users')->value('id');
+            if (!$createdBy) {
+                throw new \RuntimeException('Cannot create stock movement without a valid user.');
+            }
+
             return StockMovement::create([
                 'product_id' => $productId,
                 'warehouse_id' => $warehouseId,
@@ -88,7 +162,7 @@ class InventoryService
                 'notes' => $notes,
                 'batch_number' => $batchNumber,
                 'expiry_date' => $expiryDate,
-                'created_by' => auth()->id(),
+                'created_by' => $createdBy,
             ]);
         });
     }
@@ -194,25 +268,17 @@ class InventoryService
     /**
      * Get low stock products
      */
-    public function getLowStockProducts(int $limit = 50): \Illuminate\Database\Eloquent\Collection
+    public function getLowStockProducts(int $perPage = 50, int $page = 1): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return Product::where('is_active', true)
-            ->where('stock_quantity', '>', 0)
-            ->whereRaw('stock_quantity <= COALESCE(min_stock_threshold, 10)')
-            ->orderBy('stock_quantity')
-            ->limit($limit)
-            ->get();
+        return $this->lowStockProductsQuery()->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**
      * Get out of stock products
      */
-    public function getOutOfStockProducts(int $limit = 50): \Illuminate\Database\Eloquent\Collection
+    public function getOutOfStockProducts(int $perPage = 50, int $page = 1): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return Product::where('is_active', true)
-            ->where('stock_quantity', '<=', 0)
-            ->limit($limit)
-            ->get();
+        return $this->outOfStockProductsQuery()->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**

@@ -36,6 +36,9 @@ class Invoice extends Model
         'notes',
         'terms',
         'journal_entry_id',
+        'pos_order_id',
+        'web_order_id',
+        'sales_order_id',
         'sent_at',
         'created_by',
     ];
@@ -86,6 +89,21 @@ class Invoice extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function posOrder(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\POS\Models\PosOrder::class, 'pos_order_id');
+    }
+
+    public function webOrder(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Ecommerce\Models\WebOrder::class, 'web_order_id');
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'sales_order_id');
     }
 
     public static function generateInvoiceNumber(): string

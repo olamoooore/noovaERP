@@ -86,12 +86,48 @@ export function getCurrencySymbol(currencyCode?: string): string {
   }
 }
 
-export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
+function normalizeDateValue(date?: string | Date | null): Date | null {
+  if (!date) {
+    return null
+  }
+
+  const parsedDate = date instanceof Date ? date : new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null
+  }
+
+  return parsedDate
+}
+
+export function formatDate(date?: string | Date | null, fallback: string = '-'): string {
+  const parsedDate = normalizeDateValue(date)
+
+  if (!parsedDate) {
+    return fallback
+  }
+
+  return parsedDate.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   })
+}
+
+export function formatDateTime(date?: string | Date | null, fallback: string = '-'): string {
+  const parsedDate = normalizeDateValue(date)
+
+  if (!parsedDate) {
+    return fallback
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsedDate)
 }
 
 export function formatNumber(value: number, decimals: number = 0): string {
@@ -99,4 +135,57 @@ export function formatNumber(value: number, decimals: number = 0): string {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(value)
+}
+
+export function getApiErrorMessage(error: any, fallback: string = 'An error occurred'): string {
+  const data = error?.response?.data
+
+  if (data?.errors && typeof data.errors === 'object') {
+    const messages = Object.values(data.errors)
+      .flat()
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+    if (messages.length > 0) {
+      return messages.join(', ')
+    }
+  }
+
+  if (typeof data?.error === 'string' && data.error.trim().length > 0) {
+    return data.error
+  }
+
+  if (typeof data?.message === 'string' && data.message.trim().length > 0) {
+    return data.message
+  }
+
+  if (typeof data === 'string' && data.trim().length > 0) {
+    return data
+  }
+
+  if (typeof error?.message === 'string' && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return fallback
+}
+
+export function resolveImageUrl(path: string | null | undefined): string {
+  if (!path) {
+    return ''
+  }
+
+  if (
+    path.startsWith('http://')
+    || path.startsWith('https://')
+    || path.startsWith('data:')
+    || path.startsWith('blob:')
+  ) {
+    return path
+  }
+
+  if (path.startsWith('/storage/')) {
+    return path
+  }
+
+  return `/storage/${path.replace(/^\//, '')}`
 }

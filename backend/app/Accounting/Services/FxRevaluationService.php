@@ -125,7 +125,7 @@ class FxRevaluationService
 
             $result = $this->postingEngine->post(new PostingRequest(
                 documentType: 'fx_revaluation',
-                documentId: 0, // batch process, no single source document
+                documentId: null, // batch process — no single source document; link row is skipped
                 postingDate: $revaluationDate,
                 description: "FX revaluation — {$currencyCode}",
                 lines: $lines,

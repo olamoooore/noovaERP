@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +21,6 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
-import loyaltyApi from '@/lib/loyaltyApi'
 
 interface Reward {
   id: number
@@ -33,6 +33,11 @@ interface Reward {
   value?: number
 }
 
+interface Program {
+  id: number
+  name: string
+}
+
 export function LoyaltyRewardsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -41,16 +46,43 @@ export function LoyaltyRewardsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const { data: rewards, isLoading } = useQuery({
-    queryKey: ['loyalty-rewards'],
+  const { data: program, isLoading: isProgramLoading } = useQuery<Program | null>({
+    queryKey: ['loyalty-program'],
     queryFn: async () => {
-      const response = await api.get('/loyalty/rewards')
+      try {
+        const response = await api.get('/loyalty/programs')
+        return response.data
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          return null
+        }
+
+        throw error
+      }
+    },
+  })
+
+  const { data: rewards, isLoading } = useQuery({
+    queryKey: ['loyalty-rewards', program?.id ?? null],
+    queryFn: async () => {
+      if (!program?.id) {
+        return { data: [] }
+      }
+
+      const response = await api.get('/loyalty/rewards', {
+        params: { program_id: program.id },
+      })
       return response.data
     },
+    enabled: !!program?.id,
   })
 
   const createReward = useMutation({
     mutationFn: async (data: any) => {
+      if (!program?.id) {
+        throw new Error('No active loyalty program found')
+      }
+
       const response = await api.post('/loyalty/rewards', data)
       return response.data
     },
@@ -62,10 +94,10 @@ export function LoyaltyRewardsPage() {
         description: 'Reward created successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: 'Error',
-        description: 'Failed to create reward',
+        description: error.response?.data?.message || error.message || 'Failed to create reward',
         variant: 'destructive',
       })
     },
@@ -85,10 +117,10 @@ export function LoyaltyRewardsPage() {
         description: 'Reward updated successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: 'Error',
-        description: 'Failed to update reward',
+        description: error.response?.data?.message || 'Failed to update reward',
         variant: 'destructive',
       })
     },
@@ -107,10 +139,10 @@ export function LoyaltyRewardsPage() {
         description: 'Reward deleted successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: 'Error',
-        description: 'Failed to delete reward',
+        description: error.response?.data?.message || 'Failed to delete reward',
         variant: 'destructive',
       })
     },
@@ -120,7 +152,7 @@ export function LoyaltyRewardsPage() {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     createReward.mutate({
-      loyalty_program_id: 1, // Default program ID
+      loyalty_program_id: program?.id,
       name: formData.get('name'),
       description: formData.get('description'),
       points_cost: parseInt(formData.get('points_cost') as string),
@@ -163,6 +195,38 @@ export function LoyaltyRewardsPage() {
 
   const getPointsCost = (reward: Reward) => {
     return reward.points_cost || reward.points_required || 0
+  }
+
+  if (isProgramLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Icon icon="solar:loading-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!program) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Loyalty Rewards</h1>
+          <p className="text-muted-foreground">Manage rewards catalog</p>
+        </div>
+
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <Icon icon="solar:gift-bold-duotone" className="h-16 w-16 text-muted-foreground" />
+            <div>
+              <h2 className="text-2xl font-bold">No Loyalty Program Found</h2>
+              <p className="text-muted-foreground">Create the default loyalty program in settings before adding rewards.</p>
+            </div>
+            <Button asChild>
+              <Link to="/loyalty/settings">Open Loyalty Settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

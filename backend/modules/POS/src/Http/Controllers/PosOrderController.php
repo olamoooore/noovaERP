@@ -6,11 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Invoice;
+use App\Models\Warehouse;
+use App\Services\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Setting;
 use App\Models\Tax;
+use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosPayment;
@@ -332,7 +336,17 @@ class PosOrderController extends Controller
     public function show($posOrder)
     {
         $posOrder = PosOrder::findOrFail($posOrder);
-        return response()->json($posOrder->load('items', 'payments', 'journalEntry'));
+        return response()->json($posOrder->load([
+            'customer',
+            'terminal',
+            'session',
+            'createdBy',
+            'items.product',
+            'items.variant',
+            'payments.paymentMethod',
+            'payments.receivedBy',
+            'journalEntry',
+        ]));
     }
 
     public function pay(Request $request, $posOrder, PosPostingService $posting)
@@ -384,12 +398,44 @@ class PosOrderController extends Controller
                 'received_by' => auth()->id(),
             ]);
 
-            foreach ($posOrder->items()->with(['product', 'variant'])->get() as $item) {
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($item->quantity, 'out', $posOrder->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($item->quantity, 'out', $posOrder->order_number);
+            // Deduct stock via InventoryService (canonical path — stock_levels stays authoritative).
+            // Resolve warehouse from the POS terminal; fall back to default warehouse.
+            $terminal = $posOrder->terminal()->with('warehouse')->first();
+            $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($posOrder->items()->with(['product', 'variant'])->get() as $item) {
+                    $productId    = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if ($productId && $trackInventory) {
+                        try {
+                            $inventoryService->adjustStock(
+                                productId:     $productId,
+                                warehouseId:   $warehouseId,
+                                quantity:      $item->quantity,
+                                type:          'sale',
+                                reference:     $posOrder->order_number,
+                                referenceType: 'PosOrder',
+                                referenceId:   $posOrder->id,
+                            );
+                        } catch (\Exception $e) {
+                            Log::error('POS stock deduction failed', [
+                                'order_number' => $posOrder->order_number,
+                                'product_id'   => $productId,
+                                'error'        => $e->getMessage(),
+                            ]);
+                            throw $e;
+                        }
+                    }
                 }
+            } else {
+                Log::warning('POS pay: no warehouse found for stock deduction — stock not updated', [
+                    'order_number' => $posOrder->order_number,
+                ]);
             }
 
             $entry = $posting->postPaidOrder(
@@ -510,14 +556,39 @@ class PosOrderController extends Controller
         return DB::transaction(function () use ($validated, $posOrder) {
             $returnOrder = $posOrder->createReturn($validated['items'], $validated['notes']);
 
-            // Process stock returns
-            foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
-                $qty = abs($item->quantity); // Returns are stored as negative
-                
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($qty, 'in', 'Return: ' . $returnOrder->order_number);
+            // Restore stock via InventoryService (canonical path).
+            $terminal     = $posOrder->terminal()->with('warehouse')->first();
+            $warehouseId  = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
+                    $qty        = abs($item->quantity); // Returns stored as negative
+                    $productId  = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if ($productId && $trackInventory && $qty > 0) {
+                        try {
+                            $inventoryService->adjustStock(
+                                productId:     $productId,
+                                warehouseId:   $warehouseId,
+                                quantity:      $qty,
+                                type:          'return',
+                                reference:     'Return: ' . $returnOrder->order_number,
+                                referenceType: 'PosOrder',
+                                referenceId:   $returnOrder->id,
+                            );
+                        } catch (\Exception $e) {
+                            Log::error('POS stock return failed', [
+                                'return_order' => $returnOrder->order_number,
+                                'product_id'   => $productId,
+                                'error'        => $e->getMessage(),
+                            ]);
+                            throw $e;
+                        }
+                    }
                 }
             }
 
@@ -570,42 +641,50 @@ class PosOrderController extends Controller
             ], 422);
         }
 
-        // Try to find existing invoice linked to this POS order
-        $invoice = Invoice::where('notes', 'like', "%POS Order: {$posOrder->order_number}%")
+        // Try to find existing invoice linked to this POS order via FK
+        $invoice = Invoice::where('pos_order_id', $posOrder->id)
             ->with(['customer', 'lines.product'])
             ->first();
 
-        // Auto-create invoice from POS order if none exists
+        // Auto-create invoice from POS order via InvoiceService if none exists
         if (!$invoice) {
             $invoice = DB::transaction(function () use ($posOrder) {
-                $inv = Invoice::create([
-                    'customer_id'      => $posOrder->customer_id,
-                    'invoice_date'     => $posOrder->paid_at ?? $posOrder->created_at,
-                    'due_date'         => $posOrder->paid_at ?? $posOrder->created_at,
-                    'status'           => 'paid',
+                /** @var InvoiceService $invoiceService */
+                $invoiceService = app(InvoiceService::class);
+
+                $lines = [];
+                foreach ($posOrder->items as $item) {
+                    $lines[] = [
+                        'product_id'      => $item->product_id,
+                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
+                        'quantity'        => $item->quantity,
+                        'unit_price'      => $item->unit_price,
+                        'tax_rate'        => $item->tax_rate ?? 0,
+                        'discount_amount' => 0,
+                    ];
+                }
+
+                $inv = $invoiceService->createInvoice([
+                    'customer_id'  => $posOrder->customer_id,
+                    'invoice_date' => $posOrder->paid_at ?? $posOrder->created_at,
+                    'due_date'     => $posOrder->paid_at ?? $posOrder->created_at,
+                    'notes'        => "POS Order: {$posOrder->order_number}",
+                    'lines'        => $lines,
+                ]);
+
+                // Override totals and status to match the already-paid POS order.
+                // No GL posting needed — that was already done by PosPostingService.
+                $inv->update([
                     'subtotal'         => $posOrder->subtotal,
                     'tax_amount'       => $posOrder->tax_amount ?? 0,
                     'discount_amount'  => $posOrder->discount_amount ?? 0,
                     'total'            => $posOrder->total,
                     'paid_amount'      => $posOrder->total,
                     'balance'          => 0,
-                    'notes'            => "POS Order: {$posOrder->order_number}",
+                    'status'           => 'paid',
+                    'pos_order_id'     => $posOrder->id,
                     'journal_entry_id' => $posOrder->journal_entry_id,
-                    'created_by'       => auth()->id(),
                 ]);
-
-                foreach ($posOrder->items as $item) {
-                    $inv->lines()->create([
-                        'product_id'      => $item->product_id,
-                        'description'     => $item->name ?? ($item->product->name ?? 'POS Item'),
-                        'quantity'        => $item->quantity,
-                        'unit_price'      => $item->unit_price,
-                        'tax_rate'        => $item->tax_rate ?? 0,
-                        'tax_amount'      => $item->tax_amount ?? 0,
-                        'discount_amount' => 0,
-                        'line_total'      => $item->line_total,
-                    ]);
-                }
 
                 return $inv->load(['customer', 'lines.product']);
             });

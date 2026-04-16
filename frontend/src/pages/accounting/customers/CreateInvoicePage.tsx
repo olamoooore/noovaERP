@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
+import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface InvoiceLine {
@@ -170,8 +171,12 @@ const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' |
 
 export const CreateInvoicePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isQuoteMode = location.pathname.startsWith('/sales/quotes');
+  const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
+  const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
 
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -244,19 +249,19 @@ export const CreateInvoicePage: React.FC = () => {
       return response.data;
     },
     onSuccess: (data) => {
-      toast({ title: 'Invoice created successfully' });
+      toast({ title: `${documentLabel} created successfully` });
       const invoiceId = data?.id || data?.data?.id;
       if (invoiceId) {
-        navigate(`/accounting/customers/bills/${invoiceId}`);
+        navigate(isQuoteMode ? `/sales/quotes/${invoiceId}` : `/accounting/customers/bills/${invoiceId}`);
       } else {
-        navigate('/accounting/customers/bills');
+        navigate(backPath);
       }
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to create invoice',
-        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
+        title: `Failed to create ${documentLabel.toLowerCase()}`,
+        description: getApiErrorMessage(error),
       });
     },
   });
@@ -280,7 +285,7 @@ export const CreateInvoicePage: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Failed to create customer',
-        description: error.response?.data?.message || 'An error occurred',
+        description: getApiErrorMessage(error),
       });
     },
   });
@@ -305,7 +310,7 @@ export const CreateInvoicePage: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Failed to update customer',
-        description: error.response?.data?.message || 'An error occurred',
+        description: getApiErrorMessage(error),
       });
     },
   });
@@ -455,19 +460,78 @@ export const CreateInvoicePage: React.FC = () => {
   };
 
   const customerMutationPending = createCustomerMutation.isPending || updateCustomerMutation.isPending;
+  const customerActions = [
+    {
+      key: 'add-customer',
+      label: 'Add Customer Inline',
+      description: 'Create and select a new customer without leaving this document.',
+      icon: 'solar:add-square-bold-duotone',
+      onClick: openCreateCustomerDialog,
+      disabled: false,
+    },
+    {
+      key: 'edit-customer',
+      label: 'Edit Selected Customer',
+      description: 'Update the selected customer before issuing this document.',
+      icon: 'solar:pen-bold-duotone',
+      onClick: openEditCustomerDialog,
+      disabled: !selectedCustomer,
+    },
+    {
+      key: 'manage-customers',
+      label: 'Manage Customers',
+      description: 'Open the full customer workspace in a separate screen.',
+      icon: 'solar:users-group-rounded-bold-duotone',
+      onClick: () => navigate('/customers'),
+      disabled: false,
+    },
+    {
+      key: 'open-profile',
+      label: 'Open Customer Profile',
+      description: selectedCustomer
+        ? 'Jump directly to the selected customer record.'
+        : 'Select a customer first to open the profile.',
+      icon: 'solar:user-id-bold-duotone',
+      onClick: () => {
+        if (selectedCustomer) {
+          navigate(`/customers/${selectedCustomer.id}`);
+        }
+      },
+      disabled: !selectedCustomer,
+    },
+  ];
+
+  const productActions = [
+    {
+      key: 'product-list',
+      label: 'Product List',
+      description: 'Browse existing products and reuse them in line items.',
+      icon: 'solar:box-bold-duotone',
+      onClick: () => navigate('/products'),
+    },
+    {
+      key: 'create-product',
+      label: 'Create Product',
+      description: 'Add a missing product, service, or catalog item.',
+      icon: 'solar:add-square-bold-duotone',
+      onClick: () => navigate('/products/new'),
+    },
+  ];
 
   return (
     <>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/customers/bills')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(backPath)}>
               <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
               Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold">Create Invoice</h1>
-              <p className="text-muted-foreground mt-1">Create a new customer invoice</p>
+              <h1 className="text-3xl font-bold">Create {documentLabel}</h1>
+              <p className="text-muted-foreground mt-1">
+                Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
+              </p>
             </div>
           </div>
         </div>
@@ -475,7 +539,7 @@ export const CreateInvoicePage: React.FC = () => {
         <form onSubmit={handleSubmit}>
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Invoice Details</CardTitle>
+              <CardTitle>{documentLabel} Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -496,7 +560,7 @@ export const CreateInvoicePage: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Invoice Date</label>
+                  <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
                     type="date"
                     value={invoiceDate}
@@ -505,7 +569,7 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Due Date</label>
+                  <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
                   <input
                     type="date"
                     value={dueDate}
@@ -514,41 +578,67 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Document Number</label>
+                  <label className="block text-sm font-medium mb-1">{documentLabel} Number</label>
                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
                     <div className="text-sm font-semibold text-slate-900">{invoiceNumberPreview}</div>
-                    <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the invoice is created.</div>
+                    <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the {documentLabel.toLowerCase()} is created.</div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={openCreateCustomerDialog}>
-                  <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
-                  Add Customer Inline
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={openEditCustomerDialog} disabled={!selectedCustomer}>
-                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4 mr-2" />
-                  Edit Selected Customer
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/customers')}>
-                  <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4 mr-2" />
-                  Manage Customers
-                </Button>
-                {selectedCustomer && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/customers/${selectedCustomer.id}`)}>
-                    <Icon icon="solar:user-id-bold-duotone" className="h-4 w-4 mr-2" />
-                    Open Customer Profile
-                  </Button>
-                )}
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products')}>
-                  <Icon icon="solar:box-bold-duotone" className="h-4 w-4 mr-2" />
-                  Product List
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/products/new')}>
-                  <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
-                  Create Product
-                </Button>
+              <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Customer Actions</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Keep the selected customer accurate before you save this {documentLabel.toLowerCase()}.
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {customerActions.map((action) => (
+                      <Button
+                        key={action.key}
+                        type="button"
+                        variant="outline"
+                        onClick={action.onClick}
+                        disabled={action.disabled}
+                        className="h-auto min-h-[72px] justify-start px-3 py-3 text-left whitespace-normal"
+                      >
+                        <Icon icon={action.icon} className="h-4 w-4 mr-3 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-slate-900">{action.label}</span>
+                          <span className="mt-1 block text-xs text-slate-500">{action.description}</span>
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Product Actions</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Open the catalog or create a missing item before adding line entries.
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {productActions.map((action) => (
+                      <Button
+                        key={action.key}
+                        type="button"
+                        variant="outline"
+                        onClick={action.onClick}
+                        className="h-auto min-h-[72px] justify-start px-3 py-3 text-left whitespace-normal"
+                      >
+                        <Icon icon={action.icon} className="h-4 w-4 mr-3 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-slate-900">{action.label}</span>
+                          <span className="mt-1 block text-xs text-slate-500">{action.description}</span>
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {selectedCustomer && (
@@ -856,7 +946,7 @@ export const CreateInvoicePage: React.FC = () => {
           </Card>
 
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => navigate('/accounting/customers/bills')}>
+            <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
@@ -868,7 +958,7 @@ export const CreateInvoicePage: React.FC = () => {
               ) : (
                 <>
                   <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
-                  Create Invoice
+                  Create {documentLabel}
                 </>
               )}
             </Button>

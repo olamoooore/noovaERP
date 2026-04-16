@@ -85,32 +85,6 @@ export function AdminDashboardPage() {
             />
           </div>
 
-          {/* Phase notice */}
-          <div className="rounded-xl border border-dashed border-brand-300 bg-brand-50 p-6">
-            <div className="flex items-start gap-4">
-              <div className="rounded-lg bg-brand-100 p-2.5">
-                <Icon icon="solar:rocket-bold-duotone" className="text-brand-700" width={24} />
-              </div>
-              <div>
-                <h2 className="font-semibold text-brand-900">{data.phase}</h2>
-                <p className="mt-1 text-sm text-brand-700">{data.message}</p>
-                <ul className="mt-3 space-y-1 text-sm text-brand-600">
-                  <li className="flex items-center gap-1.5">
-                    <Icon icon="solar:check-circle-bold-duotone" width={14} />
-                    Phase 0 complete — auth, routing, layout shell
-                  </li>
-                  <li className="flex items-center gap-1.5 opacity-50">
-                    <Icon icon="solar:clock-circle-bold-duotone" width={14} />
-                    Phase 1 — Plan catalog &amp; module catalog migrations
-                  </li>
-                  <li className="flex items-center gap-1.5 opacity-50">
-                    <Icon icon="solar:clock-circle-bold-duotone" width={14} />
-                    Phase 2 — Tenant 360 &amp; operations
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>

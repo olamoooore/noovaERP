@@ -4,6 +4,7 @@ namespace Modules\AI\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use Modules\AI\Services\OllamaService;
 
 /**
@@ -44,20 +45,23 @@ class AIStatusController extends Controller
      */
     public function info(): JsonResponse
     {
-        $models = $this->ollamaService->listModels();
-        $isHealthy = $this->ollamaService->healthCheck();
-        
-        return response()->json([
-            'success' => true,
-            'service' => [
-                'provider' => config('ai.provider'),
-                'status' => $isHealthy ? 'running' : 'stopped',
-                'base_url' => config('ai.ollama.base_url'),
-                'current_model' => config('ai.ollama.model'),
-                'available_models' => $models,
-            ],
-            'features' => config('ai.features'),
-            'conversation' => config('ai.conversation'),
-        ]);
+        $cached = Cache::remember('ai_service_info', 60, function () {
+            $models = $this->ollamaService->listModels();
+            $isHealthy = $this->ollamaService->healthCheck();
+
+            return [
+                'service' => [
+                    'provider' => config('ai.provider'),
+                    'status' => $isHealthy ? 'running' : 'stopped',
+                    'base_url' => config('ai.ollama.base_url'),
+                    'current_model' => config('ai.ollama.model'),
+                    'available_models' => $models,
+                ],
+                'features' => config('ai.features'),
+                'conversation' => config('ai.conversation'),
+            ];
+        });
+
+        return response()->json(array_merge(['success' => true], $cached));
     }
 }

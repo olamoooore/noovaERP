@@ -561,6 +561,50 @@ class OcrDocumentController extends Controller
     }
 
     /**
+     * Retry OCR extraction for a failed document
+     * POST /api/ocr/documents/{uuid}/retry
+     */
+    public function retry(string $uuid): JsonResponse
+    {
+        $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
+
+        if ($document->status !== 'EXTRACTION_FAILED') {
+            return response()->json([
+                'message' => 'Only failed documents can be retried.',
+                'status' => $document->status,
+            ], 422);
+        }
+
+        try {
+            $document->resetForRetry();
+
+            ProcessOcrDocument::dispatchSync($document->id);
+            $document->refresh();
+
+            return response()->json([
+                'message' => 'Document reprocessed successfully',
+                'data' => [
+                    'uuid' => $document->uuid,
+                    'status' => $document->status,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::warning("OCR retry failed for document {$uuid}: " . $e->getMessage());
+            $document->refresh();
+
+            return response()->json([
+                'message' => 'Retry failed',
+                'error' => $e->getMessage(),
+                'data' => [
+                    'uuid' => $document->uuid,
+                    'status' => $document->status,
+                ],
+            ], 500);
+        }
+    }
+
+    /**
      * Promote OCR document to canonical vendor bill draft.
      * POST /api/ocr/documents/{uuid}/promote/bill
      */

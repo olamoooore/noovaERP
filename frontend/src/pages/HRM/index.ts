@@ -1,0 +1,7 @@
+export { HRMDashboard } from './HRMDashboard'
+export { EmployeesPage } from './EmployeesPage'
+export { ContractsPage } from './ContractsPage'
+export { TimeshiftsPage } from './TimeshiftsPage'
+export { AttendancePage } from './AttendancePage'
+export { LeaveRequestsPage } from './LeaveRequestsPage'
+export { PayrollPage } from './PayrollPage'

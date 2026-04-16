@@ -45,8 +45,12 @@ use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountRolesController;
+use App\Http\Controllers\Api\AutoMatchController;
+use App\Http\Controllers\Api\SubledgerReconciliationController;
+use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\EntityManagementController;
+use App\Http\Controllers\Api\FiscalPeriodsController;
 use App\Http\Middleware\ResolveEntityContext;
 use App\Http\Middleware\EnsureEntityAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
@@ -60,6 +64,7 @@ Route::middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     ResolveEntityContext::class,
     EnsureEntityAccess::class,
     EnsureAccountingWriteAccess::class,
@@ -71,7 +76,7 @@ Route::middleware([
 // All accounting routes require authentication — see EDR-ACC-ARCH-2026-03-29 §7
 
 // Protected routes (with tenant context)
-Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class])->group(function () {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     // Settings
@@ -218,7 +223,30 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
         Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
-        
+
+        // Auto-Matching
+        Route::post('/reconciliation/auto-match/suggest', [AutoMatchController::class, 'suggestMatches']);
+        Route::post('/reconciliation/auto-match/accept', [AutoMatchController::class, 'acceptMatches']);
+        Route::post('/reconciliation/auto-match/bulk-accept', [AutoMatchController::class, 'bulkAcceptHighConfidence']);
+        Route::get('/reconciliation/auto-match/statistics/{bankAccountId}', [AutoMatchController::class, 'getStatistics']);
+
+        // Subledger to GL Reconciliation
+        Route::post('/accounting/reconciliation/ar-gl', [SubledgerReconciliationController::class, 'reconcileAR']);
+        Route::post('/accounting/reconciliation/ap-gl', [SubledgerReconciliationController::class, 'reconcileAP']);
+        Route::get('/accounting/reports/ar-gl-reconciliation', [SubledgerReconciliationController::class, 'getARReport']);
+        Route::get('/accounting/reports/ap-gl-reconciliation', [SubledgerReconciliationController::class, 'getAPReport']);
+        Route::get('/accounting/reconciliation/history/{type}', [SubledgerReconciliationController::class, 'getHistory']);
+
+        // Reconciliation Exceptions
+        Route::get('/reconciliation/exceptions', [ReconciliationExceptionController::class, 'index']);
+        Route::post('/reconciliation/exceptions', [ReconciliationExceptionController::class, 'store']);
+        Route::get('/reconciliation/exceptions/{id}', [ReconciliationExceptionController::class, 'show']);
+        Route::put('/reconciliation/exceptions/{id}', [ReconciliationExceptionController::class, 'update']);
+        Route::post('/reconciliation/exceptions/{id}/resolve', [ReconciliationExceptionController::class, 'resolve']);
+        Route::post('/reconciliation/exceptions/{id}/escalate', [ReconciliationExceptionController::class, 'escalate']);
+        Route::get('/reconciliation/exceptions/aging', [ReconciliationExceptionController::class, 'agingStatistics']);
+        Route::post('/reconciliation/exceptions/age-all', [ReconciliationExceptionController::class, 'ageAll']);
+
         // Fixed Assets
         Route::get('/assets', [FixedAssetsController::class, 'index']);
         Route::get('/assets/{id}', [FixedAssetsController::class, 'show']);
@@ -241,6 +269,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
         Route::get('/lock-dates/overrides/history', [LockDatesController::class, 'overrides']);
         
+        // Fiscal Periods — CRUD + lifecycle (lock / unlock / close / reopen)
+        Route::get('/fiscal-periods', [FiscalPeriodsController::class, 'index']);
+        Route::post('/fiscal-periods', [FiscalPeriodsController::class, 'store']);
+        Route::post('/fiscal-periods/generate-year', [FiscalPeriodsController::class, 'generateYear']);
+        Route::get('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'show']);
+        Route::put('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'update']);
+        Route::delete('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'destroy']);
+        Route::post('/fiscal-periods/{id}/lock', [FiscalPeriodsController::class, 'lock']);
+        Route::post('/fiscal-periods/{id}/unlock', [FiscalPeriodsController::class, 'unlock']);
+        Route::post('/fiscal-periods/{id}/close', [FiscalPeriodsController::class, 'close']);
+        Route::post('/fiscal-periods/{id}/reopen', [FiscalPeriodsController::class, 'reopen']);
+
         // Account Roles (Phase 2 — role-based account resolution)
         Route::get('/account-roles', [AccountRolesController::class, 'index']);
         Route::post('/account-roles/assign', [AccountRolesController::class, 'assign']);

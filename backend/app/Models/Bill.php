@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Inventory\Models\PurchaseOrder;
 
 class Bill extends Model
 {
@@ -15,6 +16,8 @@ class Bill extends Model
     protected $fillable = [
         'bill_number',
         'vendor_id',
+        'purchase_order_id',
+        'goods_receipt_id',
         'bill_date',
         'due_date',
         'vendor_reference',
@@ -66,6 +69,16 @@ class Bill extends Model
     public function vendor(): BelongsTo
     {
         return $this->belongsTo(Vendor::class);
+    }
+
+    public function purchaseOrder(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function goodsReceipt(): BelongsTo
+    {
+        return $this->belongsTo(GoodsReceipt::class);
     }
 
     public function lines(): HasMany

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
-import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { CheckoutLoyaltyWidget } from './components/CheckoutLoyaltyWidget'
+import { loadAceStripe } from '@/lib/stripe'
 
 interface CartItem {
   product_id: number
@@ -446,7 +447,7 @@ export function WebShopCheckoutPage() {
       })
 
       // Initialize Stripe
-      setStripePromise(loadStripe(publishable_key))
+      setStripePromise(loadAceStripe(publishable_key))
     } catch (err: any) {
       console.error('Checkout error:', err)
       toast({

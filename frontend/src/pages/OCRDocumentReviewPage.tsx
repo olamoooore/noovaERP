@@ -76,6 +76,24 @@ export function OCRDocumentReviewPage() {
     },
   })
 
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/ocr/documents/${uuid}/retry`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ocr-document', uuid] })
+      toast({ title: 'Document reprocessed successfully' })
+    },
+    onError: (error: any) => {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Retry failed',
+        description: error.response?.data?.error || 'An error occurred'
+      })
+    },
+  })
+
   const handleSave = (data: any) => {
     setIsSaving(true)
     updateMutation.mutate(data)
@@ -123,8 +141,9 @@ export function OCRDocumentReviewPage() {
 
   const status = statusConfig[document.status as keyof typeof statusConfig] || statusConfig.PENDING
 
-  const canEdit = document.status === 'NEEDS_REVIEW'
+  const canEdit = document.status === 'NEEDS_REVIEW' || document.status === 'EXTRACTION_FAILED'
   const canPost = document.status === 'NEEDS_REVIEW'
+  const canRetry = document.status === 'EXTRACTION_FAILED'
 
   return (
     <div className="space-y-6">
@@ -174,6 +193,33 @@ export function OCRDocumentReviewPage() {
           </Card>
 
           {/* Actions */}
+          {canRetry && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Extraction failed. {document.error_message ? `Reason: ${document.error_message}` : 'Please retry.'}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate('/ocr/documents')}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      onClick={() => retryMutation.mutate()}
+                      disabled={retryMutation.isPending}
+                    >
+                      <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4" />
+                      {retryMutation.isPending ? 'Retrying...' : 'Retry Extraction'}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {canPost && (
             <Card>
               <CardContent className="pt-6">

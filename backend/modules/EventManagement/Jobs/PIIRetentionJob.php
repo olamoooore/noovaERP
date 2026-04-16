@@ -3,6 +3,7 @@
 namespace Modules\EventManagement\Jobs;
 
 use Modules\EventManagement\Services\PIIVaultService;
+use App\Models\Tenant;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -11,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * PIIRetentionJob - Task 4.3
@@ -59,17 +61,83 @@ class PIIRetentionJob implements ShouldQueue
      */
     public function handle(PIIVaultService $piiVaultService): void
     {
+        Log::info('Starting PII retention job for all tenants', [
+            'batch_size' => $this->batchSize,
+            'dry_run' => $this->dryRun,
+            'retention_policies' => $this->retentionPolicies,
+        ]);
+
+        // Get all tenants and process each one
+        $tenants = Tenant::all();
+        $totalSummary = [
+            'processed_records' => 0,
+            'anonymized_records' => 0,
+            'skipped_records' => 0,
+            'error_count' => 0,
+            'expired_consent_processed' => 0,
+            'cleaned_export_requests' => 0,
+            'tenants_processed' => 0,
+        ];
+
+        foreach ($tenants as $tenant) {
+            try {
+                // Initialize tenancy for this tenant
+                Tenancy::initialize($tenant);
+                
+                Log::info('Processing PII retention for tenant', [
+                    'tenant_id' => $tenant->id,
+                    'tenant_name' => $tenant->name,
+                ]);
+                
+                $tenantSummary = $this->processTenantPII($piiVaultService, $tenant->id);
+                
+                // Aggregate results
+                $totalSummary['processed_records'] += $tenantSummary['processed_records'];
+                $totalSummary['anonymized_records'] += $tenantSummary['anonymized_records'];
+                $totalSummary['skipped_records'] += $tenantSummary['skipped_records'];
+                $totalSummary['error_count'] += $tenantSummary['error_count'];
+                $totalSummary['expired_consent_processed'] += $tenantSummary['expired_consent_processed'];
+                $totalSummary['cleaned_export_requests'] += $tenantSummary['cleaned_export_requests'];
+                $totalSummary['tenants_processed']++;
+                
+                // End tenancy for this tenant
+                Tenancy::end();
+                
+            } catch (\Exception $e) {
+                Log::error('Failed to process PII retention for tenant', [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $totalSummary['error_count']++;
+                
+                // Ensure tenancy is ended even on error
+                try {
+                    Tenancy::end();
+                } catch (\Exception $endEx) {
+                    // Ignore errors during tenancy cleanup
+                }
+            }
+        }
+
+        $totalSummary['dry_run'] = $this->dryRun;
+        $totalSummary['timestamp'] = Carbon::now()->toISOString();
+
+        Log::info('PII retention job completed for all tenants', $totalSummary);
+
+        // Check for critical issues
+        $this->checkForCriticalIssues($totalSummary);
+    }
+
+    /**
+     * Process PII retention for a single tenant
+     */
+    private function processTenantPII(PIIVaultService $piiVaultService, string $tenantId): array
+    {
         $startTime = microtime(true);
         $processedCount = 0;
         $anonymizedCount = 0;
         $errorCount = 0;
         $skippedCount = 0;
-        
-        Log::info('Starting PII retention job', [
-            'batch_size' => $this->batchSize,
-            'dry_run' => $this->dryRun,
-            'retention_policies' => $this->retentionPolicies,
-        ]);
 
         try {
             // Step 1: Process expired PII records in batches
@@ -98,6 +166,7 @@ class PIIRetentionJob implements ShouldQueue
                             Log::warning('Unknown retention policy', [
                                 'vault_id' => $record->id,
                                 'retention_policy' => $record->retention_policy,
+                                'tenant_id' => $tenantId,
                             ]);
                             $errorCount++;
                             continue;
@@ -121,12 +190,14 @@ class PIIRetentionJob implements ShouldQueue
                                     'field_name' => $record->field_name,
                                     'retention_policy' => $record->retention_policy,
                                     'method' => $policyDetails['anonymization_method'],
+                                    'tenant_id' => $tenantId,
                                 ]);
                             } else {
                                 $errorCount++;
                                 Log::error('Failed to anonymize PII record', [
                                     'vault_id' => $record->id,
                                     'error' => $result['error'] ?? 'Unknown error',
+                                    'tenant_id' => $tenantId,
                                 ]);
                             }
                         } else {
@@ -139,6 +210,7 @@ class PIIRetentionJob implements ShouldQueue
                                 'retention_policy' => $record->retention_policy,
                                 'method' => $policyDetails['anonymization_method'],
                                 'expired_days' => Carbon::now()->diffInDays(Carbon::parse($record->expires_at)),
+                                'tenant_id' => $tenantId,
                             ]);
                             $anonymizedCount++;
                         }
@@ -148,7 +220,7 @@ class PIIRetentionJob implements ShouldQueue
                         Log::error('Error processing PII record for retention', [
                             'vault_id' => $record->id ?? 'unknown',
                             'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString(),
+                            'tenant_id' => $tenantId,
                         ]);
                     }
                 }
@@ -166,10 +238,9 @@ class PIIRetentionJob implements ShouldQueue
             // Step 3: Clean up old export requests
             $cleanedExportRequests = $this->cleanupExpiredExportRequests();
 
-            // Step 4: Generate retention summary
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
-            
-            $summary = [
+
+            return [
                 'processed_records' => $processedCount,
                 'anonymized_records' => $anonymizedCount,
                 'skipped_records' => $skippedCount,
@@ -177,24 +248,14 @@ class PIIRetentionJob implements ShouldQueue
                 'expired_consent_processed' => $expiredConsentCount,
                 'cleaned_export_requests' => $cleanedExportRequests,
                 'execution_time_ms' => $executionTime,
-                'dry_run' => $this->dryRun,
-                'timestamp' => Carbon::now()->toISOString(),
             ];
 
-            Log::info('PII retention job completed', $summary);
-
-            // Step 5: Check for critical issues and alert if necessary
-            $this->checkForCriticalIssues($summary);
-
         } catch (\Exception $e) {
-            Log::error('PII retention job failed', [
+            Log::error('PII retention processing failed for tenant', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'processed_count' => $processedCount,
-                'error_count' => $errorCount,
+                'tenant_id' => $tenantId,
             ]);
             
-            // Re-throw to mark job as failed
             throw $e;
         }
     }
@@ -358,19 +419,19 @@ class PIIRetentionJob implements ShouldQueue
         }
         
         // Check for long execution time
-        if ($summary['execution_time_ms'] > 60000) { // More than 60 seconds
+        if (isset($summary['execution_time_ms']) && $summary['execution_time_ms'] > 60000) { // More than 60 seconds
             $criticalIssues[] = [
                 'type' => 'long_execution_time',
                 'message' => "PII retention job took {$summary['execution_time_ms']}ms to complete",
                 'data' => [
                     'execution_time_ms' => $summary['execution_time_ms'],
-                    'processed_count' => $summary['processed_records'],
+                    'processed_count' => $summary['processed_records'] ?? 0,
                 ],
             ];
         }
         
         // Check for large number of records to process (potential backlog)
-        if ($summary['processed_records'] >= $this->batchSize * 10) {
+        if (isset($summary['processed_records']) && $summary['processed_records'] >= $this->batchSize * 10) {
             $criticalIssues[] = [
                 'type' => 'large_backlog',
                 'message' => "Large PII retention backlog detected: {$summary['processed_records']} records",

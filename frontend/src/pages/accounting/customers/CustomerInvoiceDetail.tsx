@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -17,14 +17,19 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { formatDate, resolveImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
 
 export const CustomerInvoiceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const isQuoteMode = location.pathname.startsWith('/sales/quotes');
+  const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
+  const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
 
   // Fetch invoice details
   const { data: invoice, isLoading } = useQuery({
@@ -42,13 +47,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
       await api.delete(`/invoices/${id}`);
     },
     onSuccess: () => {
-      toast({ title: 'Invoice deleted successfully' });
-      navigate('/accounting/customers/bills');
+      toast({ title: `${documentLabel} deleted successfully` });
+      navigate(backPath);
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to delete invoice',
+        title: `Failed to delete ${documentLabel.toLowerCase()}`,
         description: error.response?.data?.message || 'An error occurred',
       });
     },
@@ -60,13 +65,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
       await api.post(`/invoices/${id}/send`);
     },
     onSuccess: () => {
-      toast({ title: 'Invoice posted successfully' });
+      toast({ title: isQuoteMode ? 'Quotation converted to invoice' : 'Invoice posted successfully' });
       queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
+      if (isQuoteMode) {
+        queryClient.invalidateQueries({ queryKey: ['sales-quotes'] });
+      }
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to post invoice',
+        title: isQuoteMode ? 'Failed to convert quotation' : 'Failed to post invoice',
         description: error.response?.data?.message || 'An error occurred',
       });
     },
@@ -78,15 +86,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
       style: 'currency',
       currency: 'USD',
     }).format(numAmount || 0);
-  };
-
-  const formatDate = (date: string) => {
-    if (!date) return '-';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -114,7 +113,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
       <div className="p-6">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground mt-4">Loading invoice details...</p>
+          <p className="text-muted-foreground mt-4">Loading {documentLabel.toLowerCase()} details...</p>
         </div>
       </div>
     );
@@ -127,11 +126,11 @@ export const CustomerInvoiceDetail: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center py-12">
               <Icon icon="solar:bill-list-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
-              <p className="text-lg font-medium mb-2">Invoice not found</p>
-              <p className="text-sm text-muted-foreground mb-4">The invoice you're looking for doesn't exist</p>
-              <Button onClick={() => navigate('/accounting/customers/bills')}>
+              <p className="text-lg font-medium mb-2">{documentLabel} not found</p>
+              <p className="text-sm text-muted-foreground mb-4">The {documentLabel.toLowerCase()} you're looking for doesn't exist</p>
+              <Button onClick={() => navigate(backPath)}>
                 <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-                Back to Invoices
+                Back to {isQuoteMode ? 'Quotes' : 'Invoices'}
               </Button>
             </div>
           </CardContent>
@@ -145,12 +144,12 @@ export const CustomerInvoiceDetail: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/customers/bills')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)}>
             <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Invoice {invoice.invoice_number || `#${invoice.id}`}</h1>
+            <h1 className="text-3xl font-bold">{documentLabel} {invoice.invoice_number || `#${invoice.id}`}</h1>
             <p className="text-muted-foreground mt-1">Customer: {invoice.customer?.name || 'Unknown'}</p>
           </div>
         </div>
@@ -159,7 +158,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
             <>
               <Button variant="default" onClick={() => postMutation.mutate()}>
                 <Icon icon="solar:send-bold-duotone" className="h-4 w-4 mr-2" />
-                Post Invoice
+                {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
               </Button>
               <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
                 <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-2" />
@@ -182,14 +181,14 @@ export const CustomerInvoiceDetail: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Invoice Information</span>
+            <span>{documentLabel} Information</span>
             {getStatusBadge(invoice.status)}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Invoice Number</p>
+              <p className="text-sm text-muted-foreground mb-1">{documentLabel} Number</p>
               <p className="font-medium">{invoice.invoice_number || `#${invoice.id}`}</p>
             </div>
             <div>
@@ -197,12 +196,12 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="font-medium">{invoice.customer?.name || 'Unknown'}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Invoice Date</p>
-              <p className="font-medium">{formatDate(invoice.invoice_date)}</p>
+              <p className="text-sm text-muted-foreground mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</p>
+              <p className="font-medium">{formatDate(invoice.invoice_date || invoice.created_at)}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Due Date</p>
-              <p className="font-medium">{formatDate(invoice.due_date)}</p>
+              <p className="text-sm text-muted-foreground mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</p>
+              <p className="font-medium">{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Subtotal</p>
@@ -326,10 +325,28 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {line.product?.name || '-'}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          {line.product?.image ? (
+                            <img
+                              src={resolveImageUrl(line.product.image)}
+                              alt={line.product?.name || line.description || 'Line item'}
+                              className="h-12 w-12 rounded object-cover border bg-background"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded border bg-background flex items-center justify-center text-muted-foreground">
+                              <Icon icon="solar:box-bold-duotone" className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{line.product?.name || line.description || '-'}</p>
+                            {line.product?.name && line.description && line.product.name !== line.description && (
+                              <p className="text-xs text-muted-foreground truncate">{line.description}</p>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>{line.description || '-'}</TableCell>
+                      <TableCell>{line.description || line.product?.name || '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
@@ -454,12 +471,12 @@ export const CustomerInvoiceDetail: React.FC = () => {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Customer Invoice?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {documentLabel}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this invoice? This action cannot be undone.
+              Are you sure you want to delete this {documentLabel.toLowerCase()}? This action cannot be undone.
               {invoice.status !== 'draft' && (
                 <p className="mt-2 text-red-600 font-medium">
-                  This invoice is {invoice.status} and cannot be deleted. Please cancel it instead.
+                  This {documentLabel.toLowerCase()} is {invoice.status} and cannot be deleted.
                 </p>
               )}
             </AlertDialogDescription>

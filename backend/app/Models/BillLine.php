@@ -20,6 +20,8 @@ class BillLine extends Model
         'tax_amount',
         'line_total',
         'account_id',
+        'purchase_order_item_id',
+        'goods_receipt_line_id',
     ];
 
     protected $casts = [
@@ -43,5 +45,15 @@ class BillLine extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'account_id');
+    }
+
+    public function purchaseOrderItem(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Inventory\Models\PurchaseOrderItem::class);
+    }
+
+    public function goodsReceiptLine(): BelongsTo
+    {
+        return $this->belongsTo(GoodsReceiptLine::class);
     }
 }

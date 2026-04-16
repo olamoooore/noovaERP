@@ -81,8 +81,14 @@ class BankReconciliationService
             });
         }
         
-        // Get transactions ordered by date
-        $lines = $query->orderBy('created_at', 'asc')->get();
+        // Order by financial date (entry_date), then by line ID for stability.
+        // Ordering by created_at was a bug — data entry order ≠ financial order.
+        $lines = $query
+            ->join('journal_entries as je', 'je.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->orderBy('je.entry_date', 'asc')
+            ->orderBy('journal_entry_lines.id', 'asc')
+            ->select('journal_entry_lines.*')
+            ->get();
         
         // Format transactions
         $transactions = [];
@@ -211,20 +217,24 @@ class BankReconciliationService
                 throw new \RuntimeException('Bank account is not linked to a GL account.');
             }
             
-            // Determine contra account
+            // contra_account_id is mandatory — heuristic name-based lookup was removed
+            // because it could silently select the wrong account (e.g. any account
+            // whose name contains 'bank' or 'miscellaneous').
             $contraAccountId = $data['contra_account_id'] ?? null;
-            
+
             if (!$contraAccountId) {
-                $contraAccount = ChartOfAccount::where('type', 'expense')
-                    ->where('name', 'ILIKE', '%bank%fee%')
-                    ->orWhere('name', 'ILIKE', '%miscellaneous%')
-                    ->first();
-                
-                if (!$contraAccount) {
-                    throw new \Exception('Contra account not specified and no default bank fees account found');
-                }
-                
-                $contraAccountId = $contraAccount->id;
+                throw new \InvalidArgumentException(
+                    'contra_account_id is required for adjusting entries. ' .
+                    'Specify the GL account to use as the offsetting entry (e.g. bank fees expense, interest income).'
+                );
+            }
+
+            // Validate the contra account exists
+            $contraExists = ChartOfAccount::where('id', $contraAccountId)->exists();
+            if (!$contraExists) {
+                throw new \InvalidArgumentException(
+                    "contra_account_id {$contraAccountId} does not exist in the chart of accounts."
+                );
             }
             
             // Build posting lines

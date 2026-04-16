@@ -40,6 +40,9 @@
             "Modules\\Ecommerce\\": "modules/Ecommerce/src/",
             "Modules\\Communication\\": "modules/Communication/src/",
             "Modules\\FieldService\\": "modules/FieldService/src/",
+            "Modules\\HRM\\": "modules/HRM/src/",
+            "Modules\\HRM\\Database\\Factories\\": "modules/HRM/database/factories/",
+            "Modules\\HRM\\Database\\Seeders\\": "modules/HRM/database/seeders/",
             "Modules\\": "modules/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
@@ -50,7 +53,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Tests\\": "tests/"
+            "Tests\\": "tests/",
+            "Modules\\HRM\\Tests\\": "modules/HRM/tests/"
         }
     },
     "scripts": {

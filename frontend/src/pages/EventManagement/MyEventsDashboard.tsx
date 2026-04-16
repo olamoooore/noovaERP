@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { useCustomerDashboard, useDownloadTicket } from '@/hooks/queries';
 import { LoadingSpinner } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { storefrontRoutes } from '@/storefront/lib/paths';
 
 /**
  * MyEventsDashboard Component
@@ -63,12 +64,14 @@ const MyEventsDashboard: React.FC = () => {
   };
 
   const handleShareEvent = async (eventId: number, eventTitle: string) => {
+    const url = `${window.location.origin}${storefrontRoutes.events}`;
+
     try {
       if (navigator.share) {
         await navigator.share({
           title: eventTitle,
-          text: `Check out this amazing event: ${eventTitle}`,
-          url: `${window.location.origin}/events/${eventId}`,
+          text: `Check out this event: ${eventTitle}`,
+          url,
         });
         toast({
           title: "Success",
@@ -76,7 +79,6 @@ const MyEventsDashboard: React.FC = () => {
         });
       } else {
         // Fallback to clipboard
-        const url = `${window.location.origin}/events/${eventId}`;
         await navigator.clipboard.writeText(url);
         toast({
           title: "Success",

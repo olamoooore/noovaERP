@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\PostingEngine;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 
@@ -24,6 +25,23 @@ class AppServiceProvider extends ServiceProvider
     {
         // Use custom PersonalAccessToken model that always uses public schema
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
+        // --- Superadmin RBAC gates ---
+        Gate::define('manage-admin-users', fn(\App\Models\User $user) =>
+            $user->role === 'platform_super_admin'
+        );
+
+        Gate::define('run-bulk-operations', fn(\App\Models\User $user) =>
+            in_array($user->role, ['platform_super_admin', 'platform_ops'], true)
+        );
+
+        Gate::define('view-revenue-analytics', fn(\App\Models\User $user) =>
+            in_array($user->role, ['platform_super_admin', 'billing_ops', 'sales_ops'], true)
+        );
+
+        Gate::define('manage-collections', fn(\App\Models\User $user) =>
+            in_array($user->role, ['platform_super_admin', 'billing_ops'], true)
+        );
 
         // Load Mail Configuration from Database
         try {
@@ -57,5 +75,27 @@ class AppServiceProvider extends ServiceProvider
         } catch (\Exception $e) {
             // Fails silently if DB/Schema checks fail during early boot
         }
+
+        // Disable SSL certificate verification for SMTP (self-signed mail server cert)
+        // This runs for both HTTP requests and queue workers
+        $this->app->afterResolving('mail.manager', function ($manager) {
+            try {
+                $transport = $manager->mailer('smtp')->getSymfonyTransport();
+                if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
+                    $stream = $transport->getStream();
+                    if ($stream instanceof \Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream) {
+                        $stream->setStreamOptions([
+                            'ssl' => [
+                                'verify_peer' => false,
+                                'verify_peer_name' => false,
+                                'allow_self_signed' => true,
+                            ],
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                // Fails silently if transport is not SMTP
+            }
+        });
     }
 }

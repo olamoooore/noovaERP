@@ -22,6 +22,7 @@ use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * Job to generate scheduled reports
@@ -47,6 +48,16 @@ class GenerateScheduledReport implements ShouldQueue
     public function handle(): void
     {
         try {
+            // Initialize tenancy for the scheduled report's tenant
+            $tenantId = $this->schedule->tenant_id ?? null;
+            if ($tenantId) {
+                Tenancy::initialize($tenantId);
+                Log::info("Initialized tenancy for scheduled report", [
+                    'schedule_id' => $this->schedule->id,
+                    'tenant_id' => $tenantId,
+                ]);
+            }
+
             Log::info("Generating scheduled report", [
                 'schedule_id' => $this->schedule->id,
                 'report_type' => $this->schedule->report_type,
@@ -76,6 +87,13 @@ class GenerateScheduledReport implements ShouldQueue
             ]);
 
             throw $e;
+        } finally {
+            // End tenancy if it was initialized
+            try {
+                Tenancy::end();
+            } catch (\Exception $endEx) {
+                // Ignore errors during tenancy cleanup
+            }
         }
     }
 

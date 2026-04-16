@@ -64,10 +64,19 @@ class VendorCreditNoteService
     }
 
     /**
-     * Post credit note (creates journal entry)
-     * DR: Expense Account
-     * CR: Sales Tax Payable
-     * CR: Accounts Payable
+     * Post credit note (creates journal entry).
+     *
+     * A vendor credit note REDUCES what we owe the vendor and REDUCES the
+     * expense/tax we originally recorded:
+     *
+     *   DR  Accounts Payable     (total)  — reduce the liability
+     *   CR  Input Tax            (tax)    — reverse the recoverable tax
+     *   CR  Expense Account      (subtotal) — reverse the original expense
+     *
+     * Hardening (2026-04-15):
+     *   - Corrected journal direction (was DR Expense / CR AP — backwards)
+     *   - Changed tax key from 'sales_tax_payable' to 'input_tax' (purchase side)
+     *   - Replaced non-atomic bill balance update with atomic DB::where()->decrement()
      */
     public function postCreditNote(VendorCreditNote $creditNote): VendorCreditNote
     {
@@ -97,33 +106,33 @@ class VendorCreditNoteService
         try {
             $lines = [];
 
-            // DR Expense (subtotal)
+            // DR Accounts Payable (total) — reduce the liability we owe the vendor
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'general_expense',
+                accountMappingKey: 'accounts_payable',
                 accountId: null,
-                debit: (float) $creditNote->subtotal,
+                debit: (float) $creditNote->total_amount,
                 credit: 0,
                 description: "Credit Note {$creditNote->credit_note_number}",
             );
 
-            // CR Sales Tax Payable
+            // CR Input Tax — reverse the recoverable tax on the original purchase
             if ((float) $creditNote->tax_amount > 0) {
                 $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'sales_tax_payable',
+                    accountMappingKey: 'input_tax',
                     accountId: null,
                     debit: 0,
                     credit: (float) $creditNote->tax_amount,
-                    description: "Tax - Credit Note {$creditNote->credit_note_number}",
+                    description: "Tax reversal - Credit Note {$creditNote->credit_note_number}",
                 );
             }
 
-            // CR Accounts Payable (total)
+            // CR Expense Account (subtotal) — reverse the original expense
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'accounts_payable',
+                accountMappingKey: 'general_expense',
                 accountId: null,
                 debit: 0,
-                credit: (float) $creditNote->total_amount,
-                description: "Credit Note {$creditNote->credit_note_number}",
+                credit: (float) $creditNote->subtotal,
+                description: "Expense reversal - Credit Note {$creditNote->credit_note_number}",
             );
 
             $result = $this->postingEngine->post(new PostingRequest(
@@ -147,9 +156,9 @@ class VendorCreditNoteService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Update bill balance
-            $bill->balance -= $creditNote->total_amount;
-            $bill->save();
+            // Atomically reduce bill balance
+            \App\Models\Bill::where('id', $bill->id)
+                ->decrement('balance', (float) $creditNote->total_amount);
 
             DB::commit();
             

@@ -3,8 +3,9 @@
   "scripts": {
     "dev:backend": "cd backend && php artisan serve",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:queue": "cd backend && php artisan queue:listen --tries=3 --timeout=60",
-    "dev": "concurrently -n backend,frontend,queue -c green,blue,yellow \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\""
+    "dev:queue": "cd backend && php artisan queue:listen --tries=3 --timeout=180",
+    "dev:ollama": "ollama serve",
+    "dev": "concurrently -n backend,frontend,queue,ollama -c green,blue,yellow,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\" \"npm run dev:ollama\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1"

@@ -5,7 +5,6 @@ namespace Modules\EventManagement\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\BookingConfirmation;
@@ -96,12 +95,10 @@ class PublicEventController extends Controller
             $reference = 'BK-' . strtoupper(substr(md5(uniqid()), 0, 8));
 
             // Generate a queue number from current bookings count + 1
-            $queueNumber = DB::table('bookings')
-                ->where('event_id', $id)
-                ->count() + 1;
+            $queueNumber = Booking::where('event_id', $id)->count() + 1;
 
-            // Create the booking
-            $booking = DB::table('bookings')->insertGetId([
+            // Create the booking using Eloquent (tenant-scoped via search_path)
+            $booking = Booking::create([
                 'booking_reference' => $reference,
                 'event_id'          => $id,
                 'buyer_name'        => $request->name,
@@ -113,12 +110,52 @@ class PublicEventController extends Controller
                 'payment_reference' => null,
                 'consent_pdpa'      => true,
                 'consent_marketing' => false,
-                'created_at'        => now(),
-                'updated_at'        => now(),
             ]);
 
             // Decrement available capacity
             Event::where('id', $id)->decrement('available_capacity');
+
+            // Ensure tenant mail config is loaded (public routes may not trigger the listener)
+            try {
+                $mail = \App\Models\Setting::getValue('mail_config');
+                if ($mail && is_array($mail)) {
+                    config(['mail.mailers.smtp' => [
+                        'transport' => $mail['driver'] ?? 'smtp',
+                        'host' => $mail['host'] ?? config('mail.mailers.smtp.host'),
+                        'port' => $mail['port'] ?? config('mail.mailers.smtp.port'),
+                        'encryption' => $mail['encryption'] ?? config('mail.mailers.smtp.encryption'),
+                        'username' => $mail['username'] ?? config('mail.mailers.smtp.username'),
+                        'password' => $mail['password'] ?? config('mail.mailers.smtp.password'),
+                        'timeout' => null,
+                        'local_domain' => env('MAIL_EHLO_DOMAIN'),
+                    ]]);
+                    if (!empty($mail['from_address'])) {
+                        config(['mail.from.address' => $mail['from_address']]);
+                    }
+                    if (!empty($mail['from_name'])) {
+                        config(['mail.from.name' => $mail['from_name']]);
+                    }
+                    // Purge and set SSL stream options on the new transport
+                    app('mail.manager')->purge('smtp');
+                    $transport = app('mail.manager')->mailer('smtp')->getSymfonyTransport();
+                    if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
+                        $stream = $transport->getStream();
+                        if ($stream instanceof \Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream) {
+                            $stream->setStreamOptions([
+                                'ssl' => [
+                                    'verify_peer' => false,
+                                    'verify_peer_name' => false,
+                                    'allow_self_signed' => true,
+                                ],
+                            ]);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to load tenant mail config for booking email', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // Send booking confirmation email (fire-and-forget, never breaks the booking response)
             try {
@@ -144,7 +181,7 @@ class PublicEventController extends Controller
 
             return response()->json([
                 'data' => [
-                    'booking_id'       => $booking,
+                    'booking_id'       => $booking->id,
                     'booking_reference'=> $reference,
                     'queue_number'     => str_pad($queueNumber, 4, '0', STR_PAD_LEFT),
                     'event_title'      => $event->title,

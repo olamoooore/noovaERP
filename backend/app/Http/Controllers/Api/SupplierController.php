@@ -69,6 +69,8 @@ class SupplierController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $request->replace($this->normalizeSupplierInput($request->all()));
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:50|unique:suppliers,code',
@@ -81,7 +83,7 @@ class SupplierController extends Controller
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
             'postal_code' => 'nullable|string|max:20',
-            'country' => 'nullable|string|max:2',
+            'country' => 'nullable|string|max:100',
             'tax_id' => 'nullable|string|max:50',
             'payment_terms_days' => 'nullable|integer|min:0|max:365',
             'currency' => 'nullable|string|max:3',
@@ -124,6 +126,7 @@ class SupplierController extends Controller
     public function update(Request $request, $supplier): JsonResponse
     {
         $supplier = Supplier::findOrFail($supplier);
+        $request->replace($this->normalizeSupplierInput($request->all()));
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'code' => ['sometimes', 'nullable', 'string', 'max:50', Rule::unique('suppliers', 'code')->ignore($supplier->id)],
@@ -136,7 +139,7 @@ class SupplierController extends Controller
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
             'postal_code' => 'nullable|string|max:20',
-            'country' => 'nullable|string|max:2',
+            'country' => 'nullable|string|max:100',
             'tax_id' => 'nullable|string|max:50',
             'payment_terms_days' => 'nullable|integer|min:0|max:365',
             'currency' => 'nullable|string|max:3',
@@ -316,5 +319,48 @@ class SupplierController extends Controller
         ];
 
         return response()->json($stats);
+    }
+
+    private function normalizeSupplierInput(array $input): array
+    {
+        if (!array_key_exists('contact_name', $input) && array_key_exists('contact_person', $input)) {
+            $input['contact_name'] = $input['contact_person'];
+        }
+
+        if (!array_key_exists('address_line_1', $input) && array_key_exists('address', $input)) {
+            $input['address_line_1'] = $input['address'];
+        }
+
+        if (!array_key_exists('tax_id', $input) && array_key_exists('tax_number', $input)) {
+            $input['tax_id'] = $input['tax_number'];
+        }
+
+        if (!array_key_exists('payment_terms_days', $input) && array_key_exists('payment_terms', $input)) {
+            $input['payment_terms_days'] = $input['payment_terms'];
+        }
+
+        foreach ([
+            'code',
+            'contact_name',
+            'email',
+            'phone',
+            'website',
+            'address_line_1',
+            'address_line_2',
+            'city',
+            'state',
+            'postal_code',
+            'country',
+            'tax_id',
+            'currency',
+            'notes',
+        ] as $field) {
+            if (array_key_exists($field, $input) && is_string($input[$field])) {
+                $trimmed = trim($input[$field]);
+                $input[$field] = $trimmed !== '' ? $trimmed : null;
+            }
+        }
+
+        return $input;
     }
 }

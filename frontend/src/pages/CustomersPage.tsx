@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Customer {
@@ -166,8 +166,12 @@ export function CustomersPage() {
       setFormData(initialFormData)
       toast({ title: 'Customer created successfully' })
     },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Failed to create customer' })
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create customer',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 
@@ -186,8 +190,12 @@ export function CustomersPage() {
       setEditMode(false)
       toast({ title: 'Customer updated successfully' })
     },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Failed to update customer' })
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update customer',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 

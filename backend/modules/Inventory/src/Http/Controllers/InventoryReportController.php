@@ -22,23 +22,26 @@ class InventoryReportController extends Controller
      */
     public function dashboard()
     {
-        $totalProducts = Product::where('is_active', true)->count();
+        $totalProducts   = Product::where('is_active', true)->where('track_inventory', true)->count();
         $totalWarehouses = Warehouse::where('is_active', true)->count();
-        
-        // Calculate stock values from products directly (since stock_quantity is on products)
-        $products = Product::where('is_active', true)->get();
-        
-        $totalStockValue = $products->sum(fn($p) => ($p->stock_quantity ?? 0) * ($p->cost ?? 0));
-        $totalRetailValue = $products->sum(fn($p) => ($p->stock_quantity ?? 0) * ($p->price ?? 0));
-        
-        // Count low stock and out of stock from products directly
-        $lowStockCount = Product::where('is_active', true)
-            ->where('stock_quantity', '>', 0)
-            ->whereRaw('stock_quantity <= COALESCE(min_stock_threshold, 10)')
-            ->count();
-            
+
+        // Stock values sourced from stock_levels (the operational source of truth).
+        // Joining to products to get unit cost/price for valuation.
+        $stockLevels = StockLevel::with(['product:id,cost,price'])->get();
+
+        $totalStockValue  = $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->cost ?? 0));
+        $totalRetailValue = $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->price ?? 0));
+
+        // Low/out-of-stock counts from stock_levels
+        $lowStockCount = StockLevel::where('quantity', '>', 0)
+            ->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+            ->whereHas('product', fn($q) => $q->where('is_active', true)->where('track_inventory', true))
+            ->distinct('product_id')
+            ->count('product_id');
+
         $outOfStockCount = Product::where('is_active', true)
-            ->where('stock_quantity', '<=', 0)
+            ->where('track_inventory', true)
+            ->whereDoesntHave('stockLevels', fn($q) => $q->where('quantity', '>', 0))
             ->count();
 
         // Recent movements

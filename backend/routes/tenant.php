@@ -23,6 +23,7 @@ Route::middleware([
     'api',
     \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
     \App\Http\Middleware\InitializeTenantForPublicAccess::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
     // Website public routes
     Route::prefix('website-public')->group(function () {
@@ -50,6 +51,13 @@ Route::middleware([
 
     // Guest order lookup by token
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
+
+    // Goods receipts (procurement receiving)
+    Route::get('/goods-receipts', [\App\Http\Controllers\Api\GoodsReceiptsController::class, 'index']);
+    Route::get('/goods-receipts/{goodsReceipt}', [\App\Http\Controllers\Api\GoodsReceiptsController::class, 'show']);
+    Route::post('/goods-receipts', [\App\Http\Controllers\Api\GoodsReceiptsController::class, 'store']);
+    Route::post('/goods-receipts/{goodsReceipt}/confirm', [\App\Http\Controllers\Api\GoodsReceiptsController::class, 'confirm']);
+    Route::post('/goods-receipts/{goodsReceipt}/cancel', [\App\Http\Controllers\Api\GoodsReceiptsController::class, 'cancel']);
 
     // Web shop auth (public - no login required)
     Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register']);
@@ -88,6 +96,8 @@ Route::middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
     PreventAccessFromCentralDomains::class,
 ])->prefix('api/v1')->group(function () {
     $modules = app(\App\Modules\ModuleManager::class);

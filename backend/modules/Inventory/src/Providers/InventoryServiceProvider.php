@@ -4,12 +4,14 @@ namespace Modules\Inventory\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockReservationService;
 
 class InventoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->app->singleton(InventoryService::class);
+        $this->app->singleton(StockReservationService::class);
     }
 
     public function boot(): void

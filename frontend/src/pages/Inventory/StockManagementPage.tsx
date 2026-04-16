@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 
@@ -32,6 +32,7 @@ interface Product {
   name: string
   sku: string
   stock_quantity: number
+  reorder_level?: number | null
   cost: number
   price: number
   image: string | null
@@ -67,6 +68,31 @@ interface AdjustmentReason {
   type: string
 }
 
+interface PaginatedResponse<T> {
+  data: T[]
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+const PRODUCTS_PAGE_SIZE = 50
+const MOVEMENTS_PAGE_SIZE = 50
+const LOW_STOCK_PAGE_SIZE = 25
+const OUT_OF_STOCK_PAGE_SIZE = 25
+
+const normalizePaginatedResponse = <T,>(payload: any): PaginatedResponse<T> => {
+  const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+
+  return {
+    data: rows,
+    current_page: payload?.current_page ?? payload?.meta?.current_page ?? 1,
+    last_page: payload?.last_page ?? payload?.meta?.last_page ?? 1,
+    per_page: payload?.per_page ?? payload?.meta?.per_page ?? rows.length,
+    total: payload?.total ?? payload?.meta?.total ?? rows.length,
+  }
+}
+
 type OperationType = 'in' | 'out' | 'adjust'
 type ActiveTab = 'products' | 'movements' | 'low-stock' | 'out-of-stock'
 
@@ -95,17 +121,27 @@ export function StockManagementPage() {
   const [searchMovements, setSearchMovements] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterWarehouse, setFilterWarehouse] = useState('all')
+  const [productsPage, setProductsPage] = useState(1)
+  const [movementsPage, setMovementsPage] = useState(1)
+  const [lowStockPage, setLowStockPage] = useState(1)
+  const [outOfStockPage, setOutOfStockPage] = useState(1)
+
+  useEffect(() => {
+    setProductsPage(1)
+  }, [searchProducts])
+
+  useEffect(() => {
+    setMovementsPage(1)
+  }, [searchMovements, filterType, filterWarehouse])
 
   // Queries
-  const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['products-stock', searchProducts],
+  const { data: productsData, isLoading: productsLoading } = useQuery<PaginatedResponse<Product>>({
+    queryKey: ['products-stock', searchProducts, productsPage],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: 200 }
+      const params: Record<string, any> = { per_page: PRODUCTS_PAGE_SIZE, page: productsPage }
       if (searchProducts) params.search = searchProducts
       const res = await api.get('/products', { params })
-      // Handle both paginated and non-paginated responses
-      const data = res.data?.data || res.data || []
-      return Array.isArray(data) ? data : []
+      return normalizePaginatedResponse<Product>(res.data)
     },
   })
 
@@ -125,30 +161,45 @@ export function StockManagementPage() {
     },
   })
 
-  const { data: movementsData, isLoading: movementsLoading } = useQuery({
-    queryKey: ['stock-movements', searchMovements, filterType, filterWarehouse],
+  const { data: movementsData, isLoading: movementsLoading } = useQuery<PaginatedResponse<StockMovement>>({
+    queryKey: ['stock-movements', searchMovements, filterType, filterWarehouse, movementsPage],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: 50 }
+      const params: Record<string, any> = { per_page: MOVEMENTS_PAGE_SIZE, page: movementsPage }
       if (searchMovements) params.search = searchMovements
       if (filterType !== 'all') params.type = filterType
       if (filterWarehouse !== 'all') params.warehouse_id = filterWarehouse
       const res = await api.get('/stock/movements', { params })
-      return res.data
+      return normalizePaginatedResponse<StockMovement>(res.data)
     },
   })
 
-  const { data: lowStockData } = useQuery({
-    queryKey: ['low-stock'],
+  const { data: lowStockData, isLoading: lowStockLoading } = useQuery<PaginatedResponse<Product>>({
+    queryKey: ['low-stock', lowStockPage],
     queryFn: async () => {
-      const res = await api.get('/stock/low-stock', { params: { limit: 50 } })
-      return res.data
+      const res = await api.get('/stock/low-stock', { params: { per_page: LOW_STOCK_PAGE_SIZE, page: lowStockPage } })
+      return normalizePaginatedResponse<Product>(res.data)
     },
   })
 
-  const { data: outOfStockData } = useQuery({
-    queryKey: ['out-of-stock'],
+  const { data: outOfStockData, isLoading: outOfStockLoading } = useQuery<PaginatedResponse<Product>>({
+    queryKey: ['out-of-stock', outOfStockPage],
     queryFn: async () => {
-      const res = await api.get('/stock/out-of-stock', { params: { limit: 50 } })
+      const res = await api.get('/stock/out-of-stock', { params: { per_page: OUT_OF_STOCK_PAGE_SIZE, page: outOfStockPage } })
+      return normalizePaginatedResponse<Product>(res.data)
+    },
+  })
+
+  const { data: inventoryDashboard } = useQuery<{
+    summary?: {
+      total_products?: number
+      total_warehouses?: number
+      low_stock_count?: number
+      out_of_stock_count?: number
+    }
+  }>({
+    queryKey: ['inventory-dashboard'],
+    queryFn: async () => {
+      const res = await api.get('/inventory/dashboard')
       return res.data
     },
   })
@@ -264,9 +315,16 @@ export function StockManagementPage() {
     }
   }
 
-  const products: Product[] = productsData || []
-  const selectedProduct = products.find(p => p.id === parseInt(productId))
+  const products = productsData?.data || []
   const movements = movementsData?.data || []
+  const lowStockItems = lowStockData?.data || []
+  const outOfStockItems = outOfStockData?.data || []
+  const dialogProducts = Array.from(
+    new Map([...products, ...lowStockItems, ...outOfStockItems].map((product) => [product.id, product])).values()
+  )
+  const selectedProduct = dialogProducts.find(p => p.id === parseInt(productId))
+  const lowStockCount = inventoryDashboard?.summary?.low_stock_count ?? lowStockItems.length
+  const outOfStockCount = inventoryDashboard?.summary?.out_of_stock_count ?? outOfStockItems.length
   const isSubmitting = stockInMutation.isPending || stockOutMutation.isPending || adjustMutation.isPending
 
   const getTypeConfig = (type: string) => {
@@ -284,10 +342,55 @@ export function StockManagementPage() {
   }
 
   const getStockStatus = (product: Product) => {
-    const threshold = product.min_stock_threshold || 10
+    const threshold = product.min_stock_threshold || product.reorder_level || 10
     if (product.stock_quantity <= 0) return { label: 'Out of Stock', color: 'bg-rose-100 text-rose-800' }
     if (product.stock_quantity <= threshold) return { label: 'Low Stock', color: 'bg-amber-100 text-amber-800' }
     return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
+  }
+
+  const renderPagination = (
+    pagination: PaginatedResponse<unknown> | undefined,
+    page: number,
+    setPage: React.Dispatch<React.SetStateAction<number>>,
+    itemLabel: string
+  ) => {
+    if (!pagination || pagination.last_page <= 1) {
+      return null
+    }
+
+    const startItem = ((pagination.current_page - 1) * pagination.per_page) + 1
+    const endItem = Math.min(pagination.current_page * pagination.per_page, pagination.total)
+
+    return (
+      <div className="flex items-center justify-between border-t px-4 py-3">
+        <div className="text-sm text-muted-foreground">
+          Showing {startItem}-{endItem} of {pagination.total} {itemLabel}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {pagination.current_page} of {pagination.last_page}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={page >= pagination.last_page}
+            onClick={() => setPage((currentPage) => Math.min(pagination.last_page, currentPage + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -322,7 +425,7 @@ export function StockManagementPage() {
           </div>
           <CardHeader className="pb-2">
             <CardDescription>Total Products</CardDescription>
-            <CardTitle className="text-3xl font-bold">{products.length}</CardTitle>
+            <CardTitle className="text-3xl font-bold">{inventoryDashboard?.summary?.total_products ?? products.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Active inventory items</p>
@@ -351,7 +454,7 @@ export function StockManagementPage() {
               <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 text-amber-500" />
               Low Stock
             </CardDescription>
-            <CardTitle className="text-3xl font-bold text-amber-600">{lowStockData?.length || 0}</CardTitle>
+            <CardTitle className="text-3xl font-bold text-amber-600">{lowStockCount}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Items below threshold</p>
@@ -367,7 +470,7 @@ export function StockManagementPage() {
               <Icon icon="solar:close-circle-bold" className="h-4 w-4 text-rose-500" />
               Out of Stock
             </CardDescription>
-            <CardTitle className="text-3xl font-bold text-rose-600">{outOfStockData?.length || 0}</CardTitle>
+            <CardTitle className="text-3xl font-bold text-rose-600">{outOfStockCount}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Items need restocking</p>
@@ -500,6 +603,7 @@ export function StockManagementPage() {
                     )}
                   </TableBody>
                 </Table>
+                {renderPagination(productsData, productsPage, setProductsPage, 'products')}
               </div>
             </CardContent>
           </Card>
@@ -620,7 +724,7 @@ export function StockManagementPage() {
                             <TableCell className="text-muted-foreground">{movement.reference || '-'}</TableCell>
                             <TableCell className="text-muted-foreground">{movement.created_by?.name || '-'}</TableCell>
                             <TableCell className="text-muted-foreground">
-                              {new Date(movement.created_at).toLocaleDateString()}
+                              {formatDate(movement.created_at)}
                             </TableCell>
                           </TableRow>
                         )
@@ -628,6 +732,7 @@ export function StockManagementPage() {
                     )}
                   </TableBody>
                 </Table>
+                {renderPagination(movementsData, movementsPage, setMovementsPage, 'movements')}
               </div>
             </CardContent>
           </Card>
@@ -648,7 +753,14 @@ export function StockManagementPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {!lowStockData || lowStockData.length === 0 ? (
+              {lowStockLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                    Loading low stock items...
+                  </div>
+                </div>
+              ) : lowStockItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mb-4">
                     <Icon icon="solar:check-circle-bold" className="h-8 w-8 text-primary" />
@@ -658,7 +770,7 @@ export function StockManagementPage() {
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  {lowStockData.map((item: any) => (
+                  {lowStockItems.map((item: any) => (
                     <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-amber-500/5 border-amber-500/20">
                       <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
@@ -680,7 +792,7 @@ export function StockManagementPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-muted-foreground">Min Threshold</p>
-                          <p className="text-lg font-medium">{item.min_stock_threshold || 10}</p>
+                          <p className="text-lg font-medium">{item.min_stock_threshold || item.reorder_level || 10}</p>
                         </div>
                         <Button size="sm" onClick={() => openDialog('in', item.id)}>
                           <Icon icon="solar:add-circle-bold" className="mr-1 h-4 w-4" />
@@ -691,6 +803,7 @@ export function StockManagementPage() {
                   ))}
                 </div>
               )}
+              {renderPagination(lowStockData, lowStockPage, setLowStockPage, 'low stock items')}
             </CardContent>
           </Card>
         </TabsContent>
@@ -710,7 +823,14 @@ export function StockManagementPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {!outOfStockData || outOfStockData.length === 0 ? (
+              {outOfStockLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                    Loading out of stock items...
+                  </div>
+                </div>
+              ) : outOfStockItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mb-4">
                     <Icon icon="solar:check-circle-bold" className="h-8 w-8 text-primary" />
@@ -720,7 +840,7 @@ export function StockManagementPage() {
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  {outOfStockData.map((item: any) => (
+                  {outOfStockItems.map((item: any) => (
                     <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-rose-500/5 border-rose-500/20">
                       <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
@@ -755,6 +875,7 @@ export function StockManagementPage() {
                   ))}
                 </div>
               )}
+              {renderPagination(outOfStockData, outOfStockPage, setOutOfStockPage, 'out of stock items')}
             </CardContent>
           </Card>
         </TabsContent>
@@ -806,7 +927,7 @@ export function StockManagementPage() {
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.map((product) => (
+                  {dialogProducts.map((product) => (
                     <SelectItem key={product.id} value={String(product.id)}>
                       <div className="flex items-center gap-2">
                         <span>{product.name}</span>

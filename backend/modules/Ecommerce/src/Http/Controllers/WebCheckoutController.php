@@ -17,11 +17,16 @@ use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
+use App\Models\Warehouse;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockReservationService;
 
 class WebCheckoutController extends Controller
 {
     public function __construct(
-        private PaymentService $paymentService
+        private PaymentService $paymentService,
+        private InventoryService $inventoryService,
+        private StockReservationService $stockReservationService,
     ) {}
 
     /**
@@ -68,6 +73,21 @@ class WebCheckoutController extends Controller
                         'available' => 0,
                         'reason' => 'Product not available',
                     ];
+                } elseif ($product->track_inventory) {
+                    $availability = $this->inventoryService->checkAvailability(
+                        (int) $product->id,
+                        (int) $item['quantity']
+                    );
+
+                    if (!($availability['is_available'] ?? false)) {
+                        $insufficientStock[] = [
+                            'product_id' => $item['product_id'],
+                            'name' => $product->name,
+                            'requested' => $item['quantity'],
+                            'available' => (int) ($availability['total_available'] ?? 0),
+                            'reason' => 'Insufficient stock',
+                        ];
+                    }
                 } elseif (($product->stock_quantity ?? PHP_INT_MAX) < $item['quantity']) {
                     $insufficientStock[] = [
                         'product_id' => $item['product_id'],
@@ -229,9 +249,12 @@ class WebCheckoutController extends Controller
                 'total' => $total,
             ]);
 
-            // ── Create order items & deduct stock ────────────────────────
+            // ── Create order items & reserve stock ───────────────────────
+            $warehouseId = Warehouse::getDefault()?->id;
+            $orderItems = [];
+
             foreach ($items as $item) {
-                WebOrderItem::create([
+                $orderItem = WebOrderItem::create([
                     'web_order_id' => $order->id,
                     'product_id' => $item['product']->id,
                     'product_name' => $item['product']->name,
@@ -243,10 +266,33 @@ class WebCheckoutController extends Controller
                     'tax_amount' => $item['tax_amount'],
                     'line_total' => $item['line_total'],
                 ]);
+                $orderItems[] = $orderItem;
+            }
 
-                // Deduct stock
-                if ($item['product']->stock_quantity !== null) {
-                    $item['product']->decrement('stock_quantity', $item['quantity']);
+            // ── Reserve stock to prevent oversell between checkout and payment ──
+            if ($warehouseId) {
+                foreach ($orderItems as $orderItem) {
+                    $product = Product::find($orderItem->product_id);
+                    if ($product && $product->track_inventory) {
+                        try {
+                            $this->stockReservationService->reserve(
+                                productId:            $orderItem->product_id,
+                                warehouseId:          $warehouseId,
+                                quantity:             $orderItem->quantity,
+                                sourceDocumentType:   'WebOrder',
+                                sourceDocumentId:     $order->id,
+                                sourceDocumentLineId: $orderItem->id,
+                                expiresAt:            now()->addMinutes(30), // 30-min TTL for unpaid orders
+                                notes:                "Web checkout reservation for {$order->order_number}",
+                            );
+                        } catch (\Exception $e) {
+                            Log::warning('Stock reservation failed during checkout — proceeding without reservation', [
+                                'order_id' => $order->id,
+                                'product_id' => $orderItem->product_id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
                 }
             }
 

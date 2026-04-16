@@ -13,12 +13,19 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Tenants',       path: '/tenants',         icon: 'solar:buildings-bold-duotone' },
   { label: 'Plans',         path: '/plans',           icon: 'solar:tag-price-bold-duotone' },
   { label: 'Modules',       path: '/modules',         icon: 'solar:widget-bold-duotone' },
+  { label: 'Catalog',       path: '/catalog',         icon: 'solar:box-bold-duotone' },
+  { label: 'Tier Matrix',   path: '/packaging',       icon: 'solar:widget-5-bold-duotone' },
+  { label: 'Pricing',       path: '/pricing',         icon: 'solar:calculator-bold-duotone' },
+  { label: 'Plan Changes',  path: '/plan-changes',    icon: 'solar:arrow-right-up-bold-duotone' },
+  { label: 'Catalog Intel',path: '/analytics/catalog',icon: 'solar:graph-bold-duotone' },
   { label: 'Subscriptions', path: '/subscriptions',   icon: 'solar:card-recive-bold-duotone' },
   { label: 'Billing',       path: '/billing',         icon: 'solar:bill-list-bold-duotone' },
   { label: 'Collections',   path: '/collections',     icon: 'solar:hand-money-bold-duotone' },
-  { label: 'Sales',         path: '/sales',           icon: 'solar:chart-square-bold-duotone' },
   { label: 'Operations',    path: '/operations',      icon: 'solar:settings-bold-duotone' },
+  { label: 'Analytics',     path: '/analytics',       icon: 'solar:chart-square-bold-duotone' },
+  { label: 'Admin Users',   path: '/users',           icon: 'solar:users-group-rounded-bold-duotone' },
   { label: 'Audit Log',     path: '/audit',           icon: 'solar:shield-check-bold-duotone' },
+  { label: 'Observability', path: '/observability',   icon: 'solar:graph-bold-duotone' },
 ]
 
 export function AdminSidebar() {
@@ -62,7 +69,7 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-[10px] text-gray-400">Phase 0 — Foundation</p>
+        <p className="text-[10px] text-gray-400">Phase 7 — Feature Gate API</p>
       </div>
     </aside>
   )

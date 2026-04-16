@@ -8,6 +8,7 @@ use Modules\Ecommerce\Models\WebOrder;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use App\Models\Tenant;
 use App\Models\StockMovement;
+use App\Models\JournalEntryLink;
 
 class ProcessAllWebOrders extends Command
 {
@@ -120,11 +121,16 @@ class ProcessAllWebOrders extends Command
         $hasJournalEntry = \App\Models\JournalEntry::where('reference', $order->order_number)
             ->where('type', 'payment')
             ->exists();
-        $hasStockDeduction = StockMovement::where('reference', $order->order_number)
-            ->where('type', 'out')
+        $hasStockDeduction = StockMovement::where('reference_type', 'WebOrder')
+            ->where('reference_id', $order->id)
+            ->where('type', 'sale')
             ->exists();
-        
-        if ($hasInvoice && $hasJournalEntry && $hasStockDeduction) {
+        $hasPostingLink = JournalEntryLink::where('source_document_type', 'web_order')
+            ->where('source_document_id', $order->id)
+            ->where('relation_type', 'post')
+            ->exists();
+
+        if ($hasInvoice && $hasJournalEntry && $hasStockDeduction && $hasPostingLink) {
             $this->info("    Already has invoice, journal entry, and stock deduction");
             return 'already_processed';
         }
@@ -172,8 +178,8 @@ class ProcessAllWebOrders extends Command
                     }
                 }
             } else {
-                // Journal entry exists but stock might not be deducted
-                if (!$hasStockDeduction) {
+                // Journal entry exists but stock might not be deducted (must be backed by posting link).
+                if (!$hasStockDeduction && $hasPostingLink) {
                     $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
                     $postingService->deductStock($order);
                     $this->info("    Stock deducted for order");

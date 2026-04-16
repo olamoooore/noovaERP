@@ -52,6 +52,7 @@ const baseNavItems: NavItem[] = [
     title: 'Products',
     href: '/products',
     icon: 'solar:box-bold-duotone',
+    featureKey: 'inventory',
     children: [
       {
         title: 'All Products',
@@ -188,9 +189,19 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:bill-list-bold-duotone',
       },
       {
+        title: 'Vendors',
+        href: '/accounting/vendors',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+      },
+      {
         title: 'Vendor Bills',
         href: '/accounting/vendors/bills',
         icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Bank Accounts',
+        href: '/accounting/configuration/bank-accounts',
+        icon: 'solar:card-bold-duotone',
       },
       {
         title: 'Bank Reconciliation',
@@ -267,6 +278,7 @@ const baseNavItems: NavItem[] = [
     title: 'Event Management',
     href: '/event-management',
     icon: 'solar:calendar-bold-duotone',
+    featureKey: 'event_management',
     children: [
       {
         title: 'My Events',
@@ -319,11 +331,13 @@ const baseNavItems: NavItem[] = [
         title: 'My Websites',
         href: '/website-builder',
         icon: 'solar:buildings-bold-duotone',
+        featureKey: 'website-builder',
       },
       {
         title: 'Online Shop',
         href: '/store',
         icon: 'solar:bag-4-bold-duotone',
+        featureKey: 'ecommerce',
       },
     ],
   },
@@ -331,7 +345,7 @@ const baseNavItems: NavItem[] = [
     title: 'IoT Hub',
     href: '/iot-hub',
     icon: 'solar:cpu-bolt-bold-duotone',
-    // featureKey: 'iot', // Temporarily disabled for testing
+    featureKey: 'iot',
   },
   {
     title: 'AI Chat',
@@ -388,9 +402,53 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
+    title: 'HRM',
+    href: '/hrm',
+    icon: 'solar:users-group-rounded-bold-duotone',
+    featureKey: 'hrm',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/hrm',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Employees',
+        href: '/hrm/employees',
+        icon: 'solar:user-id-bold-duotone',
+      },
+      {
+        title: 'Contracts',
+        href: '/hrm/contracts',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Timeshifts',
+        href: '/hrm/timeshifts',
+        icon: 'solar:clock-circle-bold-duotone',
+      },
+      {
+        title: 'Attendance',
+        href: '/hrm/attendance',
+        icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Leave Requests',
+        href: '/hrm/leave-requests',
+        icon: 'solar:calendar-bold-duotone',
+      },
+      {
+        title: 'Payroll',
+        href: '/hrm/payroll',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Reports',
     href: '/reports/financial',
     icon: 'solar:document-text-bold-duotone',
+    featureKey: 'financial-reporting',
     children: [
       {
         title: 'Executive Dashboard',
@@ -446,15 +504,30 @@ export function Sidebar() {
   })
 
   const enabledFeatures = new Set(
-    (features || []).filter((f: any) => f.enabled || f.is_core).map((f: any) => f.key)
+    (features || []).filter((f: any) => f.enabled).map((f: any) => f.key)
   )
 
-  const navItems = baseNavItems.filter(item => {
-    if (!item.featureKey) return true
-    // If features haven't loaded yet, show all items
+  const isFeatureEnabled = (featureKey?: string) => {
+    if (!featureKey) return true
     if (!features) return true
-    return enabledFeatures.has(item.featureKey)
-  })
+    return enabledFeatures.has(featureKey)
+  }
+
+  const navItems = baseNavItems.reduce<NavItem[]>((items, item) => {
+    if (!isFeatureEnabled(item.featureKey)) {
+      return items
+    }
+
+    const children = item.children?.filter((child) => isFeatureEnabled(child.featureKey))
+
+    if (item.children && !item.featureKey && features && (!children || children.length === 0)) {
+      return items
+    }
+
+    items.push(children ? { ...item, children } : item)
+
+    return items
+  }, [])
 
   const toggleExpand = (title: string) => {
     setExpandedItems(prev => 

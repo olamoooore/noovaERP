@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillLine;
+use App\Models\GoodsReceipt;
+use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,12 +29,17 @@ class VendorBillsController extends Controller
             $status = $request->get('status');
             $vendorId = $request->get('vendor_id');
 
-            $query = Bill::with(['vendor', 'lines'])
+            $query = Bill::with(['vendor', 'lines', 'purchaseOrder', 'goodsReceipt'])
                 ->orderBy('bill_date', 'desc');
 
             // Filter by status
             if ($status) {
-                $query->where('status', $status);
+                $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $status))));
+                if (count($statuses) > 1) {
+                    $query->whereIn('status', $statuses);
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             // Filter by vendor
@@ -88,7 +95,7 @@ class VendorBillsController extends Controller
     public function show($id)
     {
         try {
-            $bill = Bill::with(['vendor', 'lines.account', 'journalEntry'])
+            $bill = Bill::with(['vendor', 'lines.account', 'journalEntry', 'purchaseOrder', 'goodsReceipt'])
                 ->find($id);
 
             if (!$bill) {
@@ -110,6 +117,10 @@ class VendorBillsController extends Controller
         }
     }
 
+    public function __construct(
+        private readonly ThreeWayMatchService $threeWayMatchService,
+    ) {}
+
     /**
      * Create a new vendor bill
      * 
@@ -123,6 +134,8 @@ class VendorBillsController extends Controller
             $validator = Validator::make($request->all(), [
                 'bill_number' => 'nullable|string|unique:bills,bill_number',
                 'vendor_id' => 'required|exists:vendors,id',
+                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
                 'bill_date' => 'required|date',
                 'due_date' => 'nullable|date',
                 'vendor_reference' => 'nullable|string|max:100',
@@ -134,7 +147,6 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => 'nullable|string',
                 'company_registration_number' => 'nullable|string|max:100',
                 'tax_registration_number' => 'nullable|string|max:100',
-                'status' => 'nullable|in:draft,posted,paid,overdue,cancelled',
                 'notes' => 'nullable|string',
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -144,6 +156,8 @@ class VendorBillsController extends Controller
                 'lines.*.quantity' => 'required|numeric|min:0',
                 'lines.*.unit_price' => 'required|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+                'lines.*.purchase_order_item_id' => 'nullable|integer',
+                'lines.*.goods_receipt_line_id' => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
@@ -155,10 +169,31 @@ class VendorBillsController extends Controller
 
             DB::beginTransaction();
 
+            $goodsReceipt = null;
+            if ($request->filled('goods_receipt_id')) {
+                $goodsReceipt = GoodsReceipt::findOrFail((int) $request->goods_receipt_id);
+            }
+
+            $resolvedPurchaseOrderId = $request->purchase_order_id;
+            if ($goodsReceipt) {
+                if ($resolvedPurchaseOrderId && (int) $resolvedPurchaseOrderId !== (int) $goodsReceipt->purchase_order_id) {
+                    return response()->json([
+                        'message' => 'goods_receipt_id does not belong to the provided purchase_order_id',
+                    ], 422);
+                }
+                $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
+            }
+
+            // Run three-way match validation if PO or GRN is linked
+            // NOTE: Deferred to after bill+lines creation so the service can inspect real lines.
+            // See validation block below (after line creation).
+
             // Create bill
             $bill = Bill::create([
                 'bill_number' => $request->bill_number,
                 'vendor_id' => $request->vendor_id,
+                'purchase_order_id' => $resolvedPurchaseOrderId,
+                'goods_receipt_id' => $goodsReceipt?->id,
                 'bill_date' => $request->bill_date,
                 'due_date' => $request->due_date,
                 'vendor_reference' => $request->vendor_reference,
@@ -170,7 +205,7 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => $request->remittance_address_snapshot,
                 'company_registration_number' => $request->company_registration_number,
                 'tax_registration_number' => $request->tax_registration_number,
-                'status' => $request->status ?? 'draft',
+                'status' => 'draft',
                 'notes' => $request->notes,
                 'terms' => $request->terms,
                 'discount_amount' => $request->discount_amount ?? 0,
@@ -200,6 +235,8 @@ class VendorBillsController extends Controller
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxAmount,
                     'line_total' => $lineTotal,
+                    'purchase_order_item_id' => $lineData['purchase_order_item_id'] ?? null,
+                    'goods_receipt_line_id' => $lineData['goods_receipt_line_id'] ?? null,
                 ]);
             }
 
@@ -211,10 +248,25 @@ class VendorBillsController extends Controller
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 
+            // Run three-way match validation AFTER lines exist so the service
+            // can actually compare bill line quantities/prices against PO/GRN.
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $bill->load(['purchaseOrder.items.product', 'goodsReceipt.lines.product']);
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
+            }
+
             DB::commit();
 
             // Reload with relationships
-            $bill->load(['vendor', 'lines.account']);
+            $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
 
             return response()->json([
                 'message' => 'Vendor bill created successfully',
@@ -249,10 +301,22 @@ class VendorBillsController extends Controller
                 ], 404);
             }
 
-            // Validate request
+            // Immutability guard: posted/paid/cancelled bills cannot be edited directly.
+            // Use the dedicated service methods (postBill, cancelBill) for status transitions.
+            if (in_array($bill->status, ['posted', 'paid', 'cancelled'])) {
+                return response()->json([
+                    'message' => "Cannot edit a vendor bill with status '{$bill->status}'. " .
+                                 'Use the dedicated post/cancel endpoints for status transitions.',
+                ], 422);
+            }
+
+            // Validate request — 'status' is intentionally excluded: status transitions
+            // must go through VendorBillService state-machine methods, not direct mutation.
             $validator = Validator::make($request->all(), [
                 'bill_number' => 'nullable|string|unique:bills,bill_number,' . $id,
                 'vendor_id' => 'nullable|exists:vendors,id',
+                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
                 'bill_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
                 'vendor_reference' => 'nullable|string|max:100',
@@ -264,7 +328,6 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot' => 'nullable|string',
                 'company_registration_number' => 'nullable|string|max:100',
                 'tax_registration_number' => 'nullable|string|max:100',
-                'status' => 'nullable|in:draft,posted,paid,overdue,cancelled',
                 'notes' => 'nullable|string',
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -274,6 +337,8 @@ class VendorBillsController extends Controller
                 'lines.*.quantity' => 'required_with:lines|numeric|min:0',
                 'lines.*.unit_price' => 'required_with:lines|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+                'lines.*.purchase_order_item_id' => 'nullable|integer',
+                'lines.*.goods_receipt_line_id' => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
@@ -285,10 +350,25 @@ class VendorBillsController extends Controller
 
             DB::beginTransaction();
 
-            // Update bill
+            $resolvedPurchaseOrderId = $request->has('purchase_order_id') ? $request->purchase_order_id : $bill->purchase_order_id;
+            $resolvedGoodsReceiptId = $request->has('goods_receipt_id') ? $request->goods_receipt_id : $bill->goods_receipt_id;
+
+            if ($resolvedGoodsReceiptId) {
+                $goodsReceipt = GoodsReceipt::findOrFail((int) $resolvedGoodsReceiptId);
+                if ($resolvedPurchaseOrderId && (int) $resolvedPurchaseOrderId !== (int) $goodsReceipt->purchase_order_id) {
+                    return response()->json([
+                        'message' => 'goods_receipt_id does not belong to the provided purchase_order_id',
+                    ], 422);
+                }
+                $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
+            }
+
+            // Update bill — 'status' is intentionally excluded from this list.
             $bill->update($request->only([
                 'bill_number',
                 'vendor_id',
+                'purchase_order_id',
+                'goods_receipt_id',
                 'bill_date',
                 'due_date',
                 'vendor_reference',
@@ -300,11 +380,15 @@ class VendorBillsController extends Controller
                 'remittance_address_snapshot',
                 'company_registration_number',
                 'tax_registration_number',
-                'status',
                 'notes',
                 'terms',
                 'discount_amount',
             ]));
+
+            $bill->update([
+                'purchase_order_id' => $resolvedPurchaseOrderId,
+                'goods_receipt_id' => $resolvedGoodsReceiptId,
+            ]);
 
             // Update lines if provided
             if ($request->has('lines')) {
@@ -329,6 +413,8 @@ class VendorBillsController extends Controller
                         'tax_rate' => $taxRate,
                         'tax_amount' => $taxAmount,
                         'line_total' => $lineTotal,
+                        'purchase_order_item_id' => $lineData['purchase_order_item_id'] ?? null,
+                        'goods_receipt_line_id' => $lineData['goods_receipt_line_id'] ?? null,
                     ]);
                 }
 
@@ -341,10 +427,24 @@ class VendorBillsController extends Controller
                 $bill->save();
             }
 
+            // Re-validate three-way match after update (lines may have changed)
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $bill->load(['lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product']);
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
+            }
+
             DB::commit();
 
             // Reload with relationships
-            $bill->load(['vendor', 'lines.account']);
+            $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
 
             return response()->json([
                 'message' => 'Vendor bill updated successfully',
@@ -371,10 +471,22 @@ class VendorBillsController extends Controller
     public function post($id, VendorBillService $billService)
     {
         try {
-            $bill = Bill::with(['vendor', 'lines'])->find($id);
+            $bill = Bill::with(['vendor', 'lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product'])->find($id);
 
             if (!$bill) {
                 return response()->json(['message' => 'Vendor bill not found'], 404);
+            }
+
+            // Three-way match gate: reject posting if PO/GRN constraints are violated.
+            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+                $matchResult = $this->threeWayMatchService->validate($bill);
+                if (!$matchResult['valid']) {
+                    return response()->json([
+                        'message' => 'Cannot post: three-way match validation failed',
+                        'errors' => $matchResult['errors'],
+                        'warnings' => $matchResult['warnings'],
+                    ], 422);
+                }
             }
 
             $result = $billService->postBill($bill);

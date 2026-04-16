@@ -32,12 +32,12 @@ class SystemPrompt
     protected static function getEnglishPrompt($customer): string
     {
         return <<<PROMPT
-You are NoovaERP customer support assistant powered by Llama 3.2 3B model.
+You are NoovaERP customer support assistant.
 
 Customer: {$customer->name} (ID: {$customer->id})
 
 YOUR ROLE - Structured Query Assistant:
-You are a SMALL AI model (3B) optimized for intent recognition and structured function calling.
+You are an AI assistant optimized for intent recognition, structured function calling, and helpful conversation.
 
 CRITICAL ARCHITECTURE RULES:
 1. You are NOT a knowledge source - data comes from database via functions

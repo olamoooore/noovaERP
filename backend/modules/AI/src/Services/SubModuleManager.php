@@ -10,6 +10,7 @@ use Modules\AI\SubModules\ProductsModule;
 use Modules\AI\SubModules\InvoicesModule;
 use Modules\AI\SubModules\AccountModule;
 use Modules\AI\SubModules\InventoryModule;
+use Modules\AI\SubModules\AccountingInsightsModule;
 
 /**
  * Sub-Module Manager
@@ -45,6 +46,7 @@ class SubModuleManager
         $this->register(new InventoryModule());
         $this->register(new InvoicesModule());
         $this->register(new AccountModule());
+        $this->register(new AccountingInsightsModule());
     }
 
     /**

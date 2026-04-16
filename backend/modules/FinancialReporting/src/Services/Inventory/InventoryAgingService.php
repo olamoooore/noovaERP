@@ -159,6 +159,15 @@ class InventoryAgingService extends BaseReportService
      */
     protected function getQuantityAsOfDate(int $productId, Carbon $asOfDate, bool $stockMovementsExists): int
     {
+        if (
+            DB::getSchemaBuilder()->hasTable('stock_levels')
+            && $asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())
+        ) {
+            return (int) DB::table('stock_levels')
+                ->where('product_id', $productId)
+                ->sum('quantity');
+        }
+
         if (!$stockMovementsExists) {
             // Fallback to products table
             $product = DB::table('products')
@@ -192,7 +201,7 @@ class InventoryAgingService extends BaseReportService
             // Get the oldest stock-in movement that hasn't been fully sold
             $oldestMovement = DB::table('stock_movements')
                 ->where('product_id', $productId)
-                ->whereIn('type', ['purchase', 'adjustment_in', 'initial'])
+                ->whereIn('type', ['in', 'purchase', 'return', 'transfer_in', 'adjustment_in', 'initial'])
                 ->orderBy('created_at', 'asc')
                 ->first();
 

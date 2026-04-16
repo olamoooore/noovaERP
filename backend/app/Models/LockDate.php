@@ -67,7 +67,10 @@ class LockDate extends Model
             return false;
         }
 
-        return $date < $lockDate->lock_date;
+        // Use lte (<=) to match LockDateValidationService::validateTransactionDate()
+        // which already uses $date->lte($lockDate->lock_date). A date exactly equal
+        // to the lock date IS locked — it should not be postable.
+        return $date <= $lockDate->lock_date;
     }
 
     /**

@@ -2,10 +2,13 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
+use App\Accounting\DTOs\ReversalRequest;
+use Database\Factories\OcrDocumentFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 use App\Models\Customer;
 use App\Models\JournalEntry;
@@ -81,6 +84,11 @@ class OcrDocument extends Model
         'exchange_rate' => 1.0,
         'retry_count' => 0,
     ];
+
+    protected static function newFactory(): Factory
+    {
+        return OcrDocumentFactory::new();
+    }
 
     /**
      * Boot method to auto-generate UUID
@@ -228,10 +236,13 @@ class OcrDocument extends Model
         // Reverse the journal entry via PostingEngine (immutable audit trail)
         if ($this->journal_entry_id && $this->journalEntry) {
             $postingEngine = app(\App\Accounting\Contracts\PostingEngineInterface::class);
-            $result = $postingEngine->reverse(
-                $this->journal_entry_id,
-                "Unpost OCR document {$this->uuid}"
-            );
+            $result = $postingEngine->reverse(new ReversalRequest(
+                journalEntryId: (int) $this->journal_entry_id,
+                reversalDate: now()->toDateString(),
+                reason: "Unpost OCR document {$this->uuid}",
+                reasonCode: 'OCR_UNPOST',
+                actorUserId: TenantUserHelper::getTenantUserId(),
+            ));
 
             if (!$result->success) {
                 throw new \Exception("Failed to reverse journal entry: {$result->error}");

@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Models\Page;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Serves published websites as complete HTML pages.
@@ -26,44 +25,9 @@ class PublicWebsiteRenderController extends Controller
         // Find website by slug in current tenant
         $website = Website::where('slug', $websiteSlug)->first();
         
-        // If not found in current tenant, search across all tenants (dev-friendly fallback)
+        // Cross-tenant fallback removed for strict isolation.
         if (!$website) {
-            $foundTenant = null;
-            try {
-                $tenants = \App\Models\Tenant::all();
-            } catch (\Exception $e) {
-                Log::warning('PublicWebsiteRender: Unable to query tenants table', [
-                    'error' => $e->getMessage(),
-                ]);
-                return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
-            }
-
-            foreach ($tenants as $tenant) {
-                if ($tenant->id === tenant()?->id) {
-                    continue; // Already checked current tenant
-                }
-                try {
-                    tenancy()->initialize($tenant);
-                    $website = Website::where('slug', $websiteSlug)->first();
-                    if ($website) {
-                        $foundTenant = $tenant;
-                        Log::info('PublicWebsiteRender: Found website in different tenant', [
-                            'slug' => $websiteSlug,
-                            'tenant_id' => $tenant->id,
-                        ]);
-                        break;
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('PublicWebsiteRender: Error searching tenant', [
-                        'tenant_id' => $tenant->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-            
-            if (!$website) {
-                return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
-            }
+            return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
         }
 
         // Find the page

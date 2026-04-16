@@ -3,13 +3,16 @@
 namespace Modules\FieldService\Services;
 
 use App\Models\Product;
-use App\Models\StockMovement;
-use Illuminate\Support\Facades\Auth;
 use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\WorkOrderPart;
+use Modules\Inventory\Services\InventoryService;
 
 class StockDeductionService
 {
+    public function __construct(
+        private InventoryService $inventoryService
+    ) {}
+
     /**
      * Deduct all parts from stock for a completed work order.
      * Safe to call multiple times — skips already-deducted parts.
@@ -39,20 +42,16 @@ class StockDeductionService
             return;
         }
 
-        // Create stock movement record (negative = out)
-        if (class_exists(StockMovement::class)) {
-            StockMovement::create([
-                'product_id'      => $part->product_id,
-                'warehouse_id'    => $part->warehouse_id,
-                'type'            => 'out',
-                'quantity'        => (float) $part->quantity,
-                'reference_type'  => 'field_service',
-                'reference_id'    => $wo->id,
-                'reference_number'=> $wo->reference,
-                'notes'           => "Parts used in WO {$wo->reference}: {$wo->title}",
-                'created_by'      => Auth::id(),
-            ]);
-        }
+        $this->inventoryService->adjustStock(
+            productId: (int) $part->product_id,
+            warehouseId: (int) $part->warehouse_id,
+            quantity: max(1, (int) ceil((float) $part->quantity)),
+            type: 'out',
+            reference: $wo->reference,
+            referenceType: 'field_service',
+            referenceId: $wo->id,
+            notes: "Parts used in WO {$wo->reference}: {$wo->title}"
+        );
 
         $part->stock_deducted = true;
         $part->save();
@@ -64,20 +63,7 @@ class StockDeductionService
      */
     public function checkAvailability(int $productId, int $warehouseId): ?float
     {
-        if (!class_exists(StockMovement::class)) {
-            return null;
-        }
-
-        $inbound = StockMovement::where('product_id', $productId)
-            ->where('warehouse_id', $warehouseId)
-            ->where('type', 'in')
-            ->sum('quantity');
-
-        $outbound = StockMovement::where('product_id', $productId)
-            ->where('warehouse_id', $warehouseId)
-            ->where('type', 'out')
-            ->sum('quantity');
-
-        return max(0, (float) $inbound - (float) $outbound);
+        $availability = $this->inventoryService->checkAvailability($productId, 1, $warehouseId);
+        return (float) ($availability['total_available'] ?? 0);
     }
 }

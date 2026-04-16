@@ -9,7 +9,7 @@ use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\SupplierController;
 use Modules\Inventory\Http\Controllers\WarehouseTransferController;
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
     // Brands
     Route::apiResource('brands', BrandController::class)->parameters([
         'brands' => 'brand_id',

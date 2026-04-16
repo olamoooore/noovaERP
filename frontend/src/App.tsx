@@ -8,6 +8,7 @@ import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { useSettingsStore } from '@/store/settingsStore'
+import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
 
 // Lazy load heavy pages for better initial load performance
 const ProductsPage = lazy(() => import('@/pages/ProductsPage').then(m => ({ default: m.ProductsPage })))
@@ -44,6 +45,7 @@ const ExpenseAnalyticsPage = lazy(() => import('@/pages/reports/ExpenseAnalytics
 // Lazy load dashboard pages (heavy with charts)
 const ExecutiveDashboard = lazy(() => import('@/pages/dashboards/ExecutiveDashboard').then(m => ({ default: m.ExecutiveDashboard })))
 const SalesDashboard = lazy(() => import('@/pages/dashboards/SalesDashboard').then(m => ({ default: m.SalesDashboard })))
+const QuotesPage = lazy(() => import('@/pages/sales/QuotesPage').then(m => ({ default: m.QuotesPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -55,6 +57,7 @@ const CustomerInvoiceDetail = lazy(() => import('@/pages/accounting/customers/Cu
 const CustomerPayments = lazy(() => import('@/pages/accounting/customers/CustomerPayments').then(m => ({ default: m.CustomerPayments })))
 const CustomerFollowupReports = lazy(() => import('@/pages/accounting/customers/CustomerFollowupReports').then(m => ({ default: m.CustomerFollowupReports })))
 const CustomerStatements = lazy(() => import('@/pages/accounting/customers/CustomerStatements').then(m => ({ default: m.CustomerStatements })))
+const VendorsPage = lazy(() => import('@/pages/accounting/vendors/VendorsPage'))
 const VendorBills = lazy(() => import('@/pages/accounting/vendors/VendorBills').then(m => ({ default: m.VendorBills })))
 const CreateVendorBillPage = lazy(() => import('@/pages/accounting/vendors/CreateVendorBillPage').then(m => ({ default: m.CreateVendorBillPage })))
 const VendorBillDetail = lazy(() => import('@/pages/accounting/vendors/VendorBillDetail').then(m => ({ default: m.VendorBillDetail })))
@@ -103,6 +106,15 @@ const FSTeamsPage = lazy(() => import('@/pages/FieldService/TeamsPage').then(m =
 const FSGanttPage = lazy(() => import('@/pages/FieldService/GanttPage'))
 const FSWorksheetTemplatesPage = lazy(() => import('@/pages/FieldService/WorksheetTemplatesPage'))
 const FSAnalyticsPage = lazy(() => import('@/pages/FieldService/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
+
+// HRM Module Pages
+const HRMDashboard = lazy(() => import('@/pages/HRM').then(m => ({ default: m.HRMDashboard })))
+const EmployeesPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.EmployeesPage })))
+const ContractsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.ContractsPage })))
+const TimeshiftsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.TimeshiftsPage })))
+const AttendancePage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.AttendancePage })))
+const LeaveRequestsPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.LeaveRequestsPage })))
+const PayrollPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.PayrollPage })))
 
 // Event Management Module Pages
 const StaffManagementPage = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.StaffManagementPage })))
@@ -193,6 +205,8 @@ function App() {
   // Subscribe at the top-level so currency changes re-render the app
   const currencyCode = useSettingsStore((s) => s.currencyCode)
 
+  useStripeDevtoolsGuard()
+
   return (
     <QueryClientProvider client={queryClient}>
       <div data-currency={currencyCode}>
@@ -228,7 +242,9 @@ function App() {
                 {/* Sales Routes */}
                 <Route path="/sales" element={<SalesDashboard />} />
                 <Route path="/sales/orders" element={<POSOrdersPage />} />
-                <Route path="/sales/quotes" element={<InvoicesPage />} />
+                <Route path="/sales/quotes" element={<QuotesPage />} />
+                <Route path="/sales/quotes/create" element={<CreateInvoicePage />} />
+                <Route path="/sales/quotes/:id" element={<CustomerInvoiceDetail />} />
                 
                 {/* Customer Routes */}
                 <Route path="/customers" element={<CustomersPage />} />
@@ -254,6 +270,7 @@ function App() {
                 <Route path="/accounting/customers/statements" element={<CustomerStatements />} />
                 
                 {/* Vendor Section */}
+                <Route path="/accounting/vendors" element={<VendorsPage />} />
                 <Route path="/accounting/vendors/bills" element={<VendorBills />} />
                 <Route path="/accounting/vendors/bills/create" element={<CreateVendorBillPage />} />
                 <Route path="/accounting/vendors/bills/:id" element={<VendorBillDetail />} />
@@ -341,6 +358,15 @@ function App() {
                 <Route path="/field-service/gantt" element={<FSGanttPage />} />
                 <Route path="/field-service/worksheet-templates" element={<FSWorksheetTemplatesPage />} />
                 <Route path="/field-service/analytics" element={<FSAnalyticsPage />} />
+
+                {/* HRM Module Routes */}
+                <Route path="/hrm" element={<HRMDashboard />} />
+                <Route path="/hrm/employees" element={<EmployeesPage />} />
+                <Route path="/hrm/contracts" element={<ContractsPage />} />
+                <Route path="/hrm/timeshifts" element={<TimeshiftsPage />} />
+                <Route path="/hrm/attendance" element={<AttendancePage />} />
+                <Route path="/hrm/leave-requests" element={<LeaveRequestsPage />} />
+                <Route path="/hrm/payroll" element={<PayrollPage />} />
 
                 {/* Event Management Module Routes */}
                 <Route path="/event-management" element={<MyEventsDashboard />} />

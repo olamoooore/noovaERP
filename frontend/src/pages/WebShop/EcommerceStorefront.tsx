@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { loadStripe, Stripe } from '@stripe/stripe-js'
+import { Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
+import { loadAceStripe } from '@/lib/stripe'
 
 // ============================================================
 // Types
@@ -61,6 +62,57 @@ interface ShippingAddress {
   state: string
   postal_code: string
   country: string
+}
+
+function buildLegacyProductDescription(product: Product): string {
+  if (product.description?.trim()) {
+    return product.description
+  }
+
+  const brand = product.brand?.name || NoovaERP
+  const category = product.category?.name || 'collection'
+  const stockMessage = product.in_stock
+    ? `Ready to ship with ${product.stock_quantity} unit${product.stock_quantity === 1 ? '' : 's'} currently available.`
+    : 'This item is currently out of stock, but you can still review the full product details here.'
+
+  return [
+    `${product.name} is part of the ${brand} ${category} range and is presented as a complete product page so customers can review the item before checkout.`,
+    stockMessage,
+    'Each order is processed through NoovaERP with secure checkout, customer tracking, and order-history support so the item page is not just a placeholder listing.',
+  ].join(' ')
+}
+
+function LegacyShopFooter({ navigate }: { navigate: (path: string) => void }) {
+  const links = [
+    { label: 'FAQ', path: '/store/faq' },
+    { label: 'Shipping', path: '/store/shipping' },
+    { label: 'Returns', path: '/store/returns' },
+    { label: 'About', path: '/store/about' },
+    { label: 'Contact', path: '/store/contact' },
+  ]
+
+  return (
+    <footer className="border-t bg-white/95 mt-10">
+      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="font-semibold text-gray-900">ACE Web Shop</p>
+          <p className="text-sm text-gray-500">Customer help, shipping policies, and company information.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {links.map((link) => (
+            <Button
+              key={link.path}
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(link.path)}
+            >
+              {link.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </footer>
+  )
 }
 
 // ============================================================
@@ -515,6 +567,7 @@ export function EcommerceStorefront() {
             </main>
           </div>
         </div>
+        <LegacyShopFooter navigate={navigate} />
       </div>
     )
   }
@@ -581,9 +634,26 @@ export function EcommerceStorefront() {
                 {singleProduct.brand && (
                   <p className="text-sm text-gray-500">Brand: {singleProduct.brand.name}</p>
                 )}
-                <p className="text-gray-600 leading-relaxed">
-                  {singleProduct.description || 'No description available.'}
-                </p>
+                <div className="rounded-xl border bg-gray-50/80 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Product Overview</p>
+                    <p className="text-gray-600 leading-relaxed mt-2">
+                      {buildLegacyProductDescription(singleProduct)}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 text-sm">
+                    <div className="rounded-lg bg-white p-3 border">
+                      <p className="text-gray-500">SKU</p>
+                      <p className="font-medium text-gray-900">{singleProduct.sku || 'Generated at checkout'}</p>
+                    </div>
+                    <div className="rounded-lg bg-white p-3 border">
+                      <p className="text-gray-500">Availability</p>
+                      <p className="font-medium text-gray-900">
+                        {singleProduct.in_stock ? `${singleProduct.stock_quantity} in stock` : 'Currently unavailable'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex gap-3 mt-4">
                   <Button
                     size="lg"
@@ -614,6 +684,7 @@ export function EcommerceStorefront() {
             </div>
           )}
         </div>
+        <LegacyShopFooter navigate={navigate} />
       </div>
     )
   }
@@ -739,6 +810,7 @@ export function EcommerceStorefront() {
             </div>
           )}
         </div>
+        <LegacyShopFooter navigate={navigate} />
       </div>
     )
   }
@@ -925,7 +997,7 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
         localStorage.setItem('ace_guest_token', data.guest_token)
       }
 
-      setStripePromise(loadStripe(data.payment_intent?.publishable_key || data.publishable_key))
+      setStripePromise(loadAceStripe(data.payment_intent?.publishable_key || data.publishable_key))
       setStep('payment')
     } catch (err: any) {
       toast({

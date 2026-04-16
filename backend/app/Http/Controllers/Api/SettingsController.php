@@ -22,6 +22,15 @@ class SettingsController extends Controller
     {
         Log::info('Test SMTP Endpoint HIT', $request->all());
 
+        // Skip SMTP test when mail is in log/array mode (local dev, SMTP unreachable)
+        if (in_array(config('mail.default'), ['log', 'array'])) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Mail is configured in "' . config('mail.default') . '" mode. SMTP test skipped. Emails are written to the log file instead.',
+                'details' => ['socket' => 'Skipped (log mode)', 'auth' => 'Skipped (log mode)'],
+            ]);
+        }
+
         $validated = $request->validate([
             'host' => 'required',
             'port' => 'required',
@@ -32,8 +41,18 @@ class SettingsController extends Controller
             'timeout' => 'nullable',
         ]);
 
-        $timeout = (int) ($validated['timeout'] ?? 10);
+        $timeout = min((int) ($validated['timeout'] ?? 5), 10); // default 5s, max 10s
         $encryption = $validated['encryption'] ?? 'tls';
+
+        // Auto-correct port/encryption mismatch
+        $port = (int) $validated['port'];
+        if ($port === 465 && $encryption === 'tls') {
+            $encryption = 'ssl'; // Port 465 requires implicit SSL, not STARTTLS
+            Log::info("Auto-corrected encryption from 'tls' to 'ssl' for port 465");
+        } elseif ($port === 587 && $encryption === 'ssl') {
+            $encryption = 'tls'; // Port 587 uses STARTTLS, not implicit SSL
+            Log::info("Auto-corrected encryption from 'ssl' to 'tls' for port 587");
+        }
         
         // If password is masked or empty, use the stored password
         $password = $validated['password'] ?? '';
@@ -383,8 +402,16 @@ class SettingsController extends Controller
                 $inputConfig['password'] = $existingConfig['password'] ?? '';
             }
 
+            // Auto-correct port/encryption mismatch
+            $port = (int) ($inputConfig['port'] ?? $existingConfig['port'] ?? 587);
+            $enc = $inputConfig['encryption'] ?? $existingConfig['encryption'] ?? 'tls';
+            if ($port === 465 && $enc === 'tls') {
+                $inputConfig['encryption'] = 'ssl';
+            } elseif ($port === 587 && $enc === 'ssl') {
+                $inputConfig['encryption'] = 'tls';
+            }
+
             // Ensure structure is maintained by merging with default first, then existing, then input
-            // Actually, merging existing with input is safer to preserve other fields
             $finalConfig = array_merge($existingConfig, $inputConfig);
             
             // Ensure all keys from default exist if they were missing in existing/input

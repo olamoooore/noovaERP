@@ -92,88 +92,30 @@ class ChatbotService
             // Save user message
             $this->saveMessage($conversation, 'user', $userMessage);
             
-            // Check if this is a simple question that doesn't need ERP data
-            if ($this->isSimpleQuestion($userMessage)) {
-                $assistantMessage = $this->handleSimpleQuestion($userMessage);
-                $this->saveMessage($conversation, 'assistant', $assistantMessage);
+            // Handle simple greetings instantly (don't block server waiting for Llama)
+            if ($this->isGreeting($userMessage)) {
+                $greeting = "Hello! How can I assist you today? I can help with orders, invoices, loyalty points, and products.";
+                $this->saveMessage($conversation, 'assistant', $greeting);
                 DB::commit();
-                return $assistantMessage;
+                return $greeting;
             }
             
-            // Try to use AI model
-            try {
-                // Get conversation history
-                $messages = $this->getConversationHistory($conversation);
-                
-                // Add current message
-                $messages[] = [
-                    'role' => 'user',
-                    'content' => $userMessage,
-                ];
-                
-                // Get functions filtered by active module
-                $functions = $this->getModuleFunctions($conversation);
-                
-                // Call Ollama
-                $response = $this->ollama->chat($messages, $functions);
-                
-                // Handle function call
-                if ($response['function_call']) {
-                    $assistantMessage = $this->handleFunctionCall(
-                        $conversation,
-                        $messages,
-                        $response
-                    );
-                } else {
-                    // Check if AI mentioned a function call in text (3B model fallback)
-                    $extractedCall = $this->extractFunctionCallFromText($response['content']);
-                    if ($extractedCall) {
-                        // Create proper function call structure
-                        $response['function_call'] = [
-                            'id' => 'call_' . uniqid(),
-                            'type' => 'function',
-                            'function' => $extractedCall,
-                        ];
-                        $assistantMessage = $this->handleFunctionCall(
-                            $conversation,
-                            $messages,
-                            $response
-                        );
-                    } else {
-                        $assistantMessage = $response['content'];
-                    }
-                }
-                
-                // Clean up response (remove JSON artifacts)
-                $assistantMessage = $this->cleanResponse($assistantMessage);
-                
-                // Save response
-                $this->saveMessage(
-                    $conversation,
-                    'assistant',
-                    $assistantMessage,
-                    ['tokens' => $response['tokens']]
-                );
-                
-                DB::commit();
-                return $assistantMessage;
-                
-            } catch (\Exception $ollamaError) {
-                // Ollama failed - enable fallback mode
-                Log::warning('Ollama unavailable, enabling fallback mode', [
-                    'error' => $ollamaError->getMessage(),
-                ]);
-                
-                $this->enableFallbackMode();
-                
-                // Return fallback message
-                $fallbackMessage = "I'm having trouble understanding complex questions right now. " .
-                                 "Please select one of the options below to help you:";
-                
-                $this->saveMessage($conversation, 'assistant', $fallbackMessage);
-                DB::commit();
-                return $fallbackMessage;
-            }
+            // Dispatch to queue for async processing (prevents blocking the server)
+            $pendingMessage = $this->saveMessage($conversation, 'assistant', null);
+            DB::commit();
+            
+            // Get tenant ID for the job
+            $tenantId = DB::selectOne("SHOW search_path")->search_path ?? 'public';
+            // Extract first schema (tenant) from search_path
+            $tenantId = trim(explode(',', str_replace('"', '', $tenantId))[0]);
+            
+            \Modules\AI\Jobs\ProcessAIMessage::dispatch(
+                $conversation->id,
+                $pendingMessage->id,
+                $tenantId
+            );
+            
+            return '__PROCESSING__';
             
         } catch (\Exception $e) {
             DB::rollBack();
@@ -185,6 +127,22 @@ class ChatbotService
         }
     }
     
+    /**
+     * Check if message is a simple greeting (hi, hello, hey, etc.)
+     * These don't need Llama and would block the single-threaded dev server.
+     */
+    protected function isGreeting(string $message): bool
+    {
+        $message = strtolower(trim($message));
+        $greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'test', 'testing'];
+        foreach ($greetings as $greeting) {
+            if (preg_match('/^\s*' . preg_quote($greeting, '/') . '[!.\s]*$/i', $message)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Check if question is simple and doesn't need ERP data
      */
@@ -257,7 +215,7 @@ class ChatbotService
         $aiPatterns = ['model', 'ai', 'llama', 'gpt', 'who are you', 'what are you'];
         foreach ($aiPatterns as $pattern) {
             if (str_contains($message, $pattern)) {
-                return "I'm powered by Llama 3.2 3B, running locally on your system. How can I help with your orders or loyalty points?";
+                return "I'm powered by " . config('ai.ollama.model', 'Llama') . ", running locally on your system. How can I help with your orders or loyalty points?";
             }
         }
         
@@ -610,8 +568,8 @@ class ChatbotService
         string $role,
         ?string $content,
         array $extra = []
-    ): void {
-        AIMessage::create([
+    ): AIMessage {
+        return AIMessage::create([
             'conversation_id' => $conversation->id,
             'role' => $role,
             'content' => $content,

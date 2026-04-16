@@ -20,14 +20,28 @@ class OcrProcessingService
     private string $ocrServiceUrl;
 
     /**
+     * OCR service upload endpoint paths.
+     *
+     * We prefer the current FastAPI route but keep the legacy path as a
+     * fallback so older OCR deployments still work during rollout.
+     *
+     * @var array<int, string>
+     */
+    private array $uploadEndpoints;
+
+    /**
      * OCR service timeout in seconds
      */
     private int $timeout;
 
     public function __construct()
     {
-        $this->ocrServiceUrl = config('services.ocr.url', env('OCR_SERVICE_URL', 'http://localhost:8000'));
-        $this->timeout = (int) config('services.ocr.timeout', env('OCR_SERVICE_TIMEOUT', 60));
+        $this->ocrServiceUrl = rtrim((string) config('ocr.service.url', env('OCR_SERVICE_URL', 'http://localhost:8000')), '/');
+        $this->timeout = (int) config('ocr.service.timeout', env('OCR_SERVICE_TIMEOUT', 60));
+        $this->uploadEndpoints = [
+            '/api/bookkeeping/upload',
+            '/extract',
+        ];
     }
 
     /**
@@ -68,6 +82,10 @@ class OcrProcessingService
             Log::info("OCR processing completed successfully for document: {$document->uuid}");
 
         } catch (\Exception $e) {
+            if ($document->isProcessing()) {
+                $document->markAsExtractionFailed($e->getMessage());
+            }
+
             Log::error("OCR processing failed for document {$document->uuid}: {$e->getMessage()}");
             throw $e;
         }
@@ -85,12 +103,27 @@ class OcrProcessingService
     private function callOcrModel(string $fileContents, string $fileName, string $mimeType): array
     {
         try {
-            Log::info("Calling OCR service at: {$this->ocrServiceUrl}/api/bookkeeping/upload");
+            $response = null;
 
-            // Prepare multipart form data
-            $response = Http::timeout($this->timeout)
-                ->attach('file', $fileContents, $fileName)
-                ->post("{$this->ocrServiceUrl}/api/bookkeeping/upload");
+            foreach ($this->uploadEndpoints as $endpoint) {
+                $targetUrl = $this->ocrServiceUrl . $endpoint;
+
+                Log::info("Calling OCR service at: {$targetUrl}");
+
+                $candidateResponse = Http::timeout($this->timeout)
+                    ->attach('file', $fileContents, $fileName, ['Content-Type' => $mimeType])
+                    ->post($targetUrl);
+
+                $response = $candidateResponse;
+
+                if ($candidateResponse->status() !== 404) {
+                    break;
+                }
+            }
+
+            if ($response === null) {
+                throw new \Exception('OCR service did not return a response');
+            }
 
             if (!$response->successful()) {
                 $errorMessage = $response->json('detail') ?? $response->body();
@@ -188,31 +221,27 @@ class OcrProcessingService
      */
     private function validateExtraction(array $ocrData): bool
     {
-        // Check required fields exist
-        $requiredFields = ['vendor_name', 'total_amount'];
-        
-        foreach ($requiredFields as $field) {
-            if (!isset($ocrData[$field]) || $ocrData[$field] === null) {
-                Log::warning("OCR validation failed: Missing required field '{$field}'");
-                return false;
-            }
-        }
+        $totalAmount = $ocrData['total_amount'] ?? null;
 
-        // Validate total amount is numeric and positive
-        if (!is_numeric($ocrData['total_amount']) || $ocrData['total_amount'] <= 0) {
+        if (!is_numeric($totalAmount) || (float) $totalAmount <= 0) {
             Log::warning("OCR validation failed: Invalid total amount");
             return false;
         }
 
-        // Check confidence scores
+        $hasIdentifyingData = !empty($ocrData['document_reference'])
+            || !empty($ocrData['line_items'])
+            || (!empty($ocrData['vendor_name']) && $ocrData['vendor_name'] !== 'Unknown');
+
+        if (!$hasIdentifyingData) {
+            Log::warning('OCR validation failed: No identifying data extracted');
+            return false;
+        }
+
         if (isset($ocrData['confidence_scores'])) {
-            $criticalFields = ['total_amount', 'document_date'];
-            foreach ($criticalFields as $field) {
-                $score = $ocrData['confidence_scores'][$field] ?? 0;
-                if ($score < 0.3) { // Very low confidence threshold
-                    Log::warning("OCR validation failed: Very low confidence for '{$field}': {$score}");
-                    return false;
-                }
+            $score = $ocrData['confidence_scores']['total_amount'] ?? null;
+            if ($score !== null && $score < 0.3) {
+                Log::warning("OCR validation failed: Very low confidence for 'total_amount': {$score}");
+                return false;
             }
         }
 

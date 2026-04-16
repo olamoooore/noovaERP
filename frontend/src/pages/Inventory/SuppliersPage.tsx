@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Supplier {
@@ -110,7 +111,7 @@ export function SuppliersPage() {
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Something went wrong',
+        description: getApiErrorMessage(error, 'Something went wrong'),
         variant: 'destructive',
       })
     },
@@ -125,7 +126,7 @@ export function SuppliersPage() {
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Cannot delete supplier',
+        description: getApiErrorMessage(error, 'Cannot delete supplier'),
         variant: 'destructive',
       })
     },

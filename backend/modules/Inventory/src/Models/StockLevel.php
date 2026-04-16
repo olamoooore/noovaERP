@@ -41,9 +41,21 @@ class StockLevel extends Model
         return max(0, $this->quantity - $this->reserved_quantity);
     }
 
+    /**
+     * A stock level is "low" when:
+     *  - quantity is above zero (it's not simply out-of-stock), AND
+     *  - a meaningful min_quantity is configured (> 0), AND
+     *  - quantity is at or below that threshold.
+     *
+     * Returns false when min_quantity is 0 or null to avoid every record
+     * with no configured minimum being incorrectly flagged as low-stock.
+     */
     public function isLowStock(): bool
     {
-        return $this->quantity <= $this->min_quantity;
+        if (!$this->min_quantity || $this->min_quantity <= 0) {
+            return false;
+        }
+        return $this->quantity > 0 && $this->quantity <= $this->min_quantity;
     }
 
     public function isOutOfStock(): bool

@@ -24,14 +24,15 @@ class EnsurePublicSchemaForAuth
     public function handle(Request $request, Closure $next): Response
     {
         // Only set public schema for Sanctum auth routes
-        // WebCustomerAuth routes need tenant context first
-        $isWebCustomerRoute = str_contains($request->path(), 'web-shop/') 
-            && !str_contains($request->path(), 'web-shop/auth/')
-            && !str_contains($request->path(), 'web-shop/checkout/')
-            && !str_contains($request->path(), 'web-shop/payment-gateways')
-            && !str_contains($request->path(), 'web-shop/orders/guest/');
+        // WebCustomerAuth routes and public storefront routes need tenant context first
+        $isTenantScopedRoute = str_contains($request->path(), 'website-public/')
+            || (str_contains($request->path(), 'web-shop/') 
+                && !str_contains($request->path(), 'web-shop/auth/')
+                && !str_contains($request->path(), 'web-shop/checkout/')
+                && !str_contains($request->path(), 'web-shop/payment-gateways')
+                && !str_contains($request->path(), 'web-shop/orders/guest/'));
         
-        if (!$isWebCustomerRoute) {
+        if (!$isTenantScopedRoute) {
             try {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::statement('SET search_path TO public');

@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Models\BankAccount;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Payment;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\InventoryService;
 
 /**
  * Invoice Service - Handles invoice workflow
@@ -19,6 +22,7 @@ class InvoiceService
 {
     public function __construct(
         private PostingEngineInterface $postingEngine,
+        private InventoryService $inventoryService,
     ) {}
 
     /**
@@ -69,13 +73,15 @@ class InvoiceService
      */
     public function postInvoice(Invoice $invoice): Invoice
     {
-        if ($invoice->status !== 'draft') {
-            throw new \Exception('Only draft invoices can be posted');
-        }
-
         DB::beginTransaction();
         
         try {
+            // Re-fetch with lock to prevent concurrent posting
+            $invoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
+
+            if ($invoice->status !== 'draft') {
+                throw new \Exception('Only draft invoices can be posted');
+            }
             // ── Build posting lines ──────────────────────────
             $lines = [];
 
@@ -156,20 +162,28 @@ class InvoiceService
                 throw new \Exception($result->error);
             }
 
+            // Status transitions to 'posted' (accounting released to GL).
+            // The operational 'sent' status is set separately via InvoiceController::send().
             $invoice->update([
-                'status' => 'sent',
-                'sent_at' => now(),
+                'status'           => 'posted',
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Reduce inventory for product lines
-            foreach ($invoice->lines as $line) {
-                if ($line->product && $line->product->track_inventory) {
-                    $line->product->adjustStock(
-                        $line->quantity,
-                        'out',
-                        $invoice->invoice_number
-                    );
+            // Reduce inventory for product lines via canonical InventoryService path
+            $defaultWarehouseId = Warehouse::getDefault()?->id;
+            if ($defaultWarehouseId) {
+                foreach ($invoice->lines as $line) {
+                    if ($line->product && $line->product->track_inventory) {
+                        $this->inventoryService->adjustStock(
+                            productId:     $line->product_id,
+                            warehouseId:   $defaultWarehouseId,
+                            quantity:      $line->quantity,
+                            type:          'sale',
+                            reference:     $invoice->invoice_number,
+                            referenceType: 'Invoice',
+                            referenceId:   $invoice->id,
+                        );
+                    }
                 }
             }
 
@@ -195,19 +209,36 @@ class InvoiceService
         
         try {
             $paymentData['customer_id'] = $invoice->customer_id;
-            $paymentData['invoice_id'] = $invoice->id;
+            $paymentData['invoice_id']  = $invoice->id;
             $paymentData['payment_date'] = $paymentData['payment_date'] ?? now();
             $paymentData['received_by'] = auth()->id();
+            // bank_account_id is passed through from the caller if provided
 
             $payment = Payment::create($paymentData);
 
             // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
             $lines = [];
 
+            // Resolve the cash/bank GL account based on payment method + bank account.
+            // bank_account_id (if provided) takes precedence and gives the exact GL account.
+            // Otherwise fall back to a mapping key derived from the payment method.
+            $bankAccountId  = $paymentData['bank_account_id'] ?? null;
+            $bankGlAccountId = null;
+
+            if ($bankAccountId) {
+                $bankAccount = BankAccount::find($bankAccountId);
+                $bankGlAccountId = $bankAccount?->gl_account_id;
+            }
+
+            $cashMappingKey = match ($payment->method ?? 'cash') {
+                'bank_transfer' => 'bank',
+                default         => 'cash',
+            };
+
             // DR Cash/Bank
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'cash',
-                accountId: null,
+                accountMappingKey: $cashMappingKey,
+                accountId: $bankGlAccountId,   // explicit GL account wins when bank account is set
                 debit: (float) $payment->amount,
                 credit: 0,
                 description: "Payment {$payment->payment_number}",
@@ -242,15 +273,20 @@ class InvoiceService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Update invoice paid amount and balance
-            $invoice->paid_amount += $payment->amount;
-            $invoice->balance = $invoice->total - $invoice->paid_amount;
-            
-            if ($invoice->balance <= 0) {
-                $invoice->status = 'paid';
-            }
-            
-            $invoice->save();
+            // Update invoice paid amount and balance using atomic operations
+            Invoice::where('id', $invoice->id)
+                ->increment('paid_amount', (float) $payment->amount);
+
+            $invoice->refresh();
+
+            $newBalance = $invoice->total - $invoice->paid_amount;
+
+            Invoice::where('id', $invoice->id)->update([
+                'balance' => $newBalance,
+                'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+            ]);
+
+            $invoice->refresh();
 
             // Update customer outstanding
             $invoice->customer->updateOutstanding();

@@ -21,6 +21,9 @@ Route::middleware(['auth:sanctum'])->prefix('ocr')->group(function () {
     // Suggestions route
     Route::get('/documents/{uuid}/suggestions', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'suggestions']);
 
+    // Retry failed extraction
+    Route::post('/documents/{uuid}/retry', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'retry']);
+
     // Promotion routes (Phase 3 — OCR → canonical accounting documents)
     Route::post('/documents/{uuid}/promote/bill', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'promoteToBill']);
     Route::post('/documents/{uuid}/promote/invoice', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'promoteToInvoice']);

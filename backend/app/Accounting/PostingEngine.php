@@ -6,6 +6,7 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
 use App\Models\Journal;
@@ -32,6 +33,27 @@ class PostingEngine implements PostingEngineInterface
      */
     public function post(PostingRequest $request): PostingResult
     {
+        // ── 0. Idempotency guard ─────────────────────────────
+        if ($request->documentId !== null) {
+            $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
+                ->where('source_document_id', $request->documentId)
+                ->where('relation_type', 'post')
+                ->first();
+
+            if ($existingLink) {
+                Log::info('PostingEngine::post — duplicate posting prevented', [
+                    'document_type' => $request->documentType,
+                    'document_id'   => $request->documentId,
+                    'entry_id'      => $existingLink->journal_entry_id,
+                ]);
+
+                return PostingResult::success(
+                    JournalEntry::find($existingLink->journal_entry_id),
+                    null,
+                );
+            }
+        }
+
         // ── 1. Pre-flight validation ──────────────────────────
         try {
             $this->validateRequest($request);
@@ -81,12 +103,16 @@ class PostingEngine implements PostingEngineInterface
                 }
 
                 // ── document → journal link ──
-                JournalEntryLink::create([
-                    'source_document_type' => $request->documentType,
-                    'source_document_id'   => $request->documentId,
-                    'journal_entry_id'     => $entry->id,
-                    'relation_type'        => 'post',
-                ]);
+                // Skip when documentId is null (batch processes like FX revaluation have
+                // no single source document; storing 0 or null would create a meaningless link).
+                if ($request->documentId !== null) {
+                    JournalEntryLink::create([
+                        'source_document_type' => $request->documentType,
+                        'source_document_id'   => $request->documentId,
+                        'journal_entry_id'     => $entry->id,
+                        'relation_type'        => 'post',
+                    ]);
+                }
 
                 // ── audit log ──
                 $auditLog = PostingAuditLog::create([
@@ -121,17 +147,55 @@ class PostingEngine implements PostingEngineInterface
 
     /**
      * Reverse a previously posted journal entry.
+     *
+     * Validates the reversal date against lock + fiscal controls and blocks
+     * self-approval before creating the mirror entry.
      */
-    public function reverse(int $journalEntryId, string $reason, ?int $approvedBy = null): PostingResult
+    public function reverse(ReversalRequest $request): PostingResult
     {
+        // ── Self-approval guard ──────────────────────────────────────────────
+        $actorId    = $request->actorUserId ?? TenantUserHelper::getTenantUserId();
+        $approvedBy = $request->approvalUserId;
+
+        if ($approvedBy !== null && $approvedBy === $actorId) {
+            return PostingResult::failure(
+                'Self-approval of reversals is not permitted. A different approver is required.'
+            );
+        }
+
+        // ── Reversal date: lock-date validation ──────────────────────────────
+        $lockResult = $this->lockDateValidator->validateTransactionDate(
+            'journal_entries',
+            $request->reversalDate,
+        );
+
+        if ($lockResult['is_locked']) {
+            if ($request->approvalUserId) {
+                $this->lockDateValidator->logOverride(
+                    $actorId,
+                    'journal_entry',
+                    $request->journalEntryId,
+                    $request->reversalDate,
+                    $request->reason,
+                    $request->approvalUserId,
+                );
+            } else {
+                return PostingResult::failure($lockResult['message']);
+            }
+        }
+
+        // ── Reversal date: fiscal-period validation ──────────────────────────
+        $fiscalResult = $this->fiscalValidator->validateDate($request->reversalDate);
+        if (!$fiscalResult['allowed']) {
+            return PostingResult::failure($fiscalResult['reason']);
+        }
+
         try {
-            return DB::transaction(function () use ($journalEntryId, $reason, $approvedBy) {
-                $original = JournalEntry::with('lines')->findOrFail($journalEntryId);
+            return DB::transaction(function () use ($request, $actorId, $approvedBy) {
+                $original = JournalEntry::with('lines')->findOrFail($request->journalEntryId);
 
-                // Delegate to model's existing reverse() method
-                $reversal = $original->reverse($reason);
-
-                $userId = TenantUserHelper::getTenantUserId();
+                // Delegate to model method, now passing the explicit reversal date
+                $reversal = $original->reverse($request->reason, $request->reversalDate);
 
                 // Find the original document link to propagate source info
                 $originalLink = JournalEntryLink::where('journal_entry_id', $original->id)
@@ -139,18 +203,16 @@ class PostingEngine implements PostingEngineInterface
                     ->first();
 
                 if ($originalLink) {
-                    // Update original link with reversal reference
                     $originalLink->update([
                         'reversal_journal_entry_id' => $reversal->id,
                     ]);
 
-                    // Create reverse link
                     JournalEntryLink::create([
-                        'source_document_type'       => $originalLink->source_document_type,
-                        'source_document_id'         => $originalLink->source_document_id,
-                        'journal_entry_id'           => $reversal->id,
-                        'original_journal_entry_id'  => $original->id,
-                        'relation_type'              => 'reversal',
+                        'source_document_type'      => $originalLink->source_document_type,
+                        'source_document_id'        => $originalLink->source_document_id,
+                        'journal_entry_id'          => $reversal->id,
+                        'original_journal_entry_id' => $original->id,
+                        'relation_type'             => 'reversal',
                     ]);
                 }
 
@@ -160,24 +222,25 @@ class PostingEngine implements PostingEngineInterface
                     'document_id'      => $originalLink?->source_document_id ?? $original->id,
                     'journal_entry_id' => $reversal->id,
                     'action'           => 'reverse',
-                    'actor_user_id'    => $userId,
+                    'actor_user_id'    => $actorId,
                     'approval_user_id' => $approvedBy,
-                    'reason_code'      => $reason,
+                    'reason_code'      => $request->reasonCode ?? $request->reason,
                     'payload_snapshot' => [
                         'original_entry_id'     => $original->id,
                         'original_entry_number' => $original->entry_number,
+                        'reversal_date'         => $request->reversalDate,
                     ],
                 ]);
 
                 return PostingResult::success($reversal->load('lines'), $auditLog->id);
             });
         } catch (\Exception $e) {
-            Log::error("PostingEngine::reverse failed", [
-                'journal_entry_id' => $journalEntryId,
+            Log::error('PostingEngine::reverse failed', [
+                'journal_entry_id' => $request->journalEntryId,
                 'error'            => $e->getMessage(),
             ]);
 
-            return PostingResult::failure("Reversal failed: " . $e->getMessage());
+            return PostingResult::failure('Reversal failed: ' . $e->getMessage());
         }
     }
 
@@ -293,6 +356,13 @@ class PostingEngine implements PostingEngineInterface
         };
     }
 
+    /**
+     * Generate the next entry number.
+     *
+     * Delegates to the Journal's own sequence when a journal is known,
+     * otherwise falls back to JournalEntry::generateEntryNumber() — the
+     * single canonical fallback implementation (no longer duplicated here).
+     */
     private function generateEntryNumber(?int $journalId = null): string
     {
         if ($journalId) {
@@ -302,8 +372,6 @@ class PostingEngine implements PostingEngineInterface
             }
         }
 
-        $latest = JournalEntry::orderBy('id', 'desc')->first();
-        $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
-        return 'JE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return JournalEntry::generateEntryNumber();
     }
 }

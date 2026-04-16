@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,7 @@ interface AdjustmentReason {
 
 export function StockAdjustPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [productId, setProductId] = useState('')
@@ -44,6 +45,19 @@ export function StockAdjustPage() {
   const [newQuantity, setNewQuantity] = useState('')
   const [reasonId, setReasonId] = useState('')
   const [notes, setNotes] = useState('')
+
+  useEffect(() => {
+    const nextProductId = searchParams.get('product_id')
+    const nextWarehouseId = searchParams.get('warehouse_id')
+
+    if (nextProductId) {
+      setProductId((current) => current || nextProductId)
+    }
+
+    if (nextWarehouseId) {
+      setWarehouseId((current) => current || nextWarehouseId)
+    }
+  }, [searchParams])
 
   const { data: products } = useQuery<Product[]>({
     queryKey: ['products-list'],

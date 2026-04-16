@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Models\BankAccount;
 use App\Models\BillPayment;
 use App\Models\Bill;
 use App\Models\Vendor;
@@ -69,13 +70,14 @@ class BillPaymentsController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'vendor_id' => 'required|exists:vendors,id',
-            'bill_id' => 'nullable|exists:bills,id',
-            'payment_date' => 'required|date',
-            'amount' => 'required|numeric|min:0.01',
-            'payment_method' => 'required|in:cash,bank,card,check,other',
-            'reference' => 'nullable|string|max:255',
-            'memo' => 'nullable|string',
+            'vendor_id'       => 'required|exists:vendors,id',
+            'bill_id'         => 'nullable|exists:bills,id',
+            'payment_date'    => 'required|date',
+            'amount'          => 'required|numeric|min:0.01',
+            'payment_method'  => 'required|in:cash,bank,card,check,other',
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
+            'reference'       => 'nullable|string|max:255',
+            'memo'            => 'nullable|string',
         ]);
 
         try {
@@ -107,20 +109,35 @@ class BillPaymentsController extends Controller
 
             // Create payment
             $payment = BillPayment::create([
-                'payment_number' => $paymentNumber,
-                'vendor_id' => $validated['vendor_id'],
-                'bill_id' => $validated['bill_id'] ?? null,
-                'payment_date' => $validated['payment_date'],
-                'amount' => $validated['amount'],
-                'payment_method' => $validated['payment_method'],
-                'reference' => $validated['reference'] ?? null,
-                'memo' => $validated['memo'] ?? null,
-                'created_by' => Auth::id(),
+                'payment_number'  => $paymentNumber,
+                'vendor_id'       => $validated['vendor_id'],
+                'bill_id'         => $validated['bill_id'] ?? null,
+                'payment_date'    => $validated['payment_date'],
+                'amount'          => $validated['amount'],
+                'payment_method'  => $validated['payment_method'],
+                'bank_account_id' => $validated['bank_account_id'] ?? null,
+                'reference'       => $validated['reference'] ?? null,
+                'memo'            => $validated['memo'] ?? null,
+                'created_by'      => Auth::id(),
             ]);
 
             // Post to accounting ledger via PostingEngine
-            // DR Accounts Payable, CR Cash/Bank
+            // DR Accounts Payable, CR Cash/Bank (resolved by bank_account_id or method)
             $lines = [];
+
+            // Resolve the disbursement GL account
+            $bankAccountId   = $validated['bank_account_id'] ?? null;
+            $bankGlAccountId = null;
+
+            if ($bankAccountId) {
+                $bankAcct        = BankAccount::find($bankAccountId);
+                $bankGlAccountId = $bankAcct?->gl_account_id;
+            }
+
+            $cashMappingKey = match ($validated['payment_method']) {
+                'bank'  => 'bank',
+                default => 'cash',
+            };
 
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'accounts_payable',
@@ -131,8 +148,8 @@ class BillPaymentsController extends Controller
             );
 
             $lines[] = new PostingRequestLine(
-                accountMappingKey: 'cash',
-                accountId: null,
+                accountMappingKey: $cashMappingKey,
+                accountId: $bankGlAccountId,   // explicit GL account wins when bank account is set
                 debit: 0,
                 credit: (float) $validated['amount'],
                 description: "Bill payment {$paymentNumber} - {$vendor->name}",
@@ -154,20 +171,20 @@ class BillPaymentsController extends Controller
 
             $payment->update(['journal_entry_id' => $result->journalEntryId]);
 
-            // Update bill if bill_id provided
+            // Update bill if bill_id provided using atomic operations
             if (!empty($validated['bill_id'])) {
                 $bill = Bill::findOrFail($validated['bill_id']);
-                $bill->paid_amount += $validated['amount'];
-                $bill->balance = $bill->total - $bill->paid_amount;
-                
-                // Update status
-                if ($bill->balance <= 0) {
-                    $bill->status = 'paid';
-                } elseif ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                }
-                
-                $bill->save();
+                Bill::where('id', $bill->id)->increment('paid_amount', (float) $validated['amount']);
+                $bill->refresh();
+
+                $newBalance = $bill->total - $bill->paid_amount;
+                Bill::where('id', $bill->id)->update([
+                    'balance' => $newBalance,
+                    'status' => $newBalance <= 0 ? 'paid' : ($bill->paid_amount > 0 ? 'partial' : $bill->status),
+                ]);
+
+                // Update vendor spending total
+                $vendor->updateSpending();
             }
 
             DB::commit();
@@ -229,21 +246,17 @@ class BillPaymentsController extends Controller
             $payment->update($validated);
 
             // Update bill balance if amount changed and bill exists
+            // Hardening (2026-04-15): Use atomic DB operations to prevent race conditions.
             if (isset($validated['amount']) && $payment->bill_id && $validated['amount'] != $oldAmount) {
+                $amountDelta = $validated['amount'] - $oldAmount;
+                Bill::where('id', $payment->bill_id)->increment('paid_amount', $amountDelta);
                 $bill = Bill::findOrFail($payment->bill_id);
-                $bill->paid_amount = $bill->paid_amount - $oldAmount + $validated['amount'];
-                $bill->balance = $bill->total - $bill->paid_amount;
-                
-                // Update status
-                if ($bill->balance <= 0) {
-                    $bill->status = 'paid';
-                } elseif ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                } else {
-                    $bill->status = 'posted';
-                }
-                
-                $bill->save();
+                $newBalance = $bill->total - $bill->paid_amount;
+
+                Bill::where('id', $bill->id)->update([
+                    'balance' => max($newBalance, 0),
+                    'status' => $newBalance <= 0 ? 'paid' : ($bill->paid_amount > 0 ? 'partial' : ($bill->journal_entry_id ? 'posted' : 'draft')),
+                ]);
             }
 
             DB::commit();
@@ -281,19 +294,16 @@ class BillPaymentsController extends Controller
             DB::beginTransaction();
 
             // Update bill balance if bill exists
+            // Hardening (2026-04-15): Use atomic DB operations to prevent race conditions.
             if ($payment->bill_id) {
+                Bill::where('id', $payment->bill_id)->decrement('paid_amount', (float) $payment->amount);
                 $bill = Bill::findOrFail($payment->bill_id);
-                $bill->paid_amount -= $payment->amount;
-                $bill->balance = $bill->total - $bill->paid_amount;
-                
-                // Update status
-                if ($bill->paid_amount > 0) {
-                    $bill->status = 'partial';
-                } else {
-                    $bill->status = 'posted';
-                }
-                
-                $bill->save();
+                $newBalance = $bill->total - $bill->paid_amount;
+
+                Bill::where('id', $bill->id)->update([
+                    'balance' => max($newBalance, 0),
+                    'status' => $bill->paid_amount > 0 ? 'partial' : ($bill->journal_entry_id ? 'posted' : 'draft'),
+                ]);
             }
 
             $payment->delete();

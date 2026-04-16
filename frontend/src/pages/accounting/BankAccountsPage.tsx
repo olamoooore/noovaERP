@@ -52,6 +52,8 @@ function BankAccountsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('USD');
+  const [glAccountId, setGlAccountId] = useState('');
 
   // Fetch bank accounts
   const { data: bankAccountsData, isLoading } = useQuery({
@@ -102,11 +104,9 @@ function BankAccountsPage() {
       });
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to create bank account',
-        variant: 'destructive',
-      });
+      const errors = error.response?.data?.errors;
+      const msg = errors ? Object.values(errors).flat().join(', ') : (error.response?.data?.message || error.response?.data?.error || 'Failed to create bank account');
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     },
   });
 
@@ -126,11 +126,9 @@ function BankAccountsPage() {
       });
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to update bank account',
-        variant: 'destructive',
-      });
+      const errors = error.response?.data?.errors;
+      const msg = errors ? Object.values(errors).flat().join(', ') : (error.response?.data?.message || error.response?.data?.error || 'Failed to update bank account');
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     },
   });
 
@@ -159,13 +157,22 @@ function BankAccountsPage() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+
+    if (!currencyCode) {
+      toast({ title: 'Validation Error', description: 'Please select a currency', variant: 'destructive' });
+      return;
+    }
+    if (!glAccountId) {
+      toast({ title: 'Validation Error', description: 'Please select a GL account', variant: 'destructive' });
+      return;
+    }
     
     const data = {
       account_name: formData.get('account_name') as string,
-      account_number: formData.get('account_number') as string,
-      bank_name: formData.get('bank_name') as string,
-      currency_code: formData.get('currency_code') as string,
-      gl_account_id: parseInt(formData.get('gl_account_id') as string),
+      account_number: formData.get('account_number') as string || null,
+      bank_name: formData.get('bank_name') as string || null,
+      currency_code: currencyCode,
+      gl_account_id: parseInt(glAccountId),
     };
 
     if (editingAccount) {
@@ -177,6 +184,8 @@ function BankAccountsPage() {
 
   const handleEdit = (account: BankAccount) => {
     setEditingAccount(account);
+    setCurrencyCode(account.currency_code || 'USD');
+    setGlAccountId(account.gl_account_id?.toString() || '');
     setIsDialogOpen(true);
   };
 
@@ -246,6 +255,8 @@ function BankAccountsPage() {
           <Button
             onClick={() => {
               setEditingAccount(null);
+              setCurrencyCode('USD');
+              setGlAccountId('');
               setIsDialogOpen(true);
             }}
           >
@@ -367,7 +378,7 @@ function BankAccountsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="currency_code">Currency *</Label>
-                <Select name="currency_code" defaultValue={editingAccount?.currency_code || 'USD'}>
+                <Select value={currencyCode} onValueChange={setCurrencyCode}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
@@ -388,8 +399,8 @@ function BankAccountsPage() {
               <div className="space-y-2">
                 <Label htmlFor="gl_account_id">GL Account (Asset) *</Label>
                 <Select 
-                  name="gl_account_id" 
-                  defaultValue={editingAccount?.gl_account_id?.toString()}
+                  value={glAccountId} 
+                  onValueChange={setGlAccountId}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select GL account" />

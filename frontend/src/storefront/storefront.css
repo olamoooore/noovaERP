@@ -130,7 +130,12 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
 }
 
-/* Hide Stripe Developer Tools floating button (appears in test mode) */
-div[class*="Easel-contentWrapper"] {
+/* Hide Stripe Developer Tools overlay injected in Stripe test mode */
+[aria-label="Open Stripe Developer Tools"],
+[class*="__Easel"],
+[class*="__FloatingActionButton"],
+[class*="Easel-contentWrapper"] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }

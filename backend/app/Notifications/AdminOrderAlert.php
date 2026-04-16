@@ -78,6 +78,13 @@ class AdminOrderAlert extends Notification implements ShouldQueue
                     'password' => $mail['password'] ?? config('mail.mailers.smtp.password'),
                     'timeout' => null,
                     'local_domain' => env('MAIL_EHLO_DOMAIN'),
+                    'stream' => [
+                        'ssl' => [
+                            'allow_self_signed' => true,
+                            'verify_peer' => false,
+                            'verify_peer_name' => false,
+                        ],
+                    ],
                 ]]);
                 if (!empty($mail['from_address'])) {
                     config(['mail.from.address' => $mail['from_address']]);
@@ -85,8 +92,21 @@ class AdminOrderAlert extends Notification implements ShouldQueue
                 if (!empty($mail['from_name'])) {
                     config(['mail.from.name' => $mail['from_name']]);
                 }
-                // Purge the mailer so it picks up the new config
+                // Purge the mailer so it picks up the new config, then disable SSL peer verification
                 app('mail.manager')->purge('smtp');
+                $transport = app('mail.manager')->mailer('smtp')->getSymfonyTransport();
+                if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
+                    $stream = $transport->getStream();
+                    if ($stream instanceof \Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream) {
+                        $stream->setStreamOptions([
+                            'ssl' => [
+                                'verify_peer' => false,
+                                'verify_peer_name' => false,
+                                'allow_self_signed' => true,
+                            ],
+                        ]);
+                    }
+                }
                 Log::info('AdminOrderAlert: Loaded tenant mail config', [
                     'host' => $mail['host'] ?? 'not set',
                     'port' => $mail['port'] ?? 'not set',

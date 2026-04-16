@@ -1,0 +1,9 @@
+{
+  "key": "hrm",
+  "name": "NoovaERP HRM",
+  "description": "Human Resource Management — employees, contracts, payroll, attendance, and recruitment",
+  "type": "addon",
+  "providers": [
+    "Modules\\HRM\\Providers\\HRMServiceProvider"
+  ]
+}

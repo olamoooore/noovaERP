@@ -215,6 +215,11 @@ class Customer extends Model
         return $this->hasMany(\Modules\Ecommerce\Models\WebOrder::class);
     }
 
+    public function salesOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Sales\Models\SalesOrder::class);
+    }
+
     // ==========================================
     // ACCESSORS
     // ==========================================
@@ -255,7 +260,7 @@ class Customer extends Model
     public function updateOutstanding(): void
     {
         $this->total_outstanding = $this->invoices()
-            ->whereIn('status', ['sent', 'overdue'])
+            ->whereIn('status', ['posted', 'sent', 'overdue', 'partial'])
             ->sum('balance');
         $this->save();
     }
@@ -403,6 +408,28 @@ class Customer extends Model
     protected static function boot()
     {
         parent::boot();
+
+        static::saving(function ($customer) {
+            if ($customer->credit_limit === null) {
+                $customer->credit_limit = 0;
+            }
+
+            if ($customer->payment_terms === null) {
+                $customer->payment_terms = 30;
+            }
+
+            if ($customer->total_outstanding === null) {
+                $customer->total_outstanding = 0;
+            }
+
+            if ($customer->is_active === null) {
+                $customer->is_active = true;
+            }
+
+            if ($customer->marketing_opt_in === null) {
+                $customer->marketing_opt_in = false;
+            }
+        });
         
         static::creating(function ($customer) {
             if (empty($customer->code)) {

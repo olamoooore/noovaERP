@@ -32,8 +32,27 @@ Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaFor
 });
 
 // Superadmin Control Plane routes
-Route::prefix('v1/admin')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
+// SubstituteBindings is added AFTER EnsurePublicSchemaForAuth so that
+// route-model-binding queries run against the public schema, not a tenant schema.
+Route::prefix('v1/admin')->middleware([
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+])->group(function () {
     require __DIR__.'/admin.php';
+});
+
+// ── Phase 7: Runtime Feature Gate API ──────────────────────────────────────
+// Called by ERP modules at runtime to check entitlements.
+// Auth: Authorization: Bearer ten_{key}
+// URL: /api/v1/feature-gate/* (avoids collision with tenant Api\FeatureController)
+// No tenant schema switching needed — reads from public.tenant_entitlements.
+Route::prefix('v1/feature-gate')->middleware([
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    'auth.tenant_key',
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+    'throttle:120,1',    // 120 requests per minute per key
+])->group(function () {
+    require __DIR__.'/feature-gate.php';
 });
 
 // Legacy auth routes (keep for backwards compatibility)

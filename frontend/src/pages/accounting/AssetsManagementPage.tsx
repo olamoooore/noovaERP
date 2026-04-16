@@ -44,6 +44,8 @@ export default function AssetsManagementPage() {
   const [editingAsset, setEditingAsset] = useState<FixedAsset | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
+  const [depreciationPeriod, setDepreciationPeriod] = useState(new Date().toISOString().slice(0, 10));
   const [formData, setFormData] = useState<CreateAssetRequest>({
     asset_number: '',
     name: '',
@@ -72,6 +74,33 @@ export default function AssetsManagementPage() {
   const { data: accounts = [] } = useQuery({
     queryKey: ['chart-of-accounts'],
     queryFn: () => chartOfAccountsApi.getAccounts(),
+  });
+
+  // Fetch depreciation schedule for selected asset
+  const { data: depreciationData, isLoading: depreciationLoading } = useQuery({
+    queryKey: ['depreciation-schedule', selectedAssetId],
+    queryFn: () => fixedAssetsApi.getDepreciationSchedule(selectedAssetId!),
+    enabled: !!selectedAssetId,
+  });
+
+  const depreciationSchedule = depreciationData?.data || depreciationData?.schedules || depreciationData || [];
+
+  // Calculate depreciation mutation
+  const calculateDepreciationMutation = useMutation({
+    mutationFn: (data: { period_date: string; asset_ids?: number[] }) =>
+      fixedAssetsApi.calculateDepreciation(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['depreciation-schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+      toast({ title: 'Success', description: 'Depreciation calculated successfully' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to calculate depreciation',
+        variant: 'destructive',
+      });
+    },
   });
 
   // Create asset mutation
@@ -344,11 +373,99 @@ export default function AssetsManagementPage() {
 
         <TabsContent value="depreciation" className="space-y-4">
           <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Depreciation Schedule</h2>
-            <div className="text-center py-12 text-muted-foreground">
-              <Icon icon="solar:calendar-mark-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p>Select an asset to view its depreciation schedule</p>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Depreciation Schedule</h2>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={depreciationPeriod}
+                  onChange={(e) => setDepreciationPeriod(e.target.value)}
+                  className="w-44"
+                />
+                <Button
+                  onClick={() => calculateDepreciationMutation.mutate({
+                    period_date: depreciationPeriod,
+                    asset_ids: selectedAssetId ? [selectedAssetId] : undefined,
+                  })}
+                  disabled={calculateDepreciationMutation.isPending}
+                >
+                  {calculateDepreciationMutation.isPending ? (
+                    <><Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />Calculating...</>
+                  ) : (
+                    <><Icon icon="solar:calculator-linear" className="w-4 h-4 mr-2" />Calculate Depreciation</>
+                  )}
+                </Button>
+              </div>
             </div>
+
+            {/* Asset Selector */}
+            <div className="mb-4">
+              <Label className="mb-2 block text-sm">Select Asset</Label>
+              <Select
+                value={selectedAssetId?.toString() || ''}
+                onValueChange={(v) => setSelectedAssetId(v ? parseInt(v) : null)}
+              >
+                <SelectTrigger className="w-80">
+                  <SelectValue placeholder="Choose an asset to view schedule" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assets.map((asset) => (
+                    <SelectItem key={asset.id} value={asset.id.toString()}>
+                      {asset.asset_number} - {asset.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!selectedAssetId ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Icon icon="solar:calendar-mark-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>Select an asset above to view its depreciation schedule</p>
+                {assets.length === 0 && <p className="text-sm mt-2">No assets created yet. Add an asset from the Assets tab first.</p>}
+              </div>
+            ) : depreciationLoading ? (
+              <div className="text-center py-12">
+                <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
+                <p className="text-muted-foreground mt-2">Loading depreciation schedule...</p>
+              </div>
+            ) : Array.isArray(depreciationSchedule) && depreciationSchedule.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Period</TableHead>
+                    <TableHead className="text-right">Beginning Value</TableHead>
+                    <TableHead className="text-right">Depreciation</TableHead>
+                    <TableHead className="text-right">Accumulated</TableHead>
+                    <TableHead className="text-right">Book Value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {depreciationSchedule.map((entry: any, idx: number) => (
+                    <TableRow key={entry.id || idx}>
+                      <TableCell>{entry.period_date || entry.period || entry.date || '-'}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${Number(entry.beginning_value || entry.opening_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${Number(entry.depreciation_amount || entry.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${Number(entry.accumulated_depreciation || entry.accumulated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${Number(entry.ending_book_value || entry.book_value || entry.closing_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No depreciation entries yet for this asset.</p>
+                <p className="text-sm mt-1">Use "Calculate Depreciation" to generate the schedule.</p>
+              </div>
+            )}
           </Card>
         </TabsContent>
       </Tabs>

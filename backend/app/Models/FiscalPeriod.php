@@ -57,9 +57,16 @@ class FiscalPeriod extends Model
      * Scopes
      */
 
+    /**
+     * Scope: periods whose status is 'locked'.
+     *
+     * Uses the status column (single source of truth) instead of is_locked boolean.
+     * is_locked is kept in sync by lock()/unlock() for backward-compat with any
+     * existing queries that read the boolean directly.
+     */
     public function scopeLocked($query)
     {
-        return $query->where('is_locked', true);
+        return $query->where('status', 'locked');
     }
 
     public function scopeOpen($query)
@@ -96,13 +103,16 @@ class FiscalPeriod extends Model
     }
 
     /**
-     * Check if the period is locked
-     * 
+     * Check if the period is locked.
+     *
+     * Uses the status column (single source of truth) instead of the is_locked boolean
+     * to avoid dual-state drift when the two fields are written separately.
+     *
      * @return bool
      */
     public function isLocked(): bool
     {
-        return $this->is_locked === true;
+        return $this->status === 'locked';
     }
 
     /**

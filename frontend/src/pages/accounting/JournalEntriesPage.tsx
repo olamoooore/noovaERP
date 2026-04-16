@@ -460,8 +460,9 @@ export default function JournalEntriesPage() {
                             placeholder="0.00"
                             value={line.debit || ''}
                             onChange={(e) => {
-                              updateLine(index, 'debit', parseFloat(e.target.value) || 0);
-                              updateLine(index, 'credit', 0);
+                              const newLines = [...formData.lines];
+                              newLines[index] = { ...newLines[index], debit: parseFloat(e.target.value) || 0, credit: 0 };
+                              setFormData({ ...formData, lines: newLines });
                             }}
                             className="text-right"
                           />
@@ -473,8 +474,9 @@ export default function JournalEntriesPage() {
                             placeholder="0.00"
                             value={line.credit || ''}
                             onChange={(e) => {
-                              updateLine(index, 'credit', parseFloat(e.target.value) || 0);
-                              updateLine(index, 'debit', 0);
+                              const newLines = [...formData.lines];
+                              newLines[index] = { ...newLines[index], credit: parseFloat(e.target.value) || 0, debit: 0 };
+                              setFormData({ ...formData, lines: newLines });
                             }}
                             className="text-right"
                           />

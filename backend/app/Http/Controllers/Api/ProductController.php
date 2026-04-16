@@ -7,10 +7,13 @@ use App\Models\ProductCustomFieldValue;
 use App\Models\ProductFeatureValue;
 use App\Models\Product;
 use App\Models\ProductAuditLog;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\StockLevel;
+use Modules\Inventory\Services\InventoryService;
 
 class ProductController extends Controller
 {
@@ -208,6 +211,8 @@ class ProductController extends Controller
                     $product->variants()->create($variantData);
                 }
             }
+
+            $this->syncWarehouseStockForProduct($product, true);
 
             return $product;
         });
@@ -602,9 +607,10 @@ class ProductController extends Controller
         $featureValues = $validated['feature_values'] ?? null;
         $customFieldValues = $validated['custom_field_values'] ?? null;
         $suppliersData = $validated['suppliers'] ?? null;
+        $stockQuantityWasProvided = array_key_exists('stock_quantity', $validated);
         unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers']);
 
-        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData) {
+        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData, $stockQuantityWasProvided) {
             $product->update($validated);
 
             if (is_array($featureValues)) {
@@ -626,6 +632,8 @@ class ProductController extends Controller
                     );
                 }
             }
+
+            $this->syncWarehouseStockForProduct($product, $stockQuantityWasProvided);
         });
 
         return response()->json($product->fresh(['incomeAccount', 'expenseAccount', 'category', 'tax']));
@@ -756,14 +764,9 @@ class ProductController extends Controller
                 $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
                 $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
 
-                // Try to find existing product by SKU or barcode to avoid duplicates
-                $existingProduct = null;
-                if ($sku !== '' && $sku !== '-') {
-                    $existingProduct = Product::where('sku', $sku)->first();
-                }
-                if (!$existingProduct && $barcode !== '' && $barcode !== '-') {
-                    $existingProduct = Product::where('barcode', $barcode)->first();
-                }
+                // Match by SKU when available. Barcode alone is not reliable because
+                // multiple distinct products in the same catalog can legitimately share it.
+                $existingProduct = $this->findExistingProductForImport($sku, $barcode, $name, $secondaryName);
 
                 // Generate SKU only if no existing product found and no SKU provided
                 if (!$existingProduct && ($sku === '' || $sku === '-')) {
@@ -794,9 +797,11 @@ class ProductController extends Controller
                 try {
                     if ($existingProduct) {
                         $existingProduct->update($productData);
+                        $this->syncWarehouseStockForProduct($existingProduct, true);
                         $updated++;
                     } else {
-                        Product::create($productData);
+                        $product = Product::create($productData);
+                        $this->syncWarehouseStockForProduct($product, true);
                         $created++;
                     }
                 } catch (\Throwable $e) {
@@ -826,6 +831,129 @@ class ProductController extends Controller
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
         return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    private function findExistingProductForImport(string $sku, string $barcode, string $name, string $secondaryName): ?Product
+    {
+        if ($this->hasImportIdentifier($sku)) {
+            return Product::where('sku', $sku)->first();
+        }
+
+        if (!$this->hasImportIdentifier($barcode)) {
+            return null;
+        }
+
+        return Product::query()
+            ->where('barcode', $barcode)
+            ->whereRaw('LOWER(name) = ?', [$this->normalizeImportIdentityValue($name)])
+            ->whereRaw("LOWER(COALESCE(secondary_name, '')) = ?", [$this->normalizeImportIdentityValue($secondaryName)])
+            ->first();
+    }
+
+    private function hasImportIdentifier(string $value): bool
+    {
+        return $value !== '' && $value !== '-';
+    }
+
+    private function normalizeImportIdentityValue(?string $value): string
+    {
+        return Str::lower(trim((string) $value));
+    }
+
+    private function syncWarehouseStockForProduct(Product $product, bool $stockQuantityWasProvided): void
+    {
+        if (!$stockQuantityWasProvided || !$product->track_inventory) {
+            return;
+        }
+
+        $targetQuantity = max(0, (int) ($product->stock_quantity ?? 0));
+        $stockLevels = StockLevel::where('product_id', $product->id)->get();
+
+        if ($targetQuantity === 0) {
+            if ($stockLevels->count() === 1 && (int) $stockLevels->first()->quantity !== 0) {
+                $this->inventoryService()->adjustStock(
+                    $product->id,
+                    (int) $stockLevels->first()->warehouse_id,
+                    0,
+                    'adjustment',
+                    'PRODUCT-STOCK-SYNC',
+                    Product::class,
+                    $product->id,
+                    null,
+                    'Synchronized product stock quantity to zero.'
+                );
+            }
+
+            return;
+        }
+
+        if ($stockLevels->count() > 1) {
+            return;
+        }
+
+        $warehouse = $stockLevels->count() === 1
+            ? Warehouse::find($stockLevels->first()->warehouse_id)
+            : $this->resolveStockSyncWarehouse();
+
+        if (!$warehouse) {
+            return;
+        }
+
+        if ($stockLevels->isEmpty()) {
+            $this->inventoryService()->adjustStock(
+                $product->id,
+                $warehouse->id,
+                $targetQuantity,
+                'in',
+                'PRODUCT-STOCK-SYNC',
+                Product::class,
+                $product->id,
+                null,
+                'Allocated initial product stock to warehouse inventory.'
+            );
+
+            return;
+        }
+
+        if ((int) $stockLevels->first()->quantity === $targetQuantity) {
+            return;
+        }
+
+        $this->inventoryService()->adjustStock(
+            $product->id,
+            $warehouse->id,
+            $targetQuantity,
+            'adjustment',
+            'PRODUCT-STOCK-SYNC',
+            Product::class,
+            $product->id,
+            null,
+            'Synchronized product stock quantity with warehouse inventory.'
+        );
+    }
+
+    private function resolveStockSyncWarehouse(): ?Warehouse
+    {
+        $warehouse = Warehouse::query()
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
+
+        if ($warehouse) {
+            return $warehouse;
+        }
+
+        return Warehouse::create([
+            'name' => 'Default Warehouse',
+            'code' => 'DEFAULT',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+    }
+
+    private function inventoryService(): InventoryService
+    {
+        return app(InventoryService::class);
     }
 
     /**

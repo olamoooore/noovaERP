@@ -64,6 +64,10 @@ class LoyaltyProgramController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        if (($validated['is_active'] ?? false) === true) {
+            LoyaltyProgram::query()->update(['is_active' => false]);
+        }
+
         $program = LoyaltyProgram::create($validated);
 
         return response()->json($program, 201);
@@ -86,6 +90,12 @@ class LoyaltyProgramController extends Controller
             'points_expiry_months' => 'sometimes|integer|min:1',
             'is_active' => 'boolean',
         ]);
+
+        if (($validated['is_active'] ?? false) === true) {
+            LoyaltyProgram::query()
+                ->whereKeyNot($program->id)
+                ->update(['is_active' => false]);
+        }
 
         $program->update($validated);
 

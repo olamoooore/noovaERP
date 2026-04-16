@@ -3,9 +3,12 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\GoodsReceipt;
+use App\Models\GoodsReceiptLine;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\Inventory\Services\InventoryService;
@@ -234,7 +237,7 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
 
-        if (!in_array($purchaseOrder->status, ['approved', 'pending'])) {
+        if ($purchaseOrder->status !== 'approved') {
             return response()->json(['message' => 'Order must be approved first'], 422);
         }
 
@@ -261,32 +264,75 @@ class PurchaseOrderController extends Controller
 
         DB::transaction(function () use ($purchaseOrder, $validated) {
             $allReceived = true;
+            $receivedLines = [];
 
             foreach ($validated['items'] as $itemData) {
                 $item = PurchaseOrderItem::find($itemData['id']);
                 if ($item && $item->purchase_order_id === $purchaseOrder->id) {
-                    $newReceived = $item->quantity_received + $itemData['quantity_received'];
+                    $requestedQty = (int) $itemData['quantity_received'];
+                    $remainingQty = max(0, (int) $item->quantity_ordered - (int) $item->quantity_received);
+                    $acceptedQty = min($requestedQty, $remainingQty);
+                    $newReceived = $item->quantity_received + $acceptedQty;
                     $item->quantity_received = min($newReceived, $item->quantity_ordered);
                     $item->save();
 
-                    // Add stock for received items
-                    if ($itemData['quantity_received'] > 0) {
-                        $this->inventoryService->adjustStock(
-                            $item->product_id,
-                            $purchaseOrder->warehouse_id,
-                            $itemData['quantity_received'],
-                            'purchase',
-                            $purchaseOrder->po_number,
-                            'PurchaseOrder',
-                            $purchaseOrder->id,
-                            null,
-                            "Received from PO: {$purchaseOrder->po_number}"
-                        );
+                    // Collect accepted quantities; stock and GRN are posted together later.
+                    if ($acceptedQty > 0) {
+                        $receivedLines[] = [
+                            'item' => $item,
+                            'accepted_qty' => $acceptedQty,
+                        ];
                     }
 
                     if (!$item->isFullyReceived()) {
                         $allReceived = false;
                     }
+                }
+            }
+
+            if (!empty($receivedLines)) {
+                $receivedBy = auth()->id();
+                if (!$receivedBy) {
+                    $receivedBy = (int) DB::table('users')->value('id');
+                }
+
+                $goodsReceipt = GoodsReceipt::create([
+                    'grn_number' => $this->generateGrnNumber(),
+                    'purchase_order_id' => $purchaseOrder->id,
+                    'warehouse_id' => $purchaseOrder->warehouse_id,
+                    'received_by' => $receivedBy ?: null,
+                    'received_date' => now()->toDateString(),
+                    'status' => 'confirmed',
+                    'notes' => $validated['notes'] ?? "Auto-generated from PO receipt {$purchaseOrder->po_number}",
+                ]);
+
+                foreach ($receivedLines as $lineData) {
+                    $poItem = $lineData['item'];
+                    $acceptedQty = $lineData['accepted_qty'];
+
+                    $this->inventoryService->adjustStock(
+                        $poItem->product_id,
+                        $purchaseOrder->warehouse_id,
+                        $acceptedQty,
+                        'purchase',
+                        $goodsReceipt->grn_number,
+                        'GoodsReceipt',
+                        $goodsReceipt->id,
+                        null,
+                        "Received from GRN: {$goodsReceipt->grn_number} (PO: {$purchaseOrder->po_number})"
+                    );
+
+                    GoodsReceiptLine::create([
+                        'goods_receipt_id' => $goodsReceipt->id,
+                        'purchase_order_item_id' => $poItem->id,
+                        'product_id' => $poItem->product_id,
+                        'quantity_ordered' => (float) $poItem->quantity_ordered,
+                        'quantity_received' => (float) $acceptedQty,
+                        'quantity_accepted' => (float) $acceptedQty,
+                        'quantity_rejected' => 0,
+                        'quantity_putaway' => (float) $acceptedQty,
+                        'notes' => "PO {$purchaseOrder->po_number} receipt",
+                    ]);
                 }
             }
 
@@ -322,5 +368,10 @@ class PurchaseOrderController extends Controller
         }
 
         return $purchaseOrder;
+    }
+
+    private function generateGrnNumber(): string
+    {
+        return 'GRN-' . now()->format('Ymd-His') . '-' . Str::upper(Str::random(6));
     }
 }

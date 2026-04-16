@@ -6,6 +6,7 @@ import { Calendar, MapPin, Search, Filter, Ticket, Users, Loader2 } from 'lucide
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPublicEvents } from '@/storefront/lib/api';
+import { storefrontRoutes } from '@/storefront/lib/paths';
 
 /**
  * BrowseEventsPage
@@ -127,7 +128,7 @@ const BrowseEventsPage: React.FC = () => {
                     <span className="font-bold text-lg">
                       {event.price === 0 ? 'FREE' : `SGD ${Number(event.price).toFixed(2)}`}
                     </span>
-                    <Link to={`/store/events`}>
+                    <Link to={storefrontRoutes.events}>
                       <Button size="sm" className="flex items-center gap-2">
                         <Ticket className="h-4 w-4" />
                         Book Now

@@ -37,6 +37,17 @@ interface Program {
   created_at: string
 }
 
+const DEFAULT_PROGRAM_PAYLOAD = {
+  name: 'Default Loyalty Program',
+  description: 'Earn points with every purchase and unlock exclusive rewards',
+  points_per_currency: 1,
+  currency_per_point: 0.01,
+  min_redemption_points: 100,
+  max_redemption_percent: 50,
+  points_expiry_months: 12,
+  is_active: true,
+}
+
 const TIER_ICONS = [
   { value: 'solar:shield-user-bold', label: 'Shield', color: '#CD7F32' },
   { value: 'solar:medal-ribbons-star-bold', label: 'Medal Star', color: '#C0C0C0' },
@@ -73,11 +84,19 @@ export function LoyaltySettingsPage() {
   const [benefitsInput, setBenefitsInput] = useState('')
 
   // Fetch active program
-  const { data: program, isLoading } = useQuery<Program>({
+  const { data: program, isLoading } = useQuery<Program | null>({
     queryKey: ['loyalty-program'],
     queryFn: async () => {
-      const response = await api.get('/loyalty/programs')
-      return response.data
+      try {
+        const response = await api.get('/loyalty/programs')
+        return response.data
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          return null
+        }
+
+        throw error
+      }
     },
   })
 
@@ -90,6 +109,28 @@ export function LoyaltySettingsPage() {
       return response.data
     },
     enabled: !!program?.id,
+  })
+
+  const createProgramMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/loyalty/programs', DEFAULT_PROGRAM_PAYLOAD)
+      return response.data
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Default loyalty program created successfully',
+      })
+      queryClient.invalidateQueries({ queryKey: ['loyalty-program'] })
+      queryClient.invalidateQueries({ queryKey: ['loyalty-tiers'] })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to create loyalty program',
+        variant: 'destructive',
+      })
+    },
   })
 
   // Update program mutation
@@ -292,8 +333,14 @@ export function LoyaltySettingsPage() {
         <Icon icon="solar:settings-bold-duotone" className="h-16 w-16 text-muted-foreground" />
         <div className="text-center">
           <h2 className="text-2xl font-bold">No Loyalty Program Found</h2>
-          <p className="text-muted-foreground">Please create a loyalty program first</p>
+          <p className="text-muted-foreground">Create the default loyalty program to enable settings, tiers, and rewards.</p>
         </div>
+        <Button onClick={() => createProgramMutation.mutate()} disabled={createProgramMutation.isPending}>
+          {createProgramMutation.isPending && (
+            <Icon icon="solar:loading-bold-duotone" className="mr-2 h-4 w-4 animate-spin" />
+          )}
+          Create Default Program
+        </Button>
       </div>
     )
   }

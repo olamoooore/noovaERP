@@ -6,13 +6,18 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Models\Feature;
-use App\Models\TenantFeature;
+use App\SuperAdmin\Application\FeatureGateService;
 
 class FeatureFlagMiddleware
 {
+    public function __construct(
+        private readonly FeatureGateService $featureGate,
+    ) {}
+
     /**
      * Handle an incoming request.
-     * Checks the ERP's central Feature/TenantFeature system.
+     * Checks the canonical entitlement system (TenantEntitlement) first,
+     * falling back to legacy TenantFeature for backward compatibility.
      * Core features (is_core = true) are always accessible.
      */
     public function handle(Request $request, Closure $next, string $feature = 'event_management'): Response
@@ -29,10 +34,14 @@ class FeatureFlagMiddleware
             return $next($request);
         }
 
-        // Check tenant-specific toggle
-        $tenantFeature = TenantFeature::where('feature_id', $featureRecord->id)->first();
-        if ($tenantFeature && $tenantFeature->is_enabled) {
-            return $next($request);
+        // Canonical path: check TenantEntitlement via FeatureGateService
+        if (function_exists('tenant') && tenant()) {
+            $tenantId = (string) tenant('id');
+            $check = $this->featureGate->check($tenantId, $feature);
+
+            if ($check['is_entitled']) {
+                return $next($request);
+            }
         }
 
         return response()->json([

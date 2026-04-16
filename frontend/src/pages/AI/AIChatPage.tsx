@@ -49,7 +49,7 @@ export function AIChatPage() {
   const { data: aiStatus, isError: aiStatusError, error: aiError, isLoading: aiStatusLoading } = useQuery({
     queryKey: ['ai-status'],
     queryFn: async () => {
-      const response = await api.get('/ai/health')
+      const response = await api.get('/ai/info')
       return response.data
     },
     refetchInterval: 15000, // Refresh every 15 seconds
@@ -186,13 +186,13 @@ export function AIChatPage() {
                     </p>
                   </div>
                 </>
-              ) : aiStatus?.status === 'healthy' ? (
+              ) : aiStatus?.service?.status === 'running' ? (
                 <>
                   <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
                   <div>
                     <p className="text-sm font-medium text-green-600">Online</p>
                     <p className="text-xs text-muted-foreground">
-                      {aiStatus.service || 'AI ready'}
+                      {aiStatus.service?.provider || 'AI ready'} — {aiStatus.service?.current_model || ''}
                     </p>
                   </div>
                 </>
@@ -394,25 +394,25 @@ export function AIChatPage() {
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Provider</span>
                     <span className="text-sm text-muted-foreground">
-                      {aiStatus.service.provider}
+                      {aiStatus.service?.provider}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Model</span>
                     <span className="text-sm text-muted-foreground">
-                      {aiStatus.service.current_model}
+                      {aiStatus.service?.current_model}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Status</span>
-                    <Badge variant={aiStatus.service.status === 'running' ? 'default' : 'destructive'}>
-                      {aiStatus.service.status}
+                    <Badge variant={aiStatus.service?.status === 'running' ? 'default' : 'destructive'}>
+                      {aiStatus.service?.status}
                     </Badge>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Available Models</span>
                     <span className="text-sm text-muted-foreground">
-                      {aiStatus.service.available_models?.length || 0} models
+                      {aiStatus.service?.available_models?.length || 0} models
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
@@ -425,6 +425,9 @@ export function AIChatPage() {
                     <span className="text-sm font-medium">Multi-language</span>
                     <Badge variant={aiStatus?.features?.function_calling ? 'default' : 'secondary'}>
                       {aiStatus?.features?.function_calling ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                    <Badge variant={aiStatus.features?.multi_language ? 'default' : 'secondary'}>
+                      {aiStatus.features?.multi_language ? 'Enabled' : 'Disabled'}
                     </Badge>
                   </div>
                 </div>

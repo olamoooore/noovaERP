@@ -4,6 +4,7 @@ namespace App\Accounting\Contracts;
 
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingResult;
+use App\Accounting\DTOs\ReversalRequest;
 
 interface PostingEngineInterface
 {
@@ -15,9 +16,12 @@ interface PostingEngineInterface
 
     /**
      * Reverse a previously posted journal entry.
-     * Creates a reversal entry with swapped debits/credits.
+     *
+     * Accepts a typed ReversalRequest that enforces the reversal date,
+     * reason, actor, and approver — preventing self-approval and ensuring
+     * the reversal date is validated against lock + fiscal controls.
      */
-    public function reverse(int $journalEntryId, string $reason, ?int $approvedBy = null): PostingResult;
+    public function reverse(ReversalRequest $request): PostingResult;
 
     /**
      * Preview the journal effect without committing.

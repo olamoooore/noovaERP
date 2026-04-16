@@ -151,6 +151,10 @@ class CustomersController extends Controller
                         'company' => isset($row['company']) && $row['company'] !== '' ? trim((string) $row['company']) : null,
                         'billing_address' => isset($row['billing_address']) && $row['billing_address'] !== '' ? trim((string) $row['billing_address']) : null,
                         'shipping_address' => isset($row['shipping_address']) && $row['shipping_address'] !== '' ? trim((string) $row['shipping_address']) : null,
+                        'credit_limit' => 0,
+                        'payment_terms' => 30,
+                        'total_outstanding' => 0,
+                        'is_active' => true,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);

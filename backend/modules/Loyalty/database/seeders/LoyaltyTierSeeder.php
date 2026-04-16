@@ -10,8 +10,12 @@ class LoyaltyTierSeeder extends Seeder
 {
     public function run(): void
     {
-        // Create default loyalty program
-        $program = LoyaltyProgram::firstOrCreate(
+        $hasAnotherActiveProgram = LoyaltyProgram::query()
+            ->where('name', '!=', 'Default Loyalty Program')
+            ->where('is_active', true)
+            ->exists();
+
+        $program = LoyaltyProgram::updateOrCreate(
             ['name' => 'Default Loyalty Program'],
             [
                 'description' => 'Earn points with every purchase and unlock exclusive rewards',
@@ -20,11 +24,10 @@ class LoyaltyTierSeeder extends Seeder
                 'min_redemption_points' => 100,
                 'max_redemption_percent' => 50.00,
                 'points_expiry_months' => 12,
-                'is_active' => true,
+                'is_active' => !$hasAnotherActiveProgram,
             ]
         );
 
-        // Create default tiers
         $tiers = [
             [
                 'name' => 'Bronze',
@@ -89,7 +92,7 @@ class LoyaltyTierSeeder extends Seeder
         ];
 
         foreach ($tiers as $tierData) {
-            LoyaltyTier::firstOrCreate(
+            LoyaltyTier::updateOrCreate(
                 [
                     'loyalty_program_id' => $program->id,
                     'name' => $tierData['name'],
@@ -97,5 +100,19 @@ class LoyaltyTierSeeder extends Seeder
                 $tierData
             );
         }
+
+        $preferredActiveProgramId = LoyaltyProgram::query()
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN name = 'Default Loyalty Program' THEN 1 ELSE 0 END")
+            ->orderBy('id')
+            ->value('id') ?? $program->id;
+
+        LoyaltyProgram::query()
+            ->whereKeyNot($preferredActiveProgramId)
+            ->update(['is_active' => false]);
+
+        LoyaltyProgram::query()
+            ->whereKey($preferredActiveProgramId)
+            ->update(['is_active' => true]);
     }
 }

@@ -34,11 +34,19 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'feature' => \App\Http\Middleware\EnsureFeatureEnabled::class,
-            'auth.agent' => \App\Http\Middleware\AuthenticateAgent::class,
-            'auth.agent_or_user' => \App\Http\Middleware\AuthenticateAgentOrUser::class,
+            'feature'                  => \App\Http\Middleware\EnsureFeatureEnabled::class,
+            'entitlement'              => \App\Http\Middleware\EnsureEntitlementAccess::class,
+            'auth.tenant_key'          => \App\Http\Middleware\AuthenticateTenantApiKey::class,
+            'auth.agent'               => \App\Http\Middleware\AuthenticateAgent::class,
+            'auth.agent_or_user'       => \App\Http\Middleware\AuthenticateAgentOrUser::class,
             'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
+            'inventory.access'         => \App\Http\Middleware\EnsureInventoryAccess::class,
         ]);
+
+        // Remove SubstituteBindings from the 'api' group so tenant routes can
+        // add it AFTER the search_path middleware — otherwise route-model
+        // binding queries run before the tenant schema is active.
+        $middleware->removeFromGroup('api', \Illuminate\Routing\Middleware\SubstituteBindings::class);
 
         // Add CORS to the very beginning of global middleware stack
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);

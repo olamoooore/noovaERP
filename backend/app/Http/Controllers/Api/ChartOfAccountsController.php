@@ -17,8 +17,9 @@ class ChartOfAccountsController extends Controller
         try {
             $query = ChartOfAccount::with(['parent', 'children']);
 
-            // Filter by type
+            // Filter by type with validation
             if ($request->has('type')) {
+                $request->validate(['type' => 'string|in:asset,liability,equity,revenue,expense']);
                 $query->where('type', $request->type);
             }
 
@@ -175,11 +176,21 @@ class ChartOfAccountsController extends Controller
         try {
             $account = ChartOfAccount::findOrFail($id);
 
-            // Prevent editing system accounts
+            // System accounts: allow editing name/description/subtype/is_active but protect code & type
             if ($account->is_system) {
+                $validated = $request->validate([
+                    'name' => 'required|string|max:255',
+                    'subtype' => 'nullable|string|max:50',
+                    'description' => 'nullable|string',
+                    'is_active' => 'boolean',
+                ]);
+
+                $account->update($validated);
+
                 return response()->json([
-                    'message' => 'Cannot edit system accounts'
-                ], 403);
+                    'data' => $account,
+                    'message' => 'System account updated successfully'
+                ]);
             }
 
             $validated = $request->validate([

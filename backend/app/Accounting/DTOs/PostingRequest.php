@@ -11,7 +11,7 @@ class PostingRequest
      */
     public function __construct(
         public readonly string $documentType,
-        public readonly int $documentId,
+        public readonly ?int $documentId,   // nullable: batch processes (e.g. FX revaluation) have no single source doc
         public readonly string $postingDate,
         public readonly string $description,
         public readonly array $lines,

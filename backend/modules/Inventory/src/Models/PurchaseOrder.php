@@ -90,4 +90,22 @@ class PurchaseOrder extends Model
         $lastPo = static::whereDate('created_at', today())->count() + 1;
         return sprintf('%s-%s-%04d', $prefix, $date, $lastPo);
     }
+
+    public function canReceive(): bool
+    {
+        return in_array($this->status, ['approved', 'ordered'], true);
+    }
+
+    public function markReceived(): self
+    {
+        if ($this->status !== 'ordered') {
+            throw new \InvalidArgumentException("Cannot mark PO as received. Status: {$this->status}");
+        }
+
+        $this->status = 'received';
+        $this->received_date = now();
+        $this->save();
+
+        return $this;
+    }
 }
