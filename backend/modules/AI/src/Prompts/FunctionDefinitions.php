@@ -54,6 +54,10 @@ class FunctionDefinitions
             self::getCustomerLedger(),
             self::getSupplierLedger(),
             self::createTicket(),
+            // Copilot Functions
+            self::detectCloseAnomalies(),
+            self::prioritizeCollections(),
+            self::suggestAPCoding(),
         ];
     }
 
@@ -494,7 +498,7 @@ class FunctionDefinitions
         ];
     }
 
-    public static function getSupplierInvoices(): array
+    protected static function getSupplierInvoices(): array
     {
         return [
             'name' => 'get_supplier_invoices',
@@ -512,7 +516,7 @@ class FunctionDefinitions
         ];
     }
 
-    public static function getFinancialReport(): array
+    protected static function getFinancialReport(): array
     {
         return [
             'name' => 'get_financial_report',
@@ -530,7 +534,7 @@ class FunctionDefinitions
         ];
     }
 
-    public static function getCustomerLedger(): array
+    protected static function getCustomerLedger(): array
     {
         return [
             'name' => 'get_customer_ledger',
@@ -552,7 +556,7 @@ class FunctionDefinitions
         ];
     }
 
-    public static function getSupplierLedger(): array
+    protected static function getSupplierLedger(): array
     {
         return [
             'name' => 'get_supplier_ledger',
@@ -619,6 +623,58 @@ class FunctionDefinitions
                     ],
                 ],
                 'required' => ['reason'],
+            ],
+        ];
+    }
+    // ========================================
+    // Copilot Functions
+    // ========================================
+
+    protected static function detectCloseAnomalies(): array
+    {
+        return [
+            'name' => 'detect_close_anomalies',
+            'description' => 'Detect anomalies and unusual balances in journal entries. Use when the user asks about anomalies, unusual entries, or wants a close review of journal entries.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Period to check: this_month, last_month, or this_year. Defaults to this_year.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function prioritizeCollections(): array
+    {
+        return [
+            'name' => 'prioritize_collections',
+            'description' => 'Rank customers by collections priority based on outstanding balances and overdue invoices. Use when the user asks about collections, who to chase for payment, or customer priorities.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'string',
+                        'description' => 'Number of customers to return. Defaults to 10.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function suggestAPCoding(): array
+    {
+        return [
+            'name' => 'suggest_ap_coding',
+            'description' => 'Suggest account codes for AP invoices based on past posted OCR documents. Use when the user asks for account coding suggestions or how to code a supplier invoice.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [],
+                'required' => [],
             ],
         ];
     }

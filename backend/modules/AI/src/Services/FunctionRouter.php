@@ -11,6 +11,7 @@ use Modules\AI\Functions\InvoiceFunctions;
 use Modules\AI\Functions\TicketFunctions;
 use Modules\AI\Functions\InventoryFunctions;
 use Modules\AI\Functions\AccountingFunctions;
+use Modules\AI\Functions\CopilotFunctions;
 
 /**
  * Function Router Service
@@ -76,6 +77,10 @@ class FunctionRouter
                 'get_supplier_ledger' => AccountingFunctions::getSupplierLedger($arguments),
                 'create_ticket' => TicketFunctions::create($arguments, $customerId, $conversationId),
                 'transfer_to_human' => $this->transferToHuman($arguments),
+                // Copilot Functions
+                'detect_close_anomalies' => CopilotFunctions::detectCloseAnomalies($arguments),
+                'prioritize_collections' => CopilotFunctions::prioritizeCollections($arguments),
+                'suggest_ap_coding' => CopilotFunctions::suggestAPCoding($arguments),
                 default => [
                     'success' => false,
                     'error' => 'Unknown function: ' . $functionName,
