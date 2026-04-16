@@ -86,6 +86,12 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
       label: 'My Account',
       description: 'View account details and settings',
     },
+    {
+      id: 'accounting_insights',
+      icon: '🔍',
+      label: 'Accounting Insights',
+      description: 'AI-powered accounting analysis',
+    },
   ]
 
   const mergeQuickOptions = (primary: QuickOption[], fallback: QuickOption[]): QuickOption[] => {
