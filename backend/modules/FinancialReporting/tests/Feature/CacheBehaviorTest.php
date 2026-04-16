@@ -133,9 +133,11 @@ class CacheBehaviorTest extends TenantTestCase
         // Create new transaction
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         $entry = JournalEntry::create([
+            'entry_number' => 'JE-TEST-' . uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'New Sale',
             'status' => 'posted',
+            'created_by' => $this->user->id,
         ]);
 
         JournalEntryLine::create([

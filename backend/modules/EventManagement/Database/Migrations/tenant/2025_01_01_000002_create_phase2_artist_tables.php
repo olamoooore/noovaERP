@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -9,7 +10,8 @@ use Illuminate\Support\Facades\Schema;
  * 
  * Creates tables for K-POP artist and group management:
  * - artists: Individual artists with metadata
- * - groups: K-POP groups with formation details
+ * - artist_groups: K-POP groups with formation details (renamed from 'groups'
+ *   to avoid collision with core entity_model 'groups' table)
  * - group_members: Artist-group relationships with roles
  * - artist_events: Artist/group event associations
  * 
@@ -67,7 +69,7 @@ return new class extends Migration
         });
 
         // Groups table - K-POP groups and bands
-        Schema::create('groups', function (Blueprint $table) {
+        Schema::create('artist_groups', function (Blueprint $table) {
             $table->id();
             $table->string('tenant_id')->index();
             
@@ -123,7 +125,7 @@ return new class extends Migration
             $table->string('tenant_id')->index();
             
             // Relationships
-            $table->foreignId('group_id')->constrained('groups')->onDelete('cascade');
+            $table->foreignId('group_id')->constrained('artist_groups')->onDelete('cascade');
             $table->foreignId('artist_id')->constrained('artists')->onDelete('cascade');
             
             // Member Details
@@ -168,7 +170,7 @@ return new class extends Migration
             // Relationships
             $table->foreignId('event_id')->constrained('events')->onDelete('cascade');
             $table->foreignId('artist_id')->nullable()->constrained('artists')->onDelete('cascade');
-            $table->foreignId('group_id')->nullable()->constrained('groups')->onDelete('cascade');
+            $table->foreignId('group_id')->nullable()->constrained('artist_groups')->onDelete('cascade');
             
             // Performance Details
             $table->enum('role', ['main', 'guest', 'collaboration', 'special_guest', 'opening_act'])
@@ -232,7 +234,7 @@ return new class extends Migration
                 0 as total_revenue
             FROM artist_events ae
             LEFT JOIN artists a ON ae.artist_id = a.id
-            LEFT JOIN groups g ON ae.group_id = g.id
+            LEFT JOIN artist_groups g ON ae.group_id = g.id
             LEFT JOIN events e ON ae.event_id = e.id
             LEFT JOIN bookings b ON e.id = b.event_id
             LEFT JOIN tickets t ON b.id = t.booking_id AND t.status = "active"
@@ -253,7 +255,7 @@ return new class extends Migration
         // Drop tables in reverse order of dependencies
         Schema::dropIfExists('artist_events');
         Schema::dropIfExists('group_members');
-        Schema::dropIfExists('groups');
+        Schema::dropIfExists('artist_groups');
         Schema::dropIfExists('artists');
     }
 };

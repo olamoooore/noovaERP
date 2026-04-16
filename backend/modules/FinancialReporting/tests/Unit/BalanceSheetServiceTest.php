@@ -8,59 +8,66 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\User;
 use Carbon\Carbon;
 
 class BalanceSheetServiceTest extends TenantTestCase
 {
 
     protected BalanceSheetService $service;
+    protected User $testUser;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // Force journal-entry queries (not summary table) and legacy code-range filtering
+        config(['financialreporting.reports.use_summary_after_days' => 999999]);
+        config(['app.report_classification' => 'legacy']);
         $this->service = app(BalanceSheetService::class);
+        $this->testUser = User::factory()->create();
         $this->setupTestData();
     }
 
     protected function setupTestData(): void
     {
-        // Create asset accounts
-        ChartOfAccount::create([
-            'code' => '1000',
-            'name' => 'Cash',
-            'type' => 'asset',
-            'is_active' => true,
-        ]);
+        // Use firstOrCreate to avoid collision with migration-seeded accounts
+        ChartOfAccount::firstOrCreate(
+            ['code' => '1000'],
+            ['name' => 'Cash', 'type' => 'asset', 'is_active' => true]
+        );
 
-        ChartOfAccount::create([
-            'code' => '1200',
-            'name' => 'Accounts Receivable',
-            'type' => 'asset',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '1200'],
+            ['name' => 'Accounts Receivable', 'type' => 'asset', 'is_active' => true]
+        );
 
-        // Create liability account
-        ChartOfAccount::create([
-            'code' => '2000',
-            'name' => 'Accounts Payable',
-            'type' => 'liability',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '2000'],
+            ['name' => 'Accounts Payable', 'type' => 'liability', 'is_active' => true]
+        );
 
-        // Create equity account
-        ChartOfAccount::create([
-            'code' => '3000',
-            'name' => 'Owner Equity',
-            'type' => 'equity',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '3000'],
+            ['name' => 'Owner Equity', 'type' => 'equity', 'is_active' => true]
+        );
+    }
+
+    private function createJournalEntry(array $attrs = []): JournalEntry
+    {
+        return JournalEntry::create(array_merge([
+            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_date' => Carbon::parse('2024-01-15'),
+            'description' => 'Test Entry',
+            'status' => 'posted',
+            'created_by' => $this->testUser->id,
+        ], $attrs));
     }
 
     /** @test */
     public function it_generates_balance_sheet_report()
     {
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
@@ -77,10 +84,8 @@ class BalanceSheetServiceTest extends TenantTestCase
     {
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Initial Cash',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -91,7 +96,7 @@ class BalanceSheetServiceTest extends TenantTestCase
         ]);
 
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
@@ -105,10 +110,8 @@ class BalanceSheetServiceTest extends TenantTestCase
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
         $equityAccount = ChartOfAccount::where('code', '3000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Initial Investment',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -126,7 +129,7 @@ class BalanceSheetServiceTest extends TenantTestCase
         ]);
 
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
@@ -144,10 +147,9 @@ class BalanceSheetServiceTest extends TenantTestCase
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
         
         // Entry in January
-        $entry1 = JournalEntry::create([
+        $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'January Cash',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -158,10 +160,9 @@ class BalanceSheetServiceTest extends TenantTestCase
         ]);
 
         // Entry in February (should be excluded)
-        $entry2 = JournalEntry::create([
+        $entry2 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-02-15'),
             'description' => 'February Cash',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -172,7 +173,7 @@ class BalanceSheetServiceTest extends TenantTestCase
         ]);
 
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
@@ -184,12 +185,11 @@ class BalanceSheetServiceTest extends TenantTestCase
     public function it_includes_summary_metrics()
     {
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('summary', $report->summary);
         $this->assertArrayHasKey('total_assets', $report->summary);
         $this->assertArrayHasKey('total_liabilities', $report->summary);
         $this->assertArrayHasKey('total_equity', $report->summary);

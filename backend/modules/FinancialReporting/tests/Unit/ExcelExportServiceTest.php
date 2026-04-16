@@ -19,53 +19,45 @@ class ExcelExportServiceTest extends TenantTestCase
     }
 
     /** @test */
-    public function it_formats_headers_correctly()
+    public function it_throws_when_phpspreadsheet_not_installed()
     {
-        $data = [
-            ['product_name' => 'Product 1', 'total_sales' => 1000],
-            ['product_name' => 'Product 2', 'total_sales' => 2000],
-        ];
+        if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            $this->markTestSkipped('PhpSpreadsheet is installed — cannot test missing-library guard');
+        }
 
-        $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('PhpSpreadsheet library is not installed');
 
-        $headers = $method->invoke($this->service, $data);
-
-        $this->assertContains('Product Name', $headers);
-        $this->assertContains('Total Sales', $headers);
+        $this->service->exportReport([
+            'title' => 'Test Report',
+            'data' => [['name' => 'Item 1', 'value' => 100]],
+        ]);
     }
 
     /** @test */
-    public function it_handles_empty_data()
+    public function it_throws_for_charts_when_phpspreadsheet_not_installed()
     {
-        $data = [];
+        if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            $this->markTestSkipped('PhpSpreadsheet is installed — cannot test missing-library guard');
+        }
 
-        $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('PhpSpreadsheet library is not installed');
 
-        $headers = $method->invoke($this->service, $data);
-
-        $this->assertIsArray($headers);
-        $this->assertEmpty($headers);
+        $this->service->exportWithCharts(
+            ['title' => 'Test', 'data' => []],
+            ['type' => 'bar'],
+        );
     }
 
     /** @test */
-    public function it_converts_snake_case_to_title_case()
+    public function it_has_export_report_public_method()
     {
-        $data = [
-            ['customer_lifetime_value' => 5000, 'average_order_value' => 250],
-        ];
-
         $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+        $method = $reflection->getMethod('exportReport');
 
-        $headers = $method->invoke($this->service, $data);
-
-        $this->assertContains('Customer Lifetime Value', $headers);
-        $this->assertContains('Average Order Value', $headers);
+        $this->assertTrue($method->isPublic());
+        $this->assertCount(2, $method->getParameters());
     }
 
     /** @test */

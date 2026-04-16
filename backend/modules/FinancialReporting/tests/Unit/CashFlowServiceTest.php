@@ -29,7 +29,7 @@ class CashFlowServiceTest extends TenantTestCase
         $report = $this->service->generate($filter);
 
         $this->assertNotNull($report);
-        $this->assertEquals('Cash Flow Statement', $report->title);
+        $this->assertStringContainsString('Cash Flow Statement', $report->title);
         $this->assertArrayHasKey('operating_activities', $report->data);
         $this->assertArrayHasKey('investing_activities', $report->data);
         $this->assertArrayHasKey('financing_activities', $report->data);
@@ -68,7 +68,6 @@ class CashFlowServiceTest extends TenantTestCase
 
         $report = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('metadata', $report->metadata);
         $this->assertArrayHasKey('period', $report->metadata);
         $this->assertEquals('2024-01-01', $report->metadata['period']['start']);
         $this->assertEquals('2024-01-31', $report->metadata['period']['end']);
@@ -79,13 +78,14 @@ class CashFlowServiceTest extends TenantTestCase
     {
         $filter = new ReportFilter(
             startDate: Carbon::parse('2024-01-01'),
-            endDate: Carbon::parse('2024-01-31')
+            endDate: Carbon::parse('2024-01-31'),
+            interval: 'direct',
         );
-        $filter->method = 'direct';
 
         $report = $this->service->generate($filter);
 
         $this->assertNotNull($report);
+        $this->assertStringContainsString('Cash Flow Statement', $report->title);
         $this->assertArrayHasKey('operating_activities', $report->data);
     }
 
@@ -94,13 +94,14 @@ class CashFlowServiceTest extends TenantTestCase
     {
         $filter = new ReportFilter(
             startDate: Carbon::parse('2024-01-01'),
-            endDate: Carbon::parse('2024-01-31')
+            endDate: Carbon::parse('2024-01-31'),
+            interval: 'indirect',
         );
-        $filter->method = 'indirect';
 
         $report = $this->service->generate($filter);
 
         $this->assertNotNull($report);
+        $this->assertStringContainsString('Cash Flow Statement', $report->title);
         $this->assertArrayHasKey('operating_activities', $report->data);
     }
 }

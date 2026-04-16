@@ -17,7 +17,9 @@ class FinancialReportingServiceProvider extends ServiceProvider
     {
         $this->registerConfig();
         $this->registerViews();
-        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
+        // Tenant migrations are loaded via tenancy.php migration_parameters config
+        // and explicitly via TenantTestCase::getTenantMigrationPaths() in tests.
     }
 
     /**

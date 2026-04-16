@@ -47,8 +47,9 @@ class EventManagementServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Load migrations (central context)
-        $this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
+        // Tenant migrations are loaded via tenancy.php migration_parameters config
+        // and explicitly via TenantTestCase::getTenantMigrationPaths() in tests.
 
         // Routes are loaded via tenant.php (ModuleManager::tenantApiRouteFiles)
         // Do NOT use loadRoutesFrom here to avoid double-prefix registration

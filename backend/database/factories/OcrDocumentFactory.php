@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Illuminate\Support\Str;
@@ -19,7 +20,7 @@ class OcrDocumentFactory extends Factory
             'file_size' => $this->faker->numberBetween(100000, 5000000),
             'mime_type' => 'image/jpeg',
             'status' => 'PENDING',
-            'created_by' => 1,
+            'created_by' => User::factory(),
         ];
     }
 
@@ -36,7 +37,7 @@ class OcrDocumentFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'status' => 'POSTED',
             'posted_at' => now(),
-            'posted_by' => 1,
+            'posted_by' => User::factory(),
         ]);
     }
 }

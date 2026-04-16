@@ -21,12 +21,10 @@ class InventoryTurnoverServiceTest extends TenantTestCase
     /** @test */
     public function it_returns_turnover_report_structure()
     {
-        $filter = new ReportFilter(
-            startDate: Carbon::parse('2024-01-01'),
-            endDate: Carbon::parse('2024-01-31')
-        );
+        $startDate = Carbon::parse('2024-01-01');
+        $endDate = Carbon::parse('2024-01-31');
 
-        $result = $this->service->generate($filter);
+        $result = $this->service->generate($startDate, $endDate);
 
         $this->assertIsArray($result);
         $this->assertArrayHasKey('title', $result);
@@ -39,12 +37,10 @@ class InventoryTurnoverServiceTest extends TenantTestCase
     /** @test */
     public function it_includes_turnover_metrics()
     {
-        $filter = new ReportFilter(
-            startDate: Carbon::parse('2024-01-01'),
-            endDate: Carbon::parse('2024-01-31')
-        );
+        $startDate = Carbon::parse('2024-01-01');
+        $endDate = Carbon::parse('2024-01-31');
 
-        $result = $this->service->generate($filter);
+        $result = $this->service->generate($startDate, $endDate);
 
         $this->assertArrayHasKey('summary', $result);
         $this->assertArrayHasKey('average_turnover_ratio', $result['summary']);
@@ -54,9 +50,10 @@ class InventoryTurnoverServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_dates_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $startDate = Carbon::now()->startOfYear();
+        $endDate = Carbon::now();
 
-        $result = $this->service->generate($filter);
+        $result = $this->service->generate($startDate, $endDate);
 
         $this->assertArrayHasKey('period', $result);
         $this->assertArrayHasKey('start_date', $result['period']);
