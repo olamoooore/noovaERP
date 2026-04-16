@@ -120,11 +120,40 @@ class TrialBalanceServiceTest extends TenantTestCase
     /** @test */
     public function it_excludes_zero_balance_accounts()
     {
+        $cashAccount = ChartOfAccount::where('code', '1000')->first();
+        $equityAccount = ChartOfAccount::where('code', '3000')->first();
+
+        $zeroBalanceAccount = ChartOfAccount::firstOrCreate(
+            ['code' => '9991'],
+            ['name' => 'Zero Balance Account', 'type' => 'asset', 'is_active' => true]
+        );
+
+        $entry = $this->createJournalEntry([
+            'description' => 'Non-zero balances only',
+        ]);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cashAccount->id,
+            'debit' => 5000,
+            'credit' => 0,
+        ]);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $equityAccount->id,
+            'debit' => 0,
+            'credit' => 5000,
+        ]);
+
         $filter = new ReportFilter(
             asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
+
+        $this->assertNotEmpty($report->data);
+        $this->assertNotContains($zeroBalanceAccount->code, array_column($report->data, 'code'));
 
         // Data is a flat array of account rows
         foreach ($report->data as $account) {

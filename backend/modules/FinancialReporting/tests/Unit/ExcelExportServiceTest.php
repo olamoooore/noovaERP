@@ -19,10 +19,29 @@ class ExcelExportServiceTest extends TenantTestCase
     }
 
     /** @test */
-    public function it_throws_when_phpspreadsheet_not_installed()
+    public function it_exports_report_when_phpspreadsheet_is_available_or_throws_when_it_is_not_installed()
     {
         if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
-            $this->markTestSkipped('PhpSpreadsheet is installed — cannot test missing-library guard');
+            $filePath = $this->service->exportReport([
+                'title' => 'Test Report',
+                'period' => [
+                    'start_date' => '2024-01-01',
+                    'end_date' => '2024-01-31',
+                ],
+                'data' => [
+                    ['name' => 'Item 1', 'value' => 100],
+                    ['name' => 'Item 2', 'value' => 200.50],
+                ],
+                'summary' => [
+                    'total' => 300.50,
+                ],
+            ], 'excel-export-test');
+
+            $this->assertFileExists($filePath);
+            $this->assertStringEndsWith('.xlsx', $filePath);
+            $this->assertGreaterThan(0, filesize($filePath));
+
+            return;
         }
 
         $this->expectException(\Exception::class);
@@ -35,10 +54,24 @@ class ExcelExportServiceTest extends TenantTestCase
     }
 
     /** @test */
-    public function it_throws_for_charts_when_phpspreadsheet_not_installed()
+    public function it_exports_with_charts_when_phpspreadsheet_is_available_or_throws_when_it_is_not_installed()
     {
         if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
-            $this->markTestSkipped('PhpSpreadsheet is installed — cannot test missing-library guard');
+            $filePath = $this->service->exportWithCharts(
+                [
+                    'title' => 'Test',
+                    'data' => [
+                        ['name' => 'Item 1', 'value' => 100],
+                    ],
+                ],
+                ['type' => 'bar'],
+                'excel-charts-test'
+            );
+
+            $this->assertFileExists($filePath);
+            $this->assertStringEndsWith('.xlsx', $filePath);
+
+            return;
         }
 
         $this->expectException(\Exception::class);
