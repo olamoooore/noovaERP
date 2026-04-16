@@ -8,6 +8,7 @@ use Illuminate\Routing\Controller;
 use Modules\EventManagement\Services\FraudTimelineService;
 use Modules\EventManagement\Services\RiskScoringService;
 use Modules\EventManagement\Services\ProgressiveFrictionService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * FraudAnalyticsController
@@ -424,7 +425,7 @@ class FraudAnalyticsController extends Controller
                     'update_data' => $updateData
                 ]),
                 'actor_type' => 'staff',
-                'actor_id' => auth()->id() ?? 'system',
+                'actor_id' => TenantUserHelper::resolveTenantUserId() ?? 'system',
                 'action_taken' => 'case_updated',
                 'notes' => $updateData['investigation_notes'] ?? null,
                 'event_timestamp' => now(),

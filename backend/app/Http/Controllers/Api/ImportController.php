@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
+use App\Services\BillPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,10 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
  */
 class ImportController extends Controller
 {
+    public function __construct(
+        private BillPaymentService $billPaymentService,
+    ) {}
+
     /**
      * Handle file import
      */
@@ -430,6 +435,9 @@ class ImportController extends Controller
 
     /**
      * Import Vendor Payments from Excel
+     * 
+     * Workstream 1 (2026-04-15): Routed through BillPaymentService to ensure
+     * all vendor payments post to GL via the canonical posting control plane.
      */
     private function importVendorPayments(Request $request)
     {
@@ -474,8 +482,6 @@ class ImportController extends Controller
                 'errors' => []
             ];
 
-            DB::beginTransaction();
-
             foreach ($dataRows as $rowIndex => $row) {
                 $actualRowNumber = $headerRow + $rowIndex + 2;
                 
@@ -502,11 +508,11 @@ class ImportController extends Controller
                         continue;
                     }
 
-                    // Create payment
-                    $payment = \App\Models\BillPayment::create($paymentData);
+                    // Create payment via BillPaymentService (posts to GL and updates bill balances)
+                    $payment = $this->billPaymentService->recordPayment($paymentData, $paymentData['created_by'] ?? null);
                     $results['created']++;
                     
-                    Log::info("Created payment: {$payment->payment_number}");
+                    Log::info("Created payment via BillPaymentService: {$payment->payment_number}");
 
                 } catch (\Exception $e) {
                     $results['errors'][] = "Row {$actualRowNumber}: " . $e->getMessage();
@@ -516,8 +522,6 @@ class ImportController extends Controller
                     ]);
                 }
             }
-
-            DB::commit();
 
             // Clean up uploaded file
             Storage::delete($path);
@@ -530,7 +534,6 @@ class ImportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            DB::rollBack();
             Storage::delete($path);
             
             Log::error('Vendor Payments import failed', [

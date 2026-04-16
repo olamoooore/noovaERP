@@ -4,11 +4,14 @@ namespace Modules\Ecommerce\Models;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\StockMovement;
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Inventory\Models\StockReservation;
 
 class WebOrder extends Model
 {
@@ -76,6 +79,11 @@ class WebOrder extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function fulfillmentWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'fulfillment_warehouse_id');
     }
 
     // ── Status constants ──────────────────────────────────────────────────────
@@ -184,6 +192,37 @@ class WebOrder extends Model
         return $this;
     }
 
+    public function resolveInventoryWarehouseId(): ?int
+    {
+        if ($this->fulfillment_warehouse_id) {
+            return (int) $this->fulfillment_warehouse_id;
+        }
+
+        $reservationWarehouseIds = StockReservation::query()
+            ->where('source_document_type', 'WebOrder')
+            ->where('source_document_id', $this->id)
+            ->whereNotNull('warehouse_id')
+            ->distinct()
+            ->pluck('warehouse_id');
+
+        if ($reservationWarehouseIds->count() === 1) {
+            return (int) $reservationWarehouseIds->first();
+        }
+
+        $movementWarehouseIds = StockMovement::query()
+            ->where('reference_type', 'WebOrder')
+            ->where('reference_id', $this->id)
+            ->whereNotNull('warehouse_id')
+            ->distinct()
+            ->pluck('warehouse_id');
+
+        if ($movementWarehouseIds->count() === 1) {
+            return (int) $movementWarehouseIds->first();
+        }
+
+        return null;
+    }
+
     // Generate unique order number
     public static function generateOrderNumber(): string
     {
@@ -239,15 +278,23 @@ class WebOrder extends Model
         // Create invoice via canonical SalesOrderService → InvoiceService path
         $invoice = $salesOrderService->createInvoice($salesOrder);
 
-        // Override totals and status to match the already-paid web order
+        // Override totals to match the already-paid web order and reconcile
+        // invoice balances via InvoiceService without posting duplicate GL.
         $invoice->update([
             'subtotal'        => $this->subtotal,
             'tax_amount'      => $this->tax_amount,
             'discount_amount' => $this->discount_amount + $this->loyalty_discount,
             'total'           => $this->total,
-            'paid_amount'     => $this->total,
-            'balance'         => 0,
-            'status'          => 'paid',
+            'web_order_id'    => $this->id,
+        ]);
+
+        app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
+            'payment_date' => now(),
+            'method' => 'card',
+            'reference' => "WEB-{$this->order_number}",
+            'amount' => (float) $this->total,
+            'notes' => "Web order {$this->order_number} (pre-paid)",
+            'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId($this->customer_id),
         ]);
 
         // Update order with invoice reference

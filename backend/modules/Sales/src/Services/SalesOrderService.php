@@ -2,12 +2,16 @@
 
 namespace Modules\Sales\Services;
 
+use App\Models\JournalEntryLink;
 use App\Models\Customer;
 use App\Services\InvoiceService;
+use Illuminate\Support\Facades\Auth;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
 use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Models\SalesChannelReference;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 use Illuminate\Support\Facades\DB;
 
 class SalesOrderService
@@ -22,8 +26,11 @@ class SalesOrderService
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
-            $data['created_by'] = auth()->id();
+            $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
+
+            $data['created_by'] = $actorId;
             $data['status'] = $data['status'] ?? 'draft';
+            $data['accounting_status'] = $data['accounting_status'] ?? 'not_posted';
             $data['order_date'] = $data['order_date'] ?? now()->toDateString();
 
             $order = SalesOrder::create($data);
@@ -62,7 +69,7 @@ class SalesOrderService
                 'sales_order_id' => $order->id,
                 'from_status' => null,
                 'to_status' => 'draft',
-                'actor_id' => auth()->id(),
+                'actor_id' => $actorId,
                 'source' => $data['channel'] ?? 'admin',
                 'reason' => 'Order created',
                 'transitioned_at' => now(),
@@ -142,11 +149,13 @@ class SalesOrderService
 
             $lines = [];
             foreach ($order->lines as $line) {
+                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLine($line);
+
                 $lines[] = [
                     'product_id' => $line->product_id,
-                    'description' => $line->description,
-                    'quantity' => (int) $line->quantity,
-                    'unit_price' => $line->unit_price,
+                    'description' => $description,
+                    'quantity' => $invoiceQuantity,
+                    'unit_price' => $invoiceUnitPrice,
                     'tax_rate' => $line->tax_rate,
                     'discount_amount' => $line->discount_amount,
                 ];
@@ -162,10 +171,11 @@ class SalesOrderService
                 'link_state' => 'active',
                 'invoiced_qty' => $order->lines->sum('quantity'),
                 'invoiced_value' => $order->total,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::requireTenantUserId($order->created_by),
             ]);
 
             $invoice->update(['sales_order_id' => $order->id]);
+            $this->synchronizeInvoiceBookkeeping($order->fresh('lines'), $invoice->fresh('lines'));
 
             $this->lifecycleService->markInvoiced($order, 'Invoice created');
 
@@ -220,6 +230,8 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $posOrder->customer_id,
             'channel' => 'pos',
+            'created_by' => $posOrder->created_by,
+            'accounting_status' => $this->resolveSourceAccountingStatus('PosOrder', $posOrder->id, $posOrder->journal_entry_id),
             'source_document_type' => 'PosOrder',
             'source_document_id' => $posOrder->id,
             'notes' => "POS Order #{$posOrder->order_number}",
@@ -264,6 +276,7 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $webOrder->customer_id,
             'channel' => 'ecommerce',
+            'accounting_status' => $this->resolveSourceAccountingStatus('WebOrder', $webOrder->id),
             'source_document_type' => 'WebOrder',
             'source_document_id' => $webOrder->id,
             'notes' => "Web Order #{$webOrder->order_number}",
@@ -275,6 +288,97 @@ class SalesOrderService
             ],
             'lines' => $lines,
         ]);
+
+        return $order;
+    }
+
+    public function createFromWorkOrder(\Modules\FieldService\Models\WorkOrder $workOrder): SalesOrder
+    {
+        $workOrder->loadMissing(['parts.product', 'timeLogs', 'customer']);
+
+        if ($workOrder->sales_order_id) {
+            return SalesOrder::findOrFail($workOrder->sales_order_id)
+                ->fresh(['customer', 'lines.product', 'statusHistory']);
+        }
+
+        $existing = SalesOrder::where('source_document_type', 'WorkOrder')
+            ->where('source_document_id', $workOrder->id)
+            ->first();
+
+        if ($existing) {
+            $workOrder->forceFill(['sales_order_id' => $existing->id])->saveQuietly();
+
+            return $existing->fresh(['customer', 'lines.product', 'statusHistory']);
+        }
+
+        $lines = [];
+
+        foreach ($workOrder->timeLogs->where('is_billable', true) as $log) {
+            $amount = (float) $log->duration_hours * (float) $log->hourly_rate;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $description = 'Labor';
+            if ($log->description) {
+                $description .= ' - ' . $log->description;
+            }
+
+            $lines[] = [
+                'description' => $description,
+                'quantity' => (float) $log->duration_hours,
+                'unit' => 'hour',
+                'unit_price' => (float) $log->hourly_rate,
+                'tax_rate' => 0,
+                'discount_amount' => 0,
+                'source_line_type' => 'WorkOrderTimeLog',
+                'source_line_id' => $log->id,
+            ];
+        }
+
+        foreach ($workOrder->parts as $part) {
+            $amount = (float) $part->quantity * (float) $part->unit_price;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $description = $part->description ?: ($part->product->name ?? 'Part/Material');
+
+            $lines[] = [
+                'product_id' => $part->product_id,
+                'description' => $description,
+                'quantity' => (float) $part->quantity,
+                'unit' => 'pcs',
+                'unit_price' => (float) $part->unit_price,
+                'tax_rate' => 0,
+                'discount_amount' => 0,
+                'source_line_type' => 'WorkOrderPart',
+                'source_line_id' => $part->id,
+            ];
+        }
+
+        if (empty($lines)) {
+            $lines[] = [
+                'description' => "Field Service - {$workOrder->title}",
+                'quantity' => 1,
+                'unit' => 'job',
+                'unit_price' => 0.00,
+                'tax_rate' => 0,
+                'discount_amount' => 0,
+            ];
+        }
+
+        $order = $this->createOrder([
+            'customer_id' => $workOrder->customer_id,
+            'channel' => 'admin',
+            'created_by' => $workOrder->created_by,
+            'source_document_type' => 'WorkOrder',
+            'source_document_id' => $workOrder->id,
+            'notes' => "Generated from Work Order {$workOrder->reference}: {$workOrder->title}",
+            'lines' => $lines,
+        ]);
+
+        $workOrder->forceFill(['sales_order_id' => $order->id])->saveQuietly();
 
         return $order;
     }
@@ -297,5 +401,79 @@ class SalesOrderService
                 'list_price' => $line->unit_price,
             ]);
         }
+    }
+
+    private function synchronizeInvoiceBookkeeping(SalesOrder $order, \App\Models\Invoice $invoice): void
+    {
+        $invoiceLines = $invoice->lines;
+
+        foreach ($order->lines as $orderLine) {
+            $matchedInvoiceLine = $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
+                if ($orderLine->source_line_type === 'PosOrderItem' || $orderLine->source_line_type === 'WebOrderItem') {
+                    return (int) $invoiceLine->product_id === (int) $orderLine->product_id
+                        && str_starts_with($invoiceLine->description, $orderLine->description);
+                }
+
+                if ($orderLine->product_id) {
+                    return (int) $invoiceLine->product_id === (int) $orderLine->product_id
+                        && str_starts_with($invoiceLine->description, $orderLine->description);
+                }
+
+                return str_starts_with($invoiceLine->description, $orderLine->description);
+            });
+
+            $orderLine->update([
+                'quantity_invoiced' => $matchedInvoiceLine ? (float) $orderLine->quantity : 0,
+            ]);
+        }
+    }
+
+    private function normalizeInvoiceLine(SalesOrderLine $line): array
+    {
+        $quantity = (float) $line->quantity;
+        $roundedQuantity = round($quantity);
+
+        if (abs($quantity - $roundedQuantity) < 0.0001 && $roundedQuantity >= 1) {
+            return [(int) $roundedQuantity, (float) $line->unit_price, $line->description];
+        }
+
+        $quantityLabel = rtrim(rtrim(number_format($quantity, 4, '.', ''), '0'), '.');
+        $unitPriceLabel = number_format((float) $line->unit_price, 2, '.', '');
+        $description = "{$line->description} ({$quantityLabel} {$line->unit} @ {$unitPriceLabel})";
+
+        return [1, round($quantity * (float) $line->unit_price, 2), $description];
+    }
+
+    private function resolveSourceAccountingStatus(string $sourceDocumentType, int $sourceDocumentId, ?int $journalEntryId = null): string
+    {
+        if ($journalEntryId) {
+            return 'fully_posted';
+        }
+
+        $documentType = match ($sourceDocumentType) {
+            'PosOrder' => 'pos_order',
+            'WebOrder' => 'web_order',
+            default => null,
+        };
+
+        if (!$documentType) {
+            return 'not_posted';
+        }
+
+        $hasReversal = JournalEntryLink::where('source_document_type', $documentType)
+            ->where('source_document_id', $sourceDocumentId)
+            ->where('relation_type', 'reversal')
+            ->exists();
+
+        if ($hasReversal) {
+            return 'reversed';
+        }
+
+        $hasPosting = JournalEntryLink::where('source_document_type', $documentType)
+            ->where('source_document_id', $sourceDocumentId)
+            ->where('relation_type', 'post')
+            ->exists();
+
+        return $hasPosting ? 'fully_posted' : 'not_posted';
     }
 }

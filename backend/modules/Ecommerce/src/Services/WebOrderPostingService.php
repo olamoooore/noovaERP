@@ -7,7 +7,6 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Models\JournalEntry;
-use App\Models\Warehouse;
 use App\Models\JournalEntryLink;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +15,7 @@ use Modules\Ecommerce\Models\WebOrder;
 use Modules\Inventory\Models\StockReservation;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class WebOrderPostingService
 {
@@ -26,21 +26,13 @@ class WebOrderPostingService
     ) {}
     /**
      * Deduct stock for web order items via InventoryService (canonical path).
-     *
-     * Uses the default warehouse. Web orders don't carry a warehouse context today;
-     * when multi-warehouse ecommerce is supported, pass the fulfilment warehouse here.
      */
     public function deductStock(WebOrder $order): void
     {
-        // Prefer the order's explicit fulfilment warehouse; fall back to default.
-        $warehouseId = $order->fulfillment_warehouse_id ?? Warehouse::getDefault()?->id;
-
-        if (!$warehouseId) {
-            Log::warning('WebOrderPostingService::deductStock — no default warehouse, stock not updated', [
-                'order_id' => $order->id,
-            ]);
-            return;
-        }
+        $order->loadMissing('items.product');
+        $warehouseId = $this->orderHasTrackedInventoryItems($order)
+            ? $this->requireInventoryWarehouseId($order, 'deductStock')
+            : null;
 
         foreach ($order->items as $item) {
             $productId      = $item->product_id;
@@ -99,26 +91,43 @@ class WebOrderPostingService
      */
     public function restoreStock(WebOrder $order): void
     {
-        // Prefer the order's explicit fulfilment warehouse; fall back to default.
-        $warehouseId = $order->fulfillment_warehouse_id ?? Warehouse::getDefault()?->id;
-
-        if (!$warehouseId) {
-            Log::warning('WebOrderPostingService::restoreStock — no default warehouse, stock not restored', [
-                'order_id' => $order->id,
-            ]);
-            return;
-        }
+        $order->loadMissing('items.product');
+        $warehouseId = $this->orderHasTrackedInventoryItems($order)
+            ? $this->requireInventoryWarehouseId($order, 'restoreStock')
+            : null;
 
         foreach ($order->items as $item) {
             $productId      = $item->product_id;
             $trackInventory = $item->product?->track_inventory ?? false;
 
             if ($productId && $trackInventory) {
+                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
+                    ->where('reference_id', $order->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $alreadyRestored = (int) StockMovement::where('reference_type', 'WebOrder')
+                    ->where('reference_id', $order->id)
+                    ->where('type', 'return')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $remainingToRestore = $alreadyDeducted - $alreadyRestored;
+
+                if ($remainingToRestore <= 0) {
+                    Log::info('WebOrderPostingService::restoreStock skip already restored line', [
+                        'order_id' => $order->id,
+                        'product_id' => $productId,
+                        'already_deducted' => $alreadyDeducted,
+                        'already_restored' => $alreadyRestored,
+                    ]);
+                    continue;
+                }
+
                 try {
                     $this->inventoryService->adjustStock(
                         productId:     $productId,
                         warehouseId:   $warehouseId,
-                        quantity:      $item->quantity,
+                        quantity:      $remainingToRestore,
                         type:          'return',
                         reference:     'Return: ' . $order->order_number,
                         referenceType: 'WebOrder',
@@ -270,7 +279,7 @@ class WebOrderPostingService
                 description: "Web sale ({$paymentMethod})",
                 lines: $lines,
                 reference: $order->order_number,
-                userId: auth()->id() ?? 1,
+                userId: TenantUserHelper::resolveTenantUserId(),
                 legalEntityId: request()->attributes->get('legal_entity_id'),
                 entityBookId: request()->attributes->get('entity_book_id'),
             ));
@@ -324,7 +333,7 @@ class WebOrderPostingService
                 reversalDate:   now()->toDateString(),
                 reason:         $reason,
                 reasonCode:     'WEB_ORDER_CANCEL',
-                actorUserId:    auth()->id() ?? 1,
+                actorUserId:    TenantUserHelper::resolveTenantUserId(),
                 approvalUserId: null,
             ));
 
@@ -393,5 +402,26 @@ class WebOrderPostingService
                 ]);
             }
         }
+    }
+
+    private function orderHasTrackedInventoryItems(WebOrder $order): bool
+    {
+        return $order->items->contains(fn ($item) => (bool) ($item->product?->track_inventory ?? false));
+    }
+
+    private function requireInventoryWarehouseId(WebOrder $order, string $operation): int
+    {
+        $warehouseId = $order->resolveInventoryWarehouseId();
+        if (!$warehouseId) {
+            throw new \RuntimeException(
+                "WebOrderPostingService::{$operation} — no fulfillment warehouse context for order {$order->id}."
+            );
+        }
+
+        if (!$order->fulfillment_warehouse_id) {
+            $order->forceFill(['fulfillment_warehouse_id' => $warehouseId])->saveQuietly();
+        }
+
+        return $warehouseId;
     }
 }

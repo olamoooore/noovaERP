@@ -44,6 +44,35 @@ class JournalEntry extends Model
     protected $appends = ['is_balanced'];
 
     /**
+     * Boot the model.
+     * 
+     * Workstream 2 (2026-04-15): Prevent deletion of posted entries.
+     * Posted financial records must be reversed, not deleted.
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::deleting(function ($entry) {
+            // Prevent deletion of posted entries
+            if ($entry->status === 'posted' && $entry->posted_at !== null) {
+                throw new \RuntimeException(
+                    "Cannot delete posted journal entry #{$entry->entry_number}. " .
+                    "Posted entries must be reversed, not deleted. " .
+                    "Use the reversal endpoint to create a reversing entry."
+                );
+            }
+
+            // Prevent deletion of entries that have been reconciled
+            if ($entry->lines()->whereNotNull('reconciliation_id')->exists()) {
+                throw new \RuntimeException(
+                    "Cannot delete journal entry #{$entry->entry_number} because one or more lines have been reconciled."
+                );
+            }
+        });
+    }
+
+    /**
      * Get the journal
      */
     public function journal(): BelongsTo
@@ -135,7 +164,7 @@ class JournalEntry extends Model
         $this->update([
             'status' => 'posted',
             'posted_at' => now(),
-            'posted_by' => TenantUserHelper::getTenantUserId(),
+            'posted_by' => TenantUserHelper::requireTenantUserId(),
         ]);
     }
 
@@ -175,8 +204,8 @@ class JournalEntry extends Model
             'description'       => 'REVERSAL: ' . ($reason ?? $this->description),
             'status'            => 'posted',
             'posted_at'         => now(),
-            'posted_by'         => TenantUserHelper::getTenantUserId(),
-            'created_by'        => TenantUserHelper::getTenantUserId(),
+            'posted_by'         => TenantUserHelper::requireTenantUserId(),
+            'created_by'        => TenantUserHelper::requireTenantUserId(),
             'reversed_entry_id' => $this->id,
             'is_reversal'       => true,
             'legal_entity_id'   => $this->legal_entity_id,

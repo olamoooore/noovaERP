@@ -4,18 +4,22 @@ namespace Modules\PaymentGateway\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
-use App\Models\InvoiceLine;
 use App\Models\Payment;
+use App\Services\PaymentRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
-use Modules\POS\Models\PosOrder;
+use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 
 class PaymentController extends Controller
 {
+    public function __construct(
+        private PaymentTransactionCompletionService $completionService,
+        private PaymentRefundService $refundService,
+    ) {}
     /**
      * Create a new payment
      */
@@ -259,10 +263,10 @@ class PaymentController extends Controller
 
                     // If payment completed, create Payment record and update invoice
                     if (in_array($captureResult['status'], ['completed', 'succeeded'])) {
-                        \Log::info('Processing completed PayPal payment', [
-                            'transaction_id' => $transaction->transaction_id,
-                        ]);
-                        $this->processCompletedPayment($transaction);
+                    \Log::info('Processing completed PayPal payment', [
+                        'transaction_id' => $transaction->transaction_id,
+                    ]);
+                    $this->completionService->complete($transaction, $captureResult['payment_method'] ?? null);
                     }
 
                     return response()->json([
@@ -310,7 +314,7 @@ class PaymentController extends Controller
                     \Log::info('Processing completed payment', [
                         'transaction_id' => $transaction->transaction_id,
                     ]);
-                    $this->processCompletedPayment($transaction);
+                    $this->completionService->complete($transaction, $result['payment_method'] ?? null);
                 }
 
                 return response()->json([
@@ -379,117 +383,39 @@ class PaymentController extends Controller
 
     /**
      * Process completed payment (internal helper)
+     * 
+     * Workstream 1 (2026-04-15): Delegated to PaymentTransactionCompletionService
+     * to route all payment completion through the canonical posting control plane.
+     * 
+     * @deprecated Use PaymentTransactionCompletionService::complete() directly
      */
-    protected function processCompletedPayment(PaymentTransaction $transaction)
+    protected function processCompletedPayment(PaymentTransaction $transaction): void
     {
-        DB::transaction(function () use ($transaction) {
-            $invoice = $transaction->invoice;
-            
-            // Handle POS order payments
-            if (!$invoice && !empty($transaction->metadata['pos_order_id'])) {
-                $posOrder = PosOrder::find($transaction->metadata['pos_order_id']);
-                if ($posOrder) {
-                    $this->processCompletedPosOrderPayment($transaction, $posOrder);
-                    return;
-                }
-            }
-            
-            if (!$invoice) {
-                \Log::error('No invoice or POS order found for transaction', [
-                    'transaction_id' => $transaction->transaction_id,
-                    'metadata' => $transaction->metadata,
-                ]);
-                return;
-            }
-            
-            $invoice->refresh();
-
-            // Check if payment already processed for this transaction
-            $existingPayment = Payment::where('reference', $transaction->transaction_id)->first();
-
-            if ($existingPayment) {
-                \Log::info('Payment already processed, updating invoice only', [
-                    'transaction_id' => $transaction->transaction_id,
-                    'payment_id' => $existingPayment->id,
-                    'invoice_id' => $invoice->id,
-                ]);
-
-                // Payment exists, ensure invoice reflects the payment
-                $this->updateInvoiceFromPayment($invoice, $transaction->amount);
-
-                // Mark transaction as processed
-                if (!$transaction->processed_at) {
-                    $transaction->update(['processed_at' => now()]);
-                }
-
-                return;
-            }
-
-            // Create new Payment record
-            try {
-                $payment = Payment::create([
-                    'customer_id' => $transaction->customer_id,
-                    'invoice_id' => $invoice->id,
-                    'payment_date' => now(),
-                    'method' => 'card',
-                    'reference' => $transaction->transaction_id,
-                    'amount' => $transaction->amount,
-                    'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                    'received_by' => auth()->id() ?? $invoice->created_by,
-                ]);
-
-                \Log::info('Payment created successfully', [
-                    'payment_id' => $payment->id,
-                    'payment_number' => $payment->payment_number,
-                    'transaction_id' => $transaction->transaction_id,
-                    'amount' => $transaction->amount,
-                ]);
-            } catch (\Exception $e) {
-                \Log::error('Failed to create payment record', [
-                    'transaction_id' => $transaction->transaction_id,
-                    'error' => $e->getMessage(),
-                ]);
-
-                // Continue to update invoice even if payment creation fails
-            }
-
-            // Update invoice with payment
-            $this->updateInvoiceFromPayment($invoice, $transaction->amount);
-
-            // Mark transaction as processed
-            $transaction->update(['processed_at' => now()]);
-
-            \Log::info('Payment processing completed', [
-                'transaction_id' => $transaction->transaction_id,
-                'invoice_id' => $invoice->id,
-                'invoice_status' => $invoice->status,
-                'paid_amount' => $invoice->paid_amount,
-                'balance' => $invoice->balance,
-            ]);
-        });
+        $this->completionService->complete($transaction, $transaction->payment_method);
     }
 
     /**
-     * Update invoice with payment amount and status
+     * Update invoice with payment amount and status using atomic operations.
      */
     protected function updateInvoiceFromPayment($invoice, $amount)
     {
-        // Calculate new amounts
-        $newPaidAmount = $invoice->paid_amount + $amount;
-        $newBalance = $invoice->total - $newPaidAmount;
+        \App\Models\Invoice::where('id', $invoice->id)
+            ->increment('paid_amount', $amount);
 
-        // Update invoice
-        $invoice->paid_amount = $newPaidAmount;
-        $invoice->balance = $newBalance;
+        $invoice->refresh();
 
-        // Update status based on balance
-        if ($newBalance <= 0) {
-            $invoice->status = 'paid';
-        } elseif ($newPaidAmount > 0 && $invoice->status !== 'paid') {
-            $invoice->status = 'partial';
+        $newBalance = $invoice->total - $invoice->paid_amount;
+
+        \App\Models\Invoice::where('id', $invoice->id)->update([
+            'balance' => $newBalance,
+            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+        ]);
+
+        $invoice->refresh();
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
         }
-
-        $invoice->save();
 
         \Log::info('Invoice updated', [
             'invoice_id' => $invoice->id,
@@ -512,26 +438,72 @@ class PaymentController extends Controller
                 'pos_order_status' => $posOrder->status,
             ]);
 
-            // Update POS order status to 'paid' (consistent with PosOrderController)
+            $receivedBy = TenantUserHelper::requireTenantUserId($posOrder->created_by);
+
+            $existingPayment = \Modules\POS\Models\PosPayment::where('pos_order_id', $posOrder->id)
+                ->where('reference', $transaction->transaction_id)
+                ->first();
+
+            if (!$existingPayment) {
+                \Modules\POS\Models\PosPayment::create([
+                    'pos_order_id' => $posOrder->id,
+                    'method' => 'card', // Online card payment
+                    'amount' => $transaction->amount,
+                    'reference' => $transaction->transaction_id,
+                    'notes' => "Online payment via {$transaction->gateway->gateway_name}",
+                    'received_by' => $receivedBy,
+                ]);
+            }
+
+            $entry = app(PosPostingService::class)->postPaidOrder(
+                $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse'),
+                (float) $transaction->amount,
+                'card'
+            );
+
+            $terminal = $posOrder->terminal;
+            $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+            if ($warehouseId) {
+                $inventoryService = app(InventoryService::class);
+                foreach ($posOrder->items as $item) {
+                    $productId = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if (!$productId || !$trackInventory) {
+                        continue;
+                    }
+
+                    $alreadyDeducted = (int) \App\Models\StockMovement::where('reference_type', 'PosOrder')
+                        ->where('reference_id', $posOrder->id)
+                        ->where('type', 'sale')
+                        ->where('product_id', $productId)
+                        ->sum('quantity');
+                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+
+                    if ($remainingToDeduct <= 0) {
+                        continue;
+                    }
+
+                    $inventoryService->adjustStock(
+                        productId: $productId,
+                        warehouseId: $warehouseId,
+                        quantity: $remainingToDeduct,
+                        type: 'sale',
+                        reference: $posOrder->order_number,
+                        referenceType: 'PosOrder',
+                        referenceId: $posOrder->id,
+                    );
+                }
+            }
+
             $posOrder->update([
                 'status' => 'paid',
-                'paid_at' => now(),
-            ]);
-            
-            \Log::info('POS order status updated to paid', [
-                'pos_order_id' => $posOrder->id,
-                'new_status' => $posOrder->fresh()->status,
-            ]);
-
-            // Create POS payment record
-            $receivedBy = auth()->id() ?? $posOrder->created_by ?? 1; // Fallback to user ID 1 (admin)
-            \Modules\POS\Models\PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method' => 'card', // Online card payment
-                'amount' => $transaction->amount,
-                'reference' => $transaction->transaction_id,
-                'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                'received_by' => $receivedBy,
+                'paid_at' => $posOrder->paid_at ?? now(),
+                'journal_entry_id' => $entry->id,
+                'receipt_number' => $posOrder->receipt_number ?: PosOrder::generateReceiptNumber(),
             ]);
 
             // Mark transaction as processed
@@ -624,16 +596,23 @@ class PaymentController extends Controller
             // Create invoice via canonical SalesOrderService → InvoiceService path
             $invoice = $salesOrderService->createInvoice($salesOrder);
 
-            // Override totals and status to match the already-paid POS order
+            // Override totals to match the already-paid POS order and reconcile
+            // invoice balance via InvoiceService without posting duplicate GL.
             $invoice->update([
                 'subtotal'        => $posOrder->subtotal,
                 'tax_amount'      => $posOrder->tax_amount ?? 0,
                 'discount_amount' => $posOrder->discount_amount ?? 0,
                 'total'           => $posOrder->total,
-                'paid_amount'     => $posOrder->total,
-                'balance'         => 0,
-                'status'          => 'paid',
                 'pos_order_id'    => $posOrder->id,
+            ]);
+
+            app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
+                'payment_date' => now(),
+                'method' => 'card',
+                'reference' => "POS-{$posOrder->order_number}",
+                'amount' => (float) $posOrder->total,
+                'notes' => "POS order {$posOrder->order_number} (pre-paid)",
+                'received_by' => TenantUserHelper::requireTenantUserId($posOrder->created_by),
             ]);
 
             \Log::info('Invoice created from POS order via SalesOrderService', [
@@ -672,6 +651,9 @@ class PaymentController extends Controller
     }
     /**
      * Process a refund for a payment transaction
+     *
+     * Workstream 1/4 (2026-04-15): Refactored to use PaymentRefundService
+     * for proper GL reversal posting. Addresses critical audit finding.
      */
     public function refund(Request $request, $transaction)
     {
@@ -695,9 +677,7 @@ class PaymentController extends Controller
         }
 
         // Check if refund amount is valid
-        $refundedAmount = $transaction->refunded_amount ?? 0;
-        $availableForRefund = $transaction->amount - $refundedAmount;
-
+        $availableForRefund = $this->refundService->getAvailableRefundAmount($transaction);
         if ($validated['amount'] > $availableForRefund) {
             return response()->json([
                 'message' => 'Refund amount exceeds available balance',
@@ -706,65 +686,45 @@ class PaymentController extends Controller
         }
 
         try {
-            DB::beginTransaction();
-
             $gateway = $transaction->gateway;
-            $service = PaymentGatewayFactory::create($gateway);
+            $gatewayService = PaymentGatewayFactory::create($gateway);
 
-            // Process refund with payment gateway
-            $refundResult = $service->refund($transaction->transaction_id, $validated['amount']);
+            // Process refund with payment gateway first
+            $refundResult = $gatewayService->refund($transaction->transaction_id, $validated['amount']);
 
             if (!$refundResult['success']) {
                 throw new \Exception($refundResult['message'] ?? 'Refund failed');
             }
 
-            // Update transaction with refund information
-            $transaction->increment('refunded_amount', $validated['amount']);
-            $transaction->update([
-                'refund_reason' => $validated['reason'],
-                'refunded_at' => now(),
-            ]);
+            // Process refund with GL reversal via canonical service
+            $result = $this->refundService->processRefund(
+                $transaction,
+                $validated['amount'],
+                $validated['reason'],
+                TenantUserHelper::resolveTenantUserId(),
+            );
 
-            // If fully refunded, update status
-            if ($transaction->refunded_amount >= $transaction->amount) {
-                $transaction->update(['status' => 'refunded']);
-            }
-
-            // Update invoice balance
-            $invoice = $transaction->invoice;
-            if ($invoice) {
-                $invoice->increment('balance', $validated['amount']);
-                $invoice->decrement('paid_amount', $validated['amount']);
-
-                // Update invoice status based on payment state
-                if ($invoice->paid_amount <= 0) {
-                    $invoice->update(['status' => 'sent']); // Changed from 'unpaid' to 'sent'
-                } elseif ($invoice->balance > 0 && $invoice->paid_amount > 0) {
-                    // Partially paid - keep as sent or current status if not draft
-                    if ($invoice->status !== 'paid') {
-                        $invoice->update(['status' => 'sent']);
-                    }
-                }
-            }
-
-            DB::commit();
-
-            \Log::info('Refund processed successfully', [
+            \Log::info('Refund processed successfully with GL reversal', [
                 'transaction_id' => $transaction->transaction_id,
                 'refund_amount' => $validated['amount'],
-                'reason' => $validated['reason'],
+                'journal_entry_id' => $result['refundEntry']?->id,
+                'refund_payment_id' => $result['refundPayment']?->id,
             ]);
 
             return response()->json([
                 'message' => 'Refund processed successfully',
                 'data' => [
-                    'transaction' => $transaction->fresh(),
+                    'transaction' => $result['transaction'],
+                    'journal_entry' => $result['refundEntry'],
+                    'refund_payment' => $result['refundPayment'],
                     'refund_id' => $refundResult['refund_id'] ?? null,
                 ],
             ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
-            DB::rollBack();
-
             \Log::error('Refund failed', [
                 'transaction_id' => $transaction->transaction_id,
                 'error' => $e->getMessage(),

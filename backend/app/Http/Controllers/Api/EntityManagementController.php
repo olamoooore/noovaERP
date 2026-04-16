@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class EntityManagementController extends Controller
 {
@@ -29,7 +30,7 @@ class EntityManagementController extends Controller
 
         $id = DB::table('groups')->insertGetId(array_merge($data, [
             'fiscal_year_start' => $data['fiscal_year_start'] ?? '01-01',
-            'created_by' => auth()->id(),
+            'created_by' => TenantUserHelper::resolveTenantUserId(),
             'created_at' => now(),
             'updated_at' => now(),
         ]));

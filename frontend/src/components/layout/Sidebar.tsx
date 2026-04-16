@@ -356,7 +356,7 @@ const baseNavItems: NavItem[] = [
   {
     title: 'Field Service',
     href: '/field-service',
-    icon: 'solar:wrench-bold-duotone',
+    icon: 'solar:clipboard-list-bold-duotone',
     featureKey: 'field-service',
     children: [
       {

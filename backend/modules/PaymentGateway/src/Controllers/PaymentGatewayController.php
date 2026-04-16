@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PaymentGatewayController extends Controller
 {
@@ -45,7 +46,7 @@ class PaymentGatewayController extends Controller
             'config' => 'nullable|array',
         ]);
 
-        $validated['created_by'] = auth()->id();
+        $validated['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         $gateway = PaymentGateway::create($validated);
 
@@ -81,7 +82,7 @@ class PaymentGatewayController extends Controller
             'config' => 'nullable|array',
         ]);
 
-        $validated['updated_by'] = auth()->id();
+        $validated['updated_by'] = TenantUserHelper::resolveTenantUserId();
 
         $gateway->update($validated);
 
@@ -154,7 +155,7 @@ class PaymentGatewayController extends Controller
 
         $gateway->update([
             'is_active' => $newStatus,
-            'updated_by' => auth()->id(),
+            'updated_by' => TenantUserHelper::resolveTenantUserId(),
         ]);
 
         return response()->json([

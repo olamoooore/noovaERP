@@ -4,11 +4,12 @@ namespace App\Services;
 
 use App\Models\GoodsReceipt;
 use App\Models\GoodsReceiptLine;
-use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Services\InventoryService;
+use Illuminate\Support\Str;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class GoodsReceiptService
 {
@@ -22,14 +23,14 @@ class GoodsReceiptService
             $purchaseOrder = PurchaseOrder::findOrFail($data['purchase_order_id']);
 
             if (!$purchaseOrder->canReceive()) {
-                throw new \InvalidArgumentException("Purchase order '{$purchaseOrder->order_number}' cannot receive goods. Status: {$purchaseOrder->status}");
+                throw new \InvalidArgumentException("Purchase order '{$purchaseOrder->po_number}' cannot receive goods. Status: {$purchaseOrder->status}");
             }
 
             $grn = GoodsReceipt::create([
-                'grn_number' => GoodsReceipt::generateGrnNumber(),
+                'grn_number' => $this->generateGrnNumber(),
                 'purchase_order_id' => $purchaseOrder->id,
                 'warehouse_id' => $data['warehouse_id'] ?? $purchaseOrder->warehouse_id,
-                'received_by' => auth()->id(),
+                'received_by' => TenantUserHelper::requireTenantUserId(),
                 'received_date' => $data['received_date'] ?? now(),
                 'carrier_reference' => $data['carrier_reference'] ?? null,
                 'status' => 'draft',
@@ -47,11 +48,11 @@ class GoodsReceiptService
                     'goods_receipt_id' => $grn->id,
                     'purchase_order_item_id' => $poLine->id,
                     'product_id' => $poLine->product_id,
-                    'quantity_ordered' => $poLine->quantity,
+                    'quantity_ordered' => $poLine->quantity_ordered,
                     'quantity_received' => $receivedQty,
                     'quantity_accepted' => $acceptedQty,
                     'quantity_rejected' => $rejectedQty,
-                    'unit_cost' => $poLine->unit_price,
+                    'quantity_putaway' => $acceptedQty,
                     'notes' => $lineData['notes'] ?? null,
                 ]);
             }
@@ -79,7 +80,7 @@ class GoodsReceiptService
                         reference: $grn->grn_number,
                         referenceType: 'GoodsReceipt',
                         referenceId: $grn->id,
-                        notes: "GRN {$grn->grn_number} — PO {$grn->purchaseOrder->order_number}",
+                        notes: "GRN {$grn->grn_number} — PO {$grn->purchaseOrder->po_number}",
                     );
                 }
             }
@@ -133,5 +134,10 @@ class GoodsReceiptService
         if ($allFullyReceived && $purchaseOrder->status === 'ordered') {
             $purchaseOrder->markReceived();
         }
+    }
+
+    private function generateGrnNumber(): string
+    {
+        return 'GRN-' . now()->format('Ymd-His') . '-' . Str::upper(Str::random(6));
     }
 }

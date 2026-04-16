@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 use Modules\POS\Models\PosOrder;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class Customer extends Model
 {
@@ -319,7 +320,7 @@ class Customer extends Model
             'reference_type' => $referenceType,
             'reference_id' => $referenceId,
             'notes' => $notes,
-            'created_by' => auth()->id(),
+            'created_by' => TenantUserHelper::resolveTenantUserId(),
         ]);
     }
 
@@ -347,7 +348,7 @@ class Customer extends Model
             'reference_type' => $referenceType,
             'reference_id' => $referenceId,
             'notes' => $notes,
-            'created_by' => auth()->id(),
+            'created_by' => TenantUserHelper::resolveTenantUserId(),
         ]);
         
         return true;

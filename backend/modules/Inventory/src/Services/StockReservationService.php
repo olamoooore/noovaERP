@@ -5,6 +5,7 @@ namespace Modules\Inventory\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockLevel;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Inventory\Models\StockReservation;
 
 /**
@@ -79,7 +80,7 @@ class StockReservationService
                 'source_document_id'      => $sourceDocumentId,
                 'source_document_line_id' => $sourceDocumentLineId,
                 'expires_at'              => $expiresAt,
-                'created_by'              => auth()->id(),
+                'created_by'              => TenantUserHelper::resolveTenantUserId(),
                 'notes'                   => $notes,
             ]);
 
@@ -127,7 +128,7 @@ class StockReservationService
 
             $reservation->update([
                 'status'      => 'released',
-                'released_by' => auth()->id(),
+                'released_by' => TenantUserHelper::resolveTenantUserId(),
                 'released_at' => now(),
                 'notes'       => $reservation->notes
                     ? $reservation->notes . "\nRelease reason: {$reason}"

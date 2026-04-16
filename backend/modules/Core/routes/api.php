@@ -54,6 +54,9 @@ use App\Http\Controllers\Api\FiscalPeriodsController;
 use App\Http\Middleware\ResolveEntityContext;
 use App\Http\Middleware\EnsureEntityAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
+use App\Http\Middleware\EnsureAccountingPostAccess;
+use App\Http\Middleware\EnsureAccountingReverseAccess;
+use App\Http\Middleware\EnsureAccountingLockManageAccess;
 
 // Auth routes are registered centrally in routes/api.php (v1/auth/login, auth/login).
 // Do NOT duplicate them here — this file is loaded under tenant middleware
@@ -190,9 +193,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/journal-entries', [JournalEntriesController::class, 'store']);
         Route::put('/journal-entries/{id}', [JournalEntriesController::class, 'update']);
         Route::delete('/journal-entries/{id}', [JournalEntriesController::class, 'destroy']);
-        Route::post('/journal-entries/{id}/post', [JournalEntriesController::class, 'post']);
-        Route::post('/journal-entries/{id}/reverse', [JournalEntriesController::class, 'reverse']);
         Route::post('/journal-entries/validate-date', [JournalEntriesController::class, 'validateDate']);
+
+        // Workstream 2 (2026-04-15): Fine-grained entitlement enforcement
+        // Posting requires accounting.post permission
+        Route::post('/journal-entries/{id}/post', [JournalEntriesController::class, 'post'])
+            ->middleware(EnsureAccountingPostAccess::class);
+        // Reversal requires accounting.reverse permission
+        Route::post('/journal-entries/{id}/reverse', [JournalEntriesController::class, 'reverse'])
+            ->middleware(EnsureAccountingReverseAccess::class);
         
         // Reports
         Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
@@ -258,28 +267,38 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);
         
         // Lock Dates
+        // Workstream 2 (2026-04-15): Lock management requires accounting.lock permission
+        Route::middleware(EnsureAccountingLockManageAccess::class)->group(function () {
+            Route::post('/lock-dates', [LockDatesController::class, 'store']);
+            Route::put('/lock-dates/{id}', [LockDatesController::class, 'update']);
+            Route::delete('/lock-dates/{id}', [LockDatesController::class, 'destroy']);
+            Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
+        });
+
+        // Read-only lock date endpoints
         Route::get('/lock-dates', [LockDatesController::class, 'index']);
         Route::get('/lock-dates/current', [LockDatesController::class, 'current']);
         Route::get('/lock-dates/statistics', [LockDatesController::class, 'statistics']);
         Route::get('/lock-dates/{id}', [LockDatesController::class, 'show']);
-        Route::post('/lock-dates', [LockDatesController::class, 'store']);
-        Route::put('/lock-dates/{id}', [LockDatesController::class, 'update']);
-        Route::delete('/lock-dates/{id}', [LockDatesController::class, 'destroy']);
         Route::post('/lock-dates/validate', [LockDatesController::class, 'validateDate']);
-        Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
         Route::get('/lock-dates/overrides/history', [LockDatesController::class, 'overrides']);
         
         // Fiscal Periods — CRUD + lifecycle (lock / unlock / close / reopen)
+        // Workstream 2 (2026-04-15): Fiscal period management requires accounting.lock permission
+        Route::middleware(EnsureAccountingLockManageAccess::class)->group(function () {
+            Route::post('/fiscal-periods', [FiscalPeriodsController::class, 'store']);
+            Route::post('/fiscal-periods/generate-year', [FiscalPeriodsController::class, 'generateYear']);
+            Route::put('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'update']);
+            Route::delete('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'destroy']);
+            Route::post('/fiscal-periods/{id}/lock', [FiscalPeriodsController::class, 'lock']);
+            Route::post('/fiscal-periods/{id}/unlock', [FiscalPeriodsController::class, 'unlock']);
+            Route::post('/fiscal-periods/{id}/close', [FiscalPeriodsController::class, 'close']);
+            Route::post('/fiscal-periods/{id}/reopen', [FiscalPeriodsController::class, 'reopen']);
+        });
+
+        // Read-only fiscal period endpoints
         Route::get('/fiscal-periods', [FiscalPeriodsController::class, 'index']);
-        Route::post('/fiscal-periods', [FiscalPeriodsController::class, 'store']);
-        Route::post('/fiscal-periods/generate-year', [FiscalPeriodsController::class, 'generateYear']);
         Route::get('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'show']);
-        Route::put('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'update']);
-        Route::delete('/fiscal-periods/{id}', [FiscalPeriodsController::class, 'destroy']);
-        Route::post('/fiscal-periods/{id}/lock', [FiscalPeriodsController::class, 'lock']);
-        Route::post('/fiscal-periods/{id}/unlock', [FiscalPeriodsController::class, 'unlock']);
-        Route::post('/fiscal-periods/{id}/close', [FiscalPeriodsController::class, 'close']);
-        Route::post('/fiscal-periods/{id}/reopen', [FiscalPeriodsController::class, 'reopen']);
 
         // Account Roles (Phase 2 — role-based account resolution)
         Route::get('/account-roles', [AccountRolesController::class, 'index']);

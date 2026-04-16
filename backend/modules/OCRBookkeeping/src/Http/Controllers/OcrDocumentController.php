@@ -90,7 +90,7 @@ class OcrDocumentController extends Controller
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
-                'user_id' => auth()->id(),
+                'user_id' => TenantUserHelper::resolveTenantUserId(),
             ]);
             return response()->json([
                 'message' => 'Upload failed',

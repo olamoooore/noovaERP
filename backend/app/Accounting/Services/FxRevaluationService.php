@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Models\JournalEntryLine;
 use App\Services\ExchangeRateService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -131,7 +132,7 @@ class FxRevaluationService
                 lines: $lines,
                 reference: "FXREVAL-{$currencyCode}-{$revaluationDate}",
                 currencyCode: $currencyCode,
-                userId: auth()->id() ?? 1,
+                userId: TenantUserHelper::resolveTenantUserId(),
                 metadata: ['base_currency' => $baseCurrency],
             ));
 

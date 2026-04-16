@@ -7,6 +7,7 @@ use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Models\LoyaltyRedemption;
 use Modules\Loyalty\Models\LoyaltyReward;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class RedemptionService
 {
@@ -67,7 +68,7 @@ class RedemptionService
                 'reference_type' => $finalRefType,
                 'reference_id' => $finalRefId,
                 'description' => "Redeemed {$points} points for discount",
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
 
@@ -146,7 +147,7 @@ class RedemptionService
                 'reference_type' => 'reward',
                 'reference_id' => $reward->id,
                 'description' => "Redeemed reward: {$reward->name}",
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
 
@@ -217,7 +218,7 @@ class RedemptionService
                 'reference_type' => 'redemption_cancel',
                 'reference_id' => $redemption->id,
                 'description' => "Refund from cancelled redemption",
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
 

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyProgram;
 use Modules\Loyalty\Models\LoyaltyTransaction;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PointsEarningService
 {
@@ -65,7 +66,7 @@ class PointsEarningService
                 'reference_id' => $referenceId,
                 'description' => $description ?? "Earned {$points} points from purchase",
                 'expires_at' => $expiresAt,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
 
@@ -157,7 +158,7 @@ class PointsEarningService
                 'reference_type' => 'manual',
                 'reference_id' => null,
                 'description' => $reason,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
 

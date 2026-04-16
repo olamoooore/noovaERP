@@ -10,11 +10,12 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
 use Modules\IoT\Models\IoTDevice;
 use Modules\POS\Services\PosPostingService;
-use App\Models\Product;
 use Modules\Inventory\Services\InventoryService;
 use App\Models\Warehouse;
+use App\Models\StockMovement;
 
 /**
  * Process Payment Webhook Job
@@ -152,6 +153,22 @@ class ProcessPaymentWebhook implements ShouldQueue
         $paymentMethod = $this->payload['payment_type'] ?? 'card';
         $paymentId = $this->payload['payment_id'] ?? null;
 
+        if ($order->status === 'paid' || $order->paid_at) {
+            Log::info('Skipping already-paid IoT webhook order', [
+                'order_id' => $order->id,
+                'payment_id' => $paymentId,
+            ]);
+            return;
+        }
+
+        if ($paymentId && PosPayment::where('reference', $paymentId)->where('pos_order_id', $order->id)->exists()) {
+            Log::info('Skipping duplicate IoT payment webhook', [
+                'order_id' => $order->id,
+                'payment_id' => $paymentId,
+            ]);
+            return;
+        }
+
         // Validate amount matches order total
         if (abs($amount - (float) $order->total) > 0.01) {
             Log::warning('Payment amount mismatch', [
@@ -162,7 +179,7 @@ class ProcessPaymentWebhook implements ShouldQueue
         }
 
         // Create payment record
-        \Modules\POS\Models\PosPayment::create([
+        PosPayment::create([
             'pos_order_id' => $order->id,
             'method' => $paymentMethod,
             'amount' => $amount,
@@ -184,12 +201,25 @@ class ProcessPaymentWebhook implements ShouldQueue
             foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
                 $productId = $item->product_id;
                 if (($item->variant && $item->variant->track_inventory) || ($item->product && $item->product->track_inventory)) {
+                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                        ->where('reference_id', $order->id)
+                        ->where('type', 'sale')
+                        ->where('product_id', $productId)
+                        ->sum('quantity');
+
+                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+                    if ($remainingToDeduct <= 0) {
+                        continue;
+                    }
+
                     $inventoryService->adjustStock(
                         productId: $productId,
                         warehouseId: $defaultWarehouse->id,
-                        quantity: $item->quantity,
-                        type: 'out',
+                        quantity: $remainingToDeduct,
+                        type: 'sale',
                         reference: $order->order_number,
+                        referenceType: 'PosOrder',
+                        referenceId: $order->id,
                     );
                 }
             }

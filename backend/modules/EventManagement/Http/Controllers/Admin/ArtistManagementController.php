@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Modules\EventManagement\Services\ArtistCanonicalizationService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -286,7 +287,7 @@ class ArtistManagementController extends Controller
                 $sourceArtistId,
                 $targetArtistId,
                 $request->get('merge_reason'),
-                auth()->id(), // Assuming authenticated user
+                TenantUserHelper::resolveTenantUserId(), // tenant-resolved user
                 $request->get('conflict_resolution', [])
             );
             

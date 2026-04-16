@@ -2,6 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Helpers;
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class TenantUserHelper
@@ -15,7 +16,7 @@ class TenantUserHelper
      */
     public static function getTenantUserId(): ?int
     {
-        $authUser = auth()->user();
+        $authUser = Auth::user();
         if (!$authUser) {
             return null;
         }
@@ -23,5 +24,30 @@ class TenantUserHelper
         $tenantUser = DB::table('users')->where('email', $authUser->email)->first();
 
         return $tenantUser?->id;
+    }
+
+    public static function resolveTenantUserId(?int $preferredUserId = null): ?int
+    {
+        $tenantUserId = static::getTenantUserId();
+        if ($tenantUserId) {
+            return $tenantUserId;
+        }
+
+        if ($preferredUserId && DB::table('users')->where('id', $preferredUserId)->exists()) {
+            return $preferredUserId;
+        }
+
+        return DB::table('users')->orderBy('id')->value('id');
+    }
+
+    public static function requireTenantUserId(?int $preferredUserId = null): int
+    {
+        $tenantUserId = static::resolveTenantUserId($preferredUserId);
+
+        if (!$tenantUserId) {
+            throw new \RuntimeException('No tenant user is available for audit attribution.');
+        }
+
+        return (int) $tenantUserId;
     }
 }

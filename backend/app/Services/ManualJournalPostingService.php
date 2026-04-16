@@ -58,7 +58,24 @@ class ManualJournalPostingService
         );
 
         if ($lockResult['is_locked']) {
+            // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
             if ($overrideReason && $approvedBy) {
+                // Validate that the approver has permission to override lock dates
+                if (!$this->lockDateValidator->canOverrideLockDate($approvedBy)) {
+                    return PostingResult::failure(
+                        "Approver (ID: {$approvedBy}) does not have permission to override lock dates. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
+                // Validate that the actor also has permission
+                if (!$this->lockDateValidator->canOverrideLockDate($userId)) {
+                    return PostingResult::failure(
+                        "User (ID: {$userId}) does not have permission to post to locked periods. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
                 if ($approvedBy === $userId) {
                     return PostingResult::failure(
                         'Self-approval of lock-date overrides is not permitted. A different approver is required.'

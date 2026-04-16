@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Modules\FinancialReporting\Models\ReportSchedule;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Report Schedule Controller
@@ -84,7 +85,7 @@ class ReportScheduleController extends Controller
         $schedule->parameters = $request->input('parameters', []);
         $schedule->recipients = $request->input('recipients');
         $schedule->is_active = $request->input('is_active', true);
-        $schedule->created_by = auth()->id();
+        $schedule->created_by = TenantUserHelper::resolveTenantUserId();
         $schedule->next_run_at = $this->calculateNextRunTime($request->input('frequency'));
         $schedule->save();
 

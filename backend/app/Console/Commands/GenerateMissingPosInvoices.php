@@ -119,16 +119,23 @@ class GenerateMissingPosInvoices extends Command
                 // Create invoice via canonical SalesOrderService → InvoiceService path
                 $invoice = $salesOrderService->createInvoice($salesOrder);
 
-                // Override to match already-paid POS order
+                // Override totals to match already-paid POS order and reconcile
+                // invoice balances via InvoiceService without posting duplicate GL.
                 $invoice->update([
                     'subtotal'        => $order->subtotal,
                     'tax_amount'      => $order->tax_amount ?? 0,
                     'discount_amount' => $order->discount_amount ?? 0,
                     'total'           => $order->total,
-                    'paid_amount'     => $order->total,
-                    'balance'         => 0,
-                    'status'          => 'paid',
                     'pos_order_id'    => $order->id,
+                ]);
+
+                app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
+                    'payment_date' => now(),
+                    'method' => 'card',
+                    'reference' => "POS-{$order->order_number}",
+                    'amount' => (float) $order->total,
+                    'notes' => "POS order {$order->order_number} (pre-paid)",
+                    'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId($order->created_by),
                 ]);
 
                 $created++;

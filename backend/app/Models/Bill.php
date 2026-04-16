@@ -55,13 +55,33 @@ class Bill extends Model
         'balance' => 'decimal:2',
     ];
 
-    protected static function boot()
+    protected static function boot(): void
     {
         parent::boot();
 
         static::creating(function ($bill) {
             if (!$bill->bill_number) {
                 $bill->bill_number = static::generateBillNumber();
+            }
+        });
+
+        // Workstream 2 (2026-04-15): Prevent deletion of posted bills
+        static::deleting(function ($bill) {
+            if ($bill->journal_entry_id !== null) {
+                throw new \RuntimeException(
+                    "Cannot delete posted bill #{$bill->bill_number}. " .
+                    "Posted bills must be reversed or credited, not deleted. " .
+                    "Create a vendor credit note to cancel this bill."
+                );
+            }
+
+            // Prevent deletion if payments exist
+            if ($bill->payments()->exists()) {
+                $paymentCount = $bill->payments()->count();
+                throw new \RuntimeException(
+                    "Cannot delete bill #{$bill->bill_number} because {$paymentCount} payment(s) exist. " .
+                    "Posted bills must be reversed or credited, not deleted."
+                );
             }
         });
     }

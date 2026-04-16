@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Models\Page;
 use Modules\WebsiteBuilder\Http\Resources\PageResource;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PageController extends Controller
 {
@@ -60,7 +61,7 @@ class PageController extends Controller
                 
                 // Update content if provided
                 if (!empty($validated['content'])) {
-                    $existingPage->createVersion($validated['content'], auth()->id());
+                    $existingPage->createVersion($validated['content'], TenantUserHelper::resolveTenantUserId());
                 }
                 
                 return response()->json(new PageResource($existingPage->load('currentVersion')), 201);
@@ -90,9 +91,9 @@ class PageController extends Controller
 
         // Create initial version
         if (!empty($validated['content'])) {
-            $page->createVersion($validated['content'], auth()->id());
+            $page->createVersion($validated['content'], TenantUserHelper::resolveTenantUserId());
         } else {
-            $page->createVersion($this->getEmptyPageContent(), auth()->id());
+            $page->createVersion($this->getEmptyPageContent(), TenantUserHelper::resolveTenantUserId());
         }
 
         return response()->json(new PageResource($page->load('currentVersion')), 201);
@@ -133,7 +134,7 @@ class PageController extends Controller
 
         // Create new version if content changed
         if (isset($validated['content'])) {
-            $page->createVersion($validated['content'], auth()->id());
+            $page->createVersion($validated['content'], TenantUserHelper::resolveTenantUserId());
         }
 
         return response()->json(new PageResource($page->fresh(['currentVersion', 'website'])));
@@ -172,7 +173,7 @@ class PageController extends Controller
         $page = Page::findOrFail($page);
         $targetVersion = $page->versions()->where('version', $version)->firstOrFail();
 
-        $page->createVersion($targetVersion->content, auth()->id());
+        $page->createVersion($targetVersion->content, TenantUserHelper::resolveTenantUserId());
 
         return response()->json([
             'message' => "Restored to version {$version}",

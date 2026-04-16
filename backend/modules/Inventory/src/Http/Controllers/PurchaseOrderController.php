@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\Inventory\Services\InventoryService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PurchaseOrderController extends Controller
 {
@@ -91,7 +92,7 @@ class PurchaseOrderController extends Controller
                 'currency' => $validated['currency'] ?? 'USD',
                 'notes' => $validated['notes'] ?? null,
                 'internal_notes' => $validated['internal_notes'] ?? null,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -213,7 +214,7 @@ class PurchaseOrderController extends Controller
 
         $purchaseOrder->update([
             'status' => 'approved',
-            'approved_by' => auth()->id(),
+            'approved_by' => TenantUserHelper::requireTenantUserId(),
             'approved_at' => now(),
         ]);
 
@@ -291,7 +292,7 @@ class PurchaseOrderController extends Controller
             }
 
             if (!empty($receivedLines)) {
-                $receivedBy = auth()->id();
+                $receivedBy = TenantUserHelper::resolveTenantUserId();
                 if (!$receivedBy) {
                     $receivedBy = (int) DB::table('users')->value('id');
                 }

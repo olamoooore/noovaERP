@@ -3,13 +3,11 @@
 namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\StockMovement;
-use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
-use Modules\Inventory\Services\InventoryService;
+use Modules\Ecommerce\Services\WebOrderPostingService;
 use Modules\PaymentGateway\Services\PaymentService;
 
 class WebOrderController extends Controller
@@ -216,10 +214,10 @@ class WebOrderController extends Controller
             $updateData['delivered_at'] = now();
         }
         if ($newStatus === 'cancelled') {
-            $this->restoreStockForCancellation($order, 'WebOrderController::updateStatus');
+            $this->reversePostingForCancellation($order, 'WebOrderController::updateStatus');
             // Could also trigger refund if paid
             if ($order->payment_status === 'paid') {
-                $updateData['payment_status'] = 'refund_pending';
+                $updateData['payment_status'] = WebOrder::PAYMENT_STATUS_REFUNDED;
             }
         }
 
@@ -258,11 +256,13 @@ class WebOrderController extends Controller
             ], 422);
         }
 
-        $this->restoreStockForCancellation($order, 'WebOrderController::cancelOrder');
+        $this->reversePostingForCancellation($order, 'WebOrderController::cancelOrder');
 
         $order->update([
             'status' => 'cancelled',
-            'payment_status' => $order->payment_status === 'paid' ? 'refund_pending' : 'cancelled',
+            'payment_status' => $order->payment_status === WebOrder::PAYMENT_STATUS_PAID
+                ? WebOrder::PAYMENT_STATUS_REFUNDED
+                : WebOrder::PAYMENT_STATUS_FAILED,
         ]);
 
         return response()->json([
@@ -456,57 +456,38 @@ class WebOrderController extends Controller
 
     private function restoreStockForCancellation(WebOrder $order, string $context): void
     {
-        $warehouseId = Warehouse::getDefault()?->id;
-        if (!$warehouseId) {
-            Log::warning("{$context} stock restore skipped - no default warehouse", [
+        try {
+            $order->loadMissing('items.product');
+            app(WebOrderPostingService::class)->restoreStock($order);
+        } catch (\Throwable $e) {
+            Log::warning("{$context} stock restore failed", [
                 'order_id' => $order->id,
+                'error' => $e->getMessage(),
             ]);
-            return;
+
+            throw $e;
         }
+    }
 
-        $inventoryService = app(InventoryService::class);
-        foreach ($order->items as $item) {
-            if ($item->product && $item->product->track_inventory) {
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
-                    ->where('reference_id', $order->id)
-                    ->where('type', 'sale')
-                    ->where('product_id', $item->product->id)
-                    ->sum('quantity');
-                $alreadyRestored = (int) StockMovement::where('reference_type', 'WebOrder')
-                    ->where('reference_id', $order->id)
-                    ->where('type', 'return')
-                    ->where('product_id', $item->product->id)
-                    ->sum('quantity');
-                $remainingToRestore = $alreadyDeducted - $alreadyRestored;
+    private function reversePostingForCancellation(WebOrder $order, string $context): void
+    {
+        try {
+            $order->loadMissing('items.product');
+            $postingService = app(WebOrderPostingService::class);
 
-                if ($remainingToRestore <= 0) {
-                    Log::info("{$context} stock restore skipped for line", [
-                        'order_id' => $order->id,
-                        'product_id' => $item->product->id,
-                        'already_deducted' => $alreadyDeducted,
-                        'already_restored' => $alreadyRestored,
-                    ]);
-                    continue;
-                }
-
-                try {
-                    $inventoryService->adjustStock(
-                        productId:     $item->product->id,
-                        warehouseId:   $warehouseId,
-                        quantity:      $remainingToRestore,
-                        type:          'return',
-                        reference:     'Cancel: ' . $order->order_number,
-                        referenceType: 'WebOrder',
-                        referenceId:   $order->id,
-                    );
-                } catch (\Exception $e) {
-                    Log::warning("{$context} stock restore failed", [
-                        'order_id'   => $order->id,
-                        'product_id' => $item->product->id,
-                        'error'      => $e->getMessage(),
-                    ]);
-                }
+            if ($order->payment_status === WebOrder::PAYMENT_STATUS_PAID) {
+                $postingService->reverseOrderPosting($order, 'Web order cancelled');
+                return;
             }
+
+            $postingService->restoreStock($order);
+        } catch (\Throwable $e) {
+            Log::warning("{$context} cancellation reversal failed", [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
         }
     }
 }

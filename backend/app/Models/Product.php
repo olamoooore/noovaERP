@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\Supplier;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Product Model - Central Master Data Hub
@@ -495,7 +496,7 @@ class Product extends Model
     {
         if ($this->status === self::STATUS_PENDING_APPROVAL) {
             $this->status = self::STATUS_ACTIVE;
-            $this->approved_by = auth()->id();
+            $this->approved_by = TenantUserHelper::resolveTenantUserId();
             $this->approved_at = now();
             $this->save();
             ProductAuditLog::log($this->id, ProductAuditLog::ACTION_APPROVED, 'status', 'pending_approval', 'active');
@@ -506,7 +507,7 @@ class Product extends Model
     {
         $oldStatus = $this->status;
         $this->status = self::STATUS_DISCONTINUED;
-        $this->discontinued_by = auth()->id();
+        $this->discontinued_by = TenantUserHelper::resolveTenantUserId();
         $this->discontinued_at = now();
         $this->save();
         ProductAuditLog::log($this->id, ProductAuditLog::ACTION_DISCONTINUED, 'status', $oldStatus, 'discontinued');
@@ -554,6 +555,11 @@ class Product extends Model
     {
         $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
         return $stockLevel ? $stockLevel->available_quantity : 0;
+    }
+
+    public function getTotalAvailableStock(): int
+    {
+        return (int) $this->stockLevels()->get()->sum('available_quantity');
     }
 
     /**
@@ -675,7 +681,7 @@ class Product extends Model
     public function canFulfillBundle(int $quantity = 1): bool
     {
         if (!$this->is_bundle) {
-            return $this->stock_quantity >= $quantity;
+            return $this->getTotalAvailableStock() >= $quantity;
         }
 
         foreach ($this->bundleComponents as $component) {
@@ -684,7 +690,7 @@ class Product extends Model
             }
             
             $needed = $component->quantity * $quantity;
-            if ($component->componentProduct->stock_quantity < $needed) {
+            if ($component->componentProduct->getTotalAvailableStock() < $needed) {
                 return false;
             }
         }

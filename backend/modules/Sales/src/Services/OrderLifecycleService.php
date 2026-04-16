@@ -2,9 +2,11 @@
 
 namespace Modules\Sales\Services;
 
+use Illuminate\Support\Facades\Auth;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class OrderLifecycleService
 {
@@ -26,6 +28,7 @@ class OrderLifecycleService
     ): SalesOrder {
         return DB::transaction(function () use ($order, $toStatus, $reason, $source, $idempotencyKey) {
             $fromStatus = $order->status;
+            $actorId = TenantUserHelper::resolveTenantUserId(Auth::id());
 
             if (!in_array($toStatus, self::TRANSITIONS[$fromStatus] ?? [])) {
                 throw new \InvalidArgumentException(
@@ -46,10 +49,10 @@ class OrderLifecycleService
             $order->update(['status' => $toStatus]);
 
             match ($toStatus) {
-                'confirmed' => $order->update(['confirmed_by' => auth()->id()]),
-                'allocated' => $order->update(['allocated_by' => auth()->id()]),
+                'confirmed' => $order->update(['confirmed_by' => $actorId]),
+                'allocated' => $order->update(['allocated_by' => $actorId]),
                 'cancelled' => $order->update([
-                    'cancelled_by' => auth()->id(),
+                    'cancelled_by' => $actorId,
                     'cancelled_at' => now(),
                     'cancellation_reason' => $reason,
                 ]),
@@ -60,7 +63,7 @@ class OrderLifecycleService
                 'sales_order_id' => $order->id,
                 'from_status' => $fromStatus,
                 'to_status' => $toStatus,
-                'actor_id' => auth()->id(),
+                'actor_id' => $actorId,
                 'actor_role' => null,
                 'source' => $source ?? 'admin',
                 'reason' => $reason,

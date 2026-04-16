@@ -10,6 +10,7 @@ use Modules\HRM\Http\Resources\PayrollRunResource;
 use Modules\HRM\Models\PayrollRun;
 use Modules\HRM\Services\PayrollService;
 use Modules\HRM\Services\PayrollJournalService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PayrollController extends Controller
 {
@@ -45,7 +46,7 @@ class PayrollController extends Controller
 
         // Auto-generate a unique reference: PAY-YYYY-MM
         $data['reference']  = 'PAY-' . Carbon::parse($data['period_start'])->format('Y-m');
-        $data['created_by'] = auth()->id();
+        $data['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         // If reference already taken (e.g. two runs in same month), append a counter
         $base = $data['reference'];
@@ -96,7 +97,7 @@ class PayrollController extends Controller
 
         $payrollRun->update([
             'status'      => 'approved',
-            'approved_by' => auth()->id(),
+            'approved_by' => TenantUserHelper::resolveTenantUserId(),
             'approved_at' => now(),
         ]);
 

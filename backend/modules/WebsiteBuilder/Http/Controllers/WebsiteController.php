@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Http\Resources\WebsiteResource;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class WebsiteController extends Controller
 {
@@ -44,7 +45,7 @@ class WebsiteController extends Controller
             'favicon' => 'nullable|string|max:500',
         ]);
 
-        $validated['created_by'] = auth()->id();
+        $validated['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         $website = Website::create($validated);
 

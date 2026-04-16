@@ -18,8 +18,10 @@ use App\Notifications\CustomerOrderConfirmation;
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
 use App\Models\Warehouse;
+use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
+use Modules\Ecommerce\Services\WebOrderPostingService;
 
 class WebCheckoutController extends Controller
 {
@@ -27,6 +29,7 @@ class WebCheckoutController extends Controller
         private PaymentService $paymentService,
         private InventoryService $inventoryService,
         private StockReservationService $stockReservationService,
+        private WebOrderPostingService $webOrderPostingService,
     ) {}
 
     /**
@@ -63,6 +66,9 @@ class WebCheckoutController extends Controller
 
             // Validate inventory for each item
             $insufficientStock = [];
+            $candidateWarehouseIds = null;
+            $requiresWarehouseFulfillment = false;
+
             foreach ($validated['items'] as $item) {
                 $product = Product::find($item['product_id']);
                 if (!$product || !$product->is_active) {
@@ -74,10 +80,19 @@ class WebCheckoutController extends Controller
                         'reason' => 'Product not available',
                     ];
                 } elseif ($product->track_inventory) {
+                    $requestedQuantity = (int) $item['quantity'];
                     $availability = $this->inventoryService->checkAvailability(
                         (int) $product->id,
-                        (int) $item['quantity']
+                        $requestedQuantity
                     );
+
+                    $eligibleWarehouseIds = collect($availability['warehouses'] ?? [])
+                        ->filter(fn (array $warehouse) => (int) ($warehouse['available'] ?? 0) >= $requestedQuantity)
+                        ->pluck('warehouse_id')
+                        ->map(fn ($warehouseId) => (int) $warehouseId)
+                        ->filter()
+                        ->values()
+                        ->all();
 
                     if (!($availability['is_available'] ?? false)) {
                         $insufficientStock[] = [
@@ -87,15 +102,22 @@ class WebCheckoutController extends Controller
                             'available' => (int) ($availability['total_available'] ?? 0),
                             'reason' => 'Insufficient stock',
                         ];
+                    } elseif (empty($eligibleWarehouseIds)) {
+                        $insufficientStock[] = [
+                            'product_id' => $item['product_id'],
+                            'name' => $product->name,
+                            'requested' => $requestedQuantity,
+                            'available' => (int) ($availability['total_available'] ?? 0),
+                            'reason' => 'No single warehouse can fulfill requested quantity',
+                        ];
                     }
-                } elseif (($product->stock_quantity ?? PHP_INT_MAX) < $item['quantity']) {
-                    $insufficientStock[] = [
-                        'product_id' => $item['product_id'],
-                        'name' => $product->name,
-                        'requested' => $item['quantity'],
-                        'available' => $product->stock_quantity,
-                        'reason' => 'Insufficient stock',
-                    ];
+
+                    if (!empty($eligibleWarehouseIds)) {
+                        $requiresWarehouseFulfillment = true;
+                        $candidateWarehouseIds = $candidateWarehouseIds === null
+                            ? $eligibleWarehouseIds
+                            : array_values(array_intersect($candidateWarehouseIds, $eligibleWarehouseIds));
+                    }
                 }
             }
 
@@ -104,6 +126,42 @@ class WebCheckoutController extends Controller
                     'error' => 'Stock issues found',
                     'items' => $insufficientStock,
                 ], 422);
+            }
+
+            if ($requiresWarehouseFulfillment && empty($candidateWarehouseIds)) {
+                return response()->json([
+                    'error' => 'Stock issues found',
+                    'items' => [[
+                        'product_id' => null,
+                        'name' => 'Order',
+                        'requested' => count($validated['items']),
+                        'available' => 0,
+                        'reason' => 'No single warehouse can fulfill all requested items',
+                    ]],
+                ], 422);
+            }
+
+            $fulfillmentWarehouseId = null;
+            if ($requiresWarehouseFulfillment) {
+                $fulfillmentWarehouseId = Warehouse::query()
+                    ->whereIn('id', $candidateWarehouseIds)
+                    ->where('is_active', true)
+                    ->orderByDesc('is_default')
+                    ->orderBy('id')
+                    ->value('id');
+
+                if (!$fulfillmentWarehouseId) {
+                    return response()->json([
+                        'error' => 'Stock issues found',
+                        'items' => [[
+                            'product_id' => null,
+                            'name' => 'Order',
+                            'requested' => count($validated['items']),
+                            'available' => 0,
+                            'reason' => 'No active warehouse can fulfill all requested items',
+                        ]],
+                    ], 422);
+                }
             }
 
             // ── Create or find Customer record ──────────────────────────
@@ -202,6 +260,7 @@ class WebCheckoutController extends Controller
                 'loyalty_discount' => 0,
                 'total' => $subtotal + $taxAmount + $shippingCost, // Will be updated after loyalty
                 'loyalty_points_redeemed' => 0,
+                'fulfillment_warehouse_id' => $fulfillmentWarehouseId,
                 'currency' => 'USD',
                 'notes' => $validated['notes'] ?? null,
                 'guest_token' => $guestToken,
@@ -250,7 +309,7 @@ class WebCheckoutController extends Controller
             ]);
 
             // ── Create order items & reserve stock ───────────────────────
-            $warehouseId = Warehouse::getDefault()?->id;
+            $warehouseId = $order->fulfillment_warehouse_id;
             $orderItems = [];
 
             foreach ($items as $item) {
@@ -401,40 +460,58 @@ class WebCheckoutController extends Controller
 
         try {
             // Verify payment status with the gateway
+            $paymentIntentId = $validated['payment_intent_id'];
             $paymentStatus = $this->paymentService->confirmPayment($validated['payment_intent_id']);
 
             if ($paymentStatus['status'] === 'completed') {
-                return DB::transaction(function () use ($order) {
+                return DB::transaction(function () use ($order, $paymentStatus, $paymentIntentId) {
+                    $workingOrder = $order->fresh(['items.product', 'items.variant']);
+
                     // Mark order as paid
-                    $order->update([
+                    $workingOrder->update([
                         'payment_status' => 'paid',
                         'status' => 'confirmed',
                         'paid_at' => now(),
                         'confirmed_at' => now(),
                     ]);
 
-                    // Convert to invoice
-                    $invoice = null;
-                    try {
-                        $invoice = $order->convertToInvoice();
-                        Log::info('Web order converted to invoice', [
-                            'order_id' => $order->id,
-                            'invoice_id' => $invoice->id ?? null,
-                        ]);
-                        // Refresh order to load invoice relationship
-                        $order = $order->fresh(['invoice', 'items']);
-                    } catch (\Exception $e) {
-                        Log::warning('Failed to convert web order to invoice', [
-                            'order_id' => $order->id,
-                            'error' => $e->getMessage(),
-                        ]);
+                    // Convert to invoice and post immediately through the canonical
+                    // web posting service so stock + GL do not depend on a later batch command.
+                    $invoice = $workingOrder->convertToInvoice();
+                    $paymentMethod = (string) ($paymentStatus['payment_method'] ?? 'card');
+                    $entry = $this->webOrderPostingService->postPaidOrder(
+                        $workingOrder->fresh(['items.product', 'items.variant']),
+                        (float) $workingOrder->total,
+                        $paymentMethod,
+                    );
+
+                    if (!$entry) {
+                        throw new \RuntimeException('Web order payment was confirmed but posting did not produce a journal entry.');
                     }
 
+                    Log::info('Web order converted to invoice', [
+                        'order_id' => $workingOrder->id,
+                        'invoice_id' => $invoice->id,
+                        'journal_entry_id' => $entry->id,
+                    ]);
+
+                    PaymentTransaction::where('transaction_id', $paymentIntentId)
+                        ->update([
+                            'invoice_id' => $invoice->id,
+                            'customer_id' => $workingOrder->customer_id,
+                            'status' => 'completed',
+                            'processed_at' => now(),
+                            'error_message' => null,
+                        ]);
+
+                    // Refresh order to load invoice relationship
+                    $workingOrder = $workingOrder->fresh(['invoice', 'items']);
+
                     // Award loyalty points
-                    $this->awardLoyaltyPoints($order);
+                    $this->awardLoyaltyPoints($workingOrder);
 
                     // Update customer purchase stats
-                    $this->updateCustomerStats($order);
+                    $this->updateCustomerStats($workingOrder);
 
                     // Notifications
                     try {
@@ -444,15 +521,15 @@ class WebCheckoutController extends Controller
                         // schema. When the queue worker deserializes the job, it tries to
                         // restore the Customer model using the default 'public' search_path,
                         // fails to find it, and silently discards the notification.
-                        $customerEmail = $order->email;
-                        if (!$customerEmail && $order->customer_id) {
-                            $customer = Customer::find($order->customer_id);
+                        $customerEmail = $workingOrder->email;
+                        if (!$customerEmail && $workingOrder->customer_id) {
+                            $customer = Customer::find($workingOrder->customer_id);
                             $customerEmail = $customer?->email;
                         }
 
                         if ($customerEmail) {
                             Notification::route('mail', $customerEmail)
-                                        ->notify(new CustomerOrderConfirmation($order, 'Web'));
+                                        ->notify(new CustomerOrderConfirmation($workingOrder, 'Web'));
                         }
 
                         // 2. Notify Admins
@@ -466,7 +543,7 @@ class WebCheckoutController extends Controller
                         }
 
                         if ($admins->isNotEmpty()) {
-                            Notification::send($admins, new AdminOrderAlert($order, 'Web'));
+                            Notification::send($admins, new AdminOrderAlert($workingOrder, 'Web'));
                         }
 
                     } catch (\Exception $e) {
@@ -476,7 +553,7 @@ class WebCheckoutController extends Controller
                     return response()->json([
                         'success' => true,
                         'message' => 'Payment confirmed',
-                        'order' => $this->formatOrderResponse($order->fresh()),
+                        'order' => $this->formatOrderResponse($workingOrder->fresh()),
                     ]);
                 });
             } else {
@@ -487,6 +564,13 @@ class WebCheckoutController extends Controller
                 ], 402);
             }
         } catch (\Exception $e) {
+            PaymentTransaction::where('transaction_id', $validated['payment_intent_id'] ?? null)
+                ->whereNull('processed_at')
+                ->update([
+                    'status' => 'pending',
+                    'error_message' => $e->getMessage(),
+                ]);
+
             Log::error('Payment confirmation failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
@@ -518,6 +602,10 @@ class WebCheckoutController extends Controller
     private function awardLoyaltyPoints(WebOrder $order): void
     {
         if (!$order->customer_id) return;
+
+        if (($order->loyalty_points_earned ?? 0) > 0) {
+            return;
+        }
 
         try {
             $earningService = app(\Modules\Loyalty\Services\PointsEarningService::class);
@@ -557,12 +645,17 @@ class WebCheckoutController extends Controller
         try {
             $customer = Customer::find($order->customer_id);
             if ($customer) {
-                $customer->increment('total_orders');
-                $customer->increment('total_purchases', (float) $order->total);
+                $totalOrders = $customer->posOrders()->where('status', 'paid')->where('is_return', false)->count()
+                    + $customer->invoices()->whereIn('status', ['sent', 'partial', 'paid'])->count();
+                $totalPurchases = $customer->posOrders()->where('status', 'paid')->where('is_return', false)->sum('total')
+                    + $customer->invoices()->whereIn('status', ['sent', 'partial', 'paid'])->sum('total');
+
                 $customer->update([
+                    'total_orders' => $totalOrders,
+                    'total_purchases' => $totalPurchases,
                     'last_interaction_at' => now(),
-                    'average_order_value' => $customer->total_orders > 0
-                        ? $customer->total_purchases / $customer->total_orders
+                    'average_order_value' => $totalOrders > 0
+                        ? $totalPurchases / $totalOrders
                         : 0,
                 ]);
             }

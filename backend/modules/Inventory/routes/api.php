@@ -8,6 +8,7 @@ use Modules\Inventory\Http\Controllers\PurchaseOrderController;
 use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\SupplierController;
 use Modules\Inventory\Http\Controllers\WarehouseTransferController;
+use App\Http\Controllers\Api\GoodsReceiptsController;
 
 Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
     // Brands
@@ -30,6 +31,13 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
     Route::post('/purchase-orders/{purchase_order_id}/receive', [PurchaseOrderController::class, 'receive']);
     Route::post('/purchase-orders/{purchase_order_id}/cancel', [PurchaseOrderController::class, 'cancel']);
 
+    // Goods Receipts
+    Route::get('/goods-receipts', [GoodsReceiptsController::class, 'index']);
+    Route::get('/goods-receipts/{goodsReceipt}', [GoodsReceiptsController::class, 'show']);
+    Route::post('/goods-receipts', [GoodsReceiptsController::class, 'store']);
+    Route::post('/goods-receipts/{goodsReceipt}/confirm', [GoodsReceiptsController::class, 'confirm']);
+    Route::post('/goods-receipts/{goodsReceipt}/cancel', [GoodsReceiptsController::class, 'cancel']);
+
     // Warehouse Transfers
     Route::apiResource('warehouse-transfers', WarehouseTransferController::class)->parameters([
         'warehouse-transfers' => 'warehouse_transfer_id',
@@ -43,9 +51,6 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
     Route::prefix('stock')->group(function () {
         Route::get('/warehouse/{warehouseId}', [StockController::class, 'warehouseStock']);
         Route::get('/product/{productId}', [StockController::class, 'productStock']);
-        Route::post('/in', [StockController::class, 'stockIn']);
-        Route::post('/out', [StockController::class, 'stockOut']);
-        Route::post('/adjust', [StockController::class, 'adjust']);
         Route::get('/movements', [StockController::class, 'movements']);
         Route::get('/adjustment-reasons', [StockController::class, 'adjustmentReasons']);
         Route::get('/low-stock', [StockController::class, 'lowStock']);

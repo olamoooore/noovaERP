@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\VendorCreditNote;
 use App\Models\VendorCreditNoteLine;
 use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Vendor Credit Note Service
@@ -30,7 +31,7 @@ class VendorCreditNoteService
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
-            $data['created_by'] = auth()->id();
+            $data['created_by'] = TenantUserHelper::requireTenantUserId();
             $data['credit_note_date'] = $data['credit_note_date'] ?? now();
             $data['status'] = 'draft';
             $data['currency_code'] = $data['currency_code'] ?? 'USD';
@@ -142,7 +143,7 @@ class VendorCreditNoteService
                 description: "Vendor Credit Note #{$creditNote->credit_note_number} - {$creditNote->vendor->name}",
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
-                userId: auth()->id(),
+                userId: TenantUserHelper::resolveTenantUserId(),
             ));
 
             if (!$result->success) {
@@ -152,7 +153,7 @@ class VendorCreditNoteService
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
-                'posted_by' => auth()->id(),
+                'posted_by' => TenantUserHelper::requireTenantUserId(),
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 

@@ -81,7 +81,7 @@ class PostingEngine implements PostingEngineInterface
         // ── 4. Atomic create + post ───────────────────────────
         try {
             return DB::transaction(function () use ($request, $resolvedLines) {
-                $userId = $request->userId ?? TenantUserHelper::getTenantUserId();
+                $userId = TenantUserHelper::requireTenantUserId($request->userId);
 
                 $entry = JournalEntry::create([
                     'journal_id'   => $request->journalId,
@@ -154,7 +154,7 @@ class PostingEngine implements PostingEngineInterface
     public function reverse(ReversalRequest $request): PostingResult
     {
         // ── Self-approval guard ──────────────────────────────────────────────
-        $actorId    = $request->actorUserId ?? TenantUserHelper::getTenantUserId();
+        $actorId    = TenantUserHelper::requireTenantUserId($request->actorUserId);
         $approvedBy = $request->approvalUserId;
 
         if ($approvedBy !== null && $approvedBy === $actorId) {
@@ -170,7 +170,24 @@ class PostingEngine implements PostingEngineInterface
         );
 
         if ($lockResult['is_locked']) {
+            // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
             if ($request->approvalUserId) {
+                // Validate that the approver has permission to override lock dates
+                if (!$this->lockDateValidator->canOverrideLockDate($request->approvalUserId)) {
+                    return PostingResult::failure(
+                        "Approver (ID: {$request->approvalUserId}) does not have permission to override lock dates. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
+                // Validate that the actor also has permission
+                if (!$this->lockDateValidator->canOverrideLockDate($actorId)) {
+                    return PostingResult::failure(
+                        "User (ID: {$actorId}) does not have permission to reverse in locked periods. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
                 $this->lockDateValidator->logOverride(
                     $actorId,
                     'journal_entry',
@@ -281,10 +298,36 @@ class PostingEngine implements PostingEngineInterface
         $lockResult = $this->lockDateValidator->validateTransactionDate($lockType, $request->postingDate);
 
         if ($lockResult['is_locked']) {
-            // Check for override
+            // Check for override with proper permission validation
+            // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
+            $actorId = TenantUserHelper::requireTenantUserId($request->userId);
+
             if ($request->overrideReason && $request->approvedBy) {
+                // Validate that the approver has permission to override lock dates
+                if (!$this->lockDateValidator->canOverrideLockDate($request->approvedBy)) {
+                    throw new \Exception(
+                        "Approver (ID: {$request->approvedBy}) does not have permission to override lock dates. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
+                // Validate that the actor also has permission (can't post to locked period without permission)
+                if (!$this->lockDateValidator->canOverrideLockDate($actorId)) {
+                    throw new \Exception(
+                        "User (ID: {$actorId}) does not have permission to post to locked periods. " .
+                        "Required: accounting.lock_date_override permission or admin role."
+                    );
+                }
+
+                // Prevent self-approval
+                if ($actorId === $request->approvedBy) {
+                    throw new \Exception(
+                        'Self-approval of lock date overrides is not permitted. A different approver is required.'
+                    );
+                }
+
                 $this->lockDateValidator->logOverride(
-                    $request->userId ?? TenantUserHelper::getTenantUserId(),
+                    $actorId,
                     $lockType,
                     $request->documentId,
                     $request->postingDate,

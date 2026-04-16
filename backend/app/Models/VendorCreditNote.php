@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class VendorCreditNote extends Model
 {
@@ -53,7 +54,7 @@ class VendorCreditNote extends Model
                 $creditNote->credit_note_number = static::generateCreditNoteNumber();
             }
             if (!$creditNote->created_by) {
-                $creditNote->created_by = auth()->id();
+                $creditNote->created_by = TenantUserHelper::resolveTenantUserId();
             }
         });
     }

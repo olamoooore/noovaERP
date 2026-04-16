@@ -25,6 +25,7 @@ use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosOrderController extends Controller
 {
@@ -203,7 +204,7 @@ class PosOrderController extends Controller
                     'session_id' => $validated['session_id'] ?? null,
                     'terminal_id' => $validated['terminal_id'] ?? null,
                     'cashier_name' => auth()->user()?->name,
-                    'created_by' => auth()->id(),
+                    'created_by' => TenantUserHelper::resolveTenantUserId(),
                 ]
             );
 
@@ -394,10 +395,16 @@ class PosOrderController extends Controller
                 'method' => $validated['method'],
                 'amount' => $amount,
                 'reference' => $validated['reference'] ?? null,
-                'received_by' => auth()->id(),
+                'received_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
-            // Deduct stock via InventoryService (canonical path — stock_levels stays authoritative).
+            $entry = $posting->postPaidOrder(
+                $posOrder->load('items.variant', 'items.product'),
+                $amount,
+                $validated['method']
+            );
+
+            // Deduct stock only after GL posting succeeds.
             // Resolve warehouse from the POS terminal; fall back to default warehouse.
             $terminal = $posOrder->terminal()->with('warehouse')->first();
             $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
@@ -436,12 +443,6 @@ class PosOrderController extends Controller
                     'order_number' => $posOrder->order_number,
                 ]);
             }
-
-            $entry = $posting->postPaidOrder(
-                $posOrder->load('items.variant', 'items.product'),
-                $amount,
-                $validated['method']
-            );
 
             $posOrder->update([
                 'status' => 'paid',
@@ -687,18 +688,24 @@ class PosOrderController extends Controller
                 // Create invoice via canonical SalesOrderService → InvoiceService path
                 $inv = $salesOrderService->createInvoice($salesOrder);
 
-                // Override totals and status to match the already-paid POS order.
-                // No GL posting needed — that was already done by PosPostingService.
+                // Override totals to match the already-paid POS order and reconcile
+                // invoice balances via InvoiceService without posting duplicate GL.
                 $inv->update([
                     'subtotal'         => $posOrder->subtotal,
                     'tax_amount'       => $posOrder->tax_amount ?? 0,
                     'discount_amount'  => $posOrder->discount_amount ?? 0,
                     'total'            => $posOrder->total,
-                    'paid_amount'      => $posOrder->total,
-                    'balance'          => 0,
-                    'status'           => 'paid',
                     'pos_order_id'     => $posOrder->id,
                     'journal_entry_id' => $posOrder->journal_entry_id,
+                ]);
+
+                app(\App\Services\InvoiceService::class)->recordChannelPayment($inv->fresh(), [
+                    'payment_date' => now(),
+                    'method' => 'card',
+                    'reference' => "POS-{$posOrder->order_number}",
+                    'amount' => (float) $posOrder->total,
+                    'notes' => "POS order {$posOrder->order_number} (pre-paid)",
+                    'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::requireTenantUserId($posOrder->created_by),
                 ]);
 
                 return $inv->load(['customer', 'lines.product']);
