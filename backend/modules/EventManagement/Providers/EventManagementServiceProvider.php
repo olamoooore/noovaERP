@@ -4,7 +4,6 @@ namespace Modules\EventManagement\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
-use Modules\EventManagement\Http\Middleware\FeatureFlagMiddleware;
 use Modules\EventManagement\Http\Middleware\RBACMiddleware;
 use Modules\EventManagement\Http\Middleware\EventManagementRateLimitMiddleware;
 use Modules\EventManagement\Http\Middleware\RequestValidationMiddleware;
@@ -55,7 +54,7 @@ class EventManagementServiceProvider extends ServiceProvider
         // Do NOT use loadRoutesFrom here to avoid double-prefix registration
 
         // Register middleware
-        $this->app['router']->aliasMiddleware('feature.event_management', FeatureFlagMiddleware::class);
+        // Note: 'feature.event_management' alias removed — all routes now use 'entitlement:event_management'
         $this->app['router']->aliasMiddleware('rbac.event_management', RBACMiddleware::class);
         $this->app['router']->aliasMiddleware('rate_limit', EventManagementRateLimitMiddleware::class);
         $this->app['router']->aliasMiddleware('request.validation', RequestValidationMiddleware::class);

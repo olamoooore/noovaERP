@@ -11,18 +11,11 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * EnsureFeatureEnabled
  *
- * Gates a route behind a feature-flag check. The check is now backed by the
- * canonical `tenant_entitlements` snapshot (via FeatureGateService) rather than
- * the legacy `tenant_features` table, which lacks tenant identity and is
- * being retired.
- *
- * Resolution order:
- *   1. Core features — always allowed (no DB query needed)
- *   2. FeatureGateService::check() — reads `tenant_entitlements` (new path)
- *   3. Legacy Feature model — fallback when no tenant context is available
- *      (CLI, tests, central routes) or when FeatureGateService is unavailable
- *
- * Usage in routes:  ->middleware('feature:pos')
+ * @deprecated Use EnsureEntitlementAccess (middleware alias 'entitlement') instead.
+ *             This middleware is no longer registered as a route middleware alias
+ *             (removed from bootstrap/app.php). All routes now use 'entitlement:{key}'.
+ *             Kept only for reference during migration period — safe to delete once
+ *             the team confirms no external packages reference it.
  */
 class EnsureFeatureEnabled
 {
