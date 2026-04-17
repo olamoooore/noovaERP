@@ -49,11 +49,12 @@ interface POSReceiptProps {
   businessPhone?: string
   businessEmail?: string
   footerMessage?: string
+  poweredByLabel?: string
   showBarcode?: boolean
 }
 
 export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
-  ({ data, businessName = 'NoovaERP', businessAddress, businessPhone, businessEmail, footerMessage, showBarcode = true }, ref) => {
+  ({ data, businessName = 'Point of Sale', businessAddress, businessPhone, businessEmail, footerMessage, poweredByLabel, showBarcode = true }, ref) => {
     const formatDate = (date: Date) => {
       return new Intl.DateTimeFormat('en-US', {
         year: 'numeric',
@@ -368,7 +369,7 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
         <div style={styles.footer}>
           <p style={styles.thankYou}>Thank you for your purchase!</p>
           {footerMessage && <p style={{ color: '#666', fontSize: '11px' }}>{footerMessage}</p>}
-          <p style={styles.powered}>Powered by NoovaERP</p>
+          {poweredByLabel && <p style={styles.powered}>{poweredByLabel}</p>}
         </div>
       </div>
     )

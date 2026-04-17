@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast'
 interface POSOrderDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialStatusFilter?: 'all' | 'draft' | 'paid'
 }
 
 interface PosOrderDetail {
@@ -132,7 +133,7 @@ interface Invoice {
   }[]
 }
 
-export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
+export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all' }: POSOrderDrawerProps) {
   const { toast } = useToast()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -140,6 +141,12 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
   const [orderModalOpen, setOrderModalOpen] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
   const [downloadingInvoice, setDownloadingInvoice] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setStatusFilter(initialStatusFilter)
+    }
+  }, [initialStatusFilter, open])
   
   // Store actions
   const setCart = usePosSessionStore((s) => s.setCart)
@@ -225,6 +232,12 @@ export function POSOrderDrawer({ open, onOpenChange }: POSOrderDrawerProps) {
         title: "Order Loaded",
         description: `Order #${order.order_number} loaded to cart.`,
       })
+      window.dispatchEvent(new CustomEvent('pos:order-loaded', {
+        detail: {
+          externalId: order.external_id ?? null,
+          orderNumber: order.order_number ?? null,
+        },
+      }))
       onOpenChange(false)
     } catch (e) {
       console.error(e)

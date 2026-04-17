@@ -14,6 +14,7 @@ import api from '@/lib/api'
 export function POSLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [drawerStatusFilter, setDrawerStatusFilter] = useState<'all' | 'draft' | 'paid'>('all')
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -35,7 +36,17 @@ export function POSLayout() {
     },
   })
 
+  const { data: companySettings } = useQuery({
+    queryKey: ['pos-layout-company-settings'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings')
+      return response.data?.data || null
+    },
+    staleTime: 60_000,
+  })
+
   const isTerminalScreen = location.pathname === '/pos/terminal'
+  const isCustomerDisplayScreen = location.pathname === '/pos/customer-display'
 
   // Close Session Mutation
   const closeSessionMutation = useMutation({
@@ -103,6 +114,17 @@ export function POSLayout() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  useEffect(() => {
+    const handleOpenOrdersDrawer = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: 'all' | 'draft' | 'paid' }>).detail
+      setDrawerStatusFilter(detail?.status ?? 'all')
+      setIsDrawerOpen(true)
+    }
+
+    window.addEventListener('pos:open-orders-drawer', handleOpenOrdersDrawer as EventListener)
+    return () => window.removeEventListener('pos:open-orders-drawer', handleOpenOrdersDrawer as EventListener)
+  }, [])
+
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen()
@@ -112,6 +134,7 @@ export function POSLayout() {
   }
 
   const terminals = terminalsData || []
+  const tenantCompanyName = companySettings?.company_name?.trim() || 'Point of Sale'
   
   const activeTerminal = useMemo(() => {
     if (!activeTerminalId) return null
@@ -133,113 +156,126 @@ export function POSLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <OfflineBanner />
-      {/* Mint Top Bar */}
-      <header className="flex h-14 items-center justify-between border-b bg-primary px-4 text-primary-foreground">
-        <div className="flex min-w-0 items-center gap-4">
-          <Link to="/" className="flex items-center gap-2">
-            <Icon icon="solar:buildings-2-bold" className="h-7 w-7" />
-            <span className="text-lg font-bold">NoovaERP</span>
-          </Link>
-
-          {isTerminalScreen ? (
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-              <span className="font-semibold text-lg truncate">
-                {activeTerminal?.name || 'Terminal'}
-              </span>
-            </div>
-          ) : (
-            <span className="text-sm opacity-80">Point of Sale</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isTerminalScreen && (
-            <>
-              <div className="mr-2 hidden text-right sm:block">
-                <div className="text-sm font-medium leading-none">{now.toLocaleTimeString()}</div>
-                <div className="text-xs opacity-80">Opened: {openedDurationLabel}</div>
+      {!isCustomerDisplayScreen && <OfflineBanner />}
+      {!isCustomerDisplayScreen && (
+        <header className="flex h-16 items-center justify-between border-b border-black/5 bg-[linear-gradient(90deg,#27889a_0%,#2fa3b5_100%)] px-4 text-primary-foreground shadow-[0_10px_30px_rgba(15,23,42,0.10)]">
+          <div className="flex min-w-0 items-center gap-4">
+            <Link to="/" className="flex min-w-0 items-center gap-3">
+              <Icon icon="solar:buildings-2-bold" className="h-7 w-7 shrink-0" />
+              <div className="min-w-0 leading-none">
+                <div className="truncate text-lg font-bold tracking-[-0.02em]">NoovaERPTM</div>
+                <div className="truncate text-[11px] uppercase tracking-[0.18em] opacity-80">
+                  {tenantCompanyName}
+                </div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mr-2"
-                onClick={() => {
-                  const width = 1920
-                  const height = 1080
-                  const left = window.screen.width - width
-                  const top = 0
-                  window.open(
-                    `${import.meta.env.BASE_URL}pos/customer-display?session=${activeSessionId}`,
-                    'CustomerDisplay',
-                    `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-                  )
-                }}
-              >
-                <Icon icon="solar:monitor-bold-duotone" className="mr-2 h-4 w-4" />
-                Customer Display
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="mr-2"
-                onClick={handleCloseSession}
-              >
-                <Icon icon="solar:logout-2-bold" className="mr-2 h-4 w-4" />
-                Close Session
-              </Button>
-            </>
-          )}
+            </Link>
 
-          <PWAInstallButton />
+            {isTerminalScreen ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span className="truncate text-lg font-semibold">
+                  {activeTerminal?.name || 'Terminal'}
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm opacity-80">Point of Sale</span>
+            )}
+          </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary-foreground hover:bg-primary-foreground/10"
-            onClick={toggleFullscreen}
-          >
-            <Icon 
-              icon={isFullscreen ? "solar:quit-full-screen-bold" : "solar:full-screen-bold"} 
-              className="h-5 w-5" 
-            />
-            <span className="ml-2 hidden sm:inline">
-              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-            </span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {isTerminalScreen && (
+              <>
+                <div className="mr-2 hidden rounded-2xl bg-white/12 px-3 py-2 text-right shadow-inner sm:block">
+                  <div className="text-sm font-medium leading-none">{now.toLocaleTimeString()}</div>
+                  <div className="text-xs opacity-80">Opened: {openedDurationLabel}</div>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mr-2 rounded-xl border-0 bg-white/92 px-4 text-slate-700 shadow-sm hover:bg-white"
+                  onClick={() => {
+                    const width = 1920
+                    const height = 1080
+                    const left = window.screen.width - width
+                    const top = 0
+                    window.open(
+                      `${import.meta.env.BASE_URL}pos/customer-display?session=${activeSessionId}`,
+                      'CustomerDisplay',
+                      `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+                    )
+                  }}
+                >
+                  <Icon icon="solar:monitor-bold-duotone" className="mr-2 h-4 w-4" />
+                  Customer Display
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="mr-2 rounded-xl bg-[#ef4444] px-4 text-white shadow-sm hover:bg-[#dc2626]"
+                  onClick={handleCloseSession}
+                >
+                  <Icon icon="solar:logout-2-bold" className="mr-2 h-4 w-4" />
+                  Close Session
+                </Button>
+              </>
+            )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary-foreground hover:bg-primary-foreground/10"
-            onClick={() => setIsDrawerOpen(true)}
-          >
-            <Icon icon="solar:document-text-bold" className="h-5 w-5" />
-            <span className="ml-2 hidden sm:inline">Orders</span>
-          </Button>
+            <PWAInstallButton />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary-foreground hover:bg-primary-foreground/10"
-            onClick={() => isTerminalScreen ? navigate('/pos') : navigate('/')}
-          >
-            <Icon icon="solar:arrow-left-linear" className="h-5 w-5" />
-            <span className="ml-2 hidden sm:inline">Back</span>
-          </Button>
-        </div>
-      </header>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-xl text-primary-foreground hover:bg-primary-foreground/12"
+              onClick={toggleFullscreen}
+            >
+              <Icon 
+                icon={isFullscreen ? "solar:quit-full-screen-bold" : "solar:full-screen-bold"} 
+                className="h-5 w-5" 
+              />
+              <span className="ml-2 hidden sm:inline">
+                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              </span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-xl text-primary-foreground hover:bg-primary-foreground/12"
+              onClick={() => {
+                setDrawerStatusFilter('all')
+                setIsDrawerOpen(true)
+              }}
+            >
+              <Icon icon="solar:document-text-bold" className="h-5 w-5" />
+              <span className="ml-2 hidden sm:inline">Orders</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-xl text-primary-foreground hover:bg-primary-foreground/12"
+              onClick={() => isTerminalScreen ? navigate('/pos') : navigate('/')}
+            >
+              <Icon icon="solar:arrow-left-linear" className="h-5 w-5" />
+              <span className="ml-2 hidden sm:inline">Back</span>
+            </Button>
+          </div>
+        </header>
+      )}
 
       {/* Main Content - Full Width */}
       <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
 
-      <POSOrderDrawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen} />
+      <POSOrderDrawer
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+        initialStatusFilter={drawerStatusFilter}
+      />
     </div>
   )
 }

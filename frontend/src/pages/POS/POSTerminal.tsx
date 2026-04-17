@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
@@ -111,6 +111,26 @@ interface Warehouse {
   name: string
 }
 
+interface CompanySettings {
+  company_name?: string | null
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+}
+
+interface PosTerminalSummary {
+  id: number | string
+  name: string
+  code?: string | null
+  receipt_header?: string | null
+  receipt_footer?: string | null
+  warehouse?: {
+    id: number
+    name: string
+  } | null
+}
+
 interface PosPaymentResponse {
   data?: {
     id?: number
@@ -167,6 +187,7 @@ interface PosReceiptOrder {
   amountPaid: number
   change: number
   terminal?: string
+  warehouse?: string
   transactionId?: string
 }
 
@@ -219,6 +240,7 @@ export function POSTerminal() {
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
+  const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null)
   const [productPage, setProductPage] = useState(1) // Product pagination
 
   // Top bar: live clock + online status
@@ -298,6 +320,21 @@ export function POSTerminal() {
       navigate('/pos', { replace: true })
     }
   }, [activeSessionId, activeTerminalId, openedAt, navigate])
+
+  useEffect(() => {
+    const handleOrderLoaded = (event: Event) => {
+      const detail = (event as CustomEvent<{ externalId?: string | null; orderNumber?: string | null }>).detail
+      if (!detail) {
+        return
+      }
+
+      setCurrentOrderId(detail.externalId ?? null)
+      setCurrentOrderNumber(detail.orderNumber ?? null)
+    }
+
+    window.addEventListener('pos:order-loaded', handleOrderLoaded as EventListener)
+    return () => window.removeEventListener('pos:order-loaded', handleOrderLoaded as EventListener)
+  }, [])
 
   // Sync active session to localStorage so Customer Display can find it
   useEffect(() => {
@@ -463,6 +500,58 @@ export function POSTerminal() {
     },
   })
 
+  const { data: companySettings } = useQuery<CompanySettings | null>({
+    queryKey: ['pos-company-settings'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings')
+      return response.data?.data ?? null
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const { data: terminals = [] } = useQuery<PosTerminalSummary[]>({
+    queryKey: ['pos-terminals'],
+    queryFn: async () => {
+      const response = await api.get('/pos/terminals')
+      return response.data?.terminals || []
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const activeTerminal = useMemo(
+    () => terminals.find((terminal) => String(terminal.id) === String(activeTerminalId)) ?? null,
+    [activeTerminalId, terminals]
+  )
+
+  const { data: pendingOrdersData } = useQuery({
+    queryKey: ['pos-draft-orders-summary'],
+    queryFn: async () => {
+      const response = await api.get('/pos/orders', { params: { status: 'draft', per_page: 1 } })
+      return response.data
+    },
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const receiptBranding = useMemo(() => {
+    const companyName = companySettings?.company_name?.trim()
+    const terminalHeader = activeTerminal?.receipt_header?.trim()
+    const terminalFooter = activeTerminal?.receipt_footer?.trim()
+    const businessAddress = companySettings?.address?.trim()
+    const businessPhone = companySettings?.phone?.trim()
+    const businessEmail = companySettings?.email?.trim()
+
+    return {
+      businessName: companyName || terminalHeader || activeTerminal?.warehouse?.name || activeTerminal?.name || 'Point of Sale',
+      businessAddress: businessAddress || undefined,
+      businessPhone: businessPhone || undefined,
+      businessEmail: businessEmail || undefined,
+      footerMessage: terminalFooter || undefined,
+    }
+  }, [activeTerminal, companySettings])
+
   // Create Order Mutation
   const createOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
@@ -613,6 +702,23 @@ export function POSTerminal() {
   const totalDiscountAmount = round2(Math.min(regularDiscountAmount + couponDiscountAmount + loyaltyDiscountAmount, itemsTotal))
   
   const total = round2(Math.max(0, itemsTotal - totalDiscountAmount))
+  const products = productsData || []
+  const activeOrderItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const currentOrderReference = currentOrderNumber
+    || (currentOrderId ? `Draft ${currentOrderId.split('-')[0].toUpperCase()}` : 'New Order')
+  const pendingDraftOrderCount = Number(pendingOrdersData?.total ?? pendingOrdersData?.meta?.total ?? 0)
+  const selectedCategoryName = selectedCategory === null
+    ? 'All Products'
+    : categories?.find((category) => category.id === selectedCategory)?.name || 'Filtered Category'
+  const visibleInStockCount = products.filter((product: Product) => getStock(product) > 0).length
+  const lowStockVisibleCount = products.filter((product: Product) => {
+    const stock = getStock(product)
+    return stock > 0 && stock <= 5
+  }).length
+
+  const openPendingOrders = () => {
+    window.dispatchEvent(new CustomEvent('pos:open-orders-drawer', { detail: { status: 'draft' } }))
+  }
 
   // Update ref for loyalty queries
   useEffect(() => {
@@ -624,149 +730,149 @@ export function POSTerminal() {
     setLoyaltyQueryKey(['loyalty-pos-info', selectedCustomer?.id ?? null, itemsTotal])
   }, [selectedCustomer?.id, itemsTotal])
 
+  const buildDisplayCartItems = useCallback((sourceCart: CartItem[]) => (
+    sourceCart.map((item) => ({
+      product_id: item.id,
+      name: item.name,
+      sku: item.sku ?? null,
+      quantity: item.quantity,
+      unit_price: item.price,
+      line_total: item.line_total,
+      image: item.image ?? null,
+    }))
+  ), [])
+
   // Fire display event to customer-facing screen (best-effort, non-blocking)
   const fireDisplayEvent = useCallback(async (event: string, extra?: Record<string, any>) => {
     if (!activeSessionId) return
     try {
       await api.post(`/pos/sessions/${activeSessionId}/display-event`, {
         event,
-        cart_items: cart.map(item => ({
-          product_id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          unit_price: item.price,
-          line_total: item.line_total,
-          image: item.image ?? null,
-        })),
+        cart_items: buildDisplayCartItems(cart),
         ...extra,
       })
     } catch {
-      // Display events are best-effort — never disrupt cashier flow
+      // Display events are best-effort and must never block cashier flow.
     }
-  }, [activeSessionId, cart])
+  }, [activeSessionId, buildDisplayCartItems, cart])
 
-  // Add to cart
   const addToCart = useCallback((product: Product) => {
-    // Check stock
-    const currentQtyInCart = cart.find(i => i.id === product.id)?.quantity || 0
+    const currentQtyInCart = cart.find((item) => item.id === product.id)?.quantity || 0
     if (currentQtyInCart + 1 > getStock(product)) {
       toast({
-        title: "Out of Stock",
+        title: 'Out of Stock',
         description: `Only ${getStock(product)} items available`,
-        variant: "destructive",
+        variant: 'destructive',
       })
       return
     }
 
-    const existing = cart.find(item => item.id === product.id)
+    const existing = cart.find((item) => item.id === product.id)
     if (existing) {
-        const newQty = existing.quantity + 1
-        const updatedItem = {
-            ...existing,
-            quantity: newQty,
-            ...computeLine(product, newQty),
-        }
-        setCart(cart.map(i => i.id === product.id ? updatedItem : i))
-    } else {
-        const newItem: CartItem = {
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            sku: product.sku,
-            image: product.image,
-            quantity: 1,
-            tax_rate: product.tax_rate,
-            effective_tax_rate: product.effective_tax_rate,  // Include effective tax rate from backend
-            effective_tax_is_inclusive: product.effective_tax_is_inclusive,  // Include tax inclusive flag from backend
-            ...computeLine(product, 1),
-        }
-        setCart([...cart, newItem])
-        void fireDisplayEvent('CartItemAdded')
+      const newQty = existing.quantity + 1
+      const updatedItem = {
+        ...existing,
+        quantity: newQty,
+        ...computeLine(product, newQty),
+      }
+      const nextCart = cart.map((item) => item.id === product.id ? updatedItem : item)
+      setCart(nextCart)
+      void fireDisplayEvent('CartItemQtyChanged', { cart_items: buildDisplayCartItems(nextCart) })
+      return
     }
-  }, [cart, setCart, toast, taxEnabled, fireDisplayEvent])
 
-  // Update quantity
+    const newItem: CartItem = {
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      sku: product.sku,
+      image: product.image,
+      quantity: 1,
+      tax_rate: product.tax_rate,
+      effective_tax_rate: product.effective_tax_rate,
+      effective_tax_is_inclusive: product.effective_tax_is_inclusive,
+      ...computeLine(product, 1),
+    }
+    const nextCart = [...cart, newItem]
+    setCart(nextCart)
+    void fireDisplayEvent('CartItemAdded', { cart_items: buildDisplayCartItems(nextCart) })
+  }, [buildDisplayCartItems, cart, computeLine, fireDisplayEvent, getStock, setCart, toast])
+
   const updateQuantity = (productId: number, delta: number) => {
-    const existing = cart.find(item => item.id === productId)
+    const existing = cart.find((item) => item.id === productId)
     if (!existing) return
 
     const newQty = Math.max(1, existing.quantity + delta)
-    
-    // Check stock if increasing
     if (delta > 0) {
-        // Try to find product in current data to check stock
-        // If not found (e.g. searching/filtering), allow valid if we have stock data in item?
-        // Current implementation relies on `productsData`.
-        const product = productsData?.find((p: Product) => p.id === productId)
-        if (product && newQty > getStock(product)) {
-             toast({
-                title: "Out of Stock",
-                description: `Only ${getStock(product)} items available`,
-                variant: "destructive",
-            })
-            return
-        }
+      const product = productsData?.find((entry: Product) => entry.id === productId)
+      if (product && newQty > getStock(product)) {
+        toast({
+          title: 'Out of Stock',
+          description: `Only ${getStock(product)} items available`,
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
     const updatedItem = {
-        ...existing,
-        quantity: newQty,
-        ...computeLine(existing, newQty),
+      ...existing,
+      quantity: newQty,
+      ...computeLine(existing, newQty),
     }
-    setCart(cart.map(i => i.id === productId ? updatedItem : i))
-    void fireDisplayEvent('CartItemQtyChanged')
+    const nextCart = cart.map((item) => item.id === productId ? updatedItem : item)
+    setCart(nextCart)
+    void fireDisplayEvent('CartItemQtyChanged', { cart_items: buildDisplayCartItems(nextCart) })
   }
 
-  // Remove from cart
   const removeFromCart = (productId: number) => {
-    setCart(cart.filter(item => item.id !== productId))
-    void fireDisplayEvent('CartItemRemoved')
+    const nextCart = cart.filter((item) => item.id !== productId)
+    setCart(nextCart)
+    void fireDisplayEvent('CartItemRemoved', { cart_items: buildDisplayCartItems(nextCart) })
   }
 
-  // Handle barcode scan
   const handleBarcodeScan = useCallback(async (barcode: string) => {
     try {
       const response = await api.get('/pos/products/lookup', { params: { code: barcode } })
       if (response.data) {
-        const item = response.data.type === 'variant' ? response.data.variant : response.data.product
-        // Stock check
-        // ... (Similar logic, assuming item has stock info)
-        if (response.data.type === 'variant') {
-             item.name = `${response.data.product.name} - ${item.name}`
-             item.image = response.data.product.image
-             // Need to ensure item has property tax_rate if present in product
-             item.tax_rate = item.tax_rate ?? response.data.product.tax_rate
-             item.effective_tax_rate = item.effective_tax_rate ?? response.data.product.effective_tax_rate
-        }
+        const item: Product = response.data.type === 'variant'
+          ? {
+              ...response.data.variant,
+              name: `${response.data.product.name} - ${response.data.variant.name}`,
+              image: response.data.product.image,
+              tax_rate: response.data.variant.tax_rate ?? response.data.product.tax_rate,
+              effective_tax_rate: response.data.variant.effective_tax_rate ?? response.data.product.effective_tax_rate,
+              effective_tax_is_inclusive: response.data.variant.effective_tax_is_inclusive ?? response.data.product.effective_tax_is_inclusive,
+            }
+          : response.data.product
+
         addToCart(item)
         toast({
-          title: "Product Added",
+          title: 'Product Added',
           description: item.name,
         })
       }
-    } catch (error) {
+    } catch {
       toast({
-        title: "Product Not Found",
+        title: 'Product Not Found',
         description: `No product found with barcode: ${barcode}`,
-        variant: "destructive",
+        variant: 'destructive',
       })
     }
     setBarcodeInput('')
   }, [addToCart, toast])
 
-  // Barcode input handler
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // If Enter is pressed and we have barcode input
-      if (e.key === 'Enter' && barcodeInput.length > 0) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' && barcodeInput.length > 0) {
         handleBarcodeScan(barcodeInput)
       }
     }
+
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [barcodeInput, handleBarcodeScan])
 
-  // Extract detailed error message from API error response
   const extractErrorMessage = (error: any): string => {
     if (error.response?.data) {
       const data = error.response.data
@@ -777,16 +883,17 @@ export function POSTerminal() {
       if (data.message) return data.message
       if (typeof data === 'string') return data
     }
+
     return error.message || 'An error occurred'
   }
-  
+
   const getOrderData = (externalId?: string) => ({
     external_id: externalId,
     customer_id: customerId !== 'walk-in' ? parseInt(customerId) : null,
     session_id: activeSessionId || null,
     terminal_id: activeTerminalId ? parseInt(activeTerminalId) : null,
-    notes: customerId !== 'walk-in' 
-      ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}${appliedCoupon ? ` | Coupon: ${appliedCoupon.code}` : ''}` 
+    notes: customerId !== 'walk-in'
+      ? `Customer: ${selectedCustomer?.name || 'Selected Customer'}${appliedCoupon ? ` | Coupon: ${appliedCoupon.code}` : ''}`
       : `Walk-in customer${appliedCoupon ? ` | Coupon: ${appliedCoupon.code}` : ''}`,
     discount_type: discount.type,
     discount_value: discount.value,
@@ -794,27 +901,25 @@ export function POSTerminal() {
     coupon_discount: couponDiscountAmount > 0 ? couponDiscountAmount : null,
     loyalty_points_redeemed: loyaltyRedemption.pointsToRedeem > 0 ? loyaltyRedemption.pointsToRedeem : null,
     loyalty_discount: loyaltyRedemption.discountAmount > 0 ? loyaltyRedemption.discountAmount : null,
-    items: cart.map(item => ({
+    items: cart.map((item) => ({
       product_id: item.id,
       quantity: item.quantity,
       unit_price: item.price,
     })),
   })
 
-  // Apply loyalty redemption
   const applyLoyaltyRedemption = (points: number) => {
     if (!loyaltyInfo?.enrolled) return
-    
+
     const discountAmount = round2(points * loyaltyInfo.currency_per_point)
     setLoyaltyRedemption({ pointsToRedeem: points, discountAmount })
-    
+
     toast({
       title: 'Loyalty Points Applied',
       description: `${points} points = ${formatCurrency(discountAmount)} discount`,
     })
   }
 
-  // Clear loyalty redemption
   const clearLoyaltyRedemption = () => {
     setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
     toast({
@@ -823,41 +928,46 @@ export function POSTerminal() {
     })
   }
 
-  // Apply coupon
   const applyCoupon = async () => {
     if (!couponCode.trim()) return
-    
+
     try {
-      // For now, simulate coupon validation - in production this would call the API
-      // const response = await api.post('/coupons/validate', { code: couponCode, amount: itemsTotal })
-      
-      // Mock coupon for demonstration
-      const mockCoupons: Record<string, any> = {
-        'SAVE10': { code: 'SAVE10', discount_type: 'percent', discount_value: 10, description: '10% off your order' },
-        'SAVE20': { code: 'SAVE20', discount_type: 'percent', discount_value: 20, description: '20% off your order' },
-        'FLAT50': { code: 'FLAT50', discount_type: 'fixed', discount_value: 50, description: '$50 off your order' },
+      const response = await api.post('/pos/coupons/validate', {
+        code: couponCode.trim().toUpperCase(),
+        amount: itemsTotal,
+        customer_id: selectedCustomer?.id ?? null,
+        session_id: activeSessionId,
+        terminal_id: activeTerminalId ? parseInt(activeTerminalId, 10) : null,
+      })
+
+      const rawCoupon = response.data?.data ?? response.data?.coupon ?? response.data
+      const discountType = rawCoupon?.discount_type ?? rawCoupon?.discountType
+      const discountValue = Number(rawCoupon?.discount_value ?? rawCoupon?.discountValue ?? 0)
+
+      if (!rawCoupon || (discountType !== 'fixed' && discountType !== 'percent') || !Number.isFinite(discountValue) || discountValue <= 0) {
+        throw new Error('Coupon validation returned incomplete data')
       }
-      
-      const coupon = mockCoupons[couponCode.toUpperCase()]
-      
-      if (coupon) {
-        setAppliedCoupon(coupon)
-        toast({
-          title: 'Coupon Applied',
-          description: `${coupon.code}: ${coupon.description}`,
-        })
-        setCouponCode('')
-      } else {
-        toast({
-          title: 'Invalid Coupon',
-          description: 'The coupon code you entered is not valid',
-          variant: 'destructive',
-        })
+
+      const coupon = {
+        code: String(rawCoupon.code ?? rawCoupon.coupon_code ?? couponCode.trim()).toUpperCase(),
+        discount_type: discountType,
+        discount_value: discountValue,
+        description: rawCoupon.description ?? rawCoupon.name ?? undefined,
       }
-    } catch (error: any) {
+
+      setAppliedCoupon(coupon)
       toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to apply coupon',
+        title: 'Coupon Applied',
+        description: coupon.description ? `${coupon.code}: ${coupon.description}` : `${coupon.code} applied successfully`,
+      })
+      setCouponCode('')
+    } catch (error: any) {
+      const status = error?.response?.status
+      toast({
+        title: status === 404 ? 'Coupon Validation Unavailable' : 'Coupon Not Applied',
+        description: status === 404
+          ? 'Live coupon validation is not configured for this POS terminal yet.'
+          : error.response?.data?.message || error.message || 'Failed to apply coupon',
         variant: 'destructive',
       })
     }
@@ -869,6 +979,7 @@ export function POSTerminal() {
     setCustomerId('walk-in')
     setCustomerInfo(null)
     setCurrentOrderId(null)
+    setCurrentOrderNumber(null)
     setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
     setAppliedCoupon(null)
     setDiscount({ type: 'fixed', value: 0 })
@@ -890,7 +1001,7 @@ export function POSTerminal() {
       email: selectedCustomer.email,
       loyaltyPoints: selectedCustomer.current_points ?? selectedCustomer.loyalty_points,
     } : { name: 'Walk-in Customer' },
-    items: cart.map(item => ({
+    items: cart.map((item) => ({
       name: item.name,
       quantity: item.quantity,
       price: item.price,
@@ -914,9 +1025,11 @@ export function POSTerminal() {
     paymentMethod: paymentMethodLabel,
     amountPaid: total,
     change: 0,
-    terminal: activeTerminalId ? String(activeTerminalId) : undefined,
+    terminal: activeTerminal?.name || activeTerminal?.code || (activeTerminalId ? String(activeTerminalId) : undefined),
+    warehouse: activeTerminal?.warehouse?.name || undefined,
     transactionId: options?.transactionId,
   }), [
+    activeTerminal,
     activeTerminalId,
     appliedCoupon,
     cart,
@@ -948,7 +1061,7 @@ export function POSTerminal() {
     void queryClient.invalidateQueries({ queryKey: ['pos-products'] })
     void queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
     void queryClient.invalidateQueries({ queryKey: ['customers-search'] })
-  }, [queryClient, resetTerminalForNextOrder, toast, fireDisplayEvent])
+  }, [fireDisplayEvent, queryClient, resetTerminalForNextOrder, toast])
 
   const downloadReceiptPdf = useCallback(async (orderId?: number | null, orderNumber?: string) => {
     if (!orderId) {
@@ -1116,7 +1229,9 @@ export function POSTerminal() {
           const orderId = currentOrderId || generateOrderId()
           if (!currentOrderId) setCurrentOrderId(orderId)
           
-          await createOrderMutation.mutateAsync(getOrderData(orderId))
+            const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
+            setCurrentOrderNumber(order?.order_number ?? null)
+            setCurrentOrderId(order?.external_id ?? orderId)
           toast({ title: "Draft Saved", description: "Order saved as draft." })
       } catch (error: any) {
           toast({ title: "Error", description: error.message, variant: "destructive" })
@@ -1140,6 +1255,8 @@ export function POSTerminal() {
       
       // Create order
       const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
+      setCurrentOrderNumber(order?.order_number ?? null)
+      setCurrentOrderId(order?.external_id ?? orderId)
 
       // Process payment
       const paymentData = {
@@ -1188,6 +1305,8 @@ export function POSTerminal() {
       
       // Create order
       const order = await createOrderMutation.mutateAsync(getOrderData(orderId))
+      setCurrentOrderNumber(order?.order_number ?? null)
+      setCurrentOrderId(order?.external_id ?? orderId)
       
       console.log('Order created successfully:', order)
       console.log('Order ID:', order.id)
@@ -1244,148 +1363,231 @@ export function POSTerminal() {
     }
   }
 
-  const products = productsData || []
-
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* ── MAIN CONTENT: flex-row-reverse → cart LEFT, products RIGHT ── */}
-      <div className="flex flex-1 flex-row-reverse overflow-hidden min-h-0">
-        {/* Product Discovery — first in DOM, appears on RIGHT via flex-row-reverse */}
-        <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden">
-          {/* Unified Search + Barcode */}
-          <div className="px-4 py-3 border-b bg-card">
-          <div className="relative">
-            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search products or scan barcode..."
-              className="pl-9 h-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && /^\d{6,}$/.test(search.trim())) {
-                  handleBarcodeScan(search.trim())
-                  setSearch('')
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Category Chips */}
-        <div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-b shrink-0 bg-card">
-          <Button
-            variant={selectedCategory === null ? "default" : "outline"}
-            size="sm"
-            className="h-7 px-3 text-xs shrink-0"
-            onClick={() => setSelectedCategory(null)}
-          >
-            All
-          </Button>
-          {categories?.slice(0, 10).map((cat) => (
-            <Button
-              key={cat.id}
-              variant={selectedCategory === cat.id ? "default" : "outline"}
-              size="sm"
-              className="h-7 px-3 text-xs shrink-0"
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              {cat.name}
-            </Button>
-          ))}
-        </div>
-
-        {/* Products Grid */}
-        <ScrollArea className="flex-1">
-          <div className="p-4">
-          {productsLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : products.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-              <Icon icon="solar:box-bold" className="h-16 w-16 mb-4" />
-              <p>No products found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {products.map((product: Product) => (
-                <Card
-                  key={product.id}
-                  className={cn(
-                    "cursor-pointer transition-all hover:shadow-md",
-                    getStock(product) <= 0 && "opacity-50 cursor-not-allowed"
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
+      <div className="flex min-h-0 flex-1 flex-row-reverse gap-3 overflow-hidden p-3 xl:gap-4 xl:p-4">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+          <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 xl:px-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Product Discovery
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-950">{selectedCategoryName}</h2>
+                  <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-700">
+                    {productTotal.toLocaleString()} catalog items
+                  </Badge>
+                  <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                    {visibleInStockCount.toLocaleString()} in stock
+                  </Badge>
+                  {lowStockVisibleCount > 0 && (
+                    <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-amber-700">
+                      {lowStockVisibleCount} low stock
+                    </Badge>
                   )}
-                  onClick={() => getStock(product) > 0 && addToCart(product)}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                {activeTerminal?.warehouse?.name && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 font-medium">
+                    <Icon icon="solar:shop-2-bold-duotone" className="h-3.5 w-3.5 text-slate-500" />
+                    {activeTerminal.warehouse.name}
+                  </span>
+                )}
+                {activeTerminal?.name && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 font-medium">
+                    <Icon icon="solar:monitor-bold-duotone" className="h-3.5 w-3.5 text-slate-500" />
+                    {activeTerminal.name}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Search products or scan barcode..."
+                  className="h-11 rounded-xl border-slate-200 bg-white pl-10 shadow-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && /^\d{6,}$/.test(search.trim())) {
+                      handleBarcodeScan(search.trim())
+                      setSearch('')
+                    }
+                  }}
+                />
+              </div>
+
+              {selectedCategory !== null && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11 rounded-xl border-slate-200 bg-white px-4 shadow-sm"
+                  onClick={() => setSelectedCategory(null)}
                 >
-                  <CardContent className="p-3">
-                    <div className="aspect-square mb-2 rounded-md bg-muted flex items-center justify-center overflow-hidden">
-                      {product.image ? (
-                        <img src={product.image} alt={product.name} className="object-cover w-full h-full" />
-                      ) : (
-                        <Icon icon="solar:box-bold" className="h-10 w-10 text-muted-foreground" />
-                      )}
-                    </div>
-                    <h3 className="font-medium text-sm truncate">{product.name}</h3>
-                    <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="font-bold text-sm">{formatCurrency(product.price)}</span>
-                      <Badge
-                        variant={getStock(product) > 10 ? "secondary" : getStock(product) > 0 ? "outline" : "destructive"}
-                        className="text-xs"
-                      >
-                        {getStock(product) > 0 ? `${getStock(product)}` : 'Out'}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
+                  <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
+                  Clear Filter
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="border-b border-slate-200/80 bg-slate-50/70 px-4 py-3 xl:px-5">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              <Button
+                variant={selectedCategory === null ? 'default' : 'outline'}
+                size="sm"
+                className={cn(
+                  'h-8 shrink-0 rounded-full px-4 text-xs font-medium shadow-sm',
+                  selectedCategory === null
+                    ? 'bg-[#238fa1] text-white hover:bg-[#1d7c8c]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                )}
+                onClick={() => setSelectedCategory(null)}
+              >
+                All
+              </Button>
+              {categories?.slice(0, 10).map((cat) => (
+                <Button
+                  key={cat.id}
+                  variant={selectedCategory === cat.id ? 'default' : 'outline'}
+                  size="sm"
+                  className={cn(
+                    'h-8 shrink-0 rounded-full px-4 text-xs font-medium shadow-sm',
+                    selectedCategory === cat.id
+                      ? 'bg-slate-950 text-white hover:bg-slate-900'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                  )}
+                  onClick={() => setSelectedCategory(cat.id)}
+                >
+                  {cat.name}
+                </Button>
               ))}
             </div>
-          )}
           </div>
-        </ScrollArea>
 
-        {/* Pagination Controls */}
-        {productLastPage > 1 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t shrink-0">
-            <span className="text-xs text-muted-foreground">
-              {productTotal.toLocaleString()} products · Page {productPage} of {productLastPage}
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                disabled={productPage <= 1}
-                onClick={() => setProductPage(p => Math.max(1, p - 1))}
-              >
-                <Icon icon="solar:alt-arrow-left-bold" className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                disabled={productPage >= productLastPage}
-                onClick={() => setProductPage(p => Math.min(productLastPage, p + 1))}
-              >
-                <Icon icon="solar:alt-arrow-right-bold" className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+          <ScrollArea className="flex-1">
+            <div className="p-4 xl:p-5">
+              {productsLoading ? (
+                <div className="flex h-full min-h-[22rem] items-center justify-center">
+                  <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : products.length === 0 ? (
+                <div className="flex h-full min-h-[22rem] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 text-muted-foreground">
+                  <Icon icon="solar:box-bold" className="mb-4 h-16 w-16" />
+                  <p className="text-sm font-medium">No products found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  {products.map((product: Product) => {
+                    const stock = getStock(product)
+                    const isOutOfStock = stock <= 0
+                    const isLowStock = stock > 0 && stock <= 5
+                    const stockLabel = isOutOfStock ? 'Out of stock' : isLowStock ? `${stock} left` : `${stock} in stock`
+                    const stockToneClassName = isOutOfStock
+                      ? 'border-rose-200 bg-rose-50 text-rose-600'
+                      : isLowStock
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
 
-      {/* Active Order Panel — appears on LEFT via flex-row-reverse */}
-      <Card className="flex h-full w-[26rem] xl:w-[30rem] shrink-0 flex-col overflow-hidden rounded-none border-t-0 border-b-0 border-l-0">
-        <CardHeader className="pb-3 px-4 pt-3 space-y-2">
-          {/* Title + icon-only draft/clear actions */}
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5 text-primary" />
-              Active Order
-              {cart.length > 0 && (
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{cart.length}</Badge>
+                    return (
+                      <Card
+                        key={product.id}
+                        className={cn(
+                          'group cursor-pointer overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_35px_rgba(15,23,42,0.10)]',
+                          isOutOfStock && 'cursor-not-allowed opacity-60 grayscale'
+                        )}
+                        onClick={() => !isOutOfStock && addToCart(product)}
+                      >
+                        <CardContent className="p-3.5">
+                          <div className="relative mb-3 aspect-[0.96] overflow-hidden rounded-[1rem] bg-[linear-gradient(180deg,#f8fafc_0%,#eef4f7_100%)]">
+                            {product.category?.name && (
+                              <span className="absolute left-2 top-2 inline-flex max-w-[70%] truncate rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 shadow-sm">
+                                {product.category.name}
+                              </span>
+                            )}
+                            <span className={cn('absolute right-2 top-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-sm', stockToneClassName)}>
+                              {stockLabel}
+                            </span>
+                            <div className="flex h-full items-center justify-center overflow-hidden p-3">
+                              {product.image ? (
+                                <img src={product.image} alt={product.name} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />
+                              ) : (
+                                <Icon icon="solar:box-bold" className="h-12 w-12 text-muted-foreground" />
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <h3 className="min-h-[2.7rem] overflow-hidden text-sm font-semibold leading-[1.35] text-slate-900" title={product.name}>
+                              {product.name}
+                            </h3>
+                            <p className="truncate text-[11px] uppercase tracking-[0.12em] text-slate-400">{product.sku}</p>
+                            <div className="flex items-end justify-between gap-3">
+                              <span className="text-lg font-semibold tracking-[-0.03em] text-slate-950">
+                                {formatCurrency(product.price)}
+                              </span>
+                              {!isOutOfStock && (
+                                <span className="text-[11px] font-medium text-slate-500">Tap to add</span>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
               )}
-            </CardTitle>
+            </div>
+          </ScrollArea>
+
+          {productLastPage > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 px-4 py-3 xl:px-5">
+              <span className="text-xs font-medium text-slate-500">
+                {productTotal.toLocaleString()} products · Page {productPage} of {productLastPage}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-full border-slate-200 bg-white px-3 shadow-sm"
+                  disabled={productPage <= 1}
+                  onClick={() => setProductPage((page) => Math.max(1, page - 1))}
+                >
+                  <Icon icon="solar:alt-arrow-left-bold" className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-full border-slate-200 bg-white px-3 shadow-sm"
+                  disabled={productPage >= productLastPage}
+                  onClick={() => setProductPage((page) => Math.min(productLastPage, page + 1))}
+                >
+                  <Icon icon="solar:alt-arrow-right-bold" className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <Card className="flex h-full w-[26rem] shrink-0 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)] xl:w-[30rem]">
+        <CardHeader className="pb-3 px-4 pt-3 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Current Order
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <CardTitle className="text-lg tracking-[-0.02em]">{currentOrderReference}</CardTitle>
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                  {activeOrderItemCount} item{activeOrderItemCount === 1 ? '' : 's'}
+                </Badge>
+              </div>
+            </div>
             <div className="flex items-center gap-0.5">
               <Button
                 variant="ghost"
@@ -1400,12 +1602,13 @@ export function POSTerminal() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-destructive hover:text-destructive"
+                className="h-9 w-9 rounded-full border border-rose-200 bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100 hover:text-rose-700"
                 title="Clear Cart"
                 disabled={cart.length === 0}
                 onClick={() => {
                   clearSessionCart()
                   setCurrentOrderId(null)
+                  setCurrentOrderNumber(null)
                   setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
                 }}
               >
@@ -1413,22 +1616,45 @@ export function POSTerminal() {
               </Button>
             </div>
           </div>
-          {/* Customer selector — full-width */}
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <div className="truncate font-medium">
+              {activeTerminal?.name || 'Terminal'}
+              {activeTerminal?.warehouse?.name ? ` · ${activeTerminal.warehouse.name}` : ''}
+            </div>
+            <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs font-medium text-slate-600 hover:bg-slate-100" onClick={openPendingOrders}>
+              <Icon icon="solar:clipboard-list-bold" className="mr-1.5 h-4 w-4" />
+              View Pending Orders
+              {pendingDraftOrderCount > 0 && (
+                <Badge variant="secondary" className="ml-2 h-5 rounded-full bg-slate-200 px-1.5 text-[10px] text-slate-700 hover:bg-slate-200">
+                  {pendingDraftOrderCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
+
           <Button
             variant={selectedCustomer ? "default" : "outline"}
             size="sm"
-            className="w-full h-9 justify-start gap-2 text-sm"
+            className={cn(
+              'h-14 w-full justify-start gap-3 rounded-[1.2rem] border px-4 text-left shadow-sm transition',
+              selectedCustomer
+                ? 'border-[#238fa1] bg-[linear-gradient(135deg,#2b8ea0_0%,#37a7b8_100%)] text-white hover:bg-[linear-gradient(135deg,#277f90_0%,#3097a7_100%)]'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            )}
             onClick={() => setShowCustomerDialog(true)}
           >
             <Icon
               icon={selectedCustomer ? "solar:user-check-bold" : "solar:user-circle-bold"}
               className="h-4 w-4 shrink-0"
             />
-            <span className="flex-1 truncate text-left">
-              {selectedCustomer ? selectedCustomer.name : 'Walk-in Customer'}
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">Customer</span>
+              <span className="block truncate text-sm font-medium">
+                {selectedCustomer ? selectedCustomer.name : 'Walk-in'}
+              </span>
             </span>
             {selectedCustomer && loyaltyInfo?.enrolled && (
-              <Badge variant="secondary" className="text-xs shrink-0">
+              <Badge variant="secondary" className="shrink-0 rounded-full bg-white/15 text-xs text-white hover:bg-white/15">
                 {loyaltyInfo.available_points.toLocaleString()} pts
               </Badge>
             )}
@@ -1436,15 +1662,15 @@ export function POSTerminal() {
 
           {/* Selected Customer Info Card */}
           {selectedCustomer && (
-            <div className="p-3 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10">
+            <div className="rounded-[1.2rem] border border-[#cfe6eb] bg-[linear-gradient(135deg,#f4fbfc_0%,#ecf7f9_100%)] p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#238fa1]/15">
                   <Icon icon="solar:user-circle-bold" className="h-6 w-6 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{selectedCustomer.name}</p>
+                  <p className="truncate font-semibold text-slate-900">{selectedCustomer.name}</p>
                   {selectedCustomer.phone && (
-                    <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                    <p className="text-xs text-slate-500">{selectedCustomer.phone}</p>
                   )}
                   
                   {/* Loyalty Info */}
@@ -1484,18 +1710,18 @@ export function POSTerminal() {
         </CardHeader>
 
         <ScrollArea className="flex-1">
-          <div className="p-3 space-y-2">
+          <div className="space-y-3 p-4">
             {cart.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                <Icon icon="solar:cart-large-minimalistic-bold" className="h-14 w-14 mb-3 opacity-20" />
-                <p className="text-sm font-medium">Cart is empty</p>
-                <p className="text-xs mt-1 opacity-70">Select products from the right panel</p>
+              <div className="flex flex-col items-center justify-center rounded-[1.4rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-16 text-muted-foreground">
+                <Icon icon="solar:cart-large-minimalistic-bold" className="mb-3 h-14 w-14 opacity-20" />
+                <p className="text-sm font-medium">No items in this order yet</p>
+                <p className="text-xs mt-1 opacity-70">Scan a barcode or search by name to start.</p>
               </div>
             )}
             {cart.map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-xl border bg-background p-3">
+              <div key={item.id} className="group flex gap-3 rounded-[1.25rem] border border-slate-200/80 bg-white p-3.5 shadow-sm transition duration-200 hover:shadow-md">
                 {/* Product Image */}
-                <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1rem] bg-[linear-gradient(180deg,#f8fafc_0%,#eef4f7_100%)]">
                   {item.image ? (
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                   ) : (
@@ -1505,35 +1731,35 @@ export function POSTerminal() {
 
                 {/* Product info + controls */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate leading-tight" title={item.name}>{item.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(item.price)} each</p>
+                  <p className="truncate text-sm font-semibold leading-tight text-slate-900" title={item.name}>{item.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{formatCurrency(item.price)} each</p>
                   <div className="flex items-center justify-between mt-2">
                     {/* Large quantity controls */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-full bg-slate-50 px-2 py-1">
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8 rounded-lg"
+                        className="h-8 w-8 rounded-full border-slate-200 bg-white shadow-sm"
                         onClick={() => updateQuantity(item.id, -1)}
                       >
                         <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
+                      <span className="w-6 text-center text-sm font-semibold text-slate-900">{item.quantity}</span>
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-8 w-8 rounded-lg"
+                        className="h-8 w-8 rounded-full border-slate-200 bg-white shadow-sm"
                         onClick={() => updateQuantity(item.id, 1)}
                       >
                         <Icon icon="solar:add-circle-bold" className="h-4 w-4" />
                       </Button>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-sm">{formatCurrency(item.line_total)}</span>
+                      <span className="text-sm font-semibold tracking-[-0.02em] text-slate-950">{formatCurrency(item.line_total)}</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        className="h-7 w-7 rounded-full text-destructive hover:bg-rose-50 hover:text-destructive"
                         onClick={() => removeFromCart(item.id)}
                       >
                         <Icon icon="solar:trash-bin-minimalistic-bold" className="h-3.5 w-3.5" />
@@ -1547,13 +1773,13 @@ export function POSTerminal() {
         </ScrollArea>
 
         {/* Totals & Actions */}
-        <div className="shrink-0 p-4 border-t bg-muted/20 space-y-4 overflow-y-auto max-h-[45%]">
+        <div className="shrink-0 max-h-[45%] space-y-4 overflow-y-auto border-t border-slate-200/80 bg-slate-50/80 p-4">
           
           {/* Discount/Loyalty/Coupon Tabs */}
           {(cart.length > 0 || appliedCoupon || loyaltyRedemption.pointsToRedeem > 0) && (
-            <div className="rounded-lg border bg-white overflow-hidden">
+            <div className="overflow-hidden rounded-[1.2rem] border border-slate-200 bg-white shadow-sm">
               <Tabs value={activeDiscountTab} onValueChange={(v) => setActiveDiscountTab(v as any)} className="w-full">
-                <TabsList className="w-full grid grid-cols-3 rounded-none border-b bg-muted/30">
+                <TabsList className="grid w-full grid-cols-3 rounded-none border-b border-slate-200 bg-slate-50">
                   <TabsTrigger value="discount" className="text-xs gap-1">
                     <Icon icon="solar:tag-bold" className="h-3.5 w-3.5" />
                     Discount
@@ -1780,44 +2006,48 @@ export function POSTerminal() {
             </div>
           )}
 
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCurrency(subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax</span>
-              <span>{formatCurrency(taxAmount)}</span>
-            </div>
-            {regularDiscountAmount > 0 && (
-              <div className="flex justify-between text-destructive">
-                <span>Discount ({discount.type === 'percent' ? `${discount.value}%` : 'Fixed'})</span>
-                <span>-{formatCurrency(regularDiscountAmount)}</span>
+          <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-medium text-slate-900">{formatCurrency(subtotal)}</span>
               </div>
-            )}
-            {couponDiscountAmount > 0 && appliedCoupon && (
-              <div className="flex justify-between text-amber-600">
-                <span>Coupon ({appliedCoupon.code})</span>
-                <span>-{formatCurrency(couponDiscountAmount)}</span>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tax</span>
+                <span className="font-medium text-slate-900">{formatCurrency(taxAmount)}</span>
               </div>
-            )}
-            {loyaltyDiscountAmount > 0 && (
-              <div className="flex justify-between text-primary">
-                <span>Loyalty ({loyaltyRedemption.pointsToRedeem.toLocaleString()} pts)</span>
-                <span>-{formatCurrency(loyaltyDiscountAmount)}</span>
+              {regularDiscountAmount > 0 && (
+                <div className="flex justify-between text-destructive">
+                  <span>Discount ({discount.type === 'percent' ? `${discount.value}%` : 'Fixed'})</span>
+                  <span>-{formatCurrency(regularDiscountAmount)}</span>
+                </div>
+              )}
+              {couponDiscountAmount > 0 && appliedCoupon && (
+                <div className="flex justify-between text-amber-600">
+                  <span>Coupon ({appliedCoupon.code})</span>
+                  <span>-{formatCurrency(couponDiscountAmount)}</span>
+                </div>
+              )}
+              {loyaltyDiscountAmount > 0 && (
+                <div className="flex justify-between text-primary">
+                  <span>Loyalty ({loyaltyRedemption.pointsToRedeem.toLocaleString()} pts)</span>
+                  <span>-{formatCurrency(loyaltyDiscountAmount)}</span>
+                </div>
+              )}
+              <Separator />
+              <div className="flex items-end justify-between font-semibold">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Grand Total</div>
+                  <div className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-slate-950">{formatCurrency(total)}</div>
+                </div>
               </div>
-            )}
-            <Separator />
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span>{formatCurrency(total)}</span>
             </div>
           </div>
 
           {/* PAY — primary full-width action */}
           <Button
             size="lg"
-            className="w-full h-12 text-base font-semibold"
+            className="h-14 w-full rounded-[1.2rem] bg-[linear-gradient(135deg,#238fa1_0%,#2ea3b4_100%)] text-base font-semibold text-white shadow-[0_18px_35px_rgba(35,143,161,0.28)] hover:bg-[linear-gradient(135deg,#1e7f90_0%,#2993a3_100%)]"
             onClick={() => setShowCheckoutDialog(true)}
             disabled={cart.length === 0}
           >
@@ -2233,10 +2463,11 @@ export function POSTerminal() {
               <POSReceipt
                 ref={receiptRef}
                 data={lastOrder}
-                businessName="NoovaERP Store"
-                businessAddress="Your Business Address"
-                businessPhone="+1 234 567 890"
-                footerMessage="Thank you for shopping with us!"
+                businessName={receiptBranding.businessName}
+                businessAddress={receiptBranding.businessAddress}
+                businessPhone={receiptBranding.businessPhone}
+                businessEmail={receiptBranding.businessEmail}
+                footerMessage={receiptBranding.footerMessage}
               />
             </div>
           )}
@@ -2350,7 +2581,7 @@ export function POSTerminal() {
         }}
       />
     </div>
-  </div>
+      </div>
   )
 }
 
