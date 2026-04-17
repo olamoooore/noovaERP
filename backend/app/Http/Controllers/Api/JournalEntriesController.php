@@ -14,6 +14,7 @@ use App\Services\LockDateValidationService;
 use App\Services\ManualJournalPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Journal Entries Controller - Manages manual journal entries
@@ -149,7 +150,7 @@ class JournalEntriesController extends Controller
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'],
                 'status' => 'draft',
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'legal_entity_id' => $request->attributes->get('legal_entity_id'),
                 'entity_book_id' => $request->attributes->get('entity_book_id'),
             ]);
@@ -305,7 +306,7 @@ class JournalEntriesController extends Controller
 
         // Self-approval guard
         $approvedBy = $request->input('approved_by') ? (int) $request->input('approved_by') : null;
-        $userId     = (int) auth()->id();
+        $userId     = TenantUserHelper::requireTenantUserId();
 
         if ($lockValidation['is_locked'] && $approvedBy && $approvedBy === $userId) {
             return response()->json([
@@ -348,7 +349,7 @@ class JournalEntriesController extends Controller
             'approved_by'   => 'nullable|integer|exists:users,id',
         ]);
 
-        $userId     = (int) auth()->id();
+        $userId     = TenantUserHelper::requireTenantUserId();
         $approvedBy = isset($validated['approved_by']) ? (int) $validated['approved_by'] : null;
 
         if ($approvedBy !== null && $approvedBy === $userId) {

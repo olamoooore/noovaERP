@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Services\PublishingService;
 use Modules\WebsiteBuilder\Jobs\PublishWebsiteJob;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PublishController extends Controller
 {
@@ -21,7 +22,7 @@ class PublishController extends Controller
     {
         $website = Website::findOrFail($website);
         // Dispatch async job
-        PublishWebsiteJob::dispatch($website, auth()->id());
+        PublishWebsiteJob::dispatch($website, TenantUserHelper::resolveTenantUserId());
 
         return response()->json([
             'message' => 'Publishing started. You will be notified when complete.',
@@ -41,7 +42,7 @@ class PublishController extends Controller
             ->firstOrFail();
 
         // Dispatch publish job with rollback flag
-        PublishWebsiteJob::dispatch($website, auth()->id(), $version);
+        PublishWebsiteJob::dispatch($website, TenantUserHelper::resolveTenantUserId(), $version);
 
         return response()->json([
             'message' => "Rolling back to version {$version}",

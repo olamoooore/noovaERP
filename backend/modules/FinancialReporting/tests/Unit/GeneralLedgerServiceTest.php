@@ -2,36 +2,46 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\User;
 use Carbon\Carbon;
 
-class GeneralLedgerServiceTest extends TestCase
+class GeneralLedgerServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected GeneralLedgerService $service;
+    protected User $testUser;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->service = app(GeneralLedgerService::class);
+        $this->testUser = User::factory()->create();
         $this->setupTestData();
     }
 
     protected function setupTestData(): void
     {
-        ChartOfAccount::create([
-            'code' => '1000',
-            'name' => 'Cash',
-            'type' => 'asset',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '1000'],
+            ['name' => 'Cash', 'type' => 'asset', 'is_active' => true]
+        );
+    }
+
+    private function createJournalEntry(array $attrs = []): JournalEntry
+    {
+        return JournalEntry::create(array_merge([
+            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_date' => Carbon::parse('2024-01-15'),
+            'description' => 'Test Entry',
+            'status' => 'posted',
+            'created_by' => $this->testUser->id,
+        ], $attrs));
     }
 
     /** @test */
@@ -49,7 +59,8 @@ class GeneralLedgerServiceTest extends TestCase
 
         $this->assertNotNull($report);
         $this->assertEquals('General Ledger', $report->title);
-        $this->assertArrayHasKey('transactions', $report->data);
+        // Data is a flat array of transactions
+        $this->assertIsArray($report->data);
     }
 
     /** @test */
@@ -70,10 +81,9 @@ class GeneralLedgerServiceTest extends TestCase
     {
         $account = ChartOfAccount::where('code', '1000')->first();
         
-        $entry1 = JournalEntry::create([
+        $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-10'),
             'description' => 'First Entry',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -83,10 +93,9 @@ class GeneralLedgerServiceTest extends TestCase
             'credit' => 0,
         ]);
 
-        $entry2 = JournalEntry::create([
+        $entry2 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'Second Entry',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -104,12 +113,13 @@ class GeneralLedgerServiceTest extends TestCase
 
         $report = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('transactions', $report->data);
-        $this->assertCount(2, $report->data['transactions']);
+        // Data is a flat array of transaction rows
+        $this->assertIsArray($report->data);
+        $this->assertCount(2, $report->data);
         
         // Check running balance
-        $this->assertEquals(1000, $report->data['transactions'][0]['balance']);
-        $this->assertEquals(1500, $report->data['transactions'][1]['balance']);
+        $this->assertEquals(1000, $report->data[0]['balance']);
+        $this->assertEquals(1500, $report->data[1]['balance']);
     }
 
     /** @test */
@@ -117,10 +127,9 @@ class GeneralLedgerServiceTest extends TestCase
     {
         $account = ChartOfAccount::where('code', '1000')->first();
         
-        $entry1 = JournalEntry::create([
+        $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'January Entry',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -130,10 +139,9 @@ class GeneralLedgerServiceTest extends TestCase
             'credit' => 0,
         ]);
 
-        $entry2 = JournalEntry::create([
+        $entry2 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-02-15'),
             'description' => 'February Entry',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -151,8 +159,8 @@ class GeneralLedgerServiceTest extends TestCase
 
         $report = $this->service->generate($filter);
 
-        $this->assertCount(1, $report->data['transactions']);
-        $this->assertEquals('January Entry', $report->data['transactions'][0]['description']);
+        $this->assertCount(1, $report->data);
+        $this->assertEquals('January Entry', $report->data[0]['description']);
     }
 
     /** @test */
@@ -161,10 +169,9 @@ class GeneralLedgerServiceTest extends TestCase
         $account = ChartOfAccount::where('code', '1000')->first();
         
         // Entry before the filter period
-        $entry1 = JournalEntry::create([
+        $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2023-12-15'),
             'description' => 'Previous Period',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -182,7 +189,7 @@ class GeneralLedgerServiceTest extends TestCase
 
         $report = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('opening_balance', $report->data);
-        $this->assertEquals(5000, $report->data['opening_balance']);
+        $this->assertArrayHasKey('opening_balance', $report->summary);
+        $this->assertEquals(5000, $report->summary['opening_balance']);
     }
 }

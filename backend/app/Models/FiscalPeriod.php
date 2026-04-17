@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Fiscal Period Model
@@ -149,7 +150,7 @@ class FiscalPeriod extends Model
         return $this->update([
             'is_locked' => true,
             'locked_at' => now(),
-            'locked_by' => auth()->id(),
+            'locked_by' => TenantUserHelper::resolveTenantUserId(),
             'status' => 'locked',
         ]);
     }
@@ -269,7 +270,7 @@ class FiscalPeriod extends Model
                 'fiscal_year' => $year,
                 'is_locked' => false,
                 'status' => 'open',
-                'created_by' => auth()->id() ?? 1,
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             $count++;

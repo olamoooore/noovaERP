@@ -107,15 +107,26 @@ class PaymentService
             throw new \Exception('Payment gateway not found');
         }
 
-        $gatewayService = PaymentGatewayFactory::create($gateway);
-        $status = $gatewayService->getPaymentStatus($transactionId);
+        $status = $this->getGatewayStatus($gateway, $transactionId);
 
         if ($status['success'] ?? false) {
-            $transaction->update([
-                'status' => $status['status'],
-                'processed_at' => $status['status'] === 'completed' ? now() : null,
+            $localStatus = ($status['status'] ?? null) === 'completed'
+                ? 'pending'
+                : ($status['status'] ?? $transaction->status);
+
+            $transactionUpdate = [
+                'status' => $localStatus,
+                'payment_method' => $status['payment_method'] ?? $transaction->payment_method,
+                'processed_at' => null,
                 'gateway_response' => $status,
-            ]);
+            ];
+
+            if ($transaction->processed_at) {
+                $transactionUpdate['status'] = $transaction->status;
+                $transactionUpdate['processed_at'] = $transaction->processed_at;
+            }
+
+            $transaction->update($transactionUpdate);
         }
 
         return [
@@ -123,6 +134,11 @@ class PaymentService
             'transaction_id' => $transactionId,
             'amount' => $transaction->amount,
         ];
+    }
+
+    protected function getGatewayStatus(PaymentGateway $gateway, string $transactionId): array
+    {
+        return PaymentGatewayFactory::create($gateway)->getPaymentStatus($transactionId);
     }
 
     /**

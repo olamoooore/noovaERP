@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use App\Models\User;
@@ -15,10 +14,8 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class CacheBehaviorTest extends TestCase
+class CacheBehaviorTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected ReportCacheService $cacheService;
 
@@ -136,9 +133,11 @@ class CacheBehaviorTest extends TestCase
         // Create new transaction
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         $entry = JournalEntry::create([
+            'entry_number' => 'JE-TEST-' . uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'New Sale',
             'status' => 'posted',
+            'created_by' => $this->user->id,
         ]);
 
         JournalEntryLine::create([

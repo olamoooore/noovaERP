@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * OCR Promotion Service.
@@ -45,7 +46,7 @@ class OcrPromotionService
                 'source'             => 'ocr_promotion',
                 'source_reference'   => "OCR-{$doc->uuid}",
                 'notes'              => "Promoted from OCR document {$doc->uuid}",
-                'created_by'         => auth()->id(),
+                'created_by'         => TenantUserHelper::resolveTenantUserId(),
                 'created_at'         => now(),
                 'updated_at'         => now(),
             ]);
@@ -112,7 +113,7 @@ class OcrPromotionService
                 'source'             => 'ocr_promotion',
                 'source_reference'   => "OCR-{$doc->uuid}",
                 'notes'              => "Promoted from OCR document {$doc->uuid}",
-                'created_by'         => auth()->id(),
+                'created_by'         => TenantUserHelper::resolveTenantUserId(),
                 'created_at'         => now(),
                 'updated_at'         => now(),
             ]);

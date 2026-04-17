@@ -76,7 +76,8 @@ class IoTServiceProvider extends ServiceProvider
         // Do NOT also loadRoutesFrom here or routes will be registered twice
         // with different middleware stacks, bypassing tenant isolation.
 
-        // Load migrations
-        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+        // Do NOT also loadMigrationsFrom here or they will run during central migrations.
+        // Tenant migrations are loaded via tenancy.php migration_parameters config
+        // and explicitly via TenantTestCase::getTenantMigrationPaths() in tests.
     }
 }

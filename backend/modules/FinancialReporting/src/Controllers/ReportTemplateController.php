@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Modules\FinancialReporting\Models\ReportTemplate;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Report Template Controller
@@ -33,7 +34,7 @@ class ReportTemplateController extends Controller
 
         // Filter by user's templates
         if ($request->boolean('my_templates')) {
-            $query->where('created_by', auth()->id());
+            $query->where('created_by', TenantUserHelper::resolveTenantUserId());
         }
 
         $templates = $query->orderBy('created_at', 'desc')->get();
@@ -87,8 +88,8 @@ class ReportTemplateController extends Controller
         $template->description = $request->input('description');
         $template->report_type = $request->input('report_type');
         $template->configuration = $request->input('configuration');
-        $template->is_system = false; // User templates are never system templates
-        $template->created_by = auth()->id();
+        $template->is_system = false;
+        $template->created_by = TenantUserHelper::resolveTenantUserId();
         $template->save();
 
         return response()->json([
@@ -114,7 +115,7 @@ class ReportTemplateController extends Controller
         }
 
         // Check ownership
-        if ($template->created_by !== auth()->id()) {
+        if ($template->created_by !== TenantUserHelper::resolveTenantUserId()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to update this template',
@@ -177,7 +178,7 @@ class ReportTemplateController extends Controller
         }
 
         // Check ownership
-        if ($template->created_by !== auth()->id()) {
+        if ($template->created_by !== TenantUserHelper::resolveTenantUserId()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to delete this template',
@@ -205,7 +206,7 @@ class ReportTemplateController extends Controller
         $template->report_type = $original->report_type;
         $template->configuration = $original->configuration;
         $template->is_system = false;
-        $template->created_by = auth()->id();
+        $template->created_by = TenantUserHelper::resolveTenantUserId();
         $template->save();
 
         return response()->json([
@@ -223,7 +224,7 @@ class ReportTemplateController extends Controller
         $template = ReportTemplate::findOrFail($id);
 
         // Check ownership
-        if ($template->created_by !== auth()->id()) {
+        if ($template->created_by !== TenantUserHelper::resolveTenantUserId()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to share this template',
@@ -233,7 +234,7 @@ class ReportTemplateController extends Controller
         // Add shared flag to configuration
         $configuration = $template->configuration;
         $configuration['shared'] = true;
-        $configuration['shared_by'] = auth()->id();
+        $configuration['shared_by'] = TenantUserHelper::resolveTenantUserId();
         $configuration['shared_at'] = now()->toIso8601String();
         $template->configuration = $configuration;
         $template->save();
@@ -253,7 +254,7 @@ class ReportTemplateController extends Controller
         $template = ReportTemplate::findOrFail($id);
 
         // Check ownership
-        if ($template->created_by !== auth()->id()) {
+        if ($template->created_by !== TenantUserHelper::resolveTenantUserId()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to unshare this template',

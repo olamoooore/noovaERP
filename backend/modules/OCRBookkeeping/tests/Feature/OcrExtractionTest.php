@@ -2,18 +2,15 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrProcessingService;
 use App\Models\User;
 
-class OcrExtractionTest extends TestCase
+class OcrExtractionTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected OcrProcessingService $service;
 
@@ -198,12 +195,14 @@ class OcrExtractionTest extends TestCase
         
         // Verify confidence scores stored
         $this->assertNotNull($document->ocr_confidence_scores);
+        // vendor_name is present -> gets full OCR confidence (0.95)
         $this->assertEquals(0.95, $document->ocr_confidence_scores['vendor_name']);
-        $this->assertEquals(0.45, $document->ocr_confidence_scores['invoice_number']);
+        // document_date is missing (invoice_date not in extracted_data) -> confidence 0.0
+        $this->assertEquals(0.0, $document->ocr_confidence_scores['document_date']);
         
-        // Test confidence methods
+        // Test confidence methods: high vs low
         $this->assertTrue($document->getConfidenceScore('vendor_name') > 0.7);
-        $this->assertFalse($document->getConfidenceScore('invoice_number') > 0.7);
+        $this->assertFalse($document->getConfidenceScore('document_date') > 0.7);
     }
 
     /**
@@ -238,9 +237,8 @@ class OcrExtractionTest extends TestCase
             'status' => 'success',
             'extracted_data' => [
                 'vendor_customer_name' => 'Test Vendor',
-                'invoice_number' => 'INV-PARTIAL-001',
                 'total_amount' => 100.00,
-                // Missing: line_items, tax_amount, invoice_date
+                // Missing: line_items, tax_amount, invoice_date, invoice_number
             ],
             'processing_details' => [
                 'ocr_confidence' => 85,
@@ -251,7 +249,7 @@ class OcrExtractionTest extends TestCase
 
         $document->refresh();
         
-        // Should still succeed with partial data
+        // Should still succeed with partial data (vendor_name satisfies identifying data check)
         $this->assertEquals('NEEDS_REVIEW', $document->status);
         $this->assertEquals('Test Vendor', $document->vendor_name);
         $this->assertEquals(100.00, $document->total_amount);

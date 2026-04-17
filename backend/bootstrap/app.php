@@ -34,7 +34,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'feature'                  => \App\Http\Middleware\EnsureFeatureEnabled::class,
             'entitlement'              => \App\Http\Middleware\EnsureEntitlementAccess::class,
             'auth.tenant_key'          => \App\Http\Middleware\AuthenticateTenantApiKey::class,
             'auth.agent'               => \App\Http\Middleware\AuthenticateAgent::class,

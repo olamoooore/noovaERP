@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Modules\WebsiteBuilder\Jobs\ProcessUploadJob;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class UploadController extends Controller
 {
@@ -33,7 +34,7 @@ class UploadController extends Controller
         ProcessUploadJob::dispatch(
             $tempPath,
             $validated['website_name'],
-            auth()->id(),
+            TenantUserHelper::resolveTenantUserId(),
             $extension
         );
 

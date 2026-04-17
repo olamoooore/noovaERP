@@ -7,7 +7,10 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerCreditNoteLine;
+use App\Models\Invoice;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Customer Credit Note Service
@@ -30,7 +33,7 @@ class CustomerCreditNoteService
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
-            $data['created_by'] = auth()->id();
+            $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
             $data['credit_note_date'] = $data['credit_note_date'] ?? now();
             $data['status'] = 'draft';
             $data['currency_code'] = $data['currency_code'] ?? 'USD';
@@ -133,7 +136,7 @@ class CustomerCreditNoteService
                 description: "Credit Note #{$creditNote->credit_note_number} - {$creditNote->customer->name}",
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
-                userId: auth()->id(),
+                userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
             ));
 
             if (!$result->success) {
@@ -143,26 +146,12 @@ class CustomerCreditNoteService
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
-                'posted_by' => auth()->id(),
+                'posted_by' => TenantUserHelper::requireTenantUserId($creditNote->created_by),
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Atomically reduce invoice balance and update status.
-            // Uses WHERE + decrement to avoid TOCTOU race on concurrent credit notes.
-            \App\Models\Invoice::where('id', $invoice->id)
-                ->update([
-                    'balance' => DB::raw('GREATEST(balance - ' . (float) $creditNote->total_amount . ', 0)'),
-                ]);
-
-            $invoice->refresh();
-            if ($invoice->balance <= 0 && $invoice->status !== 'paid') {
-                $invoice->update(['status' => 'paid']);
-            }
-
-            // Update customer outstanding after credit note
-            if ($invoice->customer) {
-                $invoice->customer->updateOutstanding();
-            }
+            // Atomically reduce invoice balance and update status via canonical service.
+            app(InvoiceService::class)->applyRefundToInvoice($invoice, (float) $creditNote->total_amount);
 
             DB::commit();
             

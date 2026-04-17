@@ -108,7 +108,7 @@ class ArtistEventController extends Controller
     {
         try {
             $request->validate([
-                'group_id' => 'required|integer|exists:groups,id',
+                'group_id' => 'required|integer|exists:artist_groups,id',
                 'role' => 'nullable|string|in:main,guest,collaboration',
                 'performance_order' => 'nullable|integer|min:1',
                 'performance_duration' => 'nullable|integer|min:1',

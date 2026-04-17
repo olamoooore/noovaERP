@@ -2,14 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\ReorderService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\DTOs\ReportData;
 
-class ReorderServiceTest extends TestCase
+class ReorderServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected ReorderService $service;
 
@@ -26,11 +25,10 @@ class ReorderServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('title', $result);
-        $this->assertEquals('Reorder Report', $result['title']);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertArrayHasKey('summary', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertEquals('Reorder Report', $result->title);
+        $this->assertIsArray($result->data);
+        $this->assertIsArray($result->summary);
     }
 
     /** @test */
@@ -40,9 +38,9 @@ class ReorderServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('summary', $result);
-        $this->assertArrayHasKey('products_below_reorder_level', $result['summary']);
-        $this->assertArrayHasKey('total_reorder_value', $result['summary']);
+        $this->assertIsArray($result->summary);
+        $this->assertArrayHasKey('total_products_to_reorder', $result->summary);
+        $this->assertArrayHasKey('total_suggested_order_value', $result->summary);
     }
 
     /** @test */
@@ -52,7 +50,7 @@ class ReorderServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('data', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertIsArray($result->data);
     }
 }

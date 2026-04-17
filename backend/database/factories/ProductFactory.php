@@ -11,15 +11,17 @@ class ProductFactory extends Factory
 
     public function definition(): array
     {
+        $name = fake()->words(3, true);
+
         return [
             'sku' => fake()->unique()->bothify('PROD-####'),
-            'name' => fake()->words(3, true),
+            'name' => $name,
+            'slug' => \Illuminate\Support\Str::slug($name) . '-' . fake()->unique()->numberBetween(1, 99999),
             'description' => fake()->sentence(),
-            'unit_cost' => fake()->randomFloat(2, 10, 1000),
-            'unit_price' => fake()->randomFloat(2, 20, 2000),
-            'quantity_on_hand' => fake()->numberBetween(0, 100),
+            'cost' => fake()->randomFloat(2, 10, 1000),
+            'price' => fake()->randomFloat(2, 20, 2000),
+            'stock_quantity' => fake()->numberBetween(0, 100),
             'is_active' => true,
-            'created_by' => 1,
         ];
     }
 }

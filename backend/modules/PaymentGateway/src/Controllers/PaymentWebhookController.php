@@ -17,10 +17,37 @@ class PaymentWebhookController extends Controller
      * Initialize tenancy for webhooks
      * Webhooks come from external domains (ngrok, production), so we need to
      * manually identify the tenant from the payment gateway/transaction
+     *
+     * Workstream 2 (2026-04-15): SECURITY NOTE - This method scans all tenants
+     * which is a potential security vulnerability (cross-tenant enumeration).
+     * 
+     * DEPRECATED: This method will be replaced by ResolveTenantFromWebhook middleware
+     * which uses cache-based lookups instead of scanning.
+     * 
+     * Temporary mitigation: Added caching to reduce enumeration window
      */
     protected function initializeTenancyForTransaction($transactionId)
     {
+        // Check cache first to avoid repeated scanning
+        $cacheKey = "webhook_tenant_lookup:{$transactionId}";
+        $cachedTenantId = \Illuminate\Support\Facades\Cache::get($cacheKey);
+        
+        if ($cachedTenantId) {
+            $tenant = \App\Models\Tenant::find($cachedTenantId);
+            if ($tenant) {
+                Log::debug('Tenant resolved from cache', [
+                    'transaction_id' => $transactionId,
+                    'tenant_id' => $cachedTenantId,
+                ]);
+                return $tenant;
+            }
+            // Tenant no longer exists, clear cache
+            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+        }
+
         // Query all tenants to find the transaction
+        // SECURITY: This is a known vulnerability - scanning all tenants
+        // TODO: Replace with central lookup table or middleware-based resolution
         $tenants = \App\Models\Tenant::all();
 
         foreach ($tenants as $tenant) {
@@ -30,6 +57,8 @@ class PaymentWebhookController extends Controller
             });
 
             if ($found) {
+                // Cache the result for 24 hours to reduce enumeration window
+                \Illuminate\Support\Facades\Cache::put($cacheKey, $tenant->id, now()->addHours(24));
                 return $tenant;
             }
         }

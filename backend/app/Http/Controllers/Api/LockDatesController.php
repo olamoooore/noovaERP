@@ -8,6 +8,7 @@ use App\Models\LockDateOverride;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Lock Dates Controller
@@ -93,7 +94,7 @@ class LockDatesController extends Controller
         $lockDate = LockDate::create([
             'lock_type' => $request->lock_type,
             'lock_date' => $request->lock_date,
-            'set_by' => auth()->id(),
+            'set_by' => TenantUserHelper::requireTenantUserId(),
             'set_at' => now(),
             'reason' => $request->reason,
             'is_active' => true,
@@ -182,14 +183,14 @@ class LockDatesController extends Controller
         }
 
         // Check if user has override permission
-        if (!$this->lockDateService->canOverrideLockDate(auth()->id())) {
+        if (!$this->lockDateService->canOverrideLockDate(TenantUserHelper::requireTenantUserId())) {
             return response()->json([
                 'message' => 'You do not have permission to override lock dates',
             ], 403);
         }
 
         $override = LockDateOverride::logOverride(
-            auth()->id(),
+            TenantUserHelper::requireTenantUserId(),
             $request->transaction_type,
             $request->transaction_id,
             $request->transaction_date,

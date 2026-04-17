@@ -2,15 +2,14 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\StockValuationService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class StockValuationServiceTest extends TestCase
+class StockValuationServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected StockValuationService $service;
 
@@ -29,11 +28,10 @@ class StockValuationServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('title', $result);
-        $this->assertEquals('Stock Valuation Report', $result['title']);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertArrayHasKey('summary', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertEquals('Stock Valuation Report', $result->title);
+        $this->assertIsArray($result->data);
+        $this->assertIsArray($result->summary);
     }
 
     /** @test */
@@ -43,8 +41,8 @@ class StockValuationServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('as_of_date', $result);
-        $this->assertNotNull($result['as_of_date']);
+        $this->assertArrayHasKey('as_of_date', $result->metadata);
+        $this->assertNotNull($result->metadata['as_of_date']);
     }
 
     /** @test */
@@ -56,8 +54,8 @@ class StockValuationServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('data', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertIsArray($result->data);
     }
 
     /** @test */
@@ -69,9 +67,9 @@ class StockValuationServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('summary', $result);
-        $this->assertArrayHasKey('total_value', $result['summary']);
-        $this->assertArrayHasKey('total_quantity', $result['summary']);
-        $this->assertArrayHasKey('product_count', $result['summary']);
+        $this->assertIsArray($result->summary);
+        $this->assertArrayHasKey('total_value', $result->summary);
+        $this->assertArrayHasKey('total_quantity', $result->summary);
+        $this->assertArrayHasKey('total_products', $result->summary);
     }
 }

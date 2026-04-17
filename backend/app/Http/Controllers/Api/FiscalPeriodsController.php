@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FiscalPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * FiscalPeriodsController
@@ -52,7 +53,7 @@ class FiscalPeriodsController extends Controller
 
         $validated['is_locked']  = false;
         $validated['status']     = 'open';
-        $validated['created_by'] = auth()->id();
+        $validated['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         $period = FiscalPeriod::create($validated);
 
@@ -136,7 +137,7 @@ class FiscalPeriodsController extends Controller
         Log::info('Fiscal period locked', [
             'period_id'   => $period->id,
             'period_code' => $period->code,
-            'locked_by'   => auth()->id(),
+            'locked_by'   => TenantUserHelper::resolveTenantUserId(),
         ]);
 
         return response()->json([
@@ -162,7 +163,7 @@ class FiscalPeriodsController extends Controller
         Log::warning('Fiscal period unlocked', [
             'period_id'    => $period->id,
             'period_code'  => $period->code,
-            'unlocked_by'  => auth()->id(),
+            'unlocked_by'  => TenantUserHelper::resolveTenantUserId(),
         ]);
 
         return response()->json([

@@ -7,8 +7,12 @@ use Illuminate\Http\Request;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
 use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPostingService;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\InventoryService;
+use App\Models\StockMovement;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -334,31 +338,70 @@ class IoTTerminalController extends Controller
         DB::transaction(function () use ($order, $payload, $device) {
             $amount = (float) ($payload['amount'] ?? 0);
             $paymentMethod = $payload['payment_type'] ?? 'card';
+            $paymentId = $payload['payment_id'] ?? null;
+
+            if ($order->status === 'paid' || $order->paid_at) {
+                Log::info('Skipping already-paid IoT terminal order', [
+                    'order_id' => $order->id,
+                    'payment_id' => $paymentId,
+                ]);
+                return;
+            }
+
+            if ($paymentId && PosPayment::where('reference', $paymentId)->where('pos_order_id', $order->id)->exists()) {
+                Log::info('Skipping duplicate IoT terminal payment', [
+                    'order_id' => $order->id,
+                    'payment_id' => $paymentId,
+                ]);
+                return;
+            }
 
             // Create payment record
-            \Modules\POS\Models\PosPayment::create([
+            PosPayment::create([
                 'pos_order_id' => $order->id,
                 'method' => $paymentMethod,
                 'amount' => $amount,
-                'reference' => $payload['payment_id'] ?? null,
+                'reference' => $paymentId,
                 'received_by' => $order->created_by,
             ]);
 
-            // Adjust inventory
-            foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
-                if ($item->variant && $item->variant->track_inventory) {
-                    $item->variant->adjustStock($item->quantity, 'out', $order->order_number);
-                } elseif ($item->product && $item->product->track_inventory) {
-                    $item->product->adjustStock($item->quantity, 'out', $order->order_number);
-                }
-            }
-
-            // Post to accounting
+            // Post to accounting FIRST — GL must succeed before stock mutation
             $entry = $this->postingService->postPaidOrder(
                 $order->load('items.variant', 'items.product'),
                 $amount,
                 $paymentMethod
             );
+
+            // Adjust inventory via canonical InventoryService
+            $inventoryService = app(InventoryService::class);
+            $defaultWarehouse = Warehouse::getDefault();
+            if ($defaultWarehouse) {
+                foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
+                    $productId = $item->product_id;
+                    if (($item->variant && $item->variant->track_inventory) || ($item->product && $item->product->track_inventory)) {
+                        $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                            ->where('reference_id', $order->id)
+                            ->where('type', 'sale')
+                            ->where('product_id', $productId)
+                            ->sum('quantity');
+
+                        $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+                        if ($remainingToDeduct <= 0) {
+                            continue;
+                        }
+
+                        $inventoryService->adjustStock(
+                            productId: $productId,
+                            warehouseId: $defaultWarehouse->id,
+                            quantity: $remainingToDeduct,
+                            type: 'sale',
+                            reference: $order->order_number,
+                            referenceType: 'PosOrder',
+                            referenceId: $order->id,
+                        );
+                    }
+                }
+            }
 
             // Update order
             $order->update([

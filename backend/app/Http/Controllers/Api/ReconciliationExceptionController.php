@@ -7,6 +7,7 @@ use App\Models\ReconciliationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ReconciliationExceptionController
@@ -206,7 +207,7 @@ class ReconciliationExceptionController extends Controller
                 'resolution_notes' => 'nullable|string',
             ]);
 
-            $exception->resolve(auth()->id(), $validated['resolution_notes'] ?? null);
+            $exception->resolve(TenantUserHelper::requireTenantUserId(), $validated['resolution_notes'] ?? null);
 
             return response()->json([
                 'success' => true,

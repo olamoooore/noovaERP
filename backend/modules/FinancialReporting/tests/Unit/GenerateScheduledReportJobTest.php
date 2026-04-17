@@ -2,17 +2,26 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Mail;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Modules\FinancialReporting\Models\ReportSchedule;
 use Carbon\Carbon;
 
-class GenerateScheduledReportJobTest extends TestCase
+class GenerateScheduledReportJobTest extends TenantTestCase
 {
-    use RefreshDatabase;
+
+    /**
+     * Helper to invoke a protected method on the job via Reflection.
+     */
+    protected function invokeProtected(object $object, string $methodName, array $args = []): mixed
+    {
+        $ref = new \ReflectionMethod($object, $methodName);
+        $ref->setAccessible(true);
+
+        return $ref->invoke($object, ...$args);
+    }
 
     /** @test */
     public function it_can_be_dispatched()
@@ -35,7 +44,7 @@ class GenerateScheduledReportJobTest extends TestCase
         ]);
 
         $job = new GenerateScheduledReport($schedule);
-        $nextRun = $job->calculateNextRunTime();
+        $nextRun = $this->invokeProtected($job, 'calculateNextRunTime');
 
         $this->assertEquals(
             Carbon::now()->addDay()->format('Y-m-d'),
@@ -51,7 +60,7 @@ class GenerateScheduledReportJobTest extends TestCase
         ]);
 
         $job = new GenerateScheduledReport($schedule);
-        $nextRun = $job->calculateNextRunTime();
+        $nextRun = $this->invokeProtected($job, 'calculateNextRunTime');
 
         $this->assertEquals(
             Carbon::now()->addWeek()->format('Y-m-d'),
@@ -67,7 +76,7 @@ class GenerateScheduledReportJobTest extends TestCase
         ]);
 
         $job = new GenerateScheduledReport($schedule);
-        $nextRun = $job->calculateNextRunTime();
+        $nextRun = $this->invokeProtected($job, 'calculateNextRunTime');
 
         $this->assertEquals(
             Carbon::now()->addMonth()->format('Y-m'),
@@ -83,7 +92,7 @@ class GenerateScheduledReportJobTest extends TestCase
         ]);
 
         $job = new GenerateScheduledReport($schedule);
-        $dateRange = $job->getDateRangeForFrequency();
+        $dateRange = $this->invokeProtected($job, 'getDateRangeForFrequency');
 
         $yesterday = Carbon::now()->subDay();
         $this->assertEquals($yesterday->format('Y-m-d'), $dateRange['start']->format('Y-m-d'));
@@ -98,7 +107,7 @@ class GenerateScheduledReportJobTest extends TestCase
         ]);
 
         $job = new GenerateScheduledReport($schedule);
-        $dateRange = $job->getDateRangeForFrequency();
+        $dateRange = $this->invokeProtected($job, 'getDateRangeForFrequency');
 
         $lastMonth = Carbon::now()->subMonth();
         $this->assertEquals($lastMonth->startOfMonth()->format('Y-m-d'), $dateRange['start']->format('Y-m-d'));
@@ -115,8 +124,6 @@ class GenerateScheduledReportJobTest extends TestCase
             'last_run_at' => null,
             'next_run_at' => Carbon::now()->subHour(),
         ]);
-
-        $originalNextRun = $schedule->next_run_at;
 
         // Note: This would require mocking the report services
         // For now, we're just testing the structure

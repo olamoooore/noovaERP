@@ -4,6 +4,7 @@ namespace Modules\FinancialReporting\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
 
@@ -54,11 +55,72 @@ abstract class BaseReportService
 
     /**
      * Determine if we should use summary table
+     * 
+     * Workstream 2 (2026-04-15): Added validation to ensure summary data exists
+     * and is fresh. Prevents async reporting drift caused by missing/outdated summaries.
      */
     protected function shouldUseSummary(Carbon $date): bool
     {
         $daysThreshold = config('financialreporting.reports.use_summary_after_days', 7);
-        return $date->diffInDays(now()) > $daysThreshold;
+        
+        // If date is not old enough, always use direct query
+        if ($date->diffInDays(now()) <= $daysThreshold) {
+            return false;
+        }
+
+        // For older dates, verify summary data exists and is fresh
+        return $this->isSummaryDataFresh($date);
+    }
+
+    /**
+     * Check if summary data is fresh and complete for the given date.
+     * 
+     * Workstream 2 (2026-04-15): Prevents async reporting drift by validating
+     * that summary jobs have completed before using summary data.
+     */
+    protected function isSummaryDataFresh(Carbon $date): bool
+    {
+        // Check if any journal entries exist for this date
+        $journalEntriesExist = DB::table('journal_entries')
+            ->where('entry_date', $date->format('Y-m-d'))
+            ->where('status', 'posted')
+            ->exists();
+
+        // If no journal entries, summary is not needed (fresh by definition)
+        if (!$journalEntriesExist) {
+            return true;
+        }
+
+        // Check if summary exists for this date
+        $summaryExists = DB::table('daily_ledger_summaries')
+            ->where('summary_date', $date->format('Y-m-d'))
+            ->exists();
+
+        if (!$summaryExists) {
+            Log::warning("Summary data missing for date {$date->format('Y-m-d')}, falling back to direct query");
+            return false;
+        }
+
+        // Verify summary count matches journal entry line count
+        // This catches cases where summary job failed partway through
+        $summaryLineCount = DB::table('daily_ledger_summaries')
+            ->where('summary_date', $date->format('Y-m-d'))
+            ->sum('entry_count');
+
+        $journalLineCount = DB::table('journal_entry_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.entry_date', $date->format('Y-m-d'))
+            ->where('journal_entries.status', 'posted')
+            ->count();
+
+        if ($summaryLineCount !== $journalLineCount) {
+            Log::warning("Summary data incomplete for date {$date->format('Y-m-d')}. " .
+                "Summary lines: {$summaryLineCount}, Journal lines: {$journalLineCount}. " .
+                "Falling back to direct query.");
+            return false;
+        }
+
+        return true;
     }
 
     /**

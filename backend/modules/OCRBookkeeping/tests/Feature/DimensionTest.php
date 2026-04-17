@@ -2,8 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\DimensionValidationService;
 use App\Models\Department;
@@ -12,10 +11,8 @@ use App\Models\Location;
 use App\Models\User;
 use Carbon\Carbon;
 
-class DimensionTest extends TestCase
+class DimensionTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected DimensionValidationService $service;
     protected Department $department;

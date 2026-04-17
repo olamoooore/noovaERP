@@ -12,7 +12,6 @@ use Modules\EventManagement\Services\TicketService;
 use Modules\EventManagement\Services\AuditService;
 use Modules\EventManagement\Services\FeatureFlagController;
 use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Http\Middleware\FeatureFlagMiddleware;
 
 class EventManagementServiceProviderTest extends TestCase
 {
@@ -50,17 +49,17 @@ class EventManagementServiceProviderTest extends TestCase
     }
 
     /** @test */
-    public function it_registers_feature_flag_middleware()
+    public function it_does_not_register_legacy_feature_flag_middleware()
     {
         // Act
         $this->serviceProvider->boot();
 
-        // Assert - Check that middleware alias is registered
+        // Assert - The legacy 'feature.event_management' alias should no longer be registered.
+        // All routes now use 'entitlement:event_management' via EnsureEntitlementAccess.
         $router = $this->app['router'];
         $middlewareGroups = $router->getMiddleware();
         
-        $this->assertArrayHasKey('feature.event_management', $middlewareGroups);
-        $this->assertEquals(FeatureFlagMiddleware::class, $middlewareGroups['feature.event_management']);
+        $this->assertArrayNotHasKey('feature.event_management', $middlewareGroups);
     }
 
     /** @test */

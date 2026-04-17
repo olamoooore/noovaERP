@@ -55,13 +55,33 @@ class Invoice extends Model
         'balance' => 'decimal:2',
     ];
 
-    protected static function boot()
+    protected static function boot(): void
     {
         parent::boot();
 
         static::creating(function ($invoice) {
             if (!$invoice->invoice_number) {
                 $invoice->invoice_number = static::generateInvoiceNumber();
+            }
+        });
+
+        // Workstream 2 (2026-04-15): Prevent deletion of posted invoices
+        static::deleting(function ($invoice) {
+            if ($invoice->journal_entry_id !== null) {
+                throw new \RuntimeException(
+                    "Cannot delete posted invoice #{$invoice->invoice_number}. " .
+                    "Posted invoices must be reversed or credited, not deleted. " .
+                    "Create a credit note to cancel this invoice."
+                );
+            }
+
+            // Prevent deletion if payments exist
+            if ($invoice->payments()->exists()) {
+                $paymentCount = $invoice->payments()->count();
+                throw new \RuntimeException(
+                    "Cannot delete invoice #{$invoice->invoice_number} because {$paymentCount} payment(s) exist. " .
+                    "Posted invoices must be reversed or credited, not deleted."
+                );
             }
         });
     }

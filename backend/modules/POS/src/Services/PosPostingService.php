@@ -6,6 +6,7 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\JournalEntry;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\POS\Models\PosOrder;
 
 class PosPostingService
@@ -91,7 +92,7 @@ class PosPostingService
             description: "POS sale ({$paymentMethod})",
             lines: $lines,
             reference: $order->order_number,
-            userId: auth()->id(),
+            userId: TenantUserHelper::resolveTenantUserId(),
             legalEntityId: request()->attributes->get('legal_entity_id'),
             entityBookId: request()->attributes->get('entity_book_id'),
         ));

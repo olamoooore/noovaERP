@@ -29,13 +29,24 @@ class Payment extends Model
         'amount' => 'decimal:2',
     ];
 
-    protected static function boot()
+    protected static function boot(): void
     {
         parent::boot();
 
         static::creating(function ($payment) {
             if (!$payment->payment_number) {
                 $payment->payment_number = static::generatePaymentNumber();
+            }
+        });
+
+        // Workstream 2 (2026-04-15): Prevent deletion of posted payments
+        static::deleting(function ($payment) {
+            if ($payment->journal_entry_id !== null) {
+                throw new \RuntimeException(
+                    "Cannot delete posted payment #{$payment->payment_number}. " .
+                    "Posted payments must be reversed, not deleted. " .
+                    "Use the refund endpoint to reverse this payment."
+                );
             }
         });
     }

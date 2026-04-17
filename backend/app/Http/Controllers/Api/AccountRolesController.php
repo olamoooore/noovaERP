@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class AccountRolesController extends Controller
 {
@@ -92,7 +93,7 @@ class AccountRolesController extends Controller
                 ],
                 [
                     'is_active' => true,
-                    'assigned_by' => auth()->id(),
+                    'assigned_by' => TenantUserHelper::requireTenantUserId(),
                     'assigned_at' => now(),
                     'updated_at' => now(),
                 ]

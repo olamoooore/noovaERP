@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\WarehouseTransfer;
 use Modules\Inventory\Models\WarehouseTransferItem;
 use Modules\Inventory\Services\InventoryService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class WarehouseTransferController extends Controller
 {
@@ -65,7 +66,7 @@ class WarehouseTransferController extends Controller
                 'transfer_date' => $validated['transfer_date'],
                 'expected_date' => $validated['expected_date'] ?? null,
                 'notes' => $validated['notes'] ?? null,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -249,7 +250,7 @@ class WarehouseTransferController extends Controller
             $warehouseTransfer->update([
                 'status' => 'completed',
                 'completed_date' => now(),
-                'completed_by' => auth()->id(),
+                'completed_by' => TenantUserHelper::requireTenantUserId(),
             ]);
         });
 

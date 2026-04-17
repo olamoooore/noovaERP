@@ -2,58 +2,69 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\User;
 use Carbon\Carbon;
 
-class TrialBalanceServiceTest extends TestCase
+class TrialBalanceServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected TrialBalanceService $service;
+    protected User $testUser;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->service = app(TrialBalanceService::class);
+        $this->testUser = User::factory()->create();
         $this->setupTestData();
     }
 
     protected function setupTestData(): void
     {
-        ChartOfAccount::create([
-            'code' => '1000',
-            'name' => 'Cash',
-            'type' => 'asset',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '1000'],
+            ['name' => 'Cash', 'type' => 'asset', 'is_active' => true]
+        );
 
-        ChartOfAccount::create([
-            'code' => '3000',
-            'name' => 'Owner Equity',
-            'type' => 'equity',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '3000'],
+            ['name' => 'Owner Equity', 'type' => 'equity', 'is_active' => true]
+        );
+    }
+
+    private function createJournalEntry(array $attrs = []): JournalEntry
+    {
+        return JournalEntry::create(array_merge([
+            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_date' => Carbon::parse('2024-01-15'),
+            'description' => 'Test Entry',
+            'status' => 'posted',
+            'created_by' => $this->testUser->id,
+        ], $attrs));
     }
 
     /** @test */
     public function it_generates_trial_balance_report()
     {
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
 
         $this->assertNotNull($report);
         $this->assertEquals('Trial Balance', $report->title);
-        $this->assertArrayHasKey('accounts', $report->data);
-        $this->assertArrayHasKey('totals', $report->data);
+        // Data is a flat array of account rows
+        $this->assertIsArray($report->data);
+        // Summary contains totals
+        $this->assertArrayHasKey('total_debits', $report->summary);
+        $this->assertArrayHasKey('total_credits', $report->summary);
     }
 
     /** @test */
@@ -62,10 +73,8 @@ class TrialBalanceServiceTest extends TestCase
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
         $equityAccount = ChartOfAccount::where('code', '3000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Test Entry',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -83,14 +92,14 @@ class TrialBalanceServiceTest extends TestCase
         ]);
 
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
 
         $this->assertEquals(
-            $report->data['totals']['total_debits'],
-            $report->data['totals']['total_credits']
+            $report->summary['total_debits'],
+            $report->summary['total_credits']
         );
     }
 
@@ -98,26 +107,56 @@ class TrialBalanceServiceTest extends TestCase
     public function it_filters_by_account_type()
     {
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31'),
+            asOfDate: Carbon::parse('2024-01-31'),
             accountType: 'asset'
         );
 
         $report = $this->service->generate($filter);
 
         $this->assertNotNull($report);
-        $this->assertArrayHasKey('accounts', $report->data);
+        $this->assertIsArray($report->data);
     }
 
     /** @test */
     public function it_excludes_zero_balance_accounts()
     {
+        $cashAccount = ChartOfAccount::where('code', '1000')->first();
+        $equityAccount = ChartOfAccount::where('code', '3000')->first();
+
+        $zeroBalanceAccount = ChartOfAccount::firstOrCreate(
+            ['code' => '9991'],
+            ['name' => 'Zero Balance Account', 'type' => 'asset', 'is_active' => true]
+        );
+
+        $entry = $this->createJournalEntry([
+            'description' => 'Non-zero balances only',
+        ]);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cashAccount->id,
+            'debit' => 5000,
+            'credit' => 0,
+        ]);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $equityAccount->id,
+            'debit' => 0,
+            'credit' => 5000,
+        ]);
+
         $filter = new ReportFilter(
-            endDate: Carbon::parse('2024-01-31')
+            asOfDate: Carbon::parse('2024-01-31')
         );
 
         $report = $this->service->generate($filter);
 
-        foreach ($report->data['accounts'] as $account) {
+        $this->assertNotEmpty($report->data);
+        $this->assertNotContains($zeroBalanceAccount->code, array_column($report->data, 'code'));
+
+        // Data is a flat array of account rows
+        foreach ($report->data as $account) {
             $this->assertNotEquals(0, $account['debit'] + $account['credit']);
         }
     }

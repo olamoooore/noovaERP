@@ -2,15 +2,14 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\StockMovementService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class StockMovementServiceTest extends TestCase
+class StockMovementServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected StockMovementService $service;
 
@@ -30,12 +29,11 @@ class StockMovementServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('title', $result);
-        $this->assertEquals('Stock Movement Report', $result['title']);
-        $this->assertArrayHasKey('period', $result);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertArrayHasKey('summary', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertEquals('Stock Movement Report', $result->title);
+        $this->assertArrayHasKey('period', $result->metadata);
+        $this->assertIsArray($result->data);
+        $this->assertIsArray($result->summary);
     }
 
     /** @test */
@@ -45,9 +43,9 @@ class StockMovementServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('period', $result);
-        $this->assertArrayHasKey('start_date', $result['period']);
-        $this->assertArrayHasKey('end_date', $result['period']);
+        $this->assertArrayHasKey('period', $result->metadata);
+        $this->assertArrayHasKey('start_date', $result->metadata['period']);
+        $this->assertArrayHasKey('end_date', $result->metadata['period']);
     }
 
     /** @test */
@@ -60,9 +58,9 @@ class StockMovementServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('summary', $result);
-        $this->assertArrayHasKey('total_movements', $result['summary']);
-        $this->assertArrayHasKey('total_in', $result['summary']);
-        $this->assertArrayHasKey('total_out', $result['summary']);
+        $this->assertIsArray($result->summary);
+        $this->assertArrayHasKey('movement_count', $result->summary);
+        $this->assertArrayHasKey('total_in', $result->summary);
+        $this->assertArrayHasKey('total_out', $result->summary);
     }
 }

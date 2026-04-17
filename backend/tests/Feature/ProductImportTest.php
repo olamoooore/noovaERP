@@ -10,6 +10,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
+use Modules\Inventory\Services\InventoryService;
 use Tests\TestCase;
 
 class ProductImportTest extends TestCase
@@ -105,26 +106,20 @@ class ProductImportTest extends TestCase
             'name' => 'Existing Product',
             'sku' => 'EXIST-001',
             'price' => 22,
-            'stock_quantity' => 3,
+            'stock_quantity' => 1,
         ]);
-        $this->assertDatabaseHas('stock_levels', [
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => Product::where('name', 'Alpha Product')->value('id'),
-            'warehouse_id' => 1,
-            'quantity' => 1,
         ]);
-        $this->assertDatabaseHas('stock_levels', [
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => Product::where('name', 'Beta Product')->value('id'),
-            'warehouse_id' => 1,
-            'quantity' => 2,
         ]);
-        $this->assertDatabaseHas('stock_levels', [
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => Product::where('sku', 'EXIST-001')->value('id'),
-            'warehouse_id' => 1,
-            'quantity' => 3,
         ]);
     }
 
-    public function test_store_allocates_initial_stock_to_default_warehouse(): void
+    public function test_store_does_not_allocate_stock_from_product_payload(): void
     {
         $user = User::factory()->create();
 
@@ -150,22 +145,21 @@ class ProductImportTest extends TestCase
 
         $productId = Product::where('sku', 'ALLOC-001')->value('id');
 
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $productId,
-            'warehouse_id' => $warehouse->id,
-            'quantity' => 7,
+        $this->assertDatabaseHas('products', [
+            'id' => $productId,
+            'stock_quantity' => 0,
         ]);
-        $this->assertDatabaseHas('stock_movements', [
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => $productId,
             'warehouse_id' => $warehouse->id,
-            'type' => 'in',
-            'quantity' => 7,
-            'balance_after' => 7,
-            'created_by' => $user->id,
+        ]);
+        $this->assertDatabaseMissing('stock_movements', [
+            'product_id' => $productId,
+            'warehouse_id' => $warehouse->id,
         ]);
     }
 
-    public function test_store_creates_default_warehouse_when_none_exists(): void
+    public function test_store_does_not_create_default_warehouse_when_none_exists(): void
     {
         $user = User::factory()->create();
 
@@ -184,24 +178,19 @@ class ProductImportTest extends TestCase
 
         $response->assertStatus(201);
 
-        $warehouseId = Warehouse::where('name', 'Default Warehouse')->value('id');
         $productId = Product::where('sku', 'AUTO-WH-001')->value('id');
 
-        $this->assertNotNull($warehouseId);
-        $this->assertDatabaseHas('warehouses', [
-            'id' => $warehouseId,
-            'code' => 'DEFAULT',
-            'is_active' => true,
-            'is_default' => true,
+        $this->assertDatabaseCount('warehouses', 0);
+        $this->assertDatabaseHas('products', [
+            'id' => $productId,
+            'stock_quantity' => 0,
         ]);
-        $this->assertDatabaseHas('stock_levels', [
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => $productId,
-            'warehouse_id' => $warehouseId,
-            'quantity' => 4,
         ]);
     }
 
-    public function test_import_creates_default_warehouse_when_none_exists(): void
+    public function test_import_does_not_create_default_warehouse_when_none_exists(): void
     {
         $user = User::factory()->create();
 
@@ -224,14 +213,64 @@ class ProductImportTest extends TestCase
             'updated' => 0,
         ]);
 
-        $warehouseId = Warehouse::where('name', 'Default Warehouse')->value('id');
         $productId = Product::where('sku', 'IMPORTED-WH-001')->value('id');
 
-        $this->assertNotNull($warehouseId);
-        $this->assertDatabaseHas('stock_levels', [
+        $this->assertDatabaseCount('warehouses', 0);
+        $this->assertDatabaseHas('products', [
+            'id' => $productId,
+            'stock_quantity' => 0,
+        ]);
+        $this->assertDatabaseMissing('stock_levels', [
             'product_id' => $productId,
-            'warehouse_id' => $warehouseId,
-            'quantity' => 6,
+        ]);
+    }
+
+    public function test_inventory_service_remains_the_canonical_stock_mutation_path(): void
+    {
+        $user = User::factory()->create();
+
+        $warehouse = Warehouse::create([
+            'name' => 'Main Warehouse',
+            'code' => 'MAIN',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $product = Product::create([
+            'name' => 'Inventory Service Product',
+            'sku' => 'INV-SVC-001',
+            'price' => 10,
+            'cost' => 5,
+            'track_inventory' => true,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        app(InventoryService::class)->adjustStock(
+            productId: $product->id,
+            warehouseId: $warehouse->id,
+            quantity: 7,
+            type: 'in',
+            reference: 'TEST-INV-SVC-001',
+        );
+
+        $this->assertDatabaseHas('stock_levels', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'quantity' => 7,
+        ]);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'type' => 'in',
+            'quantity' => 7,
+            'balance_after' => 7,
+            'created_by' => $user->id,
+        ]);
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'stock_quantity' => 7,
         ]);
     }
 }

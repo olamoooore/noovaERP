@@ -3,6 +3,7 @@
 namespace Modules\POS\Models;
 
 use App\Models\User;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -105,7 +106,7 @@ class PosSession extends Model
         $this->difference = $closingBalance - $this->expected_balance;
         $this->closing_notes = $notes;
         $this->closed_at = now();
-        $this->closed_by = auth()->id();
+        $this->closed_by = TenantUserHelper::resolveTenantUserId();
         $this->status = 'closed';
         $this->save();
     }

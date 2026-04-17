@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Modules\PaymentGateway\Models\OfflinePaymentMethod;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class OfflinePaymentMethodController extends Controller
 {
@@ -43,7 +44,7 @@ class OfflinePaymentMethodController extends Controller
             [
                 'is_active' => true,
                 'is_test_mode' => false,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
             ]
         );
 

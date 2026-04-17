@@ -9,6 +9,7 @@ use App\Models\ReconciliationControlResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ARGLReconciliationService
@@ -73,7 +74,7 @@ class ARGLReconciliationService
             'difference' => $difference,
             'status' => abs($difference) < 0.01 ? 'passed' : 'failed',
             'discrepancies' => $discrepancies,
-            'executed_by' => auth()->id(),
+            'executed_by' => TenantUserHelper::requireTenantUserId(),
             'notes' => null,
         ]);
         

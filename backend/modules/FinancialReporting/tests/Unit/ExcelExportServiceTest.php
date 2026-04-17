@@ -2,14 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Illuminate\Support\Facades\Storage;
 
-class ExcelExportServiceTest extends TestCase
+class ExcelExportServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected ExcelExportService $service;
 
@@ -21,53 +19,78 @@ class ExcelExportServiceTest extends TestCase
     }
 
     /** @test */
-    public function it_formats_headers_correctly()
+    public function it_exports_report_when_phpspreadsheet_is_available_or_throws_when_it_is_not_installed()
     {
-        $data = [
-            ['product_name' => 'Product 1', 'total_sales' => 1000],
-            ['product_name' => 'Product 2', 'total_sales' => 2000],
-        ];
+        if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            $filePath = $this->service->exportReport([
+                'title' => 'Test Report',
+                'period' => [
+                    'start_date' => '2024-01-01',
+                    'end_date' => '2024-01-31',
+                ],
+                'data' => [
+                    ['name' => 'Item 1', 'value' => 100],
+                    ['name' => 'Item 2', 'value' => 200.50],
+                ],
+                'summary' => [
+                    'total' => 300.50,
+                ],
+            ], 'excel-export-test');
 
-        $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+            $this->assertFileExists($filePath);
+            $this->assertStringEndsWith('.xlsx', $filePath);
+            $this->assertGreaterThan(0, filesize($filePath));
 
-        $headers = $method->invoke($this->service, $data);
+            return;
+        }
 
-        $this->assertContains('Product Name', $headers);
-        $this->assertContains('Total Sales', $headers);
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('PhpSpreadsheet library is not installed');
+
+        $this->service->exportReport([
+            'title' => 'Test Report',
+            'data' => [['name' => 'Item 1', 'value' => 100]],
+        ]);
     }
 
     /** @test */
-    public function it_handles_empty_data()
+    public function it_exports_with_charts_when_phpspreadsheet_is_available_or_throws_when_it_is_not_installed()
     {
-        $data = [];
+        if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            $filePath = $this->service->exportWithCharts(
+                [
+                    'title' => 'Test',
+                    'data' => [
+                        ['name' => 'Item 1', 'value' => 100],
+                    ],
+                ],
+                ['type' => 'bar'],
+                'excel-charts-test'
+            );
 
-        $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+            $this->assertFileExists($filePath);
+            $this->assertStringEndsWith('.xlsx', $filePath);
 
-        $headers = $method->invoke($this->service, $data);
+            return;
+        }
 
-        $this->assertIsArray($headers);
-        $this->assertEmpty($headers);
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('PhpSpreadsheet library is not installed');
+
+        $this->service->exportWithCharts(
+            ['title' => 'Test', 'data' => []],
+            ['type' => 'bar'],
+        );
     }
 
     /** @test */
-    public function it_converts_snake_case_to_title_case()
+    public function it_has_export_report_public_method()
     {
-        $data = [
-            ['customer_lifetime_value' => 5000, 'average_order_value' => 250],
-        ];
-
         $reflection = new \ReflectionClass($this->service);
-        $method = $reflection->getMethod('formatHeaders');
-        $method->setAccessible(true);
+        $method = $reflection->getMethod('exportReport');
 
-        $headers = $method->invoke($this->service, $data);
-
-        $this->assertContains('Customer Lifetime Value', $headers);
-        $this->assertContains('Average Order Value', $headers);
+        $this->assertTrue($method->isPublic());
+        $this->assertCount(2, $method->getParameters());
     }
 
     /** @test */

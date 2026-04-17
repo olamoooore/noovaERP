@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\Models\Tenant;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class AdminOperationsController extends Controller
 {
@@ -38,7 +39,7 @@ class AdminOperationsController extends Controller
 
         $batchId = Str::uuid()->toString();
 
-        HealthCheckBatchJob::dispatch($tenantIds, $batchId, (int) auth()->id())
+        HealthCheckBatchJob::dispatch($tenantIds, $batchId, TenantUserHelper::resolveTenantUserId())
             ->onQueue('operations');
 
         return response()->json([

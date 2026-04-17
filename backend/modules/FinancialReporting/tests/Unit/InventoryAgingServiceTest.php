@@ -2,15 +2,14 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Inventory\InventoryAgingService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
 
-class InventoryAgingServiceTest extends TestCase
+class InventoryAgingServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected InventoryAgingService $service;
 
@@ -29,11 +28,10 @@ class InventoryAgingServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('title', $result);
-        $this->assertEquals('Inventory Aging Report', $result['title']);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertArrayHasKey('summary', $result);
+        $this->assertInstanceOf(ReportData::class, $result);
+        $this->assertEquals('Inventory Aging Report', $result->title);
+        $this->assertIsArray($result->data);
+        $this->assertIsArray($result->summary);
     }
 
     /** @test */
@@ -45,8 +43,8 @@ class InventoryAgingServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('summary', $result);
-        $this->assertArrayHasKey('age_buckets', $result['summary']);
+        $this->assertIsArray($result->summary);
+        $this->assertArrayHasKey('by_age_bucket', $result->summary);
     }
 
     /** @test */
@@ -56,7 +54,7 @@ class InventoryAgingServiceTest extends TestCase
 
         $result = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('as_of_date', $result);
-        $this->assertNotNull($result['as_of_date']);
+        $this->assertArrayHasKey('as_of_date', $result->metadata);
+        $this->assertNotNull($result->metadata['as_of_date']);
     }
 }

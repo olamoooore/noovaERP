@@ -8,6 +8,7 @@ use Modules\HRM\Models\LeaveRequest;
 use Modules\HRM\Models\Payroll;
 use Modules\HRM\Models\PayrollItem;
 use Modules\HRM\Models\PayrollRun;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PayrollService
 {
@@ -72,7 +73,7 @@ class PayrollService
                 'base_monthly_salary' => $baseSalary,
                 'net_pay'             => $netPay,
                 'status'              => 'draft',
-                'generated_by'        => auth()->id(),
+                'generated_by'        => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             if ($deduction > 0) {

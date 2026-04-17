@@ -2,53 +2,60 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Reports\ProfitLossService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\User;
 use Carbon\Carbon;
 
-class ProfitLossServiceTest extends TestCase
+class ProfitLossServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected ProfitLossService $service;
+    protected User $testUser;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // Force journal-entry queries (not summary table) and legacy code-range filtering
+        config(['financialreporting.reports.use_summary_after_days' => 999999]);
+        config(['app.report_classification' => 'legacy']);
         $this->service = app(ProfitLossService::class);
+        $this->testUser = User::factory()->create();
         $this->setupTestData();
     }
 
     protected function setupTestData(): void
     {
-        // Create revenue account
-        ChartOfAccount::create([
-            'code' => '4000',
-            'name' => 'Sales Revenue',
-            'type' => 'revenue',
-            'is_active' => true,
-        ]);
+        // Use firstOrCreate to avoid collision with migration-seeded accounts
+        ChartOfAccount::firstOrCreate(
+            ['code' => '4000'],
+            ['name' => 'Sales Revenue', 'type' => 'revenue', 'is_active' => true]
+        );
 
-        // Create COGS account
-        ChartOfAccount::create([
-            'code' => '5000',
-            'name' => 'Cost of Goods Sold',
-            'type' => 'expense',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '5000'],
+            ['name' => 'Cost of Goods Sold', 'type' => 'expense', 'is_active' => true]
+        );
 
-        // Create operating expense account
-        ChartOfAccount::create([
-            'code' => '5100',
-            'name' => 'Operating Expenses',
-            'type' => 'expense',
-            'is_active' => true,
-        ]);
+        ChartOfAccount::firstOrCreate(
+            ['code' => '5100'],
+            ['name' => 'Operating Expenses', 'type' => 'expense', 'is_active' => true]
+        );
+    }
+
+    private function createJournalEntry(array $attrs = []): JournalEntry
+    {
+        return JournalEntry::create(array_merge([
+            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_date' => Carbon::parse('2024-01-15'),
+            'description' => 'Test Entry',
+            'status' => 'posted',
+            'created_by' => $this->testUser->id,
+        ], $attrs));
     }
 
     /** @test */
@@ -82,10 +89,8 @@ class ProfitLossServiceTest extends TestCase
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Test Revenue',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -111,10 +116,8 @@ class ProfitLossServiceTest extends TestCase
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         $cogsAccount = ChartOfAccount::where('code', '5000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Test Transaction',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -154,7 +157,6 @@ class ProfitLossServiceTest extends TestCase
 
         $report = $this->service->generate($filter);
 
-        $this->assertArrayHasKey('metadata', $report->metadata);
         $this->assertArrayHasKey('period', $report->metadata);
         $this->assertEquals('2024-01-01', $report->metadata['period']['start']);
         $this->assertEquals('2024-01-31', $report->metadata['period']['end']);
@@ -166,10 +168,9 @@ class ProfitLossServiceTest extends TestCase
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         
         // Entry in January
-        $entry1 = JournalEntry::create([
+        $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'January Revenue',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -180,10 +181,9 @@ class ProfitLossServiceTest extends TestCase
         ]);
 
         // Entry in February (should be excluded)
-        $entry2 = JournalEntry::create([
+        $entry2 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-02-15'),
             'description' => 'February Revenue',
-            'status' => 'posted',
         ]);
 
         JournalEntryLine::create([
@@ -208,8 +208,7 @@ class ProfitLossServiceTest extends TestCase
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         
-        $entry = JournalEntry::create([
-            'entry_date' => Carbon::parse('2024-01-15'),
+        $entry = $this->createJournalEntry([
             'description' => 'Draft Revenue',
             'status' => 'draft',
         ]);

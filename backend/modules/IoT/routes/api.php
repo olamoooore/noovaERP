@@ -23,12 +23,12 @@ use App\Http\Controllers\Api\UserAgentController;
 | IoT Module API Routes
 |--------------------------------------------------------------------------
 |
-| These routes are tenant-scoped and require the 'feature:iot' middleware.
+| These routes are tenant-scoped and require the 'entitlement:iot' middleware.
 | All routes are prefixed with /api/v1/iot
 |
 */
 
-Route::middleware(['auth:sanctum', 'feature:iot'])->prefix('iot')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:iot'])->prefix('iot')->group(function () {
     
     // Device Configuration Management (Agent-specific)
     // These routes accept both user tokens (Sanctum) and agent tokens (custom)

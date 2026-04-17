@@ -49,16 +49,47 @@ abstract class TenantTestCase extends TestCase
      *
      * Mirrors the paths defined in `config/tenancy.php` → `migration_parameters`
      * so the test database matches what a real tenant schema looks like.
+     *
+     * NOTE: Uses --path for the central step to prevent Laravel 11's default
+     * recursive scan of database/migrations/ which would pick up the
+     * database/migrations/tenant/ subdirectory. Module tenant paths are then
+     * run explicitly in order. Communication module's central migration is
+     * included since --path bypasses loadMigrationsFrom() discovery.
      */
     protected function runTenantMigrations(): void
     {
         // Wipe first to avoid stale state from previous runs
         Artisan::call('db:wipe', ['--force' => true]);
 
-        // Run central migrations first (users, tenants, etc.)
-        Artisan::call('migrate', ['--force' => true]);
+        // Gather the basenames of all tenant migration files so we can exclude
+        // any file from the central directory that shares the same name.
+        // Duplicates cause the tenant copy to be silently skipped (Laravel
+        // records the migration name in the migrations table on first run and
+        // considers it already-ran for subsequent paths).
+        $tenantDir = database_path('migrations/tenant');
+        $tenantFileNames = is_dir($tenantDir)
+            ? array_map('basename', glob($tenantDir . '/*.php'))
+            : [];
 
-        // Tenant migration paths — order matters for FK dependencies.
+        // Collect only central-only migration files (not duplicated in tenant/).
+        $centralDir = database_path('migrations');
+        $centralFiles = array_values(array_filter(
+            glob($centralDir . '/*.php'),
+            fn(string $f) => !in_array(basename($f), $tenantFileNames, true),
+        ));
+
+        // Run central migrations (users, tenants, etc.) using individual file
+        // paths + the Communication module's central migration directory.
+        Artisan::call('migrate', [
+            '--path' => array_merge(
+                $centralFiles,
+                [base_path('modules/Communication/database/migrations')],
+            ),
+            '--realpath' => true,
+            '--force' => true,
+        ]);
+
+        // Tenant migration paths — run sequentially so FK ordering is correct.
         // Core tenant migrations go first, then module-specific ones.
         $tenantPaths = $this->getTenantMigrationPaths();
 

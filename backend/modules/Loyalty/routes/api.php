@@ -7,7 +7,7 @@ use Modules\Loyalty\Http\Controllers\LoyaltyRedemptionController;
 use Modules\Loyalty\Http\Controllers\LoyaltyRewardController;
 use Modules\Loyalty\Http\Controllers\LoyaltyDashboardController;
 
-Route::middleware(['auth:sanctum', 'feature:loyalty'])->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:loyalty'])->group(function () {
     // Health check
     Route::get('/loyalty/health', function () {
         return ['module' => 'loyalty', 'ok' => true];

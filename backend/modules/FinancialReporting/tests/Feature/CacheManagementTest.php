@@ -2,18 +2,15 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Modules\FinancialReporting\Models\ReportCache;
 use App\Models\User;
 use Carbon\Carbon;
 
-class CacheManagementTest extends TestCase
+class CacheManagementTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
 
     protected function setUp(): void

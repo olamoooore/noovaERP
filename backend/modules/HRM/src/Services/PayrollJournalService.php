@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingResult;
 use App\Accounting\PostingEngine;
 use App\Models\Journal;
 use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\HRM\Models\PayrollRun;
 
 class PayrollJournalService
@@ -74,7 +75,7 @@ class PayrollJournalService
             lines: $lines,
             reference: $run->reference,
             journalId: $journal?->id,
-            userId: auth()->id(),
+            userId: TenantUserHelper::resolveTenantUserId(),
             metadata: [
                 'total_gross'      => $run->total_gross,
                 'total_deductions' => $run->total_deductions,

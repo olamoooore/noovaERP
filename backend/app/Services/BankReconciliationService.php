@@ -13,6 +13,7 @@ use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Bank Reconciliation Service
@@ -149,6 +150,15 @@ class BankReconciliationService
                     ? (float) $lastReconciliation->statement_balance
                     : (float) $glAccount->opening_balance);
             
+            // Workstream 2 (2026-04-15): Verify lines belong to this bank account's GL
+            // BEFORE calculating balance or marking anything reconciled
+            if (!empty($reconciledTransactionIds)) {
+                $this->verifyLinesBelongToBankAccount(
+                    $reconciledTransactionIds,
+                    $bankAccount->gl_account_id
+                );
+            }
+            
             // Calculate reconciled balance
             $reconciledBalance = $this->calculateReconciledBalance(
                 $openingBalance,
@@ -157,6 +167,22 @@ class BankReconciliationService
             
             // Calculate difference
             $difference = $reconciledBalance - $statementBalance;
+            
+            // Workstream 2 (2026-04-15): Only mark lines reconciled if balanced
+            // Check balance BEFORE marking any lines
+            $isBalanced = abs($difference) < 0.01;
+            
+            if (!$isBalanced) {
+                throw new \RuntimeException(
+                    sprintf(
+                        'Reconciliation is not balanced. Calculated balance: %.2f, Statement balance: %.2f, Difference: %.2f. ' .
+                        'Cannot mark lines as reconciled until reconciliation is balanced.',
+                        $reconciledBalance,
+                        $statementBalance,
+                        $difference
+                    )
+                );
+            }
             
             // Create reconciliation record
             $reconciliation = BankReconciliation::create([
@@ -177,6 +203,7 @@ class BankReconciliationService
                 ]);
             }
             
+            // Workstream 2 (2026-04-15): Only mark lines reconciled AFTER balance check passes
             // Update journal entry lines with reconciliation reference
             JournalEntryLine::whereIn('id', $reconciledTransactionIds)
                 ->update([
@@ -184,10 +211,8 @@ class BankReconciliationService
                     'reconciliation_date' => $statementDate,
                 ]);
             
-            // Mark as completed if balanced
-            if ($reconciliation->isBalanced()) {
-                $reconciliation->complete(auth()->id());
-            }
+            // Mark as completed since balanced
+            $reconciliation->complete(TenantUserHelper::resolveTenantUserId());
             
             return $reconciliation->fresh();
         });
@@ -283,7 +308,7 @@ class BankReconciliationService
                 description: $description,
                 lines: $lines,
                 reference: $data['reference'] ?? 'ADJ-' . now()->format('YmdHis'),
-                userId: auth()->id(),
+                userId: TenantUserHelper::resolveTenantUserId(),
             ));
 
             if (!$result->success) {
@@ -320,5 +345,64 @@ class BankReconciliationService
         }
         
         return round($balance, 2);
+    }
+
+    /**
+     * Verify that all journal entry lines belong to the specified bank account GL.
+     * 
+     * Workstream 2 (2026-04-15): Security check to prevent reconciling lines
+     * from wrong accounts.
+     * 
+     * @param array $lineIds Journal entry line IDs to verify
+     * @param int $expectedGlAccountId The GL account ID that lines must belong to
+     * @throws \InvalidArgumentException If any line belongs to a different GL account
+     */
+    private function verifyLinesBelongToBankAccount(array $lineIds, int $expectedGlAccountId): void
+    {
+        if (empty($lineIds)) {
+            return;
+        }
+
+        $lines = JournalEntryLine::whereIn('id', $lineIds)
+            ->with('account')
+            ->get();
+
+        $wrongLines = $lines->filter(function ($line) use ($expectedGlAccountId) {
+            return (int) $line->account_id !== $expectedGlAccountId;
+        });
+
+        if ($wrongLines->isNotEmpty()) {
+            $wrongIds = $wrongLines->pluck('id')->implode(', ');
+            $wrongAccounts = $wrongLines->map(function ($line) {
+                return $line->account ? $line->account->code : 'unknown';
+            })->unique()->implode(', ');
+
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'Cannot reconcile: %d line(s) (IDs: %s) belong to GL account(s) [%s] instead of expected bank account GL (ID: %d). ' .
+                    'All reconciled lines must belong to the same bank account GL.',
+                    $wrongLines->count(),
+                    $wrongIds,
+                    $wrongAccounts,
+                    $expectedGlAccountId
+                )
+            );
+        }
+
+        // Also verify lines are not already reconciled
+        $alreadyReconciled = $lines->filter(function ($line) {
+            return $line->reconciliation_id !== null;
+        });
+
+        if ($alreadyReconciled->isNotEmpty()) {
+            $reconciledIds = $alreadyReconciled->pluck('id')->implode(', ');
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'Cannot reconcile: %d line(s) (IDs: %s) are already reconciled.',
+                    $alreadyReconciled->count(),
+                    $reconciledIds
+                )
+            );
+        }
     }
 }

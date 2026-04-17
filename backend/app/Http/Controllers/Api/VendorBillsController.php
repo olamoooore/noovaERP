@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class VendorBillsController extends Controller
 {
@@ -214,7 +215,7 @@ class VendorBillsController extends Controller
                 'total' => 0,
                 'paid_amount' => 0,
                 'balance' => 0,
-                'created_by' => auth()->id(),
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             // Create bill lines

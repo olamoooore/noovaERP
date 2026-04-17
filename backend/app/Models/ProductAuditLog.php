@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ProductAuditLog Model
@@ -64,7 +65,7 @@ class ProductAuditLog extends Model
     ): self {
         return self::create([
             'product_id' => $productId,
-            'user_id' => auth()->id(),
+            'user_id' => TenantUserHelper::requireTenantUserId(),
             'action' => $action,
             'field_name' => $fieldName,
             'old_value' => is_array($oldValue) ? json_encode($oldValue) : $oldValue,

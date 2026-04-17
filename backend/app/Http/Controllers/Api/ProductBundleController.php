@@ -259,8 +259,8 @@ class ProductBundleController extends Controller
             $needed = $component->quantity * $quantity;
             
             $available = $warehouseId 
-                ? $product->getStockInWarehouse($warehouseId)
-                : $product->stock_quantity;
+                ? $product->getAvailableStockInWarehouse((int) $warehouseId)
+                : $product->getTotalAvailableStock();
 
             $componentCanFulfill = $component->is_optional || $available >= $needed;
             
@@ -305,7 +305,7 @@ class ProductBundleController extends Controller
 
             $product = $component->componentProduct;
             if ($component->quantity > 0) {
-                $possible = floor($product->stock_quantity / $component->quantity);
+                $possible = intdiv($product->getTotalAvailableStock(), $component->quantity);
                 $maxQuantity = min($maxQuantity, $possible);
             }
         }

@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\FixedAsset;
 use App\Models\DepreciationSchedule;
 use App\Models\JournalEntry;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -239,7 +240,7 @@ class DepreciationService
             description: "Depreciation for {$asset->name} - " . $periodDate->format('M Y'),
             lines: $lines,
             reference: $asset->asset_number,
-            userId: auth()->id(),
+            userId: TenantUserHelper::resolveTenantUserId(),
         ));
 
         if (!$result->success) {
@@ -323,7 +324,7 @@ class DepreciationService
             description: "Disposal of {$asset->name} - {$disposalMethod}" . ($notes ? " - {$notes}" : ''),
             lines: $lines,
             reference: $asset->asset_number,
-            userId: auth()->id(),
+            userId: TenantUserHelper::resolveTenantUserId(),
         ));
 
         if (!$result->success) {

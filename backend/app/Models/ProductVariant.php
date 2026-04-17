@@ -88,24 +88,10 @@ class ProductVariant extends Model
             }
         }
 
-        // Legacy fallback: no warehouse available
-        \Illuminate\Support\Facades\Log::warning('ProductVariant::adjustStock falling back to legacy path — no default warehouse', [
-            'variant_id' => $this->id,
-            'product_id' => $this->product_id,
-        ]);
-
-        $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
-        $this->save();
-
-        StockMovement::create([
-            'product_id'    => $this->product_id,
-            'type'          => $type,
-            'quantity'      => abs($quantity),
-            'reference'     => $reference,
-            'reference_type' => 'ProductVariant',
-            'reference_id'  => $this->id,
-            'balance_after' => $this->stock_quantity,
-            'created_by'    => auth()->id(),
-        ]);
+        // Hard fail: no warehouse means no trackable stock mutation.
+        throw new \RuntimeException(
+            "Cannot adjust stock for variant {$this->id} (product {$this->product_id}): no warehouse available. "
+            . "All stock mutations must go through InventoryService with an explicit warehouse."
+        );
     }
 }

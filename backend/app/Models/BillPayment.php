@@ -29,6 +29,22 @@ class BillPayment extends Model
         'amount' => 'decimal:2',
     ];
 
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        // Workstream 2 (2026-04-15): Prevent deletion of posted bill payments
+        static::deleting(function ($payment) {
+            if ($payment->journal_entry_id !== null) {
+                throw new \RuntimeException(
+                    "Cannot delete posted bill payment #{$payment->payment_number}. " .
+                    "Posted payments must be reversed, not deleted. " .
+                    "Create a reversing entry to cancel this payment."
+                );
+            }
+        });
+    }
+
     public function vendor()
     {
         return $this->belongsTo(Vendor::class);

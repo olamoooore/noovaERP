@@ -9,6 +9,7 @@ use Modules\EventManagement\Services\ArtistCanonicalizationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ArtistManagementController - Task 6.4
@@ -254,7 +255,7 @@ class ArtistManagementController extends Controller
                 'conflict_resolution' => $request->get('conflict_resolution', []),
                 'preserve_aliases' => $request->get('preserve_aliases', true),
                 'preserve_relationships' => $request->get('preserve_relationships', true),
-                'merged_by_user_id' => auth()->id() ?? 1,
+                'merged_by_user_id' => TenantUserHelper::resolveTenantUserId(),
             ];
             
             $result = $this->canonicalizationService->mergeArtists(

@@ -169,21 +169,21 @@ class FixStuckWebOrders extends Command
                 $this->info("  Updated transaction with invoice_id: {$order->invoice_id}");
             }
             
-            // Create payment record if not exists
+            // Create payment record via canonical service if not exists
             $existingPayment = \App\Models\Payment::where('reference', $transaction->transaction_id)->first();
             if (!$existingPayment && $order->invoice_id) {
                 $invoice = \App\Models\Invoice::find($order->invoice_id);
-                $payment = \App\Models\Payment::create([
-                    'customer_id' => $order->customer_id,
-                    'invoice_id' => $order->invoice_id,
-                    'payment_date' => now(),
-                    'method' => 'card',
-                    'reference' => $transaction->transaction_id,
-                    'amount' => $transaction->amount,
-                    'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                    'received_by' => $invoice->created_by ?? 1,
-                ]);
-                $this->info("  Created payment record: {$payment->payment_number}");
+                if ($invoice) {
+                    app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice, [
+                        'payment_date' => now(),
+                        'method' => 'card',
+                        'reference' => $transaction->transaction_id,
+                        'amount' => $transaction->amount,
+                        'notes' => "Online payment via {$transaction->gateway->gateway_name}",
+                        'received_by' => $invoice->created_by ?? $order->customer_id,
+                    ]);
+                    $this->info("  Created payment record for invoice {$invoice->invoice_number}");
+                }
             } elseif ($existingPayment) {
                 $this->info("  Payment record already exists: {$existingPayment->payment_number}");
             }

@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\CustomerLoyaltyProgram;
 use App\Models\JournalEntry;
 use App\Models\User;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosOrder extends Model
 {
@@ -152,7 +153,7 @@ class PosOrder extends Model
             'status' => 'completed',
             'is_return' => true,
             'original_order_id' => $this->id,
-            'created_by' => auth()->id(),
+            'created_by' => TenantUserHelper::resolveTenantUserId(),
             'cashier_name' => auth()->user()?->name,
             'notes' => $notes,
             'subtotal' => 0,

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\Supplier;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Product Model - Central Master Data Hub
@@ -495,7 +496,7 @@ class Product extends Model
     {
         if ($this->status === self::STATUS_PENDING_APPROVAL) {
             $this->status = self::STATUS_ACTIVE;
-            $this->approved_by = auth()->id();
+            $this->approved_by = TenantUserHelper::resolveTenantUserId();
             $this->approved_at = now();
             $this->save();
             ProductAuditLog::log($this->id, ProductAuditLog::ACTION_APPROVED, 'status', 'pending_approval', 'active');
@@ -506,7 +507,7 @@ class Product extends Model
     {
         $oldStatus = $this->status;
         $this->status = self::STATUS_DISCONTINUED;
-        $this->discontinued_by = auth()->id();
+        $this->discontinued_by = TenantUserHelper::resolveTenantUserId();
         $this->discontinued_at = now();
         $this->save();
         ProductAuditLog::log($this->id, ProductAuditLog::ACTION_DISCONTINUED, 'status', $oldStatus, 'discontinued');
@@ -556,6 +557,11 @@ class Product extends Model
         return $stockLevel ? $stockLevel->available_quantity : 0;
     }
 
+    public function getTotalAvailableStock(): int
+    {
+        return (int) $this->stockLevels()->get()->sum('available_quantity');
+    }
+
     /**
      * Adjust stock for this product.
      *
@@ -599,29 +605,12 @@ class Product extends Model
             }
         }
 
-        // Last-resort legacy path: no warehouse available at all.
-        // This should only occur during seeding or in environments without a default warehouse.
-        \Illuminate\Support\Facades\Log::warning('Product::adjustStock falling back to legacy direct mutation — no warehouse available', [
-            'product_id' => $this->id,
-            'type'       => $type,
-            'quantity'   => $quantity,
-        ]);
-
-        $oldQuantity = $this->stock_quantity;
-        $this->stock_quantity += ($type === 'in' ? $quantity : -$quantity);
-        $this->save();
-
-        StockMovement::create([
-            'product_id'   => $this->id,
-            'type'         => $type,
-            'quantity'     => abs($quantity),
-            'old_quantity' => $oldQuantity,
-            'reference'    => $reference,
-            'balance_after' => $this->stock_quantity,
-            'created_by'   => auth()->id() ?? 1,
-        ]);
-
-        ProductAuditLog::log($this->id, ProductAuditLog::ACTION_STOCK_CHANGED, 'stock_quantity', $oldQuantity, $this->stock_quantity);
+        // Hard fail: no warehouse means no trackable stock mutation.
+        // All callers must provide or resolve a warehouse.
+        throw new \RuntimeException(
+            "Cannot adjust stock for product {$this->id}: no warehouse available. "
+            . "All stock mutations must go through InventoryService with an explicit warehouse."
+        );
     }
 
     // ==================== PRICING METHODS ====================
@@ -692,7 +681,7 @@ class Product extends Model
     public function canFulfillBundle(int $quantity = 1): bool
     {
         if (!$this->is_bundle) {
-            return $this->stock_quantity >= $quantity;
+            return $this->getTotalAvailableStock() >= $quantity;
         }
 
         foreach ($this->bundleComponents as $component) {
@@ -701,7 +690,7 @@ class Product extends Model
             }
             
             $needed = $component->quantity * $quantity;
-            if ($component->componentProduct->stock_quantity < $needed) {
+            if ($component->componentProduct->getTotalAvailableStock() < $needed) {
                 return false;
             }
         }

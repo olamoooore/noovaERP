@@ -2,8 +2,7 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use App\Models\User;
@@ -11,10 +10,8 @@ use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 
-class ExportFunctionalityTest extends TestCase
+class ExportFunctionalityTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected array $sampleReportData;
 

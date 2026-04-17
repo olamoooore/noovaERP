@@ -8,6 +8,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Models\Bill;
 use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class VendorBillService
 {
@@ -86,7 +87,7 @@ class VendorBillService
                 description: "Vendor Bill #{$bill->bill_number} - {$bill->vendor->name}",
                 lines: $lines,
                 reference: $bill->bill_number,
-                userId: auth()->id(),
+                userId: TenantUserHelper::resolveTenantUserId(),
             );
 
             $result = $this->postingEngine->post($request);

@@ -43,31 +43,9 @@ class StockController extends Controller
      */
     public function stockIn(Request $request)
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
-            'reference' => 'nullable|string|max:100',
-            'notes' => 'nullable|string',
-            'batch_number' => 'nullable|string|max:100',
-            'expiry_date' => 'nullable|date',
-        ]);
-
-        $movement = $this->inventoryService->adjustStock(
-            $validated['product_id'],
-            $validated['warehouse_id'],
-            $validated['quantity'],
-            'in',
-            $validated['reference'] ?? null,
-            null,
-            null,
-            null,
-            $validated['notes'] ?? null,
-            $validated['batch_number'] ?? null,
-            isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
-        );
-
-        return response()->json($movement->load(['product', 'createdBy']), 201);
+        return response()->json([
+            'message' => 'Direct stock-in mutations are disabled. Use a controlled inventory document workflow.',
+        ], 410);
     }
 
     /**
@@ -75,31 +53,9 @@ class StockController extends Controller
      */
     public function stockOut(Request $request)
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
-            'reference' => 'nullable|string|max:100',
-            'notes' => 'nullable|string',
-        ]);
-
-        try {
-            $movement = $this->inventoryService->adjustStock(
-                $validated['product_id'],
-                $validated['warehouse_id'],
-                $validated['quantity'],
-                'out',
-                $validated['reference'] ?? null,
-                null,
-                null,
-                null,
-                $validated['notes'] ?? null
-            );
-
-            return response()->json($movement->load(['product', 'createdBy']), 201);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        return response()->json([
+            'message' => 'Direct stock-out mutations are disabled. Use a controlled inventory document workflow.',
+        ], 410);
     }
 
     /**
@@ -107,27 +63,9 @@ class StockController extends Controller
      */
     public function adjust(Request $request)
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'new_quantity' => 'required|integer|min:0',
-            'reason_id' => 'required|exists:stock_adjustment_reasons,id',
-            'notes' => 'nullable|string',
-        ]);
-
-        $movement = $this->inventoryService->adjustStock(
-            $validated['product_id'],
-            $validated['warehouse_id'],
-            $validated['new_quantity'],
-            'adjustment',
-            null,
-            null,
-            null,
-            $validated['reason_id'],
-            $validated['notes'] ?? null
-        );
-
-        return response()->json($movement->load(['product', 'createdBy']), 201);
+        return response()->json([
+            'message' => 'Direct stock adjustments are disabled. Use an approved inventory adjustment workflow.',
+        ], 410);
     }
 
     /**

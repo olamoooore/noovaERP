@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Modules\WebsiteBuilder\Models\Template;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Services\TemplateService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class TemplateController extends Controller
 {
@@ -55,7 +56,7 @@ class TemplateController extends Controller
             $template,
             $validated['name'],
             $validated['slug'] ?? null,
-            auth()->id()
+            TenantUserHelper::resolveTenantUserId()
         );
 
         return response()->json($website->load('pages'), 201);

@@ -22,6 +22,8 @@ class Group extends Model
 {
     use HasFactory, SoftDeletes, HasTenantScope, HasAuditTrail;
 
+    protected $table = 'artist_groups';
+
     protected $fillable = [
         'tenant_id',
         'name',

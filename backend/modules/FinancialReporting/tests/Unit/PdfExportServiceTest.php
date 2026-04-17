@@ -2,14 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Illuminate\Support\Facades\Storage;
 
-class PdfExportServiceTest extends TestCase
+class PdfExportServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected PdfExportService $service;
 

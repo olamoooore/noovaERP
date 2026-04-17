@@ -33,6 +33,8 @@ class ProductVariantController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        unset($validated['stock_quantity']);
+
         $variant = $product->variants()->create($validated);
 
         return response()->json($variant, 201);

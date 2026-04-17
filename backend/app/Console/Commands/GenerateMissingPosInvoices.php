@@ -4,8 +4,11 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\User;
 use Illuminate\Console\Command;
 use Modules\POS\Models\PosOrder;
+use Modules\Sales\Models\SalesInvoiceLink;
+use Modules\Sales\Services\SalesOrderService;
 
 class GenerateMissingPosInvoices extends Command
 {
@@ -26,22 +29,38 @@ class GenerateMissingPosInvoices extends Command
     {
         $this->info('Finding paid POS orders without invoices...');
 
+        // Authenticate as system user for proper audit trail (required by SalesOrderService)
+        $systemUser = User::first();
+        if ($systemUser) {
+            auth()->login($systemUser);
+        } else {
+            $this->error('No users found in the system. Cannot run without an authenticated user.');
+            return 1;
+        }
+
         // Get all paid POS orders
         $paidOrders = PosOrder::where('status', 'paid')
             ->with(['items.product', 'customer'])
             ->get();
 
-        $existingInvoiceNotes = Invoice::where('notes', 'like', 'Generated from POS Order:%')
+        // Detect existing invoices via pos_order_id FK
+        $existingViaFK = Invoice::whereNotNull('pos_order_id')
+            ->pluck('pos_order_id')
+            ->toArray();
+
+        // Detect existing invoices via notes pattern (legacy invoices before FK was set)
+        $existingViaNotes = Invoice::where('notes', 'like', '%POS Order:%')
             ->pluck('notes')
             ->map(function ($note) {
-                preg_match('/POS Order: ([A-Z0-9-]+)/', $note, $matches);
+                preg_match('/POS Order:?\s*#?([A-Z0-9-]+)/', $note, $matches);
                 return $matches[1] ?? null;
             })
             ->filter()
             ->toArray();
 
-        $ordersWithoutInvoices = $paidOrders->filter(function ($order) use ($existingInvoiceNotes) {
-            return !in_array($order->order_number, $existingInvoiceNotes);
+        $ordersWithoutInvoices = $paidOrders->filter(function ($order) use ($existingViaFK, $existingViaNotes) {
+            return !in_array($order->id, $existingViaFK)
+                && !in_array($order->order_number, $existingViaNotes);
         });
 
         if ($ordersWithoutInvoices->isEmpty()) {
@@ -68,40 +87,56 @@ class GenerateMissingPosInvoices extends Command
         $created = 0;
         $failed = 0;
 
+        $salesOrderService = app(SalesOrderService::class);
+
         foreach ($ordersWithoutInvoices as $order) {
             try {
-                $customerId = $order->customer_id ?? $walkInCustomer->id;
+                // Ensure customer_id exists
+                if (!$order->customer_id) {
+                    $order->update(['customer_id' => $walkInCustomer->id]);
+                }
 
-                // Create invoice
-                $invoice = Invoice::create([
-                    'customer_id' => $customerId,
-                    'invoice_date' => $order->paid_at ?? $order->created_at,
-                    'due_date' => $order->paid_at ?? $order->created_at,
-                    'status' => 'paid',
-                    'subtotal' => $order->subtotal,
-                    'tax_amount' => $order->tax_amount,
+                // Create SalesOrder (idempotent via SalesChannelReference)
+                $salesOrder = $salesOrderService->createFromPosOrder($order);
+
+                // If already invoiced via SalesOrder, skip
+                if ($salesOrder->isInvoiced()) {
+                    $bar->advance();
+                    continue;
+                }
+
+                // Fast-track through lifecycle for already-paid POS order
+                if ($salesOrder->isDraft()) {
+                    $salesOrder = $salesOrderService->confirmOrder($salesOrder);
+                }
+                if ($salesOrder->isConfirmed()) {
+                    $salesOrder = $salesOrderService->allocateOrder($salesOrder);
+                }
+                if ($salesOrder->isAllocated()) {
+                    $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
+                }
+
+                // Create invoice via canonical SalesOrderService → InvoiceService path
+                $invoice = $salesOrderService->createInvoice($salesOrder);
+
+                // Override totals to match already-paid POS order and reconcile
+                // invoice balances via InvoiceService without posting duplicate GL.
+                $invoice->update([
+                    'subtotal'        => $order->subtotal,
+                    'tax_amount'      => $order->tax_amount ?? 0,
                     'discount_amount' => $order->discount_amount ?? 0,
-                    'total' => $order->total,
-                    'paid_amount' => $order->total,
-                    'balance' => 0,
-                    'notes' => "Generated from POS Order: {$order->order_number}",
-                    'created_by' => $order->created_by,
+                    'total'           => $order->total,
+                    'pos_order_id'    => $order->id,
                 ]);
 
-                // Create invoice lines from POS order items
-                foreach ($order->items as $item) {
-                    $description = $item->product_name ?? $item->product?->name ?? 'Product';
-                    $invoice->lines()->create([
-                        'product_id' => $item->product_id,
-                        'description' => $description,
-                        'quantity' => $item->quantity,
-                        'unit_price' => $item->unit_price,
-                        'tax_rate' => 0,
-                        'tax_amount' => $item->tax_amount > 0 ? $item->tax_amount / $item->quantity : 0,
-                        'discount_amount' => 0,
-                        'line_total' => $item->total_price,
-                    ]);
-                }
+                app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
+                    'payment_date' => now(),
+                    'method' => 'card',
+                    'reference' => "POS-{$order->order_number}",
+                    'amount' => (float) $order->total,
+                    'notes' => "POS order {$order->order_number} (pre-paid)",
+                    'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId($order->created_by),
+                ]);
 
                 $created++;
             } catch (\Exception $e) {

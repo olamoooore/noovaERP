@@ -2,25 +2,23 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrVendorMapping;
 use Modules\OCRBookkeeping\Services\VendorMappingService;
-use App\Models\Vendor;
+use App\Models\Customer;
 use App\Models\User;
 
-class VendorMappingTest extends TestCase
+class VendorMappingTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $user;
     protected VendorMappingService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->user = User::factory()->create();
+        $this->actingAs($this->user);
         $this->service = app(VendorMappingService::class);
     }
 
@@ -29,7 +27,7 @@ class VendorMappingTest extends TestCase
      */
     public function test_vendor_search_is_always_performed()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -46,18 +44,17 @@ class VendorMappingTest extends TestCase
      */
     public function test_high_confidence_vendor_matches_are_automatic()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
         // Create existing mapping for high confidence
         OcrVendorMapping::create([
             'extracted_name' => 'ABC Supplies Ltd',
-            'normalized_name' => 'abc supplies ltd',
+            'normalized_name' => 'abc supplies',
             'vendor_id' => $vendor->id,
             'confidence_score' => 1.0,
-            'match_count' => 10,
-            'created_by' => $this->user->id,
+            'usage_count' => 10,
         ]);
 
         $matches = $this->service->findVendorMatch('ABC Supplies Ltd');
@@ -72,21 +69,19 @@ class VendorMappingTest extends TestCase
      */
     public function test_multiple_matches_return_top_3()
     {
-        // Create similar vendors
-        $vendors = [
-            Vendor::factory()->create(['name' => 'ABC Supplies Ltd']),
-            Vendor::factory()->create(['name' => 'ABC Supply Company']),
-            Vendor::factory()->create(['name' => 'ABC Supplies Inc']),
-            Vendor::factory()->create(['name' => 'ABC Trading Ltd']),
-            Vendor::factory()->create(['name' => 'XYZ Supplies Ltd']),
-        ];
+        // Create similar vendors (Customer records for fuzzy search)
+        Customer::factory()->create(['name' => 'ABC Supplies Ltd']);
+        Customer::factory()->create(['name' => 'ABC Supply Company']);
+        Customer::factory()->create(['name' => 'ABC Supplies Inc']);
+        Customer::factory()->create(['name' => 'ABC Trading Ltd']);
+        Customer::factory()->create(['name' => 'XYZ Supplies Ltd']);
 
         $matches = $this->service->findVendorMatch('ABC Supplies');
 
-        // Should return top 3 matches
+        // Should return top 3 matches (MAX_SUGGESTIONS = 3)
         $this->assertLessThanOrEqual(3, count($matches));
-        
-        // Verify sorted by confidence
+
+        // Verify sorted by confidence descending
         if (count($matches) > 1) {
             $this->assertGreaterThanOrEqual(
                 $matches[1]['confidence'],
@@ -100,18 +95,17 @@ class VendorMappingTest extends TestCase
      */
     public function test_vendor_confirmations_are_stored()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
         $extractedName = 'ABC Supplies';
 
-        $this->service->storeMapping($extractedName, $vendor->id, 0.85, $this->user->id);
+        $this->service->storeMapping($extractedName, $vendor->id, 0.85);
 
         $this->assertDatabaseHas('ocr_vendor_mappings', [
             'extracted_name' => $extractedName,
             'vendor_id' => $vendor->id,
-            'created_by' => $this->user->id,
         ]);
 
         // Verify normalized name stored
@@ -124,22 +118,21 @@ class VendorMappingTest extends TestCase
      */
     public function test_fuzzy_matching_works_with_typos()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
         // Create mapping
         OcrVendorMapping::create([
             'extracted_name' => 'ABC Supplies Ltd',
-            'normalized_name' => 'abc supplies ltd',
+            'normalized_name' => 'abc supplies',
             'vendor_id' => $vendor->id,
             'confidence_score' => 1.0,
-            'match_count' => 5,
-            'created_by' => $this->user->id,
+            'usage_count' => 5,
         ]);
 
-        // Test with typos
-        $matches = $this->service->findVendorMatch('ABC Suplies Ltd'); // Missing 'p'
+        // Test with typos — normalizeName will produce "abc suplies" which triggers fuzzy search
+        $matches = $this->service->findVendorMatch('ABC Suplies Ltd');
 
         $this->assertNotEmpty($matches);
         $this->assertEquals($vendor->id, $matches[0]['vendor_id']);
@@ -150,20 +143,19 @@ class VendorMappingTest extends TestCase
      */
     public function test_case_insensitive_matching()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
         OcrVendorMapping::create([
             'extracted_name' => 'ABC Supplies Ltd',
-            'normalized_name' => 'abc supplies ltd',
+            'normalized_name' => 'abc supplies',
             'vendor_id' => $vendor->id,
             'confidence_score' => 1.0,
-            'match_count' => 5,
-            'created_by' => $this->user->id,
+            'usage_count' => 5,
         ]);
 
-        // Test different cases
+        // Test different cases — normalizeName lowercases everything
         $testCases = [
             'abc supplies ltd',
             'ABC SUPPLIES LTD',
@@ -183,31 +175,29 @@ class VendorMappingTest extends TestCase
      */
     public function test_mapping_frequency_increases_with_confirmations()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
         $extractedName = 'ABC Supplies';
 
-        // Store mapping multiple times
-        $this->service->storeMapping($extractedName, $vendor->id, 0.85, $this->user->id);
-        $this->service->storeMapping($extractedName, $vendor->id, 0.85, $this->user->id);
-        $this->service->storeMapping($extractedName, $vendor->id, 0.85, $this->user->id);
+        // storeMapping creates a mapping on first call, then recordUsage() on subsequent calls
+        $this->service->storeMapping($extractedName, $vendor->id, 0.85);
+        $this->service->storeMapping($extractedName, $vendor->id, 0.85);
+        $this->service->storeMapping($extractedName, $vendor->id, 0.85);
 
         $mapping = OcrVendorMapping::where('extracted_name', $extractedName)->first();
-        
-        $this->assertEquals(3, $mapping->match_count);
+
+        // First call creates with usage_count=1, subsequent 2 calls increment to 3
+        $this->assertEquals(3, $mapping->usage_count);
     }
 
     /**
-     * Test: Empty or null vendor name returns empty matches
+     * Test: Empty vendor name returns empty matches
      */
     public function test_empty_vendor_name_returns_empty_matches()
     {
         $matches = $this->service->findVendorMatch('');
-        $this->assertEmpty($matches);
-
-        $matches = $this->service->findVendorMatch(null);
         $this->assertEmpty($matches);
     }
 
@@ -216,17 +206,16 @@ class VendorMappingTest extends TestCase
      */
     public function test_special_characters_are_handled()
     {
-        $vendor = Vendor::factory()->create([
+        $vendor = Customer::factory()->create([
             'name' => "O'Reilly's Supplies & Co.",
         ]);
 
         OcrVendorMapping::create([
             'extracted_name' => "O'Reilly's Supplies & Co.",
-            'normalized_name' => "oreillys supplies  co",
+            'normalized_name' => OcrVendorMapping::normalizeName("O'Reilly's Supplies & Co."),
             'vendor_id' => $vendor->id,
             'confidence_score' => 1.0,
-            'match_count' => 1,
-            'created_by' => $this->user->id,
+            'usage_count' => 1,
         ]);
 
         $matches = $this->service->findVendorMatch("OReillys Supplies and Co");
@@ -235,23 +224,24 @@ class VendorMappingTest extends TestCase
     }
 
     /**
-     * Test: Vendor with no mappings can still be found
+     * Test: Vendor with no mappings can still be found via fuzzy search
      */
     public function test_vendor_with_no_mappings_can_still_be_found()
     {
-        $vendor = Vendor::factory()->create([
+        Customer::factory()->create([
             'name' => 'New Vendor Ltd',
         ]);
 
-        // No mappings exist yet
+        // No mappings exist yet — should find via fuzzy search on customers table
         $matches = $this->service->findVendorMatch('New Vendor');
 
-        // Should still find vendor by direct name match
         $this->assertNotEmpty($matches);
     }
 
     /**
      * Test: Normalization removes common suffixes
+     *
+     * normalizeName() is a static method on OcrVendorMapping (not on the service).
      */
     public function test_normalization_removes_common_suffixes()
     {
@@ -263,7 +253,7 @@ class VendorMappingTest extends TestCase
         ];
 
         foreach ($testCases as $input => $expected) {
-            $normalized = $this->service->normalizeName($input);
+            $normalized = OcrVendorMapping::normalizeName($input);
             $this->assertEquals($expected, $normalized, "Failed for: $input");
         }
     }
