@@ -7,6 +7,8 @@ use App\Models\Customer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class PaymentTransaction extends Model
@@ -43,6 +45,82 @@ class PaymentTransaction extends Model
         'refunded_at' => 'datetime',
         'webhook_received_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (self $transaction): void {
+            $transaction->syncWebhookTenantLookup();
+        });
+
+        static::deleted(function (self $transaction): void {
+            $transaction->deleteWebhookTenantLookup();
+        });
+    }
+
+    public static function webhookTenantLookupBaseTable(): string
+    {
+        return 'payment_webhook_tenant_lookups';
+    }
+
+    public static function webhookTenantLookupTable(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql'
+            ? 'public.' . static::webhookTenantLookupBaseTable()
+            : static::webhookTenantLookupBaseTable();
+    }
+
+    public function syncWebhookTenantLookup(): void
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return;
+        }
+
+        if (!Schema::hasTable(static::webhookTenantLookupBaseTable())) {
+            return;
+        }
+
+        $gatewayName = $this->relationLoaded('gateway')
+            ? $this->gateway?->gateway_name
+            : $this->gateway()->value('gateway_name');
+
+        if (!$gatewayName || !$this->transaction_id) {
+            return;
+        }
+
+        $timestamp = now();
+
+        DB::table(static::webhookTenantLookupTable())->upsert(
+            [[
+                'gateway_name' => $gatewayName,
+                'transaction_id' => $this->transaction_id,
+                'tenant_id' => (string) tenant()->getTenantKey(),
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ]],
+            ['gateway_name', 'transaction_id'],
+            ['tenant_id', 'updated_at']
+        );
+    }
+
+    public function deleteWebhookTenantLookup(): void
+    {
+        if (!Schema::hasTable(static::webhookTenantLookupBaseTable()) || !$this->transaction_id) {
+            return;
+        }
+
+        $gatewayName = $this->relationLoaded('gateway')
+            ? $this->gateway?->gateway_name
+            : $this->gateway()->value('gateway_name');
+
+        if (!$gatewayName) {
+            return;
+        }
+
+        DB::table(static::webhookTenantLookupTable())
+            ->where('gateway_name', $gatewayName)
+            ->where('transaction_id', $this->transaction_id)
+            ->delete();
+    }
 
     /**
      * Get the route key for the model.

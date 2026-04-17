@@ -15,8 +15,7 @@ use Stancl\Tenancy\Tenancy;
  *   1. Configured storefront tenant (config key: tenancy.storefront_tenant_id or storefront_tenant_email)
  *   2. Host header domain lookup via the domains table
  *   3. Subdomain exact-match
- *   4. Authenticated user preference (optional Sanctum token)
- *   5. Fail closed with 404 if no tenant resolved
+ *   4. Fail closed with 404 if no tenant resolved
  *
  * ── Hardcoded tenant email REMOVED ──────────────────────────────────────────
  * The previous implementation keyed the dedicated storefront off a hardcoded
@@ -119,32 +118,7 @@ class InitializeTenantForPublicAccess
             }
         }
 
-        // 2. Try from authenticated user (optional auth - don't fail if not authenticated)
-        try {
-            $user = $request->user('sanctum');
-            if ($user && !($user->is_super_admin ?? false)) {
-                $defaultCompany = DB::table('user_company_access')
-                    ->where('user_id', $user->id)
-                    ->where('is_default', true)
-                    ->first();
-
-                if ($defaultCompany) {
-                    $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
-                    if ($tenant) {
-                        Log::info('InitializeTenantForPublicAccess: Tenant from user preference', [
-                            'user_id' => $user->id,
-                            'tenant_id' => $tenant->id,
-                        ]);
-                        $this->tenancy->initialize($tenant);
-                        return $next($request);
-                    }
-                }
-            }
-        } catch (\Exception $e) {
-            // Auth failed silently - this is expected for public access
-        }
-
-        // 3. No tenant resolved — fail closed
+        // 2. No tenant resolved — fail closed
         Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved, rejecting request', [
             'host' => $request->getHost(),
         ]);

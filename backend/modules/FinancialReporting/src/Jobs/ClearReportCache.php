@@ -48,6 +48,10 @@ class ClearReportCache implements ShouldQueue
             }
 
             $tenantId = $this->currentTenantId();
+
+            if (!$tenantId) {
+                throw new \RuntimeException('Report cache cleanup requires explicit tenant scope.');
+            }
             
             Log::info('Starting report cache cleanup', [
                 'clear_all' => $this->clearAll,
@@ -98,15 +102,17 @@ class ClearReportCache implements ShouldQueue
         
         $count = $query->count();
         
-        if ($tenantId) {
-            ReportCache::where('tenant_id', $tenantId)->delete();
-        } else {
-            ReportCache::truncate();
-        }
+        ReportCache::where('tenant_id', $tenantId)->delete();
 
         // Clear Redis cache with report tags (only works with tag-supporting drivers)
         try {
-            Cache::tags(['reports', 'dashboards', 'sales_analytics', 'inventory_reports'])->flush();
+            Cache::tags([
+                'reports',
+                'dashboards',
+                'sales_analytics',
+                'inventory_reports',
+                'tenant:' . $tenantId,
+            ])->flush();
         } catch (\BadMethodCallException $e) {
             // Cache driver does not support tagging — skip
         }
@@ -147,17 +153,18 @@ class ClearReportCache implements ShouldQueue
      */
     public static function clearByReportType(string $reportType, ?string $tenantId = null): void
     {
-        $query = ReportCache::where('report_type', $reportType);
-        
-        if ($tenantId) {
-            $query->where('tenant_id', $tenantId);
+        if (!$tenantId) {
+            throw new \RuntimeException('clearByReportType requires explicit tenant scope.');
         }
+
+        $query = ReportCache::where('report_type', $reportType);
+        $query->where('tenant_id', $tenantId);
         
         $query->delete();
         
         // Clear Redis cache for this report type (only works with tag-supporting drivers)
         try {
-            Cache::tags(['reports'])->flush();
+            Cache::tags(['reports', 'tenant:' . $tenantId])->flush();
         } catch (\BadMethodCallException $e) {
             // Cache driver does not support tagging — skip
         }
@@ -173,11 +180,12 @@ class ClearReportCache implements ShouldQueue
      */
     public static function clearByDateRange(Carbon $startDate, Carbon $endDate, ?string $tenantId = null): void
     {
-        $query = ReportCache::whereBetween('created_at', [$startDate, $endDate]);
-        
-        if ($tenantId) {
-            $query->where('tenant_id', $tenantId);
+        if (!$tenantId) {
+            throw new \RuntimeException('clearByDateRange requires explicit tenant scope.');
         }
+
+        $query = ReportCache::whereBetween('created_at', [$startDate, $endDate]);
+        $query->where('tenant_id', $tenantId);
         
         $query->delete();
 

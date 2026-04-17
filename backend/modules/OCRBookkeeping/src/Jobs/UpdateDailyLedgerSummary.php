@@ -2,6 +2,8 @@
 
 namespace Modules\OCRBookkeeping\Jobs;
 
+use App\Models\Tenant;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -9,7 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * Update Daily Ledger Summary Job
@@ -27,11 +29,17 @@ class UpdateDailyLedgerSummary implements ShouldQueue
     private Carbon $date;
 
     /**
+     * Owning tenant for the summary job.
+     */
+    private string $tenantId;
+
+    /**
      * Create a new job instance.
      */
-    public function __construct(Carbon $date)
+    public function __construct(Carbon $date, string $tenantId)
     {
         $this->date = $date;
+        $this->tenantId = $tenantId;
         $this->queue = 'bi-updates';
     }
 
@@ -41,19 +49,33 @@ class UpdateDailyLedgerSummary implements ShouldQueue
     public function handle(): void
     {
         try {
-            Log::info("Updating daily ledger summary", ['date' => $this->date->format('Y-m-d')]);
+            $tenant = Tenant::find($this->tenantId);
+            if (!$tenant) {
+                throw new \RuntimeException("Tenant {$this->tenantId} not found for daily ledger summary update.");
+            }
 
-            // Calculate summaries by account type
-            $this->calculateAccountTypeSummaries();
+            Tenancy::run($tenant, function () {
+                Log::info("Updating daily ledger summary", [
+                    'date' => $this->date->format('Y-m-d'),
+                    'tenant_id' => $this->tenantId,
+                ]);
 
-            // Calculate summaries by dimensions
-            $this->calculateDimensionSummaries();
+                // Calculate summaries by account type
+                $this->calculateAccountTypeSummaries();
 
-            Log::info("Daily ledger summary updated successfully", ['date' => $this->date->format('Y-m-d')]);
+                // Calculate summaries by dimensions
+                $this->calculateDimensionSummaries();
+
+                Log::info("Daily ledger summary updated successfully", [
+                    'date' => $this->date->format('Y-m-d'),
+                    'tenant_id' => $this->tenantId,
+                ]);
+            });
 
         } catch (\Exception $e) {
             Log::error("Failed to update daily ledger summary", [
                 'date' => $this->date->format('Y-m-d'),
+                'tenant_id' => $this->tenantId,
                 'error' => $e->getMessage(),
             ]);
 

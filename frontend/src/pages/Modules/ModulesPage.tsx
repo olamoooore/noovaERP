@@ -3,7 +3,6 @@ import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/hooks/use-toast'
 
 interface Feature {
   id: string
@@ -15,38 +14,13 @@ interface Feature {
 }
 
 export function ModulesPage() {
-  const { toast } = useToast()
-  
-  const { data: features, isLoading, refetch } = useQuery<Feature[]>({
+  const { data: features, isLoading } = useQuery<Feature[]>({
     queryKey: ['features'],
     queryFn: async () => {
-      // We need to add this endpoint to the backend first, or use the existing one if available.
-      // For now, we'll assume GET /api/v1/features returns the list for the tenant.
       const response = await api.get('/features')
       return response.data
     },
   })
-
-  const handleToggle = async (feature: Feature) => {
-    if (feature.is_core) return
-
-    try {
-      await api.post(`/features/${feature.id}/toggle`, {
-        enabled: !feature.enabled
-      })
-      toast({
-        title: feature.enabled ? 'Module Disabled' : 'Module Enabled',
-        description: `${feature.name} has been ${feature.enabled ? 'disabled' : 'enabled'}.`,
-      })
-      refetch()
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to toggle module status.',
-        variant: 'destructive',
-      })
-    }
-  }
 
   if (isLoading) {
     return <div className="p-6">Loading modules...</div>
@@ -57,7 +31,7 @@ export function ModulesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Modules & Add-ons</h1>
-          <p className="text-muted-foreground">Manage enabled features for your organization.</p>
+          <p className="text-muted-foreground">View the modules currently entitled for your organization.</p>
         </div>
       </div>
 
@@ -84,12 +58,12 @@ export function ModulesPage() {
               
               {!feature.is_core && (
                 <Button 
-                  variant={feature.enabled ? "outline" : "default"} 
+                  variant="outline"
                   size="sm" 
                   className="w-full"
-                  onClick={() => handleToggle(feature)}
+                  disabled
                 >
-                  {feature.enabled ? 'Disable Module' : 'Enable Module'}
+                  Contact Admin
                 </Button>
               )}
               

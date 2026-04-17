@@ -3,9 +3,28 @@
 namespace Modules\FinancialReporting\Services\Export;
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ExcelExportService
 {
+    private function tenantExportDirectory(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('Report exports require an active tenant context.');
+        }
+
+        return 'reports/' . tenant('id');
+    }
+
+    private function exportFilename(?string $filename): string
+    {
+        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_' . now()->format('Y-m-d_His');
+        $safeName = Str::of($name)->ascii()->replaceMatches('/[^A-Za-z0-9._-]+/', '_')->trim('_')->value();
+        $safeName = $safeName !== '' ? $safeName : 'report';
+
+        return $safeName . '_' . Str::lower(Str::random(16)) . '.xlsx';
+    }
+
     /**
      * Export report data to Excel
      * 
@@ -18,11 +37,8 @@ class ExcelExportService
             throw new \Exception('PhpSpreadsheet library is not installed. Run: composer require phpoffice/phpspreadsheet');
         }
 
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His');
-        if (!str_ends_with($filename, '.xlsx')) {
-            $filename .= '.xlsx';
-        }
-        $path = 'reports/' . $filename;
+        $filename = $this->exportFilename($filename);
+        $path = $this->tenantExportDirectory() . '/' . $filename;
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -160,7 +176,7 @@ class ExcelExportService
      */
     public function cleanupOldExports(int $daysOld = 7): int
     {
-        $files = Storage::disk('local')->files('reports');
+        $files = Storage::disk('local')->allFiles($this->tenantExportDirectory());
         $deleted = 0;
         $cutoffTime = now()->subDays($daysOld)->timestamp;
 

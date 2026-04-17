@@ -4,6 +4,7 @@ namespace Modules\EventManagement\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Modules\EventManagement\Services\TenantObservabilityService;
 use App\Http\Controllers\Controller;
@@ -26,6 +27,15 @@ class ObservabilityDashboardController extends Controller
         $this->observabilityService = $observabilityService;
     }
 
+    private function currentTenantId(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('Observability endpoints require canonical tenant context.');
+        }
+
+        return (string) tenant('id');
+    }
+
     /**
      * Get tenant observability dashboard
      * 
@@ -35,7 +45,6 @@ class ObservabilityDashboardController extends Controller
     public function getDashboard(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'refresh_cache' => 'sometimes|boolean'
         ]);
@@ -48,7 +57,7 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $timeRange = $request->input('time_range', '1h');
         $refreshCache = $request->input('refresh_cache', false);
 
@@ -75,7 +84,6 @@ class ObservabilityDashboardController extends Controller
     public function getHealthMetrics(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'metric_names' => 'sometimes|array',
             'metric_names.*' => 'string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
@@ -90,7 +98,7 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $metricNames = $request->input('metric_names', []);
         $timeRange = $request->input('time_range', '1h');
         $aggregation = $request->input('aggregation', 'avg');
@@ -98,7 +106,7 @@ class ObservabilityDashboardController extends Controller
         try {
             $startTime = $this->calculateStartTime($timeRange);
             
-            $query = \DB::table('tenant_health_metrics')
+            $query = DB::table('tenant_health_metrics')
                 ->where('tenant_id', $tenantId)
                 ->where('collected_at', '>=', $startTime);
 
@@ -147,7 +155,6 @@ class ObservabilityDashboardController extends Controller
     public function getApiPerformance(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'endpoints' => 'sometimes|array',
             'endpoints.*' => 'string|max:255',
@@ -163,7 +170,7 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $timeRange = $request->input('time_range', '1h');
         $endpoints = $request->input('endpoints', []);
         $statusCodes = $request->input('status_codes', []);
@@ -171,7 +178,7 @@ class ObservabilityDashboardController extends Controller
         try {
             $startTime = $this->calculateStartTime($timeRange);
             
-            $query = \DB::table('api_performance_log')
+            $query = DB::table('api_performance_log')
                 ->where('tenant_id', $tenantId)
                 ->where('request_started_at', '>=', $startTime);
 
@@ -199,7 +206,7 @@ class ObservabilityDashboardController extends Controller
                 ->first();
 
             // Performance by endpoint
-            $endpointPerformance = \DB::table('api_performance_log')
+            $endpointPerformance = DB::table('api_performance_log')
                 ->where('tenant_id', $tenantId)
                 ->where('request_started_at', '>=', $startTime)
                 ->selectRaw('
@@ -217,7 +224,7 @@ class ObservabilityDashboardController extends Controller
                 ->get();
 
             // Performance trends (hourly buckets)
-            $trends = \DB::table('api_performance_log')
+            $trends = DB::table('api_performance_log')
                 ->where('tenant_id', $tenantId)
                 ->where('request_started_at', '>=', $startTime)
                 ->selectRaw("
@@ -257,7 +264,6 @@ class ObservabilityDashboardController extends Controller
     public function getQueueHealth(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'queue_names' => 'sometimes|array',
             'queue_names.*' => 'string|max:100'
@@ -271,7 +277,7 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $timeRange = $request->input('time_range', '1h');
         $queueNames = $request->input('queue_names', []);
 
@@ -287,7 +293,7 @@ class ObservabilityDashboardController extends Controller
         try {
             $startTime = $this->calculateStartTime($timeRange);
             
-            $query = \DB::table('queue_health_metrics')
+            $query = DB::table('queue_health_metrics')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime);
 
@@ -310,7 +316,7 @@ class ObservabilityDashboardController extends Controller
                 ->get();
 
             // Queue trends
-            $trends = \DB::table('queue_health_metrics')
+            $trends = DB::table('queue_health_metrics')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime)
                 ->selectRaw("
@@ -352,7 +358,6 @@ class ObservabilityDashboardController extends Controller
     public function getAlerts(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'status' => 'sometimes|string|in:triggered,acknowledged,investigating,resolved,closed,suppressed',
             'severity' => 'sometimes|string|in:info,warning,critical',
             'limit' => 'sometimes|integer|min:1|max:100'
@@ -366,13 +371,13 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $status = $request->input('status');
         $severity = $request->input('severity');
         $limit = $request->input('limit', 50);
 
         try {
-            $query = \DB::table('alert_incidents')
+            $query = DB::table('alert_incidents')
                 ->where('tenant_id', $tenantId);
 
             if ($status) {
@@ -388,7 +393,7 @@ class ObservabilityDashboardController extends Controller
                 ->get();
 
             // Get alert statistics
-            $stats = \DB::table('alert_incidents')
+            $stats = DB::table('alert_incidents')
                 ->where('tenant_id', $tenantId)
                 ->where('triggered_at', '>=', now()->subDay())
                 ->selectRaw('
@@ -432,7 +437,6 @@ class ObservabilityDashboardController extends Controller
     public function createAlertRule(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'rule_name' => 'required|string|max:100',
             'rule_type' => 'required|string|in:threshold,anomaly,trend,composite',
             'metric_name' => 'required|string|max:100',
@@ -456,7 +460,7 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $ruleData = $request->only([
             'rule_name', 'rule_type', 'metric_name', 'metric_category',
             'conditions', 'severity_level', 'is_enabled', 'evaluation_interval',
@@ -481,7 +485,6 @@ class ObservabilityDashboardController extends Controller
     public function getResourceUsage(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'tenant_id' => 'required|string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'resource_types' => 'sometimes|array',
             'resource_types.*' => 'string|in:cpu,memory,storage,network,database'
@@ -495,14 +498,14 @@ class ObservabilityDashboardController extends Controller
             ], 400);
         }
 
-        $tenantId = $request->input('tenant_id');
+        $tenantId = $this->currentTenantId();
         $timeRange = $request->input('time_range', '24h');
         $resourceTypes = $request->input('resource_types', []);
 
         try {
             $startTime = $this->calculateStartTime($timeRange);
             
-            $query = \DB::table('tenant_resource_usage')
+            $query = DB::table('tenant_resource_usage')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime);
 
@@ -525,7 +528,7 @@ class ObservabilityDashboardController extends Controller
                 ->get();
 
             // Get usage trends
-            $trends = \DB::table('tenant_resource_usage')
+            $trends = DB::table('tenant_resource_usage')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime)
                 ->selectRaw("

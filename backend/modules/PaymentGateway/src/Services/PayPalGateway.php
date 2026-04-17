@@ -533,7 +533,9 @@ class PayPalGateway implements PaymentGatewayInterface
         $eventType = $data['event_type'] ?? null;
         $resource = $data['resource'] ?? [];
 
-        $transactionId = $resource['id'] ?? null;
+        $transactionId = $resource['supplementary_data']['related_ids']['order_id']
+            ?? $resource['id']
+            ?? null;
         $webhookId = $data['id'] ?? null;
 
         // Map event type to status

@@ -113,11 +113,13 @@ class ReportCache extends Model
      */
     public static function getCached(string $cacheKey, ?string $tenantId = null): ?self
     {
+        if ($tenantId === null) {
+            return null;
+        }
+
         $query = static::valid()->byCacheKey($cacheKey);
 
-        if ($tenantId !== null) {
-            $query->where('tenant_id', $tenantId);
-        }
+        $query->where('tenant_id', $tenantId);
 
         return $query->first();
     }

@@ -16,16 +16,24 @@ class PosTerminal extends Model
     protected $fillable = [
         'name',
         'code',
+        'store_id',
         'warehouse_id',
         'receipt_header',
         'receipt_footer',
         'is_active',
         'settings',
+        'customer_display_enabled',
+        'member_history_enabled',
+        'completed_promo_enabled',
+        'screensaver_media_playlist_id',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'settings' => 'array',
+        'customer_display_enabled' => 'boolean',
+        'member_history_enabled' => 'boolean',
+        'completed_promo_enabled' => 'boolean',
     ];
 
     public function warehouse(): BelongsTo

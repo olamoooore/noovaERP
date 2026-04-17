@@ -16,8 +16,7 @@ use App\Models\Tax;
 use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
-use Modules\POS\Models\PosPayment;
-use Modules\POS\Services\PosPostingService;
+use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\Loyalty\Services\RedemptionService;
 use Modules\Loyalty\Services\PointsEarningService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -349,7 +348,7 @@ class PosOrderController extends Controller
         ]));
     }
 
-    public function pay(Request $request, $posOrder, PosPostingService $posting)
+    public function pay(Request $request, $posOrder, PosPaymentCompletionService $paymentCompletionService)
     {
         $posOrder = PosOrder::findOrFail($posOrder);
 
@@ -363,7 +362,7 @@ class PosOrderController extends Controller
             'reference' => 'nullable|string|max:255',
         ]);
 
-        return DB::transaction(function () use ($validated, $posOrder, $posting) {
+        return DB::transaction(function () use ($validated, $posOrder, $paymentCompletionService) {
             $amount = (float) $validated['amount'];
             if (abs($amount - (float) $posOrder->total) > 0.01) {
                 abort(422, 'Payment amount must equal order total for now.');
@@ -381,7 +380,7 @@ class PosOrderController extends Controller
                     );
                 } catch (\Exception $e) {
                     // Log error but don't fail the order
-                    \Log::warning('Loyalty redemption failed for POS order', [
+                    Log::warning('Loyalty redemption failed for POS order', [
                         'order_id' => $posOrder->id,
                         'customer_id' => $posOrder->customer_id,
                         'points' => $posOrder->loyalty_points_redeemed,
@@ -390,66 +389,13 @@ class PosOrderController extends Controller
                 }
             }
 
-            PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method' => $validated['method'],
-                'amount' => $amount,
-                'reference' => $validated['reference'] ?? null,
-                'received_by' => TenantUserHelper::resolveTenantUserId(),
-            ]);
-
-            $entry = $posting->postPaidOrder(
-                $posOrder->load('items.variant', 'items.product'),
+            $posOrder = $paymentCompletionService->complete(
+                $posOrder,
                 $amount,
-                $validated['method']
+                $validated['method'],
+                $validated['reference'] ?? null,
+                TenantUserHelper::resolveTenantUserId(),
             );
-
-            // Deduct stock only after GL posting succeeds.
-            // Resolve warehouse from the POS terminal; fall back to default warehouse.
-            $terminal = $posOrder->terminal()->with('warehouse')->first();
-            $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
-
-            if ($warehouseId) {
-                $inventoryService = app(InventoryService::class);
-                foreach ($posOrder->items()->with(['product', 'variant'])->get() as $item) {
-                    $productId    = $item->variant ? $item->variant->product_id : $item->product_id;
-                    $trackInventory = $item->variant
-                        ? (bool) $item->variant->track_inventory
-                        : (bool) ($item->product?->track_inventory ?? false);
-
-                    if ($productId && $trackInventory) {
-                        try {
-                            $inventoryService->adjustStock(
-                                productId:     $productId,
-                                warehouseId:   $warehouseId,
-                                quantity:      $item->quantity,
-                                type:          'sale',
-                                reference:     $posOrder->order_number,
-                                referenceType: 'PosOrder',
-                                referenceId:   $posOrder->id,
-                            );
-                        } catch (\Exception $e) {
-                            Log::error('POS stock deduction failed', [
-                                'order_number' => $posOrder->order_number,
-                                'product_id'   => $productId,
-                                'error'        => $e->getMessage(),
-                            ]);
-                            throw $e;
-                        }
-                    }
-                }
-            } else {
-                Log::warning('POS pay: no warehouse found for stock deduction — stock not updated', [
-                    'order_number' => $posOrder->order_number,
-                ]);
-            }
-
-            $posOrder->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'journal_entry_id' => $entry->id,
-                'receipt_number' => PosOrder::generateReceiptNumber(),
-            ]);
 
             // Notifications
             try {
@@ -475,7 +421,7 @@ class PosOrderController extends Controller
                     Notification::send($admins, new AdminOrderAlert($posOrder, 'POS'));
                 }
             } catch (\Exception $e) {
-                \Log::error('POS Notification Failed: ' . $e->getMessage());
+                Log::error('POS Notification Failed: ' . $e->getMessage());
             }
 
             // Award loyalty points for the purchase (after payment)
@@ -492,7 +438,7 @@ class PosOrderController extends Controller
                     );
                 } catch (\Exception $e) {
                     // Log error but don't fail the order
-                    \Log::warning('Loyalty points earning failed for POS order', [
+                    Log::warning('Loyalty points earning failed for POS order', [
                         'order_id' => $posOrder->id,
                         'customer_id' => $posOrder->customer_id,
                         'error' => $e->getMessage(),

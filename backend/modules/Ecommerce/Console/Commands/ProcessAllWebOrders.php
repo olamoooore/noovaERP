@@ -4,14 +4,22 @@ namespace Modules\Ecommerce\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 use App\Models\Tenant;
 use App\Models\StockMovement;
 use App\Models\JournalEntryLink;
 
 class ProcessAllWebOrders extends Command
 {
+    public function __construct(
+        private readonly PaymentTransactionCompletionService $completionService,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * The name and signature of the console command.
      *
@@ -63,7 +71,7 @@ class ProcessAllWebOrders extends Command
     protected function processTenantOrders()
     {
         // Check if web_orders table exists
-        if (!\Schema::hasTable('web_orders')) {
+        if (!Schema::hasTable('web_orders')) {
             $this->info('  web_orders table does not exist, skipping tenant.');
             return;
         }
@@ -136,46 +144,36 @@ class ProcessAllWebOrders extends Command
         }
         
         try {
-            // Create invoice if needed
-            if (!$hasInvoice) {
-                $invoice = $order->convertToInvoice();
-                $this->info("    Created invoice: {$invoice->invoice_number}");
-                $order->refresh();
-            }
-            
-            // Create journal entry if needed
+            $transaction = PaymentTransaction::where('transaction_id', $order->payment_transaction_id)
+                ->orWhereJsonContains('metadata->order_id', $order->id)
+                ->first();
+
             if (!$hasJournalEntry) {
-                $transaction = PaymentTransaction::where('transaction_id', $order->payment_transaction_id)
-                    ->orWhereJsonContains('metadata->order_id', $order->id)
+                if (!$transaction) {
+                    $this->warn("    No payment transaction found for canonical completion");
+                    return 'skipped';
+                }
+
+                $transaction = $this->completionService->complete(
+                    $transaction,
+                    $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
+                );
+
+                $transaction->update([
+                    'status' => 'completed',
+                    'processed_at' => $transaction->processed_at ?? now(),
+                    'error_message' => null,
+                ]);
+
+                $order->refresh();
+
+                $postingLink = JournalEntryLink::where('source_document_type', 'web_order')
+                    ->where('source_document_id', $order->id)
+                    ->where('relation_type', 'post')
                     ->first();
-                
-                if ($transaction) {
-                    $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
-                    $paymentMethod = $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card';
-                    
-                    $entry = $postingService->postPaidOrder(
-                        $order,
-                        (float) $order->total,
-                        $paymentMethod
-                    );
-                    
-                    if ($entry) {
-                        $this->info("    Created journal entry: {$entry->entry_number}");
-                    }
-                } else {
-                    $this->warn("    No payment transaction found for journal entry");
-                    
-                    // Still try to post without transaction
-                    $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
-                    $entry = $postingService->postPaidOrder(
-                        $order,
-                        (float) $order->total,
-                        'card'
-                    );
-                    
-                    if ($entry) {
-                        $this->info("    Created journal entry: {$entry->entry_number}");
-                    }
+
+                if ($postingLink) {
+                    $this->info("    Canonical completion created journal entry link: {$postingLink->journal_entry_id}");
                 }
             } else {
                 // Journal entry exists but stock might not be deducted (must be backed by posting link).

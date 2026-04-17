@@ -6,11 +6,13 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\User;
 use Closure;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
 use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 use Modules\PaymentGateway\Events\PaymentSuccessful;
 use Modules\PaymentGateway\Models\PaymentGateway;
@@ -74,6 +76,20 @@ class PaymentLifecycleHardeningTest extends TestCase
             database_path('migrations/tenant/2024_01_01_000001_create_users_table.php'),
             database_path('migrations/tenant/2024_01_01_100001_create_chart_of_accounts_table.php'),
             database_path('migrations/tenant/2024_01_01_100002_create_journal_entries_table.php'),
+            database_path('migrations/tenant/2025_12_15_150000_fix_journal_balance_trigger.php'),
+            database_path('migrations/tenant/2025_12_23_110001_create_fiscal_periods_table.php'),
+            database_path('migrations/tenant/2026_01_06_000001_create_journals_table.php'),
+            database_path('migrations/tenant/2026_01_06_000003_create_lock_dates_tables.php'),
+            database_path('migrations/tenant/2026_01_06_000004_create_currencies_and_exchange_rates_tables.php'),
+            database_path('migrations/tenant/2026_01_06_000005_create_analytic_accounts_table.php'),
+            database_path('migrations/tenant/2026_01_06_000010_add_analytic_dimensions_to_journal_entry_lines.php'),
+            database_path('migrations/tenant/2026_03_25_000004_create_journal_entry_links_table.php'),
+            database_path('migrations/tenant/2026_03_25_000002_create_account_mappings_table.php'),
+            database_path('migrations/tenant/2026_03_25_000003_create_posting_audit_logs_table.php'),
+            database_path('migrations/tenant/2026_03_29_000012_create_entity_model_tables.php'),
+            database_path('migrations/tenant/2026_03_29_000002_create_account_roles_table.php'),
+            database_path('migrations/tenant/2026_03_29_000003_create_entity_account_roles_table.php'),
+            database_path('migrations/tenant/2026_03_29_000016_add_entity_columns_to_journal_entries.php'),
             database_path('migrations/tenant/2024_01_01_200001_create_products_table.php'),
             database_path('migrations/tenant/2024_01_01_200002_create_customers_table.php'),
             database_path('migrations/tenant/2024_01_01_200003_create_invoices_table.php'),
@@ -88,6 +104,17 @@ class PaymentLifecycleHardeningTest extends TestCase
                 '--realpath' => true,
                 '--force' => true,
             ]);
+        }
+
+        $this->ensureCustomerSchemaCompatibility();
+    }
+
+    private function ensureCustomerSchemaCompatibility(): void
+    {
+        if (!Schema::hasColumn('customers', 'marketing_opt_in')) {
+            Schema::table('customers', function (Blueprint $table) {
+                $table->boolean('marketing_opt_in')->default(false);
+            });
         }
     }
 
@@ -145,7 +172,73 @@ class PaymentLifecycleHardeningTest extends TestCase
         $this->assertSame(1, Payment::where('reference', $transaction->transaction_id)->count());
     }
 
-    public function test_process_payment_leaves_processed_at_null_until_outer_completion(): void
+    public function test_duplicate_invoice_webhook_does_not_double_apply_invoice_balance(): void
+    {
+        Notification::fake();
+        Event::fake([PaymentSuccessful::class]);
+
+        [$gateway, $transaction, $invoice] = $this->createInvoiceTransactionFixture();
+
+        $webhookData = [
+            'transaction_id' => $transaction->transaction_id,
+            'webhook_id' => 'hitpay_dup_guard',
+            'payment_method' => 'card',
+            'raw_data' => ['status' => 'completed'],
+            'metadata' => ['source' => 'test'],
+        ];
+
+        $controller = $this->makeWebhookController();
+        $controller->handleSuccess($webhookData, $gateway);
+        $controller->handleSuccess([
+            ...$webhookData,
+            'webhook_id' => 'hitpay_dup_guard_retry',
+        ], $gateway);
+
+        $transaction->refresh();
+        $invoice->refresh();
+
+        $this->assertSame('completed', $transaction->status);
+        $this->assertNotNull($transaction->processed_at);
+        $this->assertSame(1, $transaction->webhook_attempts);
+        $this->assertSame(1, Payment::where('reference', $transaction->transaction_id)->count());
+        $this->assertSame(50.0, (float) $invoice->paid_amount);
+        $this->assertSame(0.0, (float) $invoice->balance);
+    }
+
+    public function test_webhook_failure_resets_transaction_back_to_pending_until_local_processing_finishes(): void
+    {
+        Notification::fake();
+        Event::fake([PaymentSuccessful::class]);
+
+        [$gateway, $transaction] = $this->createInvoiceTransactionFixture();
+
+        $controller = $this->makeWebhookController(
+            fn () => throw new \RuntimeException('Simulated downstream failure')
+        );
+
+        $webhookData = [
+            'transaction_id' => $transaction->transaction_id,
+            'webhook_id' => 'hitpay_processing_guard',
+            'payment_method' => 'card',
+            'raw_data' => ['status' => 'completed'],
+            'metadata' => ['source' => 'test'],
+        ];
+
+        try {
+            $controller->handleSuccess($webhookData, $gateway);
+            $this->fail('Expected simulated webhook failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Simulated downstream failure', $e->getMessage());
+        }
+
+        $transaction->refresh();
+
+        $this->assertSame('pending', $transaction->status);
+        $this->assertNull($transaction->processed_at);
+        $this->assertSame('Simulated downstream failure', $transaction->error_message);
+    }
+
+    public function test_process_payment_sets_processed_at_when_local_completion_succeeds(): void
     {
         Notification::fake();
 
@@ -158,7 +251,7 @@ class PaymentLifecycleHardeningTest extends TestCase
         $invoice->refresh();
 
         $this->assertSame('pending', $transaction->status);
-        $this->assertNull($transaction->processed_at);
+        $this->assertNotNull($transaction->processed_at);
         $this->assertSame('paid', $invoice->status);
         $this->assertSame(50.0, (float) $invoice->paid_amount);
         $this->assertSame(0.0, (float) $invoice->balance);
@@ -230,6 +323,8 @@ class PaymentLifecycleHardeningTest extends TestCase
     {
         $user = User::factory()->create();
 
+        $this->seedAccountingPostingFixtures($user->id);
+
         $customerId = DB::table('customers')->insertGetId([
             'name' => 'Webhook Test Customer',
             'email' => 'webhook@example.com',
@@ -241,7 +336,7 @@ class PaymentLifecycleHardeningTest extends TestCase
 
         $invoice = Invoice::create([
             'invoice_number' => 'INV-TEST-001',
-            'customer_id' => null,
+            'customer_id' => $customerId,
             'invoice_date' => now()->toDateString(),
             'due_date' => now()->addDays(30)->toDateString(),
             'status' => 'sent',
@@ -268,6 +363,50 @@ class PaymentLifecycleHardeningTest extends TestCase
         ]);
 
         return [$gateway, $transaction, $invoice];
+    }
+
+    private function seedAccountingPostingFixtures(int $userId): void
+    {
+        $periodStart = now()->startOfMonth()->toDateString();
+        $periodEnd = now()->endOfMonth()->toDateString();
+        $periodCode = now()->format('Y-m');
+
+        if (!DB::table('fiscal_periods')->where('code', $periodCode)->exists()) {
+            DB::table('fiscal_periods')->insert([
+                'name' => now()->format('F Y'),
+                'code' => $periodCode,
+                'period_start' => $periodStart,
+                'period_end' => $periodEnd,
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        foreach ([
+            'cash' => '1010',
+            'bank' => '1020',
+            'accounts_receivable' => '1100',
+        ] as $mappingKey => $accountCode) {
+            if (DB::table('account_mappings')->where('mapping_key', $mappingKey)->whereNull('document_type')->exists()) {
+                continue;
+            }
+
+            $accountId = DB::table('chart_of_accounts')->where('code', $accountCode)->value('id');
+
+            DB::table('account_mappings')->insert([
+                'mapping_key' => $mappingKey,
+                'account_id' => $accountId,
+                'document_type' => null,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function createStandaloneTransactionFixture(): array

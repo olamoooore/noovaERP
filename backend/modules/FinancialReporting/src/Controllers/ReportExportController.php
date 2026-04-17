@@ -5,12 +5,32 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 
 class ReportExportController extends Controller
 {
+    private function currentTenantId(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('Report export requires an active tenant context.');
+        }
+
+        return (string) tenant('id');
+    }
+
+    private function buildDownloadUrl(string $filename): string
+    {
+        return URL::temporarySignedRoute(
+            'reports.export.download',
+            now()->addMinutes(15),
+            ['file' => $filename]
+        );
+    }
+
     public function __construct(
         protected PdfExportService $pdfExportService,
         protected ExcelExportService $excelExportService,
@@ -43,9 +63,7 @@ class ReportExportController extends Controller
             }
 
             // Generate download URL
-            $downloadUrl = route('reports.export.download', [
-                'file' => basename($filePath)
-            ]);
+            $downloadUrl = $this->buildDownloadUrl(basename($filePath));
 
             return response()->json([
                 'success' => true,
@@ -56,7 +74,7 @@ class ReportExportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('PDF export failed', [
+            Log::error('PDF export failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -84,9 +102,7 @@ class ReportExportController extends Controller
 
             $filePath = $this->excelExportService->exportReport($reportData, $filename);
 
-            $downloadUrl = route('reports.export.download', [
-                'file' => basename($filePath)
-            ]);
+            $downloadUrl = $this->buildDownloadUrl(basename($filePath));
 
             return response()->json([
                 'success' => true,
@@ -97,7 +113,7 @@ class ReportExportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Excel export failed', [
+            Log::error('Excel export failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -125,9 +141,7 @@ class ReportExportController extends Controller
 
             $filePath = $this->csvExportService->exportReport($reportData, $filename);
 
-            $downloadUrl = route('reports.export.download', [
-                'file' => basename($filePath)
-            ]);
+            $downloadUrl = $this->buildDownloadUrl(basename($filePath));
 
             return response()->json([
                 'success' => true,
@@ -138,7 +152,7 @@ class ReportExportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('CSV export failed', [
+            Log::error('CSV export failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -167,7 +181,7 @@ class ReportExportController extends Controller
             return $this->csvExportService->streamCsv($reportData, $filename);
 
         } catch (\Exception $e) {
-            \Log::error('CSV stream failed', [
+            Log::error('CSV stream failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -183,7 +197,11 @@ class ReportExportController extends Controller
      */
     public function download(string $file)
     {
-        $filePath = storage_path('app/reports/' . $file);
+        abort_unless(request()->hasValidSignature(), 403, 'Invalid or expired download link');
+
+        $tenantId = $this->currentTenantId();
+        $safeFile = basename($file);
+        $filePath = storage_path('app/reports/' . $tenantId . '/' . $safeFile);
 
         if (!file_exists($filePath)) {
             abort(404, 'File not found');
@@ -222,7 +240,7 @@ class ReportExportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Cleanup failed', [
+            Log::error('Cleanup failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -233,4 +251,3 @@ class ReportExportController extends Controller
         }
     }
 }
-

@@ -14,6 +14,7 @@ class PdfExportServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->bindTenantContext();
         $this->service = new PdfExportService();
         Storage::fake('local');
     }
@@ -160,9 +161,9 @@ class PdfExportServiceTest extends TenantTestCase
     public function it_cleans_up_old_exports()
     {
         // Create some old files
-        Storage::disk('local')->put('reports/old_report_1.pdf', 'content');
-        Storage::disk('local')->put('reports/old_report_2.pdf', 'content');
-        Storage::disk('local')->put('reports/recent_report.pdf', 'content');
+        Storage::disk('local')->put($this->tenantScopedPath('old_report_1.pdf'), 'content');
+        Storage::disk('local')->put($this->tenantScopedPath('old_report_2.pdf'), 'content');
+        Storage::disk('local')->put($this->tenantScopedPath('recent_report.pdf'), 'content');
 
         // Mock file modification times
         $oldTime = now()->subDays(10)->timestamp;

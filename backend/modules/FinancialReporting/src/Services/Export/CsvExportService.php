@@ -3,16 +3,35 @@
 namespace Modules\FinancialReporting\Services\Export;
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class CsvExportService
 {
+    private function tenantExportDirectory(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('Report exports require an active tenant context.');
+        }
+
+        return 'reports/' . tenant('id');
+    }
+
+    private function exportFilename(?string $filename): string
+    {
+        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_' . now()->format('Y-m-d_His');
+        $safeName = Str::of($name)->ascii()->replaceMatches('/[^A-Za-z0-9._-]+/', '_')->trim('_')->value();
+        $safeName = $safeName !== '' ? $safeName : 'report';
+
+        return $safeName . '_' . Str::lower(Str::random(16)) . '.csv';
+    }
+
     /**
      * Export report data to CSV
      */
     public function exportReport(array $reportData, string $filename = null): string
     {
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His') . '.csv';
-        $path = 'reports/' . $filename;
+        $filename = $this->exportFilename($filename);
+        $path = $this->tenantExportDirectory() . '/' . $filename;
 
         // Create CSV content
         $csvContent = $this->generateCsvContent($reportData);
@@ -84,8 +103,8 @@ class CsvExportService
      */
     public function exportMultipleReports(array $reports, string $filename = null): string
     {
-        $filename = $filename ?? 'reports_' . now()->format('Y-m-d_His') . '.csv';
-        $path = 'reports/' . $filename;
+        $filename = $this->exportFilename($filename ?? 'reports');
+        $path = $this->tenantExportDirectory() . '/' . $filename;
 
         $output = fopen('php://temp', 'r+');
 
@@ -146,7 +165,8 @@ class CsvExportService
      */
     public function streamCsv(array $reportData, string $filename = null): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His') . '.csv';
+        $this->tenantExportDirectory();
+        $filename = $this->exportFilename($filename);
 
         return response()->stream(function() use ($reportData) {
             $output = fopen('php://output', 'w');
@@ -196,7 +216,7 @@ class CsvExportService
      */
     public function cleanupOldExports(int $daysOld = 7): int
     {
-        $files = Storage::disk('local')->files('reports');
+        $files = Storage::disk('local')->allFiles($this->tenantExportDirectory());
         $deleted = 0;
         $cutoffTime = now()->subDays($daysOld)->timestamp;
 

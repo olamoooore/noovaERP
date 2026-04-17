@@ -34,7 +34,8 @@ class AuditFixesTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
 
-        $this->assertStringContainsString("increment('paid_amount'", $source);
+        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
+        $this->assertStringContainsString('app(PaymentTransactionCompletionService::class)->complete(', $source);
     }
 
     // ── GAP-C006: Customer.updateOutstanding includes posted ─────────────
@@ -166,14 +167,24 @@ class AuditFixesTest extends TestCase
         $this->assertStringContainsString("return response()->json(['error' => 'Invalid signature'], 400)", $source);
     }
 
-    // ── GAP-C002: Stripe webhook has tenancy initialization ─────────────
+    // ── GAP-C002: Webhooks require middleware-owned tenant context ──────
 
-    public function test_stripe_webhook_has_tenancy(): void
+    public function test_stripe_webhook_requires_pre_resolved_tenant_context(): void
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
 
-        $this->assertStringContainsString('initializeTenancyForTransaction', $source);
-        $this->assertStringContainsString('$tenant->run(', $source);
+        $this->assertStringContainsString('ensureTenantContext', $source);
+        $this->assertStringContainsString('Tenant context not resolved', $source);
+        $this->assertStringNotContainsString('initializeTenancyForTransaction', $source);
+        $this->assertStringNotContainsString('$tenant->run(', $source);
+    }
+
+    public function test_payment_transactions_sync_shared_webhook_lookup(): void
+    {
+        $source = file_get_contents(base_path('modules/PaymentGateway/src/Models/PaymentTransaction.php'));
+
+        $this->assertStringContainsString('syncWebhookTenantLookup', $source);
+        $this->assertStringContainsString('payment_webhook_tenant_lookups', $source);
     }
 
     // ── GoodsReceiptService and Controller exist ─────────────────────────
@@ -204,19 +215,38 @@ class AuditFixesTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'));
 
-        $this->assertStringContainsString('WebOrderPostingService', $source);
-        $this->assertStringContainsString('postPaidOrder(', $source);
-        $this->assertStringContainsString('journal_entry_id', $source);
+        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
+        $this->assertStringContainsString('completionService->complete(', $source);
         $this->assertStringContainsString('PaymentTransaction::where', $source);
-        $this->assertStringContainsString("'processed_at' => now()", $source);
+        $this->assertStringContainsString("'status' => 'completed'", $source);
     }
 
     public function test_web_checkout_requires_successful_invoice_posting_after_payment_confirmation(): void
     {
         $source = file_get_contents(base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'));
 
-        $this->assertStringNotContainsString('Failed to convert web order to invoice', $source);
-        $this->assertStringContainsString('did not produce a journal entry', $source);
+        $this->assertStringContainsString('Payment transaction not found for confirmed web order payment.', $source);
+        $this->assertStringContainsString('completionService->complete(', $source);
+    }
+
+    public function test_fix_stuck_web_orders_delegates_to_canonical_completion_service(): void
+    {
+        $source = file_get_contents(base_path('modules/PaymentGateway/Console/Commands/FixStuckWebOrders.php'));
+
+        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
+        $this->assertStringContainsString('completionService->complete(', $source);
+        $this->assertStringNotContainsString('recordChannelPayment($invoice', $source);
+        $this->assertStringNotContainsString('postToAccounting(', $source);
+    }
+
+    public function test_process_all_web_orders_delegates_transaction_repair_to_canonical_completion_service(): void
+    {
+        $source = file_get_contents(base_path('modules/Ecommerce/Console/Commands/ProcessAllWebOrders.php'));
+
+        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
+        $this->assertStringContainsString('completionService->complete(', $source);
+        $this->assertStringNotContainsString('convertToInvoice()', $source);
+        $this->assertStringNotContainsString('postPaidOrder(', $source);
     }
 
     public function test_web_checkout_persists_fulfillment_warehouse_context(): void
@@ -266,14 +296,14 @@ class AuditFixesTest extends TestCase
 
     public function test_pos_payment_posts_gl_before_stock_deduction(): void
     {
-        $source = file_get_contents(base_path('modules/POS/src/Http/Controllers/PosOrderController.php'));
+        $source = file_get_contents(base_path('modules/POS/src/Services/PosPaymentCompletionService.php'));
 
-        $postPaidOrderPosition = strpos($source, 'postPaidOrder(');
+        $completePosition = strpos($source, 'posPostingService->postPaidOrder(');
         $adjustStockPosition = strpos($source, 'adjustStock(');
 
-        $this->assertNotFalse($postPaidOrderPosition);
+        $this->assertNotFalse($completePosition);
         $this->assertNotFalse($adjustStockPosition);
-        $this->assertLessThan($adjustStockPosition, $postPaidOrderPosition);
+        $this->assertLessThan($adjustStockPosition, $completePosition);
     }
 
     public function test_iot_webhook_uses_duplicate_guards_and_canonical_sale_movements(): void
@@ -282,9 +312,8 @@ class AuditFixesTest extends TestCase
 
         $this->assertStringContainsString('Skipping already-paid IoT webhook order', $source);
         $this->assertStringContainsString('Skipping duplicate IoT payment webhook', $source);
-        $this->assertStringContainsString("where('reference_type', 'PosOrder')", $source);
-        $this->assertStringContainsString("->where('type', 'sale')", $source);
-        $this->assertStringContainsString("type: 'sale'", $source);
+        $this->assertStringContainsString('PosPaymentCompletionService', $source);
+        $this->assertStringContainsString('paymentCompletionService->complete(', $source);
     }
 
     public function test_iot_terminal_uses_duplicate_guards_and_canonical_sale_movements(): void
@@ -293,9 +322,8 @@ class AuditFixesTest extends TestCase
 
         $this->assertStringContainsString('Skipping already-paid IoT terminal order', $source);
         $this->assertStringContainsString('Skipping duplicate IoT terminal payment', $source);
-        $this->assertStringContainsString("where('reference_type', 'PosOrder')", $source);
-        $this->assertStringContainsString("->where('type', 'sale')", $source);
-        $this->assertStringContainsString("type: 'sale'", $source);
+        $this->assertStringContainsString('PosPaymentCompletionService', $source);
+        $this->assertStringContainsString('paymentCompletionService->complete(', $source);
     }
 
     public function test_payment_service_no_longer_marks_transactions_processed_on_gateway_confirm_only(): void
@@ -313,15 +341,27 @@ class AuditFixesTest extends TestCase
         $this->assertStringContainsString("'status' => 'processing'", $source);
         $this->assertStringContainsString("'status' => 'completed'", $source);
         $this->assertStringContainsString("'status' => 'pending'", $source);
+        $this->assertStringContainsString('PaymentTransactionCompletionService::class', $source);
     }
 
     public function test_payment_webhook_propagates_web_order_processing_failures(): void
     {
+        $source = file_get_contents(base_path('modules/PaymentGateway/src/Services/PaymentTransactionCompletionService.php'));
+
+        $this->assertStringContainsString('No invoice, POS order, or web order found for transaction.', $source);
+        $this->assertStringContainsString('Invoice not created for web order.', $source);
+        $this->assertStringContainsString('Web order payment was confirmed but posting did not produce a journal entry.', $source);
+    }
+
+    public function test_payment_webhook_no_longer_owns_web_order_completion_logic(): void
+    {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
 
-        $this->assertStringContainsString('WebOrder not found for payment transaction.', $source);
-        $this->assertStringContainsString('Invoice not created for web order.', $source);
-        $this->assertStringContainsString('throw $e;', $source);
+        $this->assertStringContainsString('PaymentTransactionCompletionService::class', $source);
+        $this->assertStringNotContainsString('processWebOrderPayment(', $source);
+        $this->assertStringNotContainsString('postToAccounting(', $source);
+        $this->assertStringNotContainsString('awardLoyaltyPoints(', $source);
+        $this->assertStringNotContainsString('updateCustomerStats(', $source);
     }
 
     // ── R19: bills.vendor_id RESTRICT delete ─────────────────────────────
@@ -353,6 +393,24 @@ class AuditFixesTest extends TestCase
 
         $this->assertStringContainsString('FeatureGateService', $source);
         $this->assertStringContainsString('featureGate', $source);
+    }
+
+    public function test_feature_controller_fails_closed_without_tenant_context_and_no_legacy_fallback(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Api/FeatureController.php'));
+
+        $this->assertStringContainsString("return response()->json(['message' => 'No tenant context available'], 403);", $source);
+        $this->assertStringNotContainsString('TenantFeature', $source);
+    }
+
+    public function test_feature_controller_no_longer_self_grants_canonical_entitlements(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Api/FeatureController.php'));
+
+        $this->assertStringNotContainsString('TenantConfigurationService', $source);
+        $this->assertStringNotContainsString('syncToCanonicalEntitlements', $source);
+        $this->assertStringNotContainsString('override_include', $source);
+        $this->assertStringContainsString('Feature entitlement changes must be managed through plan configuration.', $source);
     }
 
     // ── GAP-M009: ChartOfAccountsController validates input ──────────────
@@ -502,9 +560,13 @@ class AuditFixesTest extends TestCase
         $this->assertStringContainsString('InvoiceService', $source);
         $this->assertStringContainsString('invoiceService->recordPayment(', $source);
 
-        // Should delegate POS payments to PosPostingService
-        $this->assertStringContainsString('PosPostingService', $source);
-        $this->assertStringContainsString('posPostingService->postPaidOrder(', $source);
+        // Should delegate POS payments to the shared POS completion service
+        $this->assertStringContainsString('PosPaymentCompletionService', $source);
+        $this->assertStringContainsString('posPaymentCompletionService->complete(', $source);
+
+        // Should also own web-order completion convergence
+        $this->assertStringContainsString('WebOrderPostingService', $source);
+        $this->assertStringContainsString('completeWebOrderPayment', $source);
     }
 
     // ── Actor resolution hardening: canonical services use TenantUserHelper ──
@@ -541,6 +603,16 @@ class AuditFixesTest extends TestCase
 
         $this->assertStringNotContainsString("'created_by' => auth()->id()", $source);
         $this->assertStringNotContainsString("'received_by' => auth()->id()", $source);
+    }
+
+    public function test_gdpr_export_job_uses_tenant_owned_storage_namespace(): void
+    {
+        $source = file_get_contents(base_path('modules/EventManagement/Jobs/GDPRExportJob.php'));
+
+        $this->assertStringContainsString('gdpr_exports/', $source);
+        $this->assertStringContainsString('currentTenantId()', $source);
+        $this->assertStringContainsString('exportDirectory()', $source);
+        $this->assertStringNotContainsString("storage_path('app/gdpr_exports')", $source);
     }
 
     // ── Critical Fix: Refunds now post GL reversal ────────────────────────
@@ -912,23 +984,30 @@ class AuditFixesTest extends TestCase
         // Should NOT scan all tenants (the vulnerability)
         $this->assertStringNotContainsString('Tenant::all()', $source);
 
-        // Should query central database
-        $this->assertStringContainsString('payment_transactions', $source);
+        // Should query the shared central lookup table
+        $this->assertStringContainsString('payment_webhook_tenant_lookups', $source);
+        $this->assertStringContainsString("['data']['object']['payment_intent']", $source);
+        $this->assertStringContainsString("input('resource.supplementary_data.related_ids.order_id')", $source);
     }
 
-    public function test_webhook_controller_has_security_notes(): void
+    public function test_gateway_webhook_extractors_use_canonical_transaction_ids(): void
+    {
+        $stripeSource = file_get_contents(base_path('modules/PaymentGateway/src/Services/StripeGateway.php'));
+        $paypalSource = file_get_contents(base_path('modules/PaymentGateway/src/Services/PayPalGateway.php'));
+
+        $this->assertStringContainsString("\$data['payment_intent'] ?? \$data['id'] ?? null", $stripeSource);
+        $this->assertStringContainsString("supplementary_data']['related_ids']['order_id']", $paypalSource);
+    }
+
+    public function test_webhook_controller_removes_legacy_tenant_scan(): void
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
 
-        // Should document the security vulnerability
-        $this->assertStringContainsString('SECURITY NOTE', $source);
-        $this->assertStringContainsString('cross-tenant enumeration', $source);
-
-        // Should note the caching mitigation
-        $this->assertStringContainsString('Cache::put($cacheKey', $source);
-        $this->assertStringContainsString('webhook_tenant_lookup', $source);
-
-        // Should have deprecation notice
-        $this->assertStringContainsString('DEPRECATED', $source);
+        $this->assertStringContainsString('ensureTenantContext', $source);
+        $this->assertStringContainsString('Tenant context not resolved', $source);
+        $this->assertStringNotContainsString('Tenant::all()', $source);
+        $this->assertStringNotContainsString('cross-tenant enumeration', $source);
+        $this->assertStringNotContainsString('webhook_tenant_lookup', $source);
+        $this->assertStringNotContainsString('DEPRECATED', $source);
     }
 }

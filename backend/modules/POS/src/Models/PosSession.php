@@ -17,7 +17,11 @@ class PosSession extends Model
         'terminal_id',
         'user_id',
         'session_number',
+        'order_reference',
         'status',
+        'current_display_state',
+        'member_id',
+        'focused_line_id',
         'opening_balance',
         'closing_balance',
         'expected_balance',
@@ -25,6 +29,7 @@ class PosSession extends Model
         'opening_notes',
         'closing_notes',
         'opened_at',
+        'last_activity_at',
         'closed_at',
         'closed_by',
     ];
@@ -35,6 +40,7 @@ class PosSession extends Model
         'expected_balance' => 'decimal:2',
         'difference' => 'decimal:2',
         'opened_at' => 'datetime',
+        'last_activity_at' => 'datetime',
         'closed_at' => 'datetime',
     ];
 

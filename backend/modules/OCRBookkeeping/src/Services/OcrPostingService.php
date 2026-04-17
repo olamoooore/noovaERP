@@ -502,14 +502,20 @@ class OcrPostingService
         
         try {
             $date = \Carbon\Carbon::parse($journalEntry->entry_date);
+            $tenantId = function_exists('tenant') && tenant() ? (string) tenant()->getTenantKey() : null;
+
+            if (!$tenantId) {
+                throw new \RuntimeException('Unable to dispatch BI update job without tenant context.');
+            }
             
-            \Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary::dispatch($date)
+            \Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary::dispatch($date, $tenantId)
                 ->onQueue('bi-updates')
                 ->delay(now()->addSeconds(30)); // Delay to batch multiple updates
             
             Log::info("BI update job dispatched", [
                 'journal_entry_id' => $journalEntry->id,
                 'entry_date' => $date->format('Y-m-d'),
+                'tenant_id' => $tenantId,
             ]);
             
         } catch (\Exception $e) {

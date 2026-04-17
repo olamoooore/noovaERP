@@ -8,11 +8,8 @@ use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
-use Modules\POS\Services\PosPostingService;
+use Modules\POS\Services\PosPaymentCompletionService;
 use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Services\InventoryService;
-use App\Models\StockMovement;
-use App\Models\Warehouse;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -25,7 +22,7 @@ class IoTTerminalController extends Controller
 {
     public function __construct(
         protected DeviceManager $deviceManager,
-        protected PosPostingService $postingService
+        protected PosPaymentCompletionService $paymentCompletionService
     ) {}
 
     /**
@@ -356,59 +353,13 @@ class IoTTerminalController extends Controller
                 return;
             }
 
-            // Create payment record
-            PosPayment::create([
-                'pos_order_id' => $order->id,
-                'method' => $paymentMethod,
-                'amount' => $amount,
-                'reference' => $paymentId,
-                'received_by' => $order->created_by,
-            ]);
-
-            // Post to accounting FIRST — GL must succeed before stock mutation
-            $entry = $this->postingService->postPaidOrder(
-                $order->load('items.variant', 'items.product'),
+            $order = $this->paymentCompletionService->complete(
+                $order,
                 $amount,
-                $paymentMethod
+                $paymentMethod,
+                $paymentId,
+                $order->created_by,
             );
-
-            // Adjust inventory via canonical InventoryService
-            $inventoryService = app(InventoryService::class);
-            $defaultWarehouse = Warehouse::getDefault();
-            if ($defaultWarehouse) {
-                foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
-                    $productId = $item->product_id;
-                    if (($item->variant && $item->variant->track_inventory) || ($item->product && $item->product->track_inventory)) {
-                        $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                            ->where('reference_id', $order->id)
-                            ->where('type', 'sale')
-                            ->where('product_id', $productId)
-                            ->sum('quantity');
-
-                        $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-                        if ($remainingToDeduct <= 0) {
-                            continue;
-                        }
-
-                        $inventoryService->adjustStock(
-                            productId: $productId,
-                            warehouseId: $defaultWarehouse->id,
-                            quantity: $remainingToDeduct,
-                            type: 'sale',
-                            reference: $order->order_number,
-                            referenceType: 'PosOrder',
-                            referenceId: $order->id,
-                        );
-                    }
-                }
-            }
-
-            // Update order
-            $order->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'journal_entry_id' => $entry->id,
-            ]);
 
             // Update terminal last seen timestamp
             $device->markOnline();
@@ -422,6 +373,7 @@ class IoTTerminalController extends Controller
                 'order_id' => $order->id,
                 'payment_id' => $payload['payment_id'] ?? null,
                 'amount' => $amount,
+                'journal_entry_id' => $order->journal_entry_id,
             ]);
         });
     }

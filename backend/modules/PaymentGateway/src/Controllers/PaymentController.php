@@ -8,11 +8,14 @@ use App\Models\Payment;
 use App\Services\PaymentRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Validation\Rule;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
+use Modules\POS\Models\PosOrder;
 
 class PaymentController extends Controller
 {
@@ -127,10 +130,9 @@ class PaymentController extends Controller
                     $result['metadata'] ?? []
                 );
 
-                // Use firstOrCreate to handle idempotency atomically
-                // Note: payment_transactions table is in public schema.
-                // For POS orders, customer_id may be in tenant schema only,
-                // so we skip it to avoid FK violations. It's stored in metadata.
+                // Use firstOrCreate to handle idempotency atomically for the
+                // tenant-owned transaction record. Webhook tenant resolution is
+                // synchronized separately into a shared central lookup table.
                 $customerId = $invoice?->customer_id ?? null;
 
                 $transaction = PaymentTransaction::firstOrCreate(
@@ -145,6 +147,8 @@ class PaymentController extends Controller
                         'metadata' => $transactionMetadata,
                     ]
                 );
+
+                $transaction->syncWebhookTenantLookup();
 
                 if ($transaction->wasRecentlyCreated) {
                     \Log::info('Created new payment transaction', [
@@ -423,212 +427,6 @@ class PaymentController extends Controller
             'paid_amount' => $invoice->paid_amount,
             'balance' => $invoice->balance,
         ]);
-    }
-
-    /**
-     * Process completed payment for POS order (internal helper)
-     */
-    protected function processCompletedPosOrderPayment(PaymentTransaction $transaction, PosOrder $posOrder)
-    {
-        // First, update POS order status (critical - must succeed)
-        DB::transaction(function () use ($transaction, $posOrder) {
-            \Log::info('Processing completed POS order payment', [
-                'transaction_id' => $transaction->transaction_id,
-                'pos_order_id' => $posOrder->id,
-                'pos_order_status' => $posOrder->status,
-            ]);
-
-            $receivedBy = TenantUserHelper::requireTenantUserId($posOrder->created_by);
-
-            $existingPayment = \Modules\POS\Models\PosPayment::where('pos_order_id', $posOrder->id)
-                ->where('reference', $transaction->transaction_id)
-                ->first();
-
-            if (!$existingPayment) {
-                \Modules\POS\Models\PosPayment::create([
-                    'pos_order_id' => $posOrder->id,
-                    'method' => 'card', // Online card payment
-                    'amount' => $transaction->amount,
-                    'reference' => $transaction->transaction_id,
-                    'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                    'received_by' => $receivedBy,
-                ]);
-            }
-
-            $entry = app(PosPostingService::class)->postPaidOrder(
-                $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse'),
-                (float) $transaction->amount,
-                'card'
-            );
-
-            $terminal = $posOrder->terminal;
-            $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
-
-            if ($warehouseId) {
-                $inventoryService = app(InventoryService::class);
-                foreach ($posOrder->items as $item) {
-                    $productId = $item->variant ? $item->variant->product_id : $item->product_id;
-                    $trackInventory = $item->variant
-                        ? (bool) $item->variant->track_inventory
-                        : (bool) ($item->product?->track_inventory ?? false);
-
-                    if (!$productId || !$trackInventory) {
-                        continue;
-                    }
-
-                    $alreadyDeducted = (int) \App\Models\StockMovement::where('reference_type', 'PosOrder')
-                        ->where('reference_id', $posOrder->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-
-                    if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    $inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $posOrder->order_number,
-                        referenceType: 'PosOrder',
-                        referenceId: $posOrder->id,
-                    );
-                }
-            }
-
-            $posOrder->update([
-                'status' => 'paid',
-                'paid_at' => $posOrder->paid_at ?? now(),
-                'journal_entry_id' => $entry->id,
-                'receipt_number' => $posOrder->receipt_number ?: PosOrder::generateReceiptNumber(),
-            ]);
-
-            // Mark transaction as processed
-            $transaction->update(['processed_at' => now()]);
-        });
-
-        // Then try to create invoice (optional - failure shouldn't affect order status)
-        try {
-            $invoice = $this->createInvoiceFromPosOrder($posOrder, $transaction);
-            
-            if ($invoice) {
-                // Update transaction with invoice_id
-                $transaction->update(['invoice_id' => $invoice->id]);
-            }
-
-            \Log::info('POS order payment processing completed', [
-                'transaction_id' => $transaction->transaction_id,
-                'pos_order_id' => $posOrder->id,
-                'invoice_id' => $invoice?->id,
-                'amount' => $transaction->amount,
-            ]);
-        } catch (\Exception $e) {
-            \Log::warning('Invoice creation failed but order is marked as paid', [
-                'transaction_id' => $transaction->transaction_id,
-                'pos_order_id' => $posOrder->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Create Invoice from POS Order
-     */
-    protected function createInvoiceFromPosOrder(PosOrder $posOrder, PaymentTransaction $transaction): ?Invoice
-    {
-        try {
-            // Ensure customer_id exists (walk-in customer for anonymous POS orders)
-            $customerId = $posOrder->customer_id;
-            if (!$customerId) {
-                $walkInCustomer = \App\Models\Customer::firstOrCreate(
-                    ['email' => 'walkin@system.local'],
-                    [
-                        'name' => 'Walk-in Customer',
-                        'phone' => null,
-                        'address' => null,
-                        'notes' => 'System customer for walk-in POS transactions',
-                    ]
-                );
-                $customerId = $walkInCustomer->id;
-                $posOrder->update(['customer_id' => $customerId]);
-
-                \Log::info('Using walk-in customer for invoice', [
-                    'pos_order_id' => $posOrder->id,
-                    'walk_in_customer_id' => $customerId,
-                ]);
-            }
-
-            /** @var \Modules\Sales\Services\SalesOrderService $salesOrderService */
-            $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
-
-            // Create SalesOrder (idempotent via SalesChannelReference)
-            $salesOrder = $salesOrderService->createFromPosOrder($posOrder);
-
-            // If already invoiced, retrieve existing invoice
-            if ($salesOrder->isInvoiced()) {
-                $link = \Modules\Sales\Models\SalesInvoiceLink::where('sales_order_id', $salesOrder->id)
-                    ->where('link_state', 'active')
-                    ->first();
-                if ($link) {
-                    $invoice = Invoice::find($link->invoice_id);
-                    \Log::info('Returning existing invoice from SalesOrder', [
-                        'invoice_id' => $invoice?->id,
-                        'pos_order_id' => $posOrder->id,
-                    ]);
-                    return $invoice;
-                }
-            }
-
-            // Fast-track through lifecycle for already-paid POS order
-            if ($salesOrder->isDraft()) {
-                $salesOrder = $salesOrderService->confirmOrder($salesOrder);
-            }
-            if ($salesOrder->isConfirmed()) {
-                $salesOrder = $salesOrderService->allocateOrder($salesOrder);
-            }
-            if ($salesOrder->isAllocated()) {
-                $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
-            }
-
-            // Create invoice via canonical SalesOrderService → InvoiceService path
-            $invoice = $salesOrderService->createInvoice($salesOrder);
-
-            // Override totals to match the already-paid POS order and reconcile
-            // invoice balance via InvoiceService without posting duplicate GL.
-            $invoice->update([
-                'subtotal'        => $posOrder->subtotal,
-                'tax_amount'      => $posOrder->tax_amount ?? 0,
-                'discount_amount' => $posOrder->discount_amount ?? 0,
-                'total'           => $posOrder->total,
-                'pos_order_id'    => $posOrder->id,
-            ]);
-
-            app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
-                'payment_date' => now(),
-                'method' => 'card',
-                'reference' => "POS-{$posOrder->order_number}",
-                'amount' => (float) $posOrder->total,
-                'notes' => "POS order {$posOrder->order_number} (pre-paid)",
-                'received_by' => TenantUserHelper::requireTenantUserId($posOrder->created_by),
-            ]);
-
-            \Log::info('Invoice created from POS order via SalesOrderService', [
-                'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'pos_order_id' => $posOrder->id,
-            ]);
-
-            return $invoice;
-        } catch (\Exception $e) {
-            \Log::error('Failed to create invoice from POS order', [
-                'pos_order_id' => $posOrder->id,
-                'error' => $e->getMessage(),
-            ]);
-            return null;
-        }
     }
 
     /**

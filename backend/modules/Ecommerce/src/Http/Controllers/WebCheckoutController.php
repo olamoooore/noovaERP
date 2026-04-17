@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Models\WebOrderItem;
 use Modules\PaymentGateway\Services\PaymentService;
+use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
 use Illuminate\Support\Facades\Notification;
@@ -21,15 +22,14 @@ use App\Models\Warehouse;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
-use Modules\Ecommerce\Services\WebOrderPostingService;
 
 class WebCheckoutController extends Controller
 {
     public function __construct(
         private PaymentService $paymentService,
+        private PaymentTransactionCompletionService $completionService,
         private InventoryService $inventoryService,
         private StockReservationService $stockReservationService,
-        private WebOrderPostingService $webOrderPostingService,
     ) {}
 
     /**
@@ -465,53 +465,25 @@ class WebCheckoutController extends Controller
 
             if ($paymentStatus['status'] === 'completed') {
                 return DB::transaction(function () use ($order, $paymentStatus, $paymentIntentId) {
-                    $workingOrder = $order->fresh(['items.product', 'items.variant']);
+                    $transaction = PaymentTransaction::where('transaction_id', $paymentIntentId)->first();
 
-                    // Mark order as paid
-                    $workingOrder->update([
-                        'payment_status' => 'paid',
-                        'status' => 'confirmed',
-                        'paid_at' => now(),
-                        'confirmed_at' => now(),
-                    ]);
-
-                    // Convert to invoice and post immediately through the canonical
-                    // web posting service so stock + GL do not depend on a later batch command.
-                    $invoice = $workingOrder->convertToInvoice();
-                    $paymentMethod = (string) ($paymentStatus['payment_method'] ?? 'card');
-                    $entry = $this->webOrderPostingService->postPaidOrder(
-                        $workingOrder->fresh(['items.product', 'items.variant']),
-                        (float) $workingOrder->total,
-                        $paymentMethod,
-                    );
-
-                    if (!$entry) {
-                        throw new \RuntimeException('Web order payment was confirmed but posting did not produce a journal entry.');
+                    if (!$transaction) {
+                        throw new \RuntimeException('Payment transaction not found for confirmed web order payment.');
                     }
 
-                    Log::info('Web order converted to invoice', [
-                        'order_id' => $workingOrder->id,
-                        'invoice_id' => $invoice->id,
-                        'journal_entry_id' => $entry->id,
+                    $this->completionService->complete(
+                        $transaction,
+                        (string) ($paymentStatus['payment_method'] ?? 'card')
+                    );
+
+                    $transaction->refresh();
+                    $transaction->update([
+                        'status' => 'completed',
+                        'processed_at' => $transaction->processed_at ?? now(),
+                        'error_message' => null,
                     ]);
 
-                    PaymentTransaction::where('transaction_id', $paymentIntentId)
-                        ->update([
-                            'invoice_id' => $invoice->id,
-                            'customer_id' => $workingOrder->customer_id,
-                            'status' => 'completed',
-                            'processed_at' => now(),
-                            'error_message' => null,
-                        ]);
-
-                    // Refresh order to load invoice relationship
-                    $workingOrder = $workingOrder->fresh(['invoice', 'items']);
-
-                    // Award loyalty points
-                    $this->awardLoyaltyPoints($workingOrder);
-
-                    // Update customer purchase stats
-                    $this->updateCustomerStats($workingOrder);
+                    $workingOrder = $order->fresh(['invoice', 'items']);
 
                     // Notifications
                     try {
@@ -594,77 +566,6 @@ class WebCheckoutController extends Controller
             'gateways' => $gateways,
             'has_gateways' => count($gateways) > 0,
         ]);
-    }
-
-    /**
-     * Award loyalty points after successful payment.
-     */
-    private function awardLoyaltyPoints(WebOrder $order): void
-    {
-        if (!$order->customer_id) return;
-
-        if (($order->loyalty_points_earned ?? 0) > 0) {
-            return;
-        }
-
-        try {
-            $earningService = app(\Modules\Loyalty\Services\PointsEarningService::class);
-            $result = $earningService->awardPoints(
-                customerId: $order->customer_id,
-                amount: (float) $order->subtotal,
-                referenceType: 'web_order',
-                referenceId: $order->id,
-                description: "Points earned from web order {$order->order_number}"
-            );
-
-            if ($result['success'] ?? false) {
-                $order->update([
-                    'loyalty_points_earned' => $result['points_earned'] ?? 0,
-                ]);
-
-                Log::info('Loyalty points awarded for web order', [
-                    'order_id' => $order->id,
-                    'points' => $result['points_earned'] ?? 0,
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::warning('Failed to award loyalty points', [
-                'order_id' => $order->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Update customer purchase statistics.
-     */
-    private function updateCustomerStats(WebOrder $order): void
-    {
-        if (!$order->customer_id) return;
-
-        try {
-            $customer = Customer::find($order->customer_id);
-            if ($customer) {
-                $totalOrders = $customer->posOrders()->where('status', 'paid')->where('is_return', false)->count()
-                    + $customer->invoices()->whereIn('status', ['sent', 'partial', 'paid'])->count();
-                $totalPurchases = $customer->posOrders()->where('status', 'paid')->where('is_return', false)->sum('total')
-                    + $customer->invoices()->whereIn('status', ['sent', 'partial', 'paid'])->sum('total');
-
-                $customer->update([
-                    'total_orders' => $totalOrders,
-                    'total_purchases' => $totalPurchases,
-                    'last_interaction_at' => now(),
-                    'average_order_value' => $totalOrders > 0
-                        ? $totalPurchases / $totalOrders
-                        : 0,
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::warning('Failed to update customer stats', [
-                'customer_id' => $order->customer_id,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     /**

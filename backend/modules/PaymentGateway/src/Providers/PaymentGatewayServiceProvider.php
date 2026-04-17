@@ -3,6 +3,7 @@
 namespace Modules\PaymentGateway\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\PaymentGateway\Console\Commands\BackfillWebhookTenantLookups;
 use Modules\PaymentGateway\Console\Commands\FixStuckWebOrders;
 
 class PaymentGatewayServiceProvider extends ServiceProvider
@@ -51,6 +52,7 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         // Register commands
         if ($this->app->runningInConsole()) {
             $this->commands([
+                BackfillWebhookTenantLookups::class,
                 FixStuckWebOrders::class,
             ]);
         }

@@ -4,13 +4,20 @@ namespace Modules\PaymentGateway\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 use App\Models\Tenant;
-use Stancl\Tenancy\Facades\Tenancy;
 
 class FixStuckWebOrders extends Command
 {
+    public function __construct(
+        private readonly PaymentTransactionCompletionService $completionService,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * The name and signature of the console command.
      *
@@ -63,7 +70,7 @@ class FixStuckWebOrders extends Command
     protected function processTenantOrders(?int $orderId = null)
     {
         // Check if web_orders table exists
-        if (!\Schema::hasTable('web_orders')) {
+        if (!Schema::hasTable('web_orders')) {
             $this->info('  web_orders table does not exist, skipping tenant.');
             return;
         }
@@ -139,66 +146,23 @@ class FixStuckWebOrders extends Command
         }
         
         try {
-            // Update order status
-            $order->update([
-                'payment_status' => 'paid',
-                'status' => 'confirmed',
-                'paid_at' => $order->paid_at ?? now(),
-                'confirmed_at' => $order->confirmed_at ?? now(),
+            $transaction = $this->completionService->complete(
+                $transaction,
+                $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
+            );
+
+            $transaction->update([
+                'status' => 'completed',
+                'processed_at' => $transaction->processed_at ?? now(),
+                'error_message' => null,
             ]);
-            
-            $this->info("  Updated order status to confirmed/paid");
-            
-            // Convert to invoice if not already done
-            if (!$order->invoice_id) {
-                $invoice = $order->convertToInvoice();
-                $this->info("  Created invoice: {$invoice->invoice_number}");
-                
-                // Refresh order to get the invoice_id set by convertToInvoice
-                $order->refresh();
-            } else {
-                $this->info("  Order already has invoice_id: {$order->invoice_id}");
+
+            $order->refresh();
+
+            $this->info("  Canonical completion repaired the order");
+            if ($order->invoice_id) {
+                $this->info("  Order invoice_id: {$order->invoice_id}");
             }
-            
-            // Update transaction with invoice_id (only if not already set)
-            if ($order->invoice_id && !$transaction->invoice_id) {
-                $transaction->update([
-                    'invoice_id' => $order->invoice_id,
-                    'customer_id' => $order->customer_id,
-                ]);
-                $this->info("  Updated transaction with invoice_id: {$order->invoice_id}");
-            }
-            
-            // Create payment record via canonical service if not exists
-            $existingPayment = \App\Models\Payment::where('reference', $transaction->transaction_id)->first();
-            if (!$existingPayment && $order->invoice_id) {
-                $invoice = \App\Models\Invoice::find($order->invoice_id);
-                if ($invoice) {
-                    app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice, [
-                        'payment_date' => now(),
-                        'method' => 'card',
-                        'reference' => $transaction->transaction_id,
-                        'amount' => $transaction->amount,
-                        'notes' => "Online payment via {$transaction->gateway->gateway_name}",
-                        'received_by' => $invoice->created_by ?? $order->customer_id,
-                    ]);
-                    $this->info("  Created payment record for invoice {$invoice->invoice_number}");
-                }
-            } elseif ($existingPayment) {
-                $this->info("  Payment record already exists: {$existingPayment->payment_number}");
-            }
-            
-            // Award loyalty points
-            $this->awardLoyaltyPoints($order);
-            
-            // Update customer stats
-            $this->updateCustomerStats($order);
-            
-            // Post to accounting
-            $this->postToAccounting($order, $transaction);
-            
-            // Mark transaction as processed
-            $transaction->update(['processed_at' => $transaction->processed_at ?? now()]);
             
             $this->info("  Order processed successfully!");
             
@@ -211,81 +175,4 @@ class FixStuckWebOrders extends Command
         }
     }
     
-    /**
-     * Award loyalty points after successful payment.
-     */
-    protected function awardLoyaltyPoints(WebOrder $order): void
-    {
-        if (!$order->customer_id || $order->loyalty_points_earned > 0) return;
-
-        try {
-            $earningService = app(\Modules\Loyalty\Services\PointsEarningService::class);
-            $result = $earningService->awardPoints(
-                customerId: $order->customer_id,
-                amount: (float) $order->subtotal,
-                referenceType: 'web_order',
-                referenceId: $order->id,
-                description: "Points earned from web order {$order->order_number}"
-            );
-
-            if ($result['success'] ?? false) {
-                $order->update([
-                    'loyalty_points_earned' => $result['points_earned'] ?? 0,
-                ]);
-                
-                $this->info("  Awarded {$result['points_earned']} loyalty points");
-            }
-        } catch (\Exception $e) {
-            $this->warn("  Failed to award loyalty points: {$e->getMessage()}");
-        }
-    }
-    
-    /**
-     * Update customer purchase statistics.
-     */
-    protected function updateCustomerStats(WebOrder $order): void
-    {
-        if (!$order->customer_id) return;
-
-        try {
-            $customer = \App\Models\Customer::find($order->customer_id);
-            if ($customer) {
-                $customer->increment('total_orders');
-                $customer->increment('total_purchases', (float) $order->total);
-                $customer->update([
-                    'last_interaction_at' => now(),
-                    'average_order_value' => $customer->total_orders > 0
-                        ? $customer->total_purchases / $customer->total_orders
-                        : 0,
-                ]);
-                
-                $this->info("  Updated customer stats");
-            }
-        } catch (\Exception $e) {
-            $this->warn("  Failed to update customer stats: {$e->getMessage()}");
-        }
-    }
-    
-    /**
-     * Post web order to accounting system.
-     */
-    protected function postToAccounting(WebOrder $order, PaymentTransaction $transaction): void
-    {
-        try {
-            $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
-            $paymentMethod = $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card';
-            
-            $entry = $postingService->postPaidOrder(
-                $order,
-                (float) $transaction->amount,
-                $paymentMethod
-            );
-            
-            if ($entry) {
-                $this->info("  Posted to accounting: {$entry->entry_number}");
-            }
-        } catch (\Exception $e) {
-            $this->warn("  Failed to post to accounting: {$e->getMessage()}");
-        }
-    }
 }

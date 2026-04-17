@@ -14,6 +14,7 @@ class CsvExportServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->bindTenantContext();
         $this->service = new CsvExportService();
         Storage::fake('local');
     }
@@ -94,8 +95,8 @@ class CsvExportServiceTest extends TenantTestCase
     /** @test */
     public function it_cleans_up_old_exports()
     {
-        Storage::disk('local')->put('reports/old_report_1.csv', 'content');
-        Storage::disk('local')->put('reports/old_report_2.csv', 'content');
+        Storage::disk('local')->put($this->tenantScopedPath('old_report_1.csv'), 'content');
+        Storage::disk('local')->put($this->tenantScopedPath('old_report_2.csv'), 'content');
 
         $deleted = $this->service->cleanupOldExports(7);
 

@@ -196,7 +196,7 @@ class StripeGateway implements PaymentGatewayInterface
         return [
             'event' => $event,
             'webhook_id' => $eventId, // Use Stripe event ID for duplicate detection
-            'transaction_id' => $data['id'] ?? null,
+            'transaction_id' => $data['payment_intent'] ?? $data['id'] ?? null,
             'status' => $this->mapStripeStatus($data['status'] ?? null),
             'amount' => isset($data['amount']) ? $data['amount'] / 100 : null,
             'currency' => $data['currency'] ?? null,

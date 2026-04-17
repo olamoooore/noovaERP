@@ -42,6 +42,13 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -144,14 +151,14 @@ interface PosReceiptOrder {
   subtotal: number
   taxAmount: number
   discountAmount: number
-  discountType: string
+  discountType: 'fixed' | 'percent'
   discountValue: number
-  coupon: {
+  coupon?: {
     code: string
     discountAmount: number
     discountType: 'fixed' | 'percent'
     discountValue: number
-  } | null
+  }
   loyaltyDiscountAmount: number
   loyaltyPointsEarned?: number
   loyaltyPointsUsed?: number
@@ -159,7 +166,7 @@ interface PosReceiptOrder {
   paymentMethod: string
   amountPaid: number
   change: number
-  terminal: number | null
+  terminal?: string
   transactionId?: string
 }
 
@@ -213,7 +220,28 @@ export function POSTerminal() {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
   const [productPage, setProductPage] = useState(1) // Product pagination
-  
+
+  // Top bar: live clock + online status
+  const [currentTime, setCurrentTime] = useState(() =>
+    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  )
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+    }, 1000)
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      clearInterval(tick)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   // Stripe Payment Dialog State
   const [showStripeDialog, setShowStripeDialog] = useState(false)
   const [stripePaymentData, setStripePaymentData] = useState<{
@@ -270,6 +298,15 @@ export function POSTerminal() {
       navigate('/pos', { replace: true })
     }
   }, [activeSessionId, activeTerminalId, openedAt, navigate])
+
+  // Sync active session to localStorage so Customer Display can find it
+  useEffect(() => {
+    if (activeSessionId) {
+      localStorage.setItem('pos_active_session_id', String(activeSessionId))
+    } else {
+      localStorage.removeItem('pos_active_session_id')
+    }
+  }, [activeSessionId])
 
   useEffect(() => {
     setWarehouseId(sessionWarehouseId ?? 'all')
@@ -587,6 +624,27 @@ export function POSTerminal() {
     setLoyaltyQueryKey(['loyalty-pos-info', selectedCustomer?.id ?? null, itemsTotal])
   }, [selectedCustomer?.id, itemsTotal])
 
+  // Fire display event to customer-facing screen (best-effort, non-blocking)
+  const fireDisplayEvent = useCallback(async (event: string, extra?: Record<string, any>) => {
+    if (!activeSessionId) return
+    try {
+      await api.post(`/pos/sessions/${activeSessionId}/display-event`, {
+        event,
+        cart_items: cart.map(item => ({
+          product_id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unit_price: item.price,
+          line_total: item.line_total,
+          image: item.image ?? null,
+        })),
+        ...extra,
+      })
+    } catch {
+      // Display events are best-effort — never disrupt cashier flow
+    }
+  }, [activeSessionId, cart])
+
   // Add to cart
   const addToCart = useCallback((product: Product) => {
     // Check stock
@@ -623,8 +681,9 @@ export function POSTerminal() {
             ...computeLine(product, 1),
         }
         setCart([...cart, newItem])
+        void fireDisplayEvent('CartItemAdded')
     }
-  }, [cart, setCart, toast, taxEnabled])
+  }, [cart, setCart, toast, taxEnabled, fireDisplayEvent])
 
   // Update quantity
   const updateQuantity = (productId: number, delta: number) => {
@@ -655,11 +714,13 @@ export function POSTerminal() {
         ...computeLine(existing, newQty),
     }
     setCart(cart.map(i => i.id === productId ? updatedItem : i))
+    void fireDisplayEvent('CartItemQtyChanged')
   }
 
   // Remove from cart
   const removeFromCart = (productId: number) => {
     setCart(cart.filter(item => item.id !== productId))
+    void fireDisplayEvent('CartItemRemoved')
   }
 
   // Handle barcode scan
@@ -838,14 +899,14 @@ export function POSTerminal() {
     subtotal,
     taxAmount,
     discountAmount: regularDiscountAmount,
-    discountType: discount.type,
+    discountType: discount.type as 'fixed' | 'percent',
     discountValue: discount.value,
     coupon: appliedCoupon ? {
       code: appliedCoupon.code,
       discountAmount: couponDiscountAmount,
       discountType: appliedCoupon.discount_type,
       discountValue: appliedCoupon.discount_value,
-    } : null,
+    } : undefined,
     loyaltyDiscountAmount,
     loyaltyPointsEarned: options?.loyaltyPointsEarned,
     loyaltyPointsUsed: loyaltyRedemption.pointsToRedeem,
@@ -853,7 +914,7 @@ export function POSTerminal() {
     paymentMethod: paymentMethodLabel,
     amountPaid: total,
     change: 0,
-    terminal: activeTerminalId,
+    terminal: activeTerminalId ? String(activeTerminalId) : undefined,
     transactionId: options?.transactionId,
   }), [
     activeTerminalId,
@@ -876,6 +937,8 @@ export function POSTerminal() {
     setShowCheckoutDialog(false)
     setShowReceiptDialog(true)
 
+    void fireDisplayEvent('PaymentApproved')
+
     toast({
       title: 'Payment Successful',
       description,
@@ -885,7 +948,7 @@ export function POSTerminal() {
     void queryClient.invalidateQueries({ queryKey: ['pos-products'] })
     void queryClient.invalidateQueries({ queryKey: ['customers-pos'] })
     void queryClient.invalidateQueries({ queryKey: ['customers-search'] })
-  }, [queryClient, resetTerminalForNextOrder, toast])
+  }, [queryClient, resetTerminalForNextOrder, toast, fireDisplayEvent])
 
   const downloadReceiptPdf = useCallback(async (orderId?: number | null, orderNumber?: string) => {
     if (!orderId) {
@@ -1184,51 +1247,46 @@ export function POSTerminal() {
   const products = productsData || []
 
   return (
-    <div className="flex flex-col h-full p-4 gap-4 overflow-hidden">
-      <div className="flex flex-1 gap-4 overflow-hidden min-h-0">
-        {/* Left: Product Selection */}
-        <div className="flex flex-1 flex-col gap-4 min-h-0 min-w-0 overflow-hidden">
-          {/* Search and Barcode */}
-          <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      {/* ── MAIN CONTENT: flex-row-reverse → cart LEFT, products RIGHT ── */}
+      <div className="flex flex-1 flex-row-reverse overflow-hidden min-h-0">
+        {/* Product Discovery — first in DOM, appears on RIGHT via flex-row-reverse */}
+        <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden">
+          {/* Unified Search + Barcode */}
+          <div className="px-4 py-3 border-b bg-card">
+          <div className="relative">
+            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search products..."
-              className="pl-9"
+              placeholder="Search products or scan barcode..."
+              className="pl-9 h-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="relative w-48">
-            <Icon icon="solar:barcode-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Scan barcode..."
-              className="pl-9"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && barcodeInput) {
-                  handleBarcodeScan(barcodeInput)
+                if (e.key === 'Enter' && /^\d{6,}$/.test(search.trim())) {
+                  handleBarcodeScan(search.trim())
+                  setSearch('')
                 }
               }}
             />
           </div>
         </div>
 
-        {/* Category Filter */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        {/* Category Chips */}
+        <div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-b shrink-0 bg-card">
           <Button
             variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
+            className="h-7 px-3 text-xs shrink-0"
             onClick={() => setSelectedCategory(null)}
           >
-            All Categories
+            All
           </Button>
-          {categories?.map((cat) => (
+          {categories?.slice(0, 10).map((cat) => (
             <Button
               key={cat.id}
               variant={selectedCategory === cat.id ? "default" : "outline"}
               size="sm"
+              className="h-7 px-3 text-xs shrink-0"
               onClick={() => setSelectedCategory(cat.id)}
             >
               {cat.name}
@@ -1237,7 +1295,8 @@ export function POSTerminal() {
         </div>
 
         {/* Products Grid */}
-        <ScrollArea className="flex-1 rounded-md border bg-card p-4">
+        <ScrollArea className="flex-1">
+          <div className="p-4">
           {productsLoading ? (
             <div className="flex h-full items-center justify-center">
               <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1282,11 +1341,12 @@ export function POSTerminal() {
               ))}
             </div>
           )}
+          </div>
         </ScrollArea>
 
         {/* Pagination Controls */}
         {productLastPage > 1 && (
-          <div className="flex items-center justify-between pt-2 shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-t shrink-0">
             <span className="text-xs text-muted-foreground">
               {productTotal.toLocaleString()} products · Page {productPage} of {productLastPage}
             </span>
@@ -1314,38 +1374,65 @@ export function POSTerminal() {
         )}
       </div>
 
-      {/* Right: Cart */}
-      <Card className="flex h-full w-full max-w-[24rem] min-w-[16rem] shrink flex-col overflow-hidden xl:w-96 xl:max-w-none">
-        <CardHeader className="pb-3 space-y-3">
-          {/* Top Row: Title, Items Badge, Customer Button */}
+      {/* Active Order Panel — appears on LEFT via flex-row-reverse */}
+      <Card className="flex h-full w-[26rem] xl:w-[30rem] shrink-0 flex-col overflow-hidden rounded-none border-t-0 border-b-0 border-l-0">
+        <CardHeader className="pb-3 px-4 pt-3 space-y-2">
+          {/* Title + icon-only draft/clear actions */}
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5" />
-              Current Order
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Icon icon="solar:cart-large-minimalistic-bold" className="h-5 w-5 text-primary" />
+              Active Order
+              {cart.length > 0 && (
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{cart.length}</Badge>
+              )}
             </CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{cart.length} items</Badge>
-              
-              {/* Customer Selector Button */}
+            <div className="flex items-center gap-0.5">
               <Button
-                variant={selectedCustomer ? "default" : "outline"}
-                size="sm"
-                className="h-8 gap-2 min-w-[110px]"
-                onClick={() => setShowCustomerDialog(true)}
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="Save Draft"
+                onClick={handleSaveDraft}
+                disabled={cart.length === 0 || createOrderMutation.isPending}
               >
-                <Icon 
-                  icon={selectedCustomer ? "solar:user-check-bold" : "solar:user-circle-bold"} 
-                  className="h-4 w-4" 
-                />
-                <span className="truncate">
-                  {selectedCustomer ? 'Customer' : 'Walk-in'}
-                </span>
-                {selectedCustomer && (
-                  <span className="ml-1 w-2 h-2 rounded-full bg-white/80" />
-                )}
+                <Icon icon="solar:diskette-bold" className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive hover:text-destructive"
+                title="Clear Cart"
+                disabled={cart.length === 0}
+                onClick={() => {
+                  clearSessionCart()
+                  setCurrentOrderId(null)
+                  setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 })
+                }}
+              >
+                <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4" />
               </Button>
             </div>
           </div>
+          {/* Customer selector — full-width */}
+          <Button
+            variant={selectedCustomer ? "default" : "outline"}
+            size="sm"
+            className="w-full h-9 justify-start gap-2 text-sm"
+            onClick={() => setShowCustomerDialog(true)}
+          >
+            <Icon
+              icon={selectedCustomer ? "solar:user-check-bold" : "solar:user-circle-bold"}
+              className="h-4 w-4 shrink-0"
+            />
+            <span className="flex-1 truncate text-left">
+              {selectedCustomer ? selectedCustomer.name : 'Walk-in Customer'}
+            </span>
+            {selectedCustomer && loyaltyInfo?.enrolled && (
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {loyaltyInfo.available_points.toLocaleString()} pts
+              </Badge>
+            )}
+          </Button>
 
           {/* Selected Customer Info Card */}
           {selectedCustomer && (
@@ -1396,83 +1483,71 @@ export function POSTerminal() {
           )}
         </CardHeader>
 
-        <ScrollArea className="flex-1 px-4">
-          <div className="space-y-3">
+        <ScrollArea className="flex-1">
+          <div className="p-3 space-y-2">
+            {cart.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Icon icon="solar:cart-large-minimalistic-bold" className="h-14 w-14 mb-3 opacity-20" />
+                <p className="text-sm font-medium">Cart is empty</p>
+                <p className="text-xs mt-1 opacity-70">Select products from the right panel</p>
+              </div>
+            )}
             {cart.map((item) => (
-              <div key={item.id} className="flex gap-2 rounded-lg border p-2 min-w-0">
+              <div key={item.id} className="flex gap-3 rounded-xl border bg-background p-3">
                 {/* Product Image */}
-                <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
+                <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
                   {item.image ? (
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded" />
+                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                   ) : (
-                    <Icon icon="solar:box-bold" className="h-6 w-6 text-muted-foreground" />
+                    <Icon icon="solar:box-bold" className="h-7 w-7 text-muted-foreground" />
                   )}
                 </div>
-                
-                {/* Product Info - Flexible with proper truncation */}
-                <div className="flex-1 flex flex-col justify-center" style={{ minWidth: 0, overflow: 'hidden' }}>
-                  <h4 
-                    className="font-medium text-sm leading-tight" 
-                    title={item.name}
-                    style={{ 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis', 
-                      whiteSpace: 'nowrap',
-                      maxWidth: '100%'
-                    }}
-                  >
-                    {item.name}
-                  </h4>
-                  <p className="text-xs text-muted-foreground mt-0.5" style={{ whiteSpace: 'nowrap' }}>
-                    {formatCurrency(item.price)} x {item.quantity}
-                  </p>
-                </div>
-                
-                {/* Price and Actions - Fixed Width */}
-                <div className="flex min-w-[132px] flex-col items-end justify-between gap-1">
-                  <span className="font-bold text-sm whitespace-nowrap">{formatCurrency(item.line_total)}</span>
-                  <div className="flex flex-wrap items-center justify-end gap-0.5">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => updateQuantity(item.id, -1)}
-                    >
-                      <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm w-7 text-center shrink-0">{item.quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => updateQuantity(item.id, 1)}
-                    >
-                      <Icon icon="solar:add-circle-bold" className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive shrink-0"
-                      onClick={() => removeFromCart(item.id)}
-                    >
-                      <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4" />
-                    </Button>
+
+                {/* Product info + controls */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate leading-tight" title={item.name}>{item.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(item.price)} each</p>
+                  <div className="flex items-center justify-between mt-2">
+                    {/* Large quantity controls */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg"
+                        onClick={() => updateQuantity(item.id, -1)}
+                      >
+                        <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg"
+                        onClick={() => updateQuantity(item.id, 1)}
+                      >
+                        <Icon icon="solar:add-circle-bold" className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-sm">{formatCurrency(item.line_total)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        onClick={() => removeFromCart(item.id)}
+                      >
+                        <Icon icon="solar:trash-bin-minimalistic-bold" className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
-            {cart.length === 0 && (
-              <div className="text-center text-muted-foreground py-12">
-                <Icon icon="solar:cart-large-minimalistic-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <p>Cart is empty</p>
-                <p className="text-sm">Click on products to add them</p>
-              </div>
-            )}
           </div>
         </ScrollArea>
 
         {/* Totals & Actions */}
-        <div className="p-4 border-t bg-muted/20 space-y-4">
+        <div className="shrink-0 p-4 border-t bg-muted/20 space-y-4 overflow-y-auto max-h-[45%]">
           
           {/* Discount/Loyalty/Coupon Tabs */}
           {(cart.length > 0 || appliedCoupon || loyaltyRedemption.pointsToRedeem > 0) && (
@@ -1739,41 +1814,16 @@ export function POSTerminal() {
             </div>
           </div>
 
-          <div className="flex gap-2">
-             <Button
-              variant="outline"
-              className="flex-1"
-              onClick={handleSaveDraft}
-              disabled={cart.length === 0 || createOrderMutation.isPending}
-            >
-              <Icon icon="solar:diskette-bold" className="h-4 w-4 mr-2" />
-              Draft
-            </Button>
-            
-            <Button
-              variant="default"
-              className="flex-1 bg-red-500 hover:bg-red-600"
-              onClick={() => {
-                clearSessionCart()
-                setCurrentOrderId(null) // Reset order ID when clearing cart
-                setLoyaltyRedemption({ pointsToRedeem: 0, discountAmount: 0 }) // Clear loyalty
-              }}
-              disabled={cart.length === 0}
-              title="Clear Cart"
-            >
-              <Icon icon="solar:broom-bold" className="h-4 w-4 mr-2" />
-              Clear
-            </Button>
-            
-            <Button
-              className="flex-[2]"
-              onClick={() => setShowCheckoutDialog(true)}
-              disabled={cart.length === 0}
-            >
-              <Icon icon="solar:wallet-money-bold" className="h-4 w-4 mr-2" />
-              Pay {formatCurrency(total)}
-            </Button>
-          </div>
+          {/* PAY — primary full-width action */}
+          <Button
+            size="lg"
+            className="w-full h-12 text-base font-semibold"
+            onClick={() => setShowCheckoutDialog(true)}
+            disabled={cart.length === 0}
+          >
+            <Icon icon="solar:wallet-money-bold" className="h-5 w-5 mr-2" />
+            PAY{cart.length > 0 ? ` ${formatCurrency(total)}` : ''}
+          </Button>
         </div>
       </Card>
 
@@ -2011,6 +2061,7 @@ export function POSTerminal() {
                         })
                         setShowCustomerDialog(false)
                         setCustomerSearch('')
+                        void fireDisplayEvent('MemberIdentified', { member_id: customer.id })
                       }}
                     >
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">

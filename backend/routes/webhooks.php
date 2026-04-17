@@ -15,9 +15,9 @@ use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 |   2. ResolveTenantFromWebhook - Efficient tenant lookup (no enumeration)
 |   3. Signature verification - Each gateway verifies its own signatures
 |
-| The tenant is resolved from the central payment_transactions table
-| using the transaction ID from the webhook payload, NOT by scanning
-| all tenants (which was a critical security vulnerability).
+| The tenant is resolved from the shared central webhook lookup table
+| using the canonical transaction ID from the webhook payload, NOT by
+| scanning all tenants (which was a critical security vulnerability).
 */
 
 Route::prefix('api/v1')->group(function () {

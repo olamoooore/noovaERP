@@ -4,12 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Feature;
-use App\Models\TenantFeature;
 use App\SuperAdmin\Application\FeatureGateService;
-use App\SuperAdmin\Application\TenantConfigurationService;
-use App\SuperAdmin\Domain\CatalogItem;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 /**
  * FeatureController — lists and toggles features for the current tenant.
@@ -18,39 +14,33 @@ use Illuminate\Support\Facades\Log;
  * (the canonical platform entitlement snapshot) rather than the legacy
  * `tenant_features` table, which lacks tenant identity and is being retired.
  *
- * The `toggle()` action now writes through to the canonical entitlement system
- * via TenantConfigurationService to keep both systems in sync during the migration period.
+ * Tenant-facing module listings are read-only. Plan and entitlement changes must
+ * be managed through the canonical control-plane configuration flow rather than
+ * tenant self-service writes to either legacy or canonical state.
  */
 class FeatureController extends Controller
 {
     public function __construct(
         private readonly FeatureGateService $featureGate,
-        private readonly TenantConfigurationService $configService,
     ) {}
 
     public function index()
     {
         $tenantId = $this->currentTenantId();
 
-        // If we have a tenant context, resolve entitlements from the canonical snapshot.
-        $entitledKeys = $tenantId
-            ? collect($this->featureGate->all($tenantId))->pluck('key')->flip()
-            : collect();
+        if ($tenantId === null) {
+            return response()->json(['message' => 'No tenant context available'], 403);
+        }
 
-        $features = Feature::all()->map(function (Feature $feature) use ($entitledKeys, $tenantId) {
+        $entitledKeys = collect($this->featureGate->all($tenantId))->pluck('key')->flip();
+
+        $features = Feature::all()->map(function (Feature $feature) use ($entitledKeys) {
             // Core features are always enabled regardless of entitlement record.
             if ($feature->is_core) {
                 return $this->formatFeature($feature, true);
             }
 
-            // Use canonical entitlement snapshot when a tenant context is available.
-            if ($tenantId !== null) {
-                return $this->formatFeature($feature, $entitledKeys->has($feature->key));
-            }
-
-            // No tenant context (e.g. CLI, tests) — fall back to legacy row.
-            $tenantFeature = TenantFeature::where('feature_id', $feature->id)->first();
-            return $this->formatFeature($feature, (bool) $tenantFeature?->is_enabled);
+            return $this->formatFeature($feature, $entitledKeys->has($feature->key));
         });
 
         return response()->json($features);
@@ -69,67 +59,12 @@ class FeatureController extends Controller
             return response()->json(['message' => 'No tenant context available'], 403);
         }
 
-        $enabled = $request->boolean('enabled');
-
-        // Legacy: Update tenant_features table for backward compatibility
-        $tenantFeature = TenantFeature::firstOrNew(['feature_id' => $feature->id]);
-        $tenantFeature->is_enabled = $enabled;
-        if ($enabled && !$tenantFeature->enabled_at) {
-            $tenantFeature->enabled_at = now();
-        }
-        $tenantFeature->save();
-
-        // Canonical: Sync to entitlement system via catalog item
-        $this->syncToCanonicalEntitlements($tenantId, $feature, $enabled);
-
-        // Invalidate the canonical entitlement cache so the new state is visible immediately
-        $this->featureGate->invalidate($tenantId);
+        $current = $this->featureGate->check($tenantId, $feature->key, fresh: true);
 
         return response()->json([
-            'message' => $enabled ? 'Feature enabled' : 'Feature disabled',
-            'enabled' => $enabled,
-        ]);
-    }
-
-    /**
-     * Sync the feature toggle to the canonical entitlement system.
-     */
-    private function syncToCanonicalEntitlements(string $tenantId, Feature $feature, bool $enabled): void
-    {
-        // Find the corresponding catalog item by key
-        $catalogItem = CatalogItem::where('key', $feature->key)->first();
-
-        if (!$catalogItem) {
-            Log::warning('Feature toggle: No catalog item found for feature key', [
-                'feature_id' => $feature->id,
-                'feature_key' => $feature->key,
-                'tenant_id' => $tenantId,
-            ]);
-            return;
-        }
-
-        // Check if there's an existing selection
-        $existingSelection = \App\SuperAdmin\Domain\TenantSelectedItem::where('tenant_id', $tenantId)
-            ->where('catalog_item_id', $catalogItem->id)
-            ->first();
-
-        if ($enabled) {
-            // Enable: Add override_include selection
-            if (!$existingSelection) {
-                $this->configService->addSelection(
-                    $tenantId,
-                    $catalogItem,
-                    \App\SuperAdmin\Domain\TenantSelectedItem::TYPE_OVERRIDE_INCLUDE,
-                    "Legacy feature toggle enabled: {$feature->key}",
-                    null
-                );
-            }
-        } else {
-            // Disable: Remove selection or add override_exclude
-            if ($existingSelection) {
-                $this->configService->removeSelection($tenantId, $catalogItem, null);
-            }
-        }
+            'message' => 'Feature entitlement changes must be managed through plan configuration.',
+            'enabled' => $current['is_entitled'],
+        ], 403);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

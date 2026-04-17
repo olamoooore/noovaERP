@@ -174,7 +174,7 @@ export function POSLayout() {
                   const left = window.screen.width - width
                   const top = 0
                   window.open(
-                    `${import.meta.env.BASE_URL}pos/customer-display`,
+                    `${import.meta.env.BASE_URL}pos/customer-display?session=${activeSessionId}`,
                     'CustomerDisplay',
                     `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
                   )

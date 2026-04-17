@@ -4,9 +4,28 @@ namespace Modules\FinancialReporting\Services\Export;
 
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 
 class PdfExportService
 {
+    private function tenantExportDirectory(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('Report exports require an active tenant context.');
+        }
+
+        return 'reports/' . tenant('id');
+    }
+
+    private function exportFilename(?string $filename, string $extension): string
+    {
+        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_' . now()->format('Y-m-d_His');
+        $safeName = Str::of($name)->ascii()->replaceMatches('/[^A-Za-z0-9._-]+/', '_')->trim('_')->value();
+        $safeName = $safeName !== '' ? $safeName : 'report';
+
+        return $safeName . '_' . Str::lower(Str::random(16)) . '.' . $extension;
+    }
+
     /**
      * Export report data to PDF
      * 
@@ -19,8 +38,8 @@ class PdfExportService
             throw new \Exception('DomPDF library is not installed. Run: composer require barryvdh/laravel-dompdf');
         }
 
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His') . '.pdf';
-        $path = 'reports/' . $filename;
+        $filename = $this->exportFilename($filename, 'pdf');
+        $path = $this->tenantExportDirectory() . '/' . $filename;
 
         // Generate HTML content
         $html = $this->generateHtmlContent($reportData, $template);
@@ -222,8 +241,8 @@ class PdfExportService
             throw new \Exception('DomPDF library is not installed.');
         }
 
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_His') . '.pdf';
-        $path = 'reports/' . $filename;
+        $filename = $this->exportFilename($filename, 'pdf');
+        $path = $this->tenantExportDirectory() . '/' . $filename;
 
         $html = $this->generateHtmlContent($reportData, $template);
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html);
@@ -245,7 +264,7 @@ class PdfExportService
      */
     public function cleanupOldExports(int $daysOld = 7): int
     {
-        $files = Storage::disk('local')->files('reports');
+        $files = Storage::disk('local')->allFiles($this->tenantExportDirectory());
         $deleted = 0;
         $cutoffTime = now()->subDays($daysOld)->timestamp;
 

@@ -12,10 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\IoT\Models\IoTDevice;
-use Modules\POS\Services\PosPostingService;
-use Modules\Inventory\Services\InventoryService;
-use App\Models\Warehouse;
-use App\Models\StockMovement;
+use Modules\POS\Services\PosPaymentCompletionService;
 
 /**
  * Process Payment Webhook Job
@@ -62,7 +59,7 @@ class ProcessPaymentWebhook implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(PosPostingService $postingService): void
+    public function handle(PosPaymentCompletionService $paymentCompletionService): void
     {
         // Initialize tenant context
         $tenant = \Stancl\Tenancy\Database\Models\Tenant::find($this->tenantId);
@@ -100,11 +97,11 @@ class ProcessPaymentWebhook implements ShouldQueue
             }
 
             // Process webhook in transaction
-            DB::transaction(function () use ($order, $device, $postingService) {
+            DB::transaction(function () use ($order, $device, $paymentCompletionService) {
                 $status = $this->payload['status'] ?? null;
 
                 if ($status === 'completed') {
-                    $this->handlePaymentSuccess($order, $device, $postingService);
+                    $this->handlePaymentSuccess($order, $device, $paymentCompletionService);
                 } elseif ($status === 'failed') {
                     $this->handlePaymentFailure($order, $device);
                 } else {
@@ -147,7 +144,7 @@ class ProcessPaymentWebhook implements ShouldQueue
     /**
      * Handle successful payment.
      */
-    protected function handlePaymentSuccess(PosOrder $order, IoTDevice $device, PosPostingService $postingService): void
+    protected function handlePaymentSuccess(PosOrder $order, IoTDevice $device, PosPaymentCompletionService $paymentCompletionService): void
     {
         $amount = (float) ($this->payload['amount'] ?? 0);
         $paymentMethod = $this->payload['payment_type'] ?? 'card';
@@ -178,65 +175,19 @@ class ProcessPaymentWebhook implements ShouldQueue
             ]);
         }
 
-        // Create payment record
-        PosPayment::create([
-            'pos_order_id' => $order->id,
-            'method' => $paymentMethod,
-            'amount' => $amount,
-            'reference' => $paymentId,
-            'received_by' => $order->created_by,
-        ]);
-
-        // Post to accounting FIRST — GL must succeed before stock mutation
-        $entry = $postingService->postPaidOrder(
-            $order->load('items.variant', 'items.product'),
+        $order = $paymentCompletionService->complete(
+            $order,
             $amount,
-            $paymentMethod
+            $paymentMethod,
+            $paymentId,
+            $order->created_by,
         );
-
-        // Adjust inventory via canonical InventoryService
-        $inventoryService = app(InventoryService::class);
-        $defaultWarehouse = Warehouse::getDefault();
-        if ($defaultWarehouse) {
-            foreach ($order->items()->with(['product', 'variant'])->get() as $item) {
-                $productId = $item->product_id;
-                if (($item->variant && $item->variant->track_inventory) || ($item->product && $item->product->track_inventory)) {
-                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                        ->where('reference_id', $order->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-
-                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-                    if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    $inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $defaultWarehouse->id,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $order->order_number,
-                        referenceType: 'PosOrder',
-                        referenceId: $order->id,
-                    );
-                }
-            }
-        }
-
-        // Update order status
-        $order->update([
-            'status' => 'paid',
-            'paid_at' => now(),
-            'journal_entry_id' => $entry->id,
-        ]);
 
         Log::info('Payment processed successfully', [
             'order_id' => $order->id,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
-            'journal_entry_id' => $entry->id,
+            'journal_entry_id' => $order->journal_entry_id,
         ]);
     }
 

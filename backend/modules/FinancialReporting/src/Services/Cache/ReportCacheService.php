@@ -142,7 +142,9 @@ class ReportCacheService
     {
         Log::info("Invalidating cache for report type", ['report_type' => $reportType]);
         
-        return ReportCache::clearByReportType($reportType);
+        return ReportCache::where('tenant_id', $this->currentTenantId())
+            ->where('report_type', $reportType)
+            ->delete();
     }
 
     /**
@@ -152,7 +154,7 @@ class ReportCacheService
     {
         Log::info("Invalidating all report caches");
         
-        return ReportCache::clearAll();
+        return ReportCache::where('tenant_id', $this->currentTenantId())->delete();
     }
 
     /**
@@ -160,7 +162,9 @@ class ReportCacheService
      */
     public function clearExpired(): int
     {
-        $count = ReportCache::clearExpired();
+        $count = ReportCache::expired()
+            ->where('tenant_id', $this->currentTenantId())
+            ->delete();
         
         Log::info("Cleared expired cache entries", ['count' => $count]);
         
@@ -172,11 +176,14 @@ class ReportCacheService
      */
     public function getStatistics(): array
     {
-        $total = ReportCache::count();
-        $valid = ReportCache::valid()->count();
-        $expired = ReportCache::expired()->count();
+        $tenantId = $this->currentTenantId();
+
+        $total = ReportCache::where('tenant_id', $tenantId)->count();
+        $valid = ReportCache::valid()->where('tenant_id', $tenantId)->count();
+        $expired = ReportCache::expired()->where('tenant_id', $tenantId)->count();
         
         $byType = ReportCache::query()
+            ->where('tenant_id', $tenantId)
             ->selectRaw('report_type, COUNT(*) as count, SUM(hit_count) as total_hits')
             ->groupBy('report_type')
             ->get()
@@ -184,6 +191,7 @@ class ReportCacheService
             ->toArray();
 
         $topHits = ReportCache::valid()
+            ->where('tenant_id', $tenantId)
             ->orderBy('hit_count', 'desc')
             ->limit(10)
             ->get(['cache_key', 'report_type', 'hit_count', 'last_accessed_at'])
@@ -217,7 +225,7 @@ class ReportCacheService
                 $cacheKey = $this->generateCacheKey($reportType, $filter);
                 
                 // Check if already cached
-                $cached = ReportCache::getCached($cacheKey);
+                $cached = ReportCache::getCached($cacheKey, $this->currentTenantId());
                 if ($cached && $cached->isValid()) {
                     $results[$reportType] = [
                         'status' => 'already_cached',

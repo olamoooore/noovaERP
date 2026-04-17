@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tantml:react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -67,28 +67,6 @@ export function IoTDevicesPage() {
   })
 
   const iotFeature = features?.find(f => f.key === 'iot')
-
-  // Toggle module enabled/disabled
-  const toggleModuleMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      if (!iotFeature) throw new Error('IoT feature not found')
-      await api.post(`/features/${iotFeature.id}/toggle`, { enabled })
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Module updated',
-        description: `NoovaERP IoT Hub has been ${iotFeature?.enabled ? 'disabled' : 'enabled'}`,
-      })
-      queryClient.invalidateQueries({ queryKey: ['features'] })
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update module status',
-        variant: 'destructive',
-      })
-    },
-  })
 
   // Fetch devices
   const { data: devices, isLoading } = useQuery<IoTDevice[]>({
@@ -338,14 +316,13 @@ export function IoTDevicesPage() {
                 <div className="space-y-0.5">
                   <Label htmlFor="module-enabled" className="text-base">Enable Module</Label>
                   <p className="text-sm text-muted-foreground">
-                    Turn on or off the NoovaERP IoT Hub module for your organization
+                    Module entitlements are managed centrally and shown here as read-only status
                   </p>
                 </div>
                 <Switch
                   id="module-enabled"
                   checked={iotFeature?.enabled || false}
-                  onCheckedChange={(checked) => toggleModuleMutation.mutate(checked)}
-                  disabled={toggleModuleMutation.isPending}
+                  disabled
                 />
               </div>
               <Separator />

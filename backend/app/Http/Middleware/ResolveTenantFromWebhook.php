@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\PaymentGateway\Models\PaymentTransaction;
 use Stancl\Tenancy\Facades\Tenancy;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -22,9 +23,9 @@ use Symfony\Component\HttpFoundation\Response;
  * lookups and transaction ID hashing for efficient resolution.
  *
  * Strategy:
- *   1. Extract transaction ID from webhook payload
+ *   1. Extract the canonical local transaction ID from the webhook payload
  *   2. Look up tenant ID from cache (if previously resolved)
- *   3. If not cached, query payment_transactions table in central DB
+ *   3. If not cached, query the shared central webhook lookup table
  *   4. Cache the result for future webhooks
  *   5. Initialize tenancy for the resolved tenant
  *
@@ -101,15 +102,15 @@ class ResolveTenantFromWebhook
         $payload = $request->all();
 
         return match ($gateway) {
-            'stripe' => $payload['data']['object']['id']
-                ?? $payload['data']['object']['payment_intent']
+            'stripe' => $payload['data']['object']['payment_intent']
+                ?? $payload['data']['object']['id']
                 ?? null,
             'hitpay' => $request->input('payment_request_id')
                 ?? $request->input('id')
                 ?? $request->input('reference_number')
                 ?? null,
-            'paypal' => $request->input('resource.id')
-                ?? $request->input('resource.supplementary_data.related_ids.order_id')
+            'paypal' => $request->input('resource.supplementary_data.related_ids.order_id')
+                ?? $request->input('resource.id')
                 ?? null,
             default => null,
         };
@@ -118,20 +119,14 @@ class ResolveTenantFromWebhook
     /**
      * Lookup tenant by transaction ID
      *
-     * Queries the central payment_transactions table which stores
-     * tenant_id along with transaction data.
+     * Queries the shared central lookup table which maps each gateway
+     * transaction ID to the owning tenant.
      */
     private function lookupTenantByTransaction(string $transactionId, string $gateway): ?Tenant
     {
         try {
-            // Query the central database for the transaction
-            // payment_transactions is in the central schema
-            $connection = DB::connection();
-            $tableName = $connection->getDriverName() === 'pgsql'
-                ? 'public.payment_transactions'
-                : 'payment_transactions';
-
-            $result = $connection->table($tableName)
+            // payment_webhook_tenant_lookups is stored in the shared central schema.
+            $result = DB::table(PaymentTransaction::webhookTenantLookupTable())
                 ->where('transaction_id', $transactionId)
                 ->where('gateway_name', $gateway)
                 ->first(['tenant_id']);

@@ -31,6 +31,20 @@ class GDPRExportJob implements ShouldQueue
     protected array $requestedFields;
     protected array $exportOptions;
 
+    private function currentTenantId(): string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            throw new \RuntimeException('GDPR export requires active tenant context.');
+        }
+
+        return (string) tenant('id');
+    }
+
+    private function exportDirectory(): string
+    {
+        return storage_path('app/gdpr_exports/' . $this->currentTenantId());
+    }
+
     /**
      * Create a new job instance.
      *
@@ -407,8 +421,8 @@ class GDPRExportJob implements ShouldQueue
                 throw new \InvalidArgumentException("Unsupported export format: {$this->exportOptions['format']}");
         }
 
-        // Create secure export directory if it doesn't exist
-        $exportDir = storage_path('app/gdpr_exports');
+        // Create secure tenant-owned export directory if it doesn't exist
+        $exportDir = $this->exportDirectory();
         if (!is_dir($exportDir)) {
             mkdir($exportDir, 0750, true);
         }

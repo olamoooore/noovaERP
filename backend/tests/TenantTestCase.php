@@ -2,10 +2,13 @@
 
 namespace Tests;
 
+use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
+use Stancl\Tenancy\Contracts\Tenant as TenantContract;
+use Stancl\Tenancy\Tenancy;
 
 /**
  * TenantTestCase — Base test class for any test that needs tenant schema tables.
@@ -25,6 +28,8 @@ use Illuminate\Support\Facades\Schema;
 abstract class TenantTestCase extends TestCase
 {
     use RefreshDatabase;
+
+    protected ?Tenant $boundTestTenant = null;
 
     /**
      * Override RefreshDatabase's migration logic to include tenant paths.
@@ -157,5 +162,47 @@ abstract class TenantTestCase extends TestCase
             \App\Http\Middleware\SetTenantFromUserPreference::class,
             \App\Http\Middleware\EnsureTenantSearchPath::class,
         ]);
+    }
+
+    protected function bindTenantContext(string $tenantId = 'test-tenant', array $attributes = []): Tenant
+    {
+        $tenant = new Tenant(array_merge([
+            'id' => $tenantId,
+            'name' => 'Test Tenant',
+        ], $attributes));
+
+        $this->boundTestTenant = $tenant;
+
+        app()->instance(TenantContract::class, $tenant);
+
+        $tenancy = app(Tenancy::class);
+        $tenancy->tenant = $tenant;
+        $tenancy->initialized = true;
+
+        return $tenant;
+    }
+
+    protected function tenantScopedPath(string $path): string
+    {
+        if (!$this->boundTestTenant) {
+            throw new \RuntimeException('No test tenant context has been bound.');
+        }
+
+        return 'reports/' . $this->boundTestTenant->getTenantKey() . '/' . ltrim($path, '/');
+    }
+
+    protected function tearDown(): void
+    {
+        if (app()->bound(TenantContract::class)) {
+            app()->forgetInstance(TenantContract::class);
+        }
+
+        if (app()->bound(Tenancy::class)) {
+            app(Tenancy::class)->end();
+        }
+
+        $this->boundTestTenant = null;
+
+        parent::tearDown();
     }
 }
