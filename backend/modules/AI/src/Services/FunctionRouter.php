@@ -81,6 +81,7 @@ class FunctionRouter
                 'detect_close_anomalies' => CopilotFunctions::detectCloseAnomalies($arguments),
                 'prioritize_collections' => CopilotFunctions::prioritizeCollections($arguments),
                 'suggest_ap_coding' => CopilotFunctions::suggestAPCoding($arguments),
+                'review_revenue' => CopilotFunctions::reviewRevenue($arguments),
                 default => [
                     'success' => false,
                     'error' => 'Unknown function: ' . $functionName,

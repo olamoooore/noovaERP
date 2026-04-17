@@ -123,6 +123,7 @@ class CopilotFunctions
                          ->whereNull('i.deleted_at');
                 })
                 ->whereNull('c.deleted_at')
+                ->having(DB::raw('SUM(i.balance)'), '>', 0)
                 ->groupBy('c.id', 'c.name', 'c.email', 'c.payment_terms')
                 ->orderByRaw('SUM(i.balance) DESC')
                 ->limit($limit)
@@ -150,7 +151,7 @@ class CopilotFunctions
                 return [
                     'success' => true,
                     'found'   => false,
-                    'message' => 'No customers found.',
+                    'message' => 'No customers with outstanding balances found.',
                 ];
             }
 
@@ -241,6 +242,101 @@ class CopilotFunctions
             return [
                 'success' => false,
                 'error'   => 'Failed to retrieve AP coding suggestions.',
+            ];
+        }
+    }
+
+    public static function reviewRevenue(array $args): array
+    {
+        try {
+            Log::info('AI Copilot: reviewRevenue called', ['user_id' => auth()->id(), 'args' => $args]);
+
+            $invoices = DB::table('invoices')
+                ->whereNull('deleted_at')
+                ->get([
+                    'id',
+                    'invoice_number',
+                    'invoice_date',
+                    'due_date',
+                    'total',
+                    'balance',
+                    'status',
+                    'customer_id',
+                ]);
+
+            DB::table('ai_accounting_audit_logs')->insert([
+                'user_id'    => auth()->id(),
+                'tool_name'  => 'reviewRevenue',
+                'arguments'  => json_encode($args),
+                'tenant_id'  => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            if ($invoices->isEmpty()) {
+                return [
+                    'success' => true,
+                    'found'   => false,
+                    'message' => 'No invoice data found to review.',
+                ];
+            }
+
+            $avgTotal = $invoices->avg('total');
+            $findings = [];
+
+            foreach ($invoices as $invoice) {
+                $risks = [];
+
+                if ($invoice->total > ($avgTotal * 2.5) && $invoice->balance > 0) {
+                    $risks[] = 'Unusually large invoice with outstanding balance';
+                }
+
+                if ($invoice->balance > 0 && $invoice->due_date < now()->toDateString()) {
+                    $risks[] = 'Overdue invoice with outstanding balance';
+                }
+
+                if ($invoice->status === 'draft') {
+                    $risks[] = 'Invoice still in draft status';
+                }
+
+                if (!empty($risks)) {
+                    $findings[] = [
+                        'invoice_number' => $invoice->invoice_number,
+                        'invoice_date'   => $invoice->invoice_date,
+                        'due_date'       => $invoice->due_date,
+                        'total'          => $invoice->total,
+                        'balance'        => $invoice->balance,
+                        'status'         => $invoice->status,
+                        'risks'          => $risks,
+                    ];
+                }
+            }
+
+            if (empty($findings)) {
+                return [
+                    'success' => true,
+                    'found'   => false,
+                    'message' => 'No revenue anomalies or risks detected.',
+                ];
+            }
+
+            return [
+                'success'       => true,
+                'found'         => true,
+                'finding_count' => count($findings),
+                'average_total' => round($avgTotal, 2),
+                'findings'      => $findings,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('CopilotFunctions::reviewRevenue failed', [
+                'error' => $e->getMessage(),
+                'args'  => $args,
+            ]);
+
+            return [
+                'success' => false,
+                'error'   => 'Failed to review revenue.',
             ];
         }
     }

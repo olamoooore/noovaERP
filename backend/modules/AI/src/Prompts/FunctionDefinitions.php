@@ -58,6 +58,7 @@ class FunctionDefinitions
             self::detectCloseAnomalies(),
             self::prioritizeCollections(),
             self::suggestAPCoding(),
+            self::reviewRevenue(),
         ];
     }
 
@@ -673,7 +674,20 @@ class FunctionDefinitions
             'description' => 'Suggest account codes for AP invoices based on past posted OCR documents. Use when the user asks for account coding suggestions or how to code a supplier invoice.',
             'parameters' => [
                 'type' => 'object',
-                'properties' => [],
+                'properties' => new \stdClass(),
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function reviewRevenue(): array
+    {
+        return [
+            'name' => 'review_revenue',
+            'description' => 'Review revenue invoices for anomalies and risks such as unusually large amounts, overdue balances, or draft invoices. Use when the user asks about revenue review, invoice risks, or revenue anomalies.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => new \stdClass(),
                 'required' => [],
             ],
         ];

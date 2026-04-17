@@ -30,6 +30,7 @@ class AccountingInsightsModule extends BaseModule
             'detect_close_anomalies',
             'prioritize_collections',
             'suggest_ap_coding',
+            'review_revenue',
         ];
     }
 
@@ -46,6 +47,7 @@ Available functions:
 - detect_close_anomalies: Detect anomalies and unusual balances in journal entries for a given period
 - prioritize_collections: Rank customers by collections priority based on outstanding balances and overdue invoices
 - suggest_ap_coding: Suggest account codes for AP invoices based on past posted OCR documents
+- review_revenue: Review revenue invoices for anomalies and risks such as unusually large amounts, overdue balances, or draft invoices
 
 Keep responses focused on insights and recommendations.
 PROMPT;
