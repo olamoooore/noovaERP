@@ -10,7 +10,7 @@ use Modules\POS\Http\Controllers\PosSessionController;
 use Modules\POS\Http\Controllers\PosTerminalController;
 use Modules\POS\Http\Controllers\PosHeldOrderController;
 use Modules\POS\Http\Controllers\PosPaymentMethodController;
-use Modules\POS\Http\Controllers\PosDisplayController;
+use App\Http\Controllers\SalesOrderController;
 
 Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path'])->group(function () {
     Route::get('/pos/health', function () {
@@ -97,15 +97,4 @@ Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path
     Route::post('/pos/barcodes/print', [PosBarcodeController::class, 'print']);
     Route::get('/pos/barcodes/settings', [PosBarcodeController::class, 'settings']);
     Route::post('/pos/barcodes/settings', [PosBarcodeController::class, 'updateSettings']);
-
-    // Display event dispatch — cashier only (authenticated)
-    Route::post('/pos/sessions/{sessionId}/display-event', [PosDisplayController::class, 'dispatchEvent']);
-});
-
-// =====================================================
-// CUSTOMER DISPLAY — read-only, outside auth/entitlement (unauthenticated display screen)
-// =====================================================
-Route::middleware(['ensure.tenant.search_path'])->group(function () {
-    Route::get('/pos/display/health', [PosDisplayController::class, 'health']);
-    Route::get('/pos/sessions/{sessionId}/display-payload', [PosDisplayController::class, 'getPayload']);
 });
