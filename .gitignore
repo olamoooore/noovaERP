@@ -52,3 +52,6 @@ backend/public/storage
 
 # Do not push this folder
 test-sample/
+
+# Kiro steering documents
+.kiro/steering/
