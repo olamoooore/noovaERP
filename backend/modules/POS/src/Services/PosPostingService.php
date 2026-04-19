@@ -5,7 +5,11 @@ namespace Modules\POS\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\JournalEntry;
+use App\Models\JournalEntryLink;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\POS\Models\PosOrder;
 
@@ -100,6 +104,57 @@ class PosPostingService
         if (!$result->success) {
             throw new \RuntimeException("POS posting failed: {$result->error}");
         }
+
+        return $result->journalEntry;
+    }
+
+    /**
+     * Reverse a previously posted POS order GL entry (used for POS returns).
+     *
+     * Finds the JournalEntryLink for the original order and calls
+     * PostingEngine::reverse(). Must be called inside the same DB transaction
+     * as stock restoration to guarantee atomicity.
+     *
+     * @param  PosOrder  $originalOrder   The paid order whose GL is being reversed
+     * @param  PosOrder  $returnOrder     The return order (used for log context)
+     * @param  string    $reason          Human-readable reversal reason
+     * @return JournalEntry|null          The reversal entry, or null if no GL existed
+     */
+    public function reverseOrder(PosOrder $originalOrder, PosOrder $returnOrder, string $reason = 'POS return'): ?JournalEntry
+    {
+        $link = JournalEntryLink::where('source_document_type', 'pos_order')
+            ->where('source_document_id', $originalOrder->id)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if (!$link) {
+            Log::warning('No journal entry found to reverse for POS return', [
+                'original_order_id' => $originalOrder->id,
+                'return_order_id'   => $returnOrder->id,
+            ]);
+            return null;
+        }
+
+        $result = $this->postingEngine->reverse(new ReversalRequest(
+            journalEntryId: $link->journal_entry_id,
+            reversalDate:   now()->toDateString(),
+            reason:         $reason,
+            reasonCode:     'POS_RETURN',
+            actorUserId:    TenantUserHelper::resolveTenantUserId(),
+            approvalUserId: null,
+        ));
+
+        if (!$result->success) {
+            throw new \RuntimeException(
+                "GL reversal failed for POS return of order {$originalOrder->order_number}: {$result->error}"
+            );
+        }
+
+        Log::info('POS order posting reversed', [
+            'original_order_id' => $originalOrder->id,
+            'return_order_id'   => $returnOrder->id,
+            'reversal_entry_id' => $result->journalEntry?->id,
+        ]);
 
         return $result->journalEntry;
     }

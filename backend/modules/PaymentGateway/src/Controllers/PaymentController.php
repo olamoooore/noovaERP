@@ -399,37 +399,6 @@ class PaymentController extends Controller
     }
 
     /**
-     * Update invoice with payment amount and status using atomic operations.
-     */
-    protected function updateInvoiceFromPayment($invoice, $amount)
-    {
-        \App\Models\Invoice::where('id', $invoice->id)
-            ->increment('paid_amount', $amount);
-
-        $invoice->refresh();
-
-        $newBalance = $invoice->total - $invoice->paid_amount;
-
-        \App\Models\Invoice::where('id', $invoice->id)->update([
-            'balance' => $newBalance,
-            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
-        ]);
-
-        $invoice->refresh();
-
-        if ($invoice->customer) {
-            $invoice->customer->updateOutstanding();
-        }
-
-        \Log::info('Invoice updated', [
-            'invoice_id' => $invoice->id,
-            'status' => $invoice->status,
-            'paid_amount' => $invoice->paid_amount,
-            'balance' => $invoice->balance,
-        ]);
-    }
-
-    /**
      * Get transaction by reference (for payment success page)
      */
     public function getByReference($reference)

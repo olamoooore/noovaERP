@@ -16,6 +16,7 @@ use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Services\PosPaymentCompletionService;
+use Modules\POS\Services\PosPostingService;
 use Modules\Loyalty\Services\RedemptionService;
 use Modules\Loyalty\Services\PointsEarningService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -802,6 +803,16 @@ class PosOrderController extends Controller
                     }
                 }
             }
+        }
+
+        // Post GL reversal for the original order — mirrors WebOrderPostingService::reverseOrderPosting().
+        // Must run inside the same DB::transaction as stock restoration (guaranteed by createReturn() wrapper).
+        if ($posOrder->journal_entry_id) {
+            app(PosPostingService::class)->reverseOrder(
+                $posOrder,
+                $returnOrder,
+                'POS return: ' . ($notes ?? $returnOrder->order_number)
+            );
         }
 
         return $returnOrder;
