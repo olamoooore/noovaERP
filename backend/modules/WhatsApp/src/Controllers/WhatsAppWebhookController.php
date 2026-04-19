@@ -3,14 +3,10 @@
 namespace Modules\WhatsApp\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant;
 use Modules\WhatsApp\Models\WhatsAppApiKey;
 use Modules\WhatsApp\Services\WhatsAppService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Crypt;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -22,76 +18,35 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Authenticate the request using API key from header and initialize tenant context.
+     * Authenticate the request using API key inside the already-resolved tenant context.
      */
     protected function authenticateApiKey(Request $request): ?WhatsAppApiKey
     {
+        if (!function_exists('tenant') || !tenant()) {
+            Log::warning('WhatsApp webhook rejected: tenant context not resolved');
+
+            return null;
+        }
+
         $apiKeyValue = $request->header('x-api-key');
 
         if (!$apiKeyValue) {
             return null;
         }
 
-        $cacheKey = 'whatsapp_api_key:' . hash('sha256', $apiKeyValue);
+        try {
+            return WhatsAppApiKey::query()
+                ->valid()
+                ->get()
+                ->first(fn (WhatsAppApiKey $key) => $key->key === $apiKeyValue);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp webhook API key lookup failed', [
+                'tenant_id' => tenant('id'),
+                'error' => $e->getMessage(),
+            ]);
 
-        // Fast path: check cache for known tenant mapping
-        $cachedTenantId = Cache::get($cacheKey);
-        if ($cachedTenantId) {
-            $tenant = Tenant::find($cachedTenantId);
-            if ($tenant) {
-                $apiKey = null;
-                $tenant->run(function () use ($apiKeyValue, &$apiKey) {
-                    $keys = WhatsAppApiKey::where('is_active', true)->get();
-                    foreach ($keys as $key) {
-                        if ($key->key === $apiKeyValue && $key->isValid()) {
-                            $apiKey = $key;
-                            return;
-                        }
-                    }
-                });
-
-                if ($apiKey) {
-                    tenancy()->initialize($tenant);
-                    return $apiKey;
-                }
-
-                // Cached mapping is stale (key revoked/expired), clear it
-                Cache::forget($cacheKey);
-            }
+            return null;
         }
-
-        // Slow path: scan all tenants (first request per key, or after cache miss)
-        $tenants = Tenant::all();
-
-        foreach ($tenants as $tenant) {
-            $apiKey = null;
-            $tenant->run(function () use ($apiKeyValue, &$apiKey) {
-                try {
-                    $keys = WhatsAppApiKey::where('is_active', true)->get();
-
-                    foreach ($keys as $key) {
-                        if ($key->key === $apiKeyValue && $key->isValid()) {
-                            $apiKey = $key;
-                            return;
-                        }
-                    }
-                } catch (\Exception $e) {
-                    Log::debug('Error checking tenant for API key', [
-                        'tenant' => tenancy()->tenant->id ?? 'unknown',
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            });
-
-            if ($apiKey) {
-                // Cache the mapping for 1 hour to avoid future full scans
-                Cache::put($cacheKey, $tenant->id, 3600);
-                tenancy()->initialize($tenant);
-                return $apiKey;
-            }
-        }
-
-        return null;
     }
 
     /**

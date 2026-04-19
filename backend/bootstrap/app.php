@@ -30,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Webhook routes (NO tenancy - works on any domain including ngrok)
             Route::middleware('api')
                 ->group(base_path('routes/webhooks.php'));
+
+            Route::middleware('api')
+                ->group(base_path('routes/whatsapp-webhooks.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

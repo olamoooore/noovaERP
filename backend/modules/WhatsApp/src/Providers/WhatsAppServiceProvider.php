@@ -3,6 +3,7 @@
 namespace Modules\WhatsApp\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\WhatsApp\Console\Commands\BackfillWebhookTenantLookups;
 
 class WhatsAppServiceProvider extends ServiceProvider
 {
@@ -46,5 +47,11 @@ class WhatsAppServiceProvider extends ServiceProvider
         // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
         // Do NOT also loadRoutesFrom here or routes will be registered twice
         // with different middleware stacks, bypassing tenant isolation.
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BackfillWebhookTenantLookups::class,
+            ]);
+        }
     }
 }

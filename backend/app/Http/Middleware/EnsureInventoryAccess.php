@@ -3,7 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
-use App\SuperAdmin\Application\EntitlementService;
+use App\SuperAdmin\Application\FeatureGateService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +34,7 @@ class EnsureInventoryAccess
     private const TENANT_WRITE_ROLES = ['owner', 'admin', 'inventory_manager'];
 
     public function __construct(
-        private readonly EntitlementService $entitlements,
+        private readonly FeatureGateService $featureGate,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -51,12 +51,15 @@ class EnsureInventoryAccess
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        // ── 1. Tenant entitlement check ──────────────────────────────────────
+        // ── 1. Tenant entitlement check (canonical: FeatureGateService + cache) ──
         $tenantId = tenant('id');
-        if ($tenantId && !$this->entitlements->isEntitled((string) $tenantId, 'inventory')) {
-            return response()->json([
-                'message' => 'The inventory module is not enabled for this account.',
-            ], 403);
+        if ($tenantId) {
+            $check = $this->featureGate->check((string) $tenantId, 'inventory');
+            if (!$check['is_entitled']) {
+                return response()->json([
+                    'message' => 'The inventory module is not enabled for this account.',
+                ], 403);
+            }
         }
 
         // ── 2. Super-admin bypass ────────────────────────────────────────────

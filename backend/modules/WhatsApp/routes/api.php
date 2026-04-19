@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\WhatsApp\Controllers\WhatsAppApiKeyController;
-use Modules\WhatsApp\Controllers\WhatsAppWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,17 +13,6 @@ use Modules\WhatsApp\Controllers\WhatsAppWebhookController;
 | is assigned the "api" middleware group. Enjoy building your API!
 |
 */
-
-// Public Webhook Routes (Self-authenticated via header)
-Route::prefix('whatsapp/webhooks')->group(function () {
-    Route::get('/health', [WhatsAppWebhookController::class, 'health']);
-    Route::post('/order-created', [WhatsAppWebhookController::class, 'orderCreated']);
-    Route::post('/payment-confirmed', [WhatsAppWebhookController::class, 'paymentConfirmed']);
-    Route::post('/order-shipped', [WhatsAppWebhookController::class, 'orderShipped']);
-    Route::post('/order-delivered', [WhatsAppWebhookController::class, 'orderDelivered']);
-    Route::post('/order-cancelled', [WhatsAppWebhookController::class, 'orderCancelled']);
-    Route::post('/send-custom-message', [WhatsAppWebhookController::class, 'sendCustomMessage']);
-});
 
 // Protected Management Routes
 Route::middleware(['auth:sanctum'])->prefix('whatsapp')->group(function () {

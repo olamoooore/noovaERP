@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class WhatsAppApiKey extends Model
@@ -57,6 +59,26 @@ class WhatsAppApiKey extends Model
                 $model->key = static::generateApiKey();
             }
         });
+
+        static::saved(function (self $apiKey): void {
+            $apiKey->syncWebhookTenantLookup();
+        });
+
+        static::deleted(function (self $apiKey): void {
+            $apiKey->deleteWebhookTenantLookup();
+        });
+    }
+
+    public static function webhookTenantLookupBaseTable(): string
+    {
+        return 'whatsapp_webhook_tenant_lookups';
+    }
+
+    public static function webhookTenantLookupTable(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql'
+            ? 'public.' . static::webhookTenantLookupBaseTable()
+            : static::webhookTenantLookupBaseTable();
     }
 
     /**
@@ -143,6 +165,41 @@ class WhatsAppApiKey extends Model
     public function isValid(): bool
     {
         return $this->is_active && !$this->isExpired();
+    }
+
+    public function syncWebhookTenantLookup(): void
+    {
+        if (!function_exists('tenant') || !tenant() || !$this->key) {
+            return;
+        }
+
+        if (!Schema::hasTable(static::webhookTenantLookupBaseTable())) {
+            return;
+        }
+
+        $timestamp = now();
+
+        DB::table(static::webhookTenantLookupTable())->upsert(
+            [[
+                'key_hash' => hash('sha256', $this->key),
+                'tenant_id' => (string) tenant()->getTenantKey(),
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ]],
+            ['key_hash'],
+            ['tenant_id', 'updated_at']
+        );
+    }
+
+    public function deleteWebhookTenantLookup(): void
+    {
+        if (!Schema::hasTable(static::webhookTenantLookupBaseTable()) || !$this->key) {
+            return;
+        }
+
+        DB::table(static::webhookTenantLookupTable())
+            ->where('key_hash', hash('sha256', $this->key))
+            ->delete();
     }
 
     /**
