@@ -480,6 +480,118 @@ class PosOrderController extends Controller
         return response()->json(['message' => 'Order deleted successfully']);
     }
 
+    public function cancel(Request $request, $posOrder)
+    {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
+        if ($posOrder->is_return) {
+            return response()->json(['message' => 'Return orders cannot be cancelled'], 422);
+        }
+
+        if ($posOrder->status !== 'draft') {
+            return response()->json(['message' => 'Only draft orders can be cancelled'], 422);
+        }
+
+        $reason = trim((string) $request->input('reason', 'Cancelled from POS orders list'));
+
+        $posOrder->update([
+            'status' => 'void',
+            'notes' => $this->appendOrderNote($posOrder->notes, 'Cancelled: ' . $reason),
+        ]);
+
+        return response()->json([
+            'message' => 'Order cancelled successfully',
+            'data' => $posOrder->fresh()->load('items', 'payments'),
+        ]);
+    }
+
+    public function void(Request $request, $posOrder)
+    {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
+        if ($posOrder->is_return) {
+            return response()->json(['message' => 'Return orders cannot be voided'], 422);
+        }
+
+        if ($posOrder->status === 'void') {
+            return response()->json(['message' => 'Order has already been voided'], 422);
+        }
+
+        $reason = trim((string) $request->input('reason', 'Voided from POS orders list'));
+
+        if ($posOrder->status === 'draft') {
+            $posOrder->update([
+                'status' => 'void',
+                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
+            ]);
+
+            return response()->json([
+                'message' => 'Order voided successfully',
+                'data' => $posOrder->fresh()->load('items', 'payments'),
+            ]);
+        }
+
+        if ($posOrder->status !== 'paid') {
+            return response()->json(['message' => 'Only draft or paid orders can be voided'], 422);
+        }
+
+        if ($posOrder->returns()->exists()) {
+            return response()->json(['message' => 'Order already has a return and cannot be voided again'], 422);
+        }
+
+        return DB::transaction(function () use ($posOrder, $reason) {
+            $returnOrder = $this->createAndRestockReturn(
+                $posOrder,
+                $this->buildFullReturnItems($posOrder),
+                $this->appendOrderNote(null, 'Void refund: ' . $reason)
+            );
+
+            $posOrder->update([
+                'status' => 'void',
+                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
+            ]);
+
+            return response()->json([
+                'message' => 'Order voided successfully',
+                'data' => $posOrder->fresh()->load('items', 'payments', 'returns'),
+                'return_order' => $returnOrder->load('items'),
+            ]);
+        });
+    }
+
+    public function refund(Request $request, $posOrder)
+    {
+        $posOrder = PosOrder::findOrFail($posOrder);
+
+        if ($posOrder->is_return) {
+            return response()->json(['message' => 'Return orders cannot be refunded'], 422);
+        }
+
+        if ($posOrder->status !== 'paid') {
+            return response()->json(['message' => 'Only paid orders can be refunded'], 422);
+        }
+
+        if ($posOrder->returns()->exists()) {
+            return response()->json(['message' => 'Order already has a refund return'], 422);
+        }
+
+        $notes = trim((string) $request->input('notes', 'Refunded from POS orders list'));
+
+        return DB::transaction(function () use ($posOrder, $notes) {
+            $returnOrder = $this->createAndRestockReturn(
+                $posOrder,
+                $this->buildFullReturnItems($posOrder),
+                $notes
+            );
+
+            return response()->json([
+                'message' => 'Order refunded successfully',
+                'return_order' => $returnOrder->load('items'),
+                'original_order' => $posOrder->fresh()->load('items', 'returns'),
+            ]);
+        });
+    }
+
     /**
      * Create a return/refund for a paid order
      */
@@ -500,43 +612,11 @@ class PosOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $posOrder) {
-            $returnOrder = $posOrder->createReturn($validated['items'], $validated['notes']);
-
-            // Restore stock via InventoryService (canonical path).
-            $terminal     = $posOrder->terminal()->with('warehouse')->first();
-            $warehouseId  = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
-
-            if ($warehouseId) {
-                $inventoryService = app(InventoryService::class);
-                foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
-                    $qty        = abs($item->quantity); // Returns stored as negative
-                    $productId  = $item->variant ? $item->variant->product_id : $item->product_id;
-                    $trackInventory = $item->variant
-                        ? (bool) $item->variant->track_inventory
-                        : (bool) ($item->product?->track_inventory ?? false);
-
-                    if ($productId && $trackInventory && $qty > 0) {
-                        try {
-                            $inventoryService->adjustStock(
-                                productId:     $productId,
-                                warehouseId:   $warehouseId,
-                                quantity:      $qty,
-                                type:          'return',
-                                reference:     'Return: ' . $returnOrder->order_number,
-                                referenceType: 'PosOrder',
-                                referenceId:   $returnOrder->id,
-                            );
-                        } catch (\Exception $e) {
-                            Log::error('POS stock return failed', [
-                                'return_order' => $returnOrder->order_number,
-                                'product_id'   => $productId,
-                                'error'        => $e->getMessage(),
-                            ]);
-                            throw $e;
-                        }
-                    }
-                }
-            }
+            $returnOrder = $this->createAndRestockReturn(
+                $posOrder,
+                $validated['items'],
+                $validated['notes'] ?? null,
+            );
 
             return response()->json([
                 'message' => 'Return created successfully',
@@ -668,5 +748,67 @@ class PosOrderController extends Controller
         $stamp = now()->format('YmdHis');
         $rand = strtoupper(Str::random(4));
         return 'POS-' . $stamp . '-' . $rand;
+    }
+
+    private function buildFullReturnItems(PosOrder $posOrder): array
+    {
+        return $posOrder->items()
+            ->where('quantity', '>', 0)
+            ->get()
+            ->map(fn (PosOrderItem $item) => [
+                'item_id' => $item->id,
+                'quantity' => (int) $item->quantity,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function createAndRestockReturn(PosOrder $posOrder, array $items, ?string $notes): PosOrder
+    {
+        $returnOrder = $posOrder->createReturn($items, $notes);
+
+        $terminal = $posOrder->terminal()->with('warehouse')->first();
+        $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+
+        if ($warehouseId) {
+            $inventoryService = app(InventoryService::class);
+            foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
+                $qty = abs($item->quantity);
+                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
+                $trackInventory = $item->variant
+                    ? (bool) $item->variant->track_inventory
+                    : (bool) ($item->product?->track_inventory ?? false);
+
+                if ($productId && $trackInventory && $qty > 0) {
+                    try {
+                        $inventoryService->adjustStock(
+                            productId: $productId,
+                            warehouseId: $warehouseId,
+                            quantity: $qty,
+                            type: 'return',
+                            reference: 'Return: ' . $returnOrder->order_number,
+                            referenceType: 'PosOrder',
+                            referenceId: $returnOrder->id,
+                        );
+                    } catch (\Exception $e) {
+                        Log::error('POS stock return failed', [
+                            'return_order' => $returnOrder->order_number,
+                            'product_id' => $productId,
+                            'error' => $e->getMessage(),
+                        ]);
+                        throw $e;
+                    }
+                }
+            }
+        }
+
+        return $returnOrder;
+    }
+
+    private function appendOrderNote(?string $existingNotes, string $note): string
+    {
+        return collect([$existingNotes, $note])
+            ->filter(fn (?string $value) => filled($value))
+            ->implode("\n");
     }
 }

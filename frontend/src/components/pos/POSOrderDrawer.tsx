@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast'
 interface POSOrderDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  initialStatusFilter?: 'all' | 'draft' | 'paid'
+  initialStatusFilter?: 'all' | 'draft' | 'paid' | 'void'
 }
 
 interface PosOrderDetail {
@@ -141,6 +141,7 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
   const [orderModalOpen, setOrderModalOpen] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
   const [downloadingInvoice, setDownloadingInvoice] = useState(false)
+  const [actingOrderId, setActingOrderId] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -166,24 +167,73 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
     enabled: open, 
   })
 
-  const deleteOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      await api.delete(`/pos/orders/${orderId}`)
-    },
-    onSuccess: () => {
-      toast({ title: "Order Deleted", description: "Draft order has been removed." })
-      queryClient.invalidateQueries({ queryKey: ['pos-orders'] })
-    },
-    onError: (error: any) => {
-        toast({ 
-            title: "Delete Failed", 
-            description: error.response?.data?.message || "Could not delete order.", 
-            variant: "destructive" 
+  const orderActionMutation = useMutation({
+    mutationFn: async ({ orderId, action }: { orderId: number; action: 'cancel' | 'void' | 'refund' }) => {
+      if (action === 'refund') {
+        return api.post(`/pos/orders/${orderId}/refund`, {
+          notes: 'Refunded from POS orders list',
         })
-    }
+      }
+
+      return api.post(`/pos/orders/${orderId}/${action}`, {
+        reason: action === 'cancel' ? 'Cancelled from POS orders list' : 'Voided from POS orders list',
+      })
+    },
+    onSuccess: (_response, variables) => {
+      const messages = {
+        cancel: {
+          title: 'Order Cancelled',
+          description: 'Draft order has been cancelled.',
+        },
+        void: {
+          title: 'Order Voided',
+          description: 'Order has been voided successfully.',
+        },
+        refund: {
+          title: 'Order Refunded',
+          description: 'Refund return has been created successfully.',
+        },
+      } as const
+
+      toast(messages[variables.action])
+      queryClient.invalidateQueries({ queryKey: ['pos-orders'] })
+      if (selectedOrder?.id === variables.orderId) {
+        setOrderModalOpen(false)
+        setSelectedOrder(null)
+      }
+    },
+    onError: (error: any, variables) => {
+      const labels = {
+        cancel: 'Cancel Failed',
+        void: 'Void Failed',
+        refund: 'Refund Failed',
+      } as const
+
+      toast({
+        title: labels[variables.action],
+        description: getApiErrorMessage(error, 'The order action could not be completed.'),
+        variant: 'destructive',
+      })
+    },
+    onSettled: () => {
+      setActingOrderId(null)
+    },
   })
 
   const orders = data?.data || []
+
+  const runOrderAction = async (
+    order: PosOrderDetail,
+    action: 'cancel' | 'void' | 'refund',
+    confirmationMessage: string,
+  ) => {
+    if (!window.confirm(confirmationMessage)) {
+      return
+    }
+
+    setActingOrderId(order.id)
+    await orderActionMutation.mutateAsync({ orderId: order.id, action })
+  }
 
   const handleLoadOrder = async (order: any) => {
     if (order.status === 'paid') {
@@ -381,10 +431,13 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
     switch (status) {
       case 'paid': return <Badge className="bg-green-500">Paid</Badge>
       case 'draft': return <Badge variant="secondary">Draft</Badge>
+      case 'void': return <Badge variant="destructive">Voided</Badge>
       case 'cancelled': return <Badge variant="destructive">Cancelled</Badge>
       default: return <Badge variant="outline">{status}</Badge>
     }
   }
+
+  const isOrderActionPending = (orderId: number) => actingOrderId === orderId && orderActionMutation.isPending
 
   const formatPaymentLabel = (payment: NonNullable<PosOrderDetail['payments']>[number]) => {
     const source = payment.payment_method?.name || payment.method || 'Unknown'
@@ -436,6 +489,7 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="draft">Drafts</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="void">Voided</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -454,94 +508,181 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
           ) : (
             <div className="space-y-3">
               {orders.map((order: any) => (
-                <div key={order.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                             <Icon icon="solar:bag-3-bold" className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <h4 className="font-semibold text-sm">{order.order_number}</h4>
-                            <p className="text-xs text-muted-foreground">
-                                {new Date(order.created_at).toLocaleString()}
-                            </p>
-                        </div>
+                <div
+                  key={order.id}
+                  className="rounded-2xl border border-border/70 bg-gradient-to-br from-background via-background to-muted/40 p-4 shadow-[0_14px_36px_-28px_rgba(15,23,42,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_42px_-28px_rgba(15,23,42,0.55)]"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/10">
+                        <Icon icon="solar:bag-3-bold" className="h-5 w-5 shrink-0" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="truncate text-sm font-semibold tracking-tight">{order.order_number}</h4>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {new Date(order.created_at).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
-                    {getStatusBadge(order.status)}
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-2 text-sm mb-4 bg-muted/50 p-2 rounded-lg">
-                      <div className="text-center">
-                          <span className="block text-xs text-muted-foreground">Items</span>
-                          <span className="font-medium">{order.items?.length || 0}</span>
-                      </div>
-                      <div className="text-center border-l border-r border-border/50">
-                           <span className="block text-xs text-muted-foreground">Total</span>
-                           <span className="font-bold text-primary">{formatCurrency(Number(order.total))}</span>
-                      </div>
-                      <div className="text-center">
-                           <span className="block text-xs text-muted-foreground">Discount</span>
-                           <span className="font-medium">{order.discount_amount > 0 ? formatCurrency(Number(order.discount_amount)) : '-'}</span>
-                      </div>
+                    <div className="shrink-0">{getStatusBadge(order.status)}</div>
                   </div>
 
-                  <div className="flex gap-2">
-                    {order.status === 'draft' ? (
+                  <div className="mb-4 grid grid-cols-3 gap-2 rounded-2xl border border-border/60 bg-background/80 p-2 text-sm backdrop-blur-sm">
+                    <div className="rounded-xl bg-muted/50 px-3 py-2 text-center">
+                      <span className="block text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Items</span>
+                      <span className="mt-1 block font-semibold">{order.items?.length || 0}</span>
+                    </div>
+                    <div className="rounded-xl bg-primary/5 px-3 py-2 text-center ring-1 ring-primary/10">
+                      <span className="block text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Total</span>
+                      <span className="mt-1 block font-bold text-primary">{formatCurrency(Number(order.total))}</span>
+                    </div>
+                    <div className="rounded-xl bg-muted/50 px-3 py-2 text-center">
+                      <span className="block text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Discount</span>
+                      <span className="mt-1 block font-semibold">
+                        {order.discount_amount > 0 ? formatCurrency(Number(order.discount_amount)) : '-'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border/60 bg-background/85 p-2 backdrop-blur-sm">
+                    <div className="space-y-2">
+                      {order.status === 'draft' ? (
                         <>
-                           <Button 
-                                className="flex-1 h-9" 
-                                onClick={() => handleLoadOrder(order)}
+                          <Button
+                            className="h-11 w-full justify-center rounded-xl px-4 text-sm font-semibold shadow-sm"
+                            onClick={() => handleLoadOrder(order)}
+                            disabled={isOrderActionPending(order.id)}
+                          >
+                            <Icon icon="solar:upload-track-bold" className="h-4 w-4 shrink-0" />
+                            <span className="ml-2 truncate">Load Draft</span>
+                          </Button>
+                          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_44px_44px] gap-2">
+                            <Button
+                              variant="outline"
+                              className="h-11 justify-center rounded-xl px-3 text-sm"
+                              disabled={isOrderActionPending(order.id)}
+                              onClick={() => runOrderAction(order, 'cancel', `Cancel draft ${order.order_number}?`)}
                             >
-                                <Icon icon="solar:upload-track-bold" className="h-4 w-4 mr-2" />
-                                Load Order
+                              <Icon icon="solar:close-circle-bold" className="h-4 w-4 shrink-0" />
+                              <span className="ml-2 truncate">Cancel</span>
                             </Button>
                             <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if(window.confirm('Are you sure you want to delete this draft?')) {
-                                        deleteOrderMutation.mutate(order.id);
-                                    }
-                                }}
-                                title="Delete Draft"
+                              variant="outline"
+                              className="h-11 justify-center rounded-xl px-3 text-sm"
+                              disabled={isOrderActionPending(order.id)}
+                              onClick={() => runOrderAction(order, 'void', `Void draft ${order.order_number}?`)}
                             >
-                                <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4" />
+                              <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 shrink-0" />
+                              <span className="ml-2 truncate">Void</span>
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-11 w-11 rounded-xl"
+                              onClick={() => handleGenerateReceipt(order)}
+                              disabled={isOrderActionPending(order.id)}
+                              title="Generate Receipt (PDF)"
+                            >
+                              <Icon icon="solar:file-text-bold" className="h-4 w-4 shrink-0" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-11 w-11 rounded-xl"
+                              onClick={() => handlePrint(order)}
+                              disabled={isOrderActionPending(order.id)}
+                              title="Print Receipt"
+                            >
+                              <Icon icon="solar:printer-bold" className="h-4 w-4 shrink-0" />
+                            </Button>
+                          </div>
                         </>
-                    ) : (
+                      ) : order.status === 'paid' ? (
                         <>
-                            <Button 
-                                variant="default"
-                                className="flex-1 h-9"
-                              onClick={() => handleViewOrder(order)}
-                              disabled={loadingOrderDetails}
+                          <Button
+                            variant="default"
+                            className="h-11 w-full justify-center rounded-xl px-4 text-sm font-semibold shadow-sm"
+                            onClick={() => handleViewOrder(order)}
+                            disabled={loadingOrderDetails || isOrderActionPending(order.id)}
+                          >
+                            <Icon icon="solar:eye-bold" className="h-4 w-4 shrink-0" />
+                            <span className="ml-2 truncate">Details</span>
+                          </Button>
+                          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_44px_44px] gap-2">
+                            <Button
+                              variant="outline"
+                              className="h-11 justify-center rounded-xl px-3 text-sm"
+                              disabled={isOrderActionPending(order.id)}
+                              onClick={() => runOrderAction(order, 'refund', `Refund paid order ${order.order_number}? This creates a full return.`)}
                             >
-                              <Icon icon="solar:eye-bold" className="h-4 w-4 mr-2" />
-                              View Details
+                              <Icon icon="mdi:cash-refund" className="h-4 w-4 shrink-0" />
+                              <span className="ml-2 truncate">Refund</span>
                             </Button>
+                            <Button
+                              variant="outline"
+                              className="h-11 justify-center rounded-xl px-3 text-sm"
+                              disabled={isOrderActionPending(order.id)}
+                              onClick={() => runOrderAction(order, 'void', `Void paid order ${order.order_number}? This will create a full return and mark the order void.`)}
+                            >
+                              <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 shrink-0" />
+                              <span className="ml-2 truncate">Void</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-11 w-11 rounded-xl"
+                              onClick={() => handleGenerateReceipt(order)}
+                              disabled={isOrderActionPending(order.id)}
+                              title="Generate Receipt (PDF)"
+                            >
+                              <Icon icon="solar:file-text-bold" className="h-4 w-4 shrink-0" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-11 w-11 rounded-xl"
+                              onClick={() => handlePrint(order)}
+                              disabled={isOrderActionPending(order.id)}
+                              title="Print Receipt"
+                            >
+                              <Icon icon="solar:printer-bold" className="h-4 w-4 shrink-0" />
+                            </Button>
+                          </div>
                         </>
-                    )}
-                    
-                    <Button 
-                        variant="outline" 
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={() => handleGenerateReceipt(order)}
-                        title="Generate Receipt (PDF)"
-                    >
-                        <Icon icon="solar:file-text-bold" className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-9 w-9"
-                        onClick={() => handlePrint(order)}
-                        title="Print Receipt"
-                    >
-                        <Icon icon="solar:printer-bold" className="h-4 w-4" />
-                    </Button>
+                      ) : (
+                        <div className="grid grid-cols-[minmax(0,1fr)_44px_44px] gap-2">
+                          <Button
+                            variant="default"
+                            className="h-11 justify-center rounded-xl px-4 text-sm font-semibold shadow-sm"
+                            onClick={() => handleViewOrder(order)}
+                            disabled={loadingOrderDetails || isOrderActionPending(order.id)}
+                          >
+                            <Icon icon="solar:eye-bold" className="h-4 w-4 shrink-0" />
+                            <span className="ml-2 truncate">Details</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-11 w-11 rounded-xl"
+                            onClick={() => handleGenerateReceipt(order)}
+                            disabled={isOrderActionPending(order.id)}
+                            title="Generate Receipt (PDF)"
+                          >
+                            <Icon icon="solar:file-text-bold" className="h-4 w-4 shrink-0" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-11 w-11 rounded-xl"
+                            onClick={() => handlePrint(order)}
+                            disabled={isOrderActionPending(order.id)}
+                            title="Print Receipt"
+                          >
+                            <Icon icon="solar:printer-bold" className="h-4 w-4 shrink-0" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -720,10 +861,42 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
               )}
 
               <div className="flex gap-2 pt-2">
+                {selectedOrder.status === 'draft' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => runOrderAction(selectedOrder, 'cancel', `Cancel draft ${selectedOrder.order_number}?`)}
+                    disabled={isOrderActionPending(selectedOrder.id)}
+                  >
+                    <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                )}
+                {selectedOrder.status === 'paid' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => runOrderAction(selectedOrder, 'refund', `Refund paid order ${selectedOrder.order_number}? This creates a full return.`)}
+                    disabled={isOrderActionPending(selectedOrder.id)}
+                  >
+                    <Icon icon="mdi:cash-refund" className="h-4 w-4 mr-2" />
+                    Refund
+                  </Button>
+                )}
+                {(selectedOrder.status === 'draft' || selectedOrder.status === 'paid') && (
+                  <Button
+                    variant="outline"
+                    onClick={() => runOrderAction(selectedOrder, 'void', selectedOrder.status === 'paid'
+                      ? `Void paid order ${selectedOrder.order_number}? This will create a full return and mark the order void.`
+                      : `Void draft ${selectedOrder.order_number}?`)}
+                    disabled={isOrderActionPending(selectedOrder.id)}
+                  >
+                    <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 mr-2" />
+                    Void
+                  </Button>
+                )}
                 <Button 
                   className="flex-1"
                   onClick={handleDownloadInvoice}
-                  disabled={downloadingInvoice}
+                  disabled={downloadingInvoice || isOrderActionPending(selectedOrder.id)}
                 >
                   <Icon icon="solar:document-bold" className="h-4 w-4 mr-2" />
                   {downloadingInvoice ? 'Preparing Invoice...' : 'Download Invoice PDF'}
@@ -731,6 +904,7 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
                 <Button 
                   variant="outline"
                   onClick={() => handleGenerateReceipt(selectedOrder)}
+                  disabled={isOrderActionPending(selectedOrder.id)}
                 >
                   <Icon icon="solar:file-text-bold" className="h-4 w-4 mr-2" />
                   Receipt PDF

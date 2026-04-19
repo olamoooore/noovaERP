@@ -46,6 +46,11 @@ const baseNavItems: NavItem[] = [
         href: '/pos/reports',
         icon: 'solar:chart-2-bold-duotone',
       },
+      {
+        title: 'POS Settings',
+        href: '/pos/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
     ],
   },
   {

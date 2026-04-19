@@ -30,6 +30,7 @@ const POSCustomerDisplay = lazy(() => import('@/pages/POS/POSCustomerDisplay').t
 const POSOrdersPage = lazy(() => import('@/pages/POS/POSOrdersPage').then(m => ({ default: m.POSOrdersPage })))
 const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m => ({ default: m.POSBarcodePage })))
 const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
+const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m => ({ default: m.POSSettingsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
@@ -313,6 +314,7 @@ function App() {
                 <Route path="/pos/orders" element={<POSOrdersPage />} />
                 <Route path="/pos/barcodes" element={<POSBarcodePage />} />
                 <Route path="/pos/reports" element={<POSReportsPage />} />
+                <Route path="/pos/settings" element={<POSSettingsPage />} />
                 <Route path="/ocr/documents" element={<OCRDocumentsPage />} />
                 <Route path="/ocr/documents/:uuid" element={<OCRDocumentReviewPage />} />
                 <Route path="/reports/financial" element={<FinancialReportsPage />} />

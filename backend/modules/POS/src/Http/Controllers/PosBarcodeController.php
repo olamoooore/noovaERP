@@ -5,6 +5,7 @@ namespace Modules\POS\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Modules\POS\Models\PosSetting;
 
 class PosBarcodeController extends Controller
 {
@@ -114,11 +115,24 @@ class PosBarcodeController extends Controller
             'bar_height' => 'nullable|integer|min:20|max:100',
         ]);
 
-        // TODO: Save to settings table when available
-        // For now, return the validated settings
+        // Persist to POS settings table with barcode_ prefix
+        $map = [
+            'barcode_type'   => 'barcode_type',
+            'barcode_format' => 'barcode_format',
+            'show_price'     => 'barcode_show_price',
+            'show_name'      => 'barcode_show_name',
+            'show_sku'       => 'barcode_show_sku',
+            'bar_width'      => 'barcode_bar_width',
+            'bar_height'     => 'barcode_bar_height',
+        ];
+        foreach ($validated as $k => $v) {
+            $settingKey = $map[$k] ?? $k;
+            PosSetting::setValue($settingKey, $v);
+        }
+
         return response()->json([
             'message' => 'Settings updated successfully',
-            'settings' => array_merge($this->getBarcodeSettings(), $validated),
+            'settings' => $this->getBarcodeSettings(),
         ]);
     }
 
@@ -127,15 +141,14 @@ class PosBarcodeController extends Controller
      */
     private function getBarcodeSettings(): array
     {
-        // TODO: Load from settings table when available
         return [
-            'barcode_type' => 'code128',
-            'barcode_format' => 'svg',
-            'show_price' => true,
-            'show_name' => true,
-            'show_sku' => true,
-            'bar_width' => 2,
-            'bar_height' => 50,
+            'barcode_type'   => PosSetting::getValue('barcode_type', 'code128'),
+            'barcode_format' => PosSetting::getValue('barcode_format', 'svg'),
+            'show_price'     => PosSetting::getValue('barcode_show_price', true),
+            'show_name'      => PosSetting::getValue('barcode_show_name', true),
+            'show_sku'       => PosSetting::getValue('barcode_show_sku', true),
+            'bar_width'      => PosSetting::getValue('barcode_bar_width', 2),
+            'bar_height'     => PosSetting::getValue('barcode_bar_height', 50),
         ];
     }
 }

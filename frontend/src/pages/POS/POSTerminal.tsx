@@ -1366,7 +1366,7 @@ export function POSTerminal() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
       <div className="flex min-h-0 flex-1 flex-row-reverse gap-3 overflow-hidden p-3 xl:gap-4 xl:p-4">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+        <section className="flex min-h-0 min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
           <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 xl:px-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
@@ -1574,7 +1574,7 @@ export function POSTerminal() {
           )}
         </section>
 
-        <Card className="flex h-full w-[26rem] shrink-0 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)] xl:w-[30rem]">
+        <Card className="flex h-full min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
         <CardHeader className="pb-3 px-4 pt-3 space-y-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

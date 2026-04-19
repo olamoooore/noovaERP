@@ -10,6 +10,7 @@ use Modules\POS\Http\Controllers\PosSessionController;
 use Modules\POS\Http\Controllers\PosTerminalController;
 use Modules\POS\Http\Controllers\PosHeldOrderController;
 use Modules\POS\Http\Controllers\PosPaymentMethodController;
+use Modules\POS\Http\Controllers\PosSettingController;
 use App\Http\Controllers\SalesOrderController;
 
 Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path'])->group(function () {
@@ -73,6 +74,9 @@ Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path
     Route::post('/pos/orders', [PosOrderController::class, 'store']);
     Route::get('/pos/orders/{posOrder}', [PosOrderController::class, 'show']);
     Route::post('/pos/orders/{posOrder}/pay', [PosOrderController::class, 'pay']);
+    Route::post('/pos/orders/{posOrder}/cancel', [PosOrderController::class, 'cancel']);
+    Route::post('/pos/orders/{posOrder}/void', [PosOrderController::class, 'void']);
+    Route::post('/pos/orders/{posOrder}/refund', [PosOrderController::class, 'refund']);
     Route::post('/pos/orders/{posOrder}/return', [PosOrderController::class, 'createReturn']);
     Route::get('/pos/orders/{posOrder}/receipt', [PosOrderController::class, 'receipt']);
     Route::get('/pos/orders/{posOrder}/invoice', [PosOrderController::class, 'invoice']);
@@ -97,4 +101,12 @@ Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path
     Route::post('/pos/barcodes/print', [PosBarcodeController::class, 'print']);
     Route::get('/pos/barcodes/settings', [PosBarcodeController::class, 'settings']);
     Route::post('/pos/barcodes/settings', [PosBarcodeController::class, 'updateSettings']);
+
+    // =====================================================
+    // POS SETTINGS
+    // =====================================================
+    
+    Route::get('/pos/settings', [PosSettingController::class, 'index']);
+    Route::put('/pos/settings', [PosSettingController::class, 'update']);
+    Route::post('/pos/settings/reset', [PosSettingController::class, 'reset']);
 });
