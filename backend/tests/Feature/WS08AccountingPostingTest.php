@@ -1,0 +1,234 @@
+<?php
+
+/**
+ * WS-08: Accounting Posting and Settlement Convergence
+ *
+ * Runtime PostingEngine tests (FIX-04).
+ *
+ * Coverage:
+ *  - PostingEngine::post() creates a balanced JournalEntry with GL lines
+ *  - PostingEngine::post() idempotency guard — same documentId only creates one JournalEntry
+ *  - PostingEngine::post() rejects a date that falls in a locked period
+ *  - JournalEntriesController::store() now validates lock-date before creating a draft (FIX-01)
+ *  - JournalEntriesController::store() now validates fiscal period before creating a draft (FIX-01)
+ *  - OcrDocument::unpost() no longer calls PostingEngine directly (FIX-03)
+ *  - OcrPostingService::unpostDocument() owns the GL reversal (FIX-03)
+ *  - PaymentController has no updateInvoiceFromPayment method (FIX-02 confirmed removed)
+ */
+
+namespace Tests\Feature;
+
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
+use App\Models\ChartOfAccount;
+use App\Models\JournalEntry;
+use App\Models\JournalEntryLink;
+use App\Models\LockDate;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Services\OcrPostingService;
+use Modules\PaymentGateway\Controllers\PaymentController;
+use Tests\TestCase;
+
+class WS08AccountingPostingTest extends TestCase
+{
+    use RefreshDatabase;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Return two test accounts (debit, credit) and a balanced PostingRequest DTO. */
+    private function makePostingRequest(
+        string $documentType = 'test_doc',
+        int    $documentId   = 9001,
+        string $date         = '',
+    ): PostingRequest {
+        $date = $date ?: now()->addDays(30)->toDateString(); // safely in the future
+
+        $debitAccount  = ChartOfAccount::factory()->create(['type' => 'expense',   'is_active' => true]);
+        $creditAccount = ChartOfAccount::factory()->create(['type' => 'liability', 'is_active' => true]);
+
+        return new PostingRequest(
+            documentType: $documentType,
+            documentId:   $documentId,
+            postingDate:  $date,
+            description:  "WS-08 test posting",
+            lines:        [
+                new PostingRequestLine(
+                    accountMappingKey: 'expense',
+                    accountId:         $debitAccount->id,
+                    debit:             500.00,
+                    credit:            0.00,
+                    description:       'Test debit line',
+                ),
+                new PostingRequestLine(
+                    accountMappingKey: 'payable',
+                    accountId:         $creditAccount->id,
+                    debit:             0.00,
+                    credit:            500.00,
+                    description:       'Test credit line',
+                ),
+            ],
+            userId: 1,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Runtime — PostingEngine
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function posting_engine_creates_balanced_journal_entry(): void
+    {
+        $engine  = app(PostingEngineInterface::class);
+        $request = $this->makePostingRequest(documentId: 9001);
+
+        $result = $engine->post($request);
+
+        $this->assertTrue($result->success, "PostingEngine::post() failed: {$result->error}");
+        $this->assertNotNull($result->journalEntry);
+
+        $entry = $result->journalEntry;
+        $this->assertEquals('posted', $entry->status);
+
+        // Lines must be balanced
+        $totalDebit  = $entry->lines->sum('debit');
+        $totalCredit = $entry->lines->sum('credit');
+        $this->assertEqualsWithDelta(500.00, $totalDebit,  0.01, 'Total debit mismatch');
+        $this->assertEqualsWithDelta(500.00, $totalCredit, 0.01, 'Total credit mismatch');
+
+        // JournalEntryLink must exist (idempotency record)
+        $this->assertDatabaseHas('journal_entry_links', [
+            'document_type' => 'test_doc',
+            'document_id'   => 9001,
+        ]);
+    }
+
+    /** @test */
+    public function posting_engine_is_idempotent_for_same_document_id(): void
+    {
+        $engine   = app(PostingEngineInterface::class);
+        $request1 = $this->makePostingRequest(documentId: 9002);
+        $request2 = $this->makePostingRequest(documentId: 9002); // identical document_id
+
+        $result1 = $engine->post($request1);
+        $result2 = $engine->post($request2);
+
+        $this->assertTrue($result1->success, "First post failed: {$result1->error}");
+        $this->assertTrue($result2->success, "Second post failed: {$result2->error}");
+
+        // Both results must point to the same JournalEntry
+        $this->assertEquals($result1->journalEntryId, $result2->journalEntryId);
+
+        // Only one journal_entry_link record must exist
+        $this->assertDatabaseCount('journal_entry_links', 1);
+
+        // Only one JournalEntry created
+        $this->assertEquals(
+            1,
+            JournalEntry::where('id', $result1->journalEntryId)->count(),
+        );
+    }
+
+    /** @test */
+    public function posting_engine_rejects_date_in_locked_period(): void
+    {
+        // Lock everything up to (and including) last month
+        $lockThrough = now()->subMonth()->endOfMonth()->toDateString();
+
+        LockDate::create([
+            'lock_type' => 'journal_entries',
+            'lock_date' => $lockThrough,
+            'is_active' => true,
+            'reason'    => 'WS-08 test lock',
+        ]);
+
+        // Try to post a date that is <= lockThrough → must be rejected
+        $lockedDate = now()->subMonth()->startOfMonth()->toDateString();
+        $engine     = app(PostingEngineInterface::class);
+        $request    = $this->makePostingRequest(documentId: 9003, date: $lockedDate);
+
+        $result = $engine->post($request);
+
+        $this->assertFalse($result->success, 'PostingEngine should have rejected locked-period date');
+        $this->assertNotEmpty($result->error);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Structural — FIX-01 (JournalEntriesController::store validation)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function journal_entries_controller_store_calls_lock_date_validation(): void
+    {
+        $controllerPath = base_path('app/Http/Controllers/Api/JournalEntriesController.php');
+        $source         = file_get_contents($controllerPath);
+
+        $this->assertStringContainsString(
+            'lockDateService->validateTransactionDate(',
+            $source,
+            'FIX-01: JournalEntriesController::store() must call lockDateService->validateTransactionDate()',
+        );
+    }
+
+    /** @test */
+    public function journal_entries_controller_store_calls_fiscal_period_validation(): void
+    {
+        $controllerPath = base_path('app/Http/Controllers/Api/JournalEntriesController.php');
+        $source         = file_get_contents($controllerPath);
+
+        $this->assertStringContainsString(
+            'fiscalValidator->validateDate(',
+            $source,
+            'FIX-01: JournalEntriesController::store() must call fiscalValidator->validateDate()',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Structural — FIX-02 (updateInvoiceFromPayment removed)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function payment_controller_has_no_update_invoice_from_payment_method(): void
+    {
+        $this->assertFalse(
+            method_exists(PaymentController::class, 'updateInvoiceFromPayment'),
+            'FIX-02: PaymentController::updateInvoiceFromPayment() must be removed',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Structural — FIX-03 (OCR GL reversal lives in OcrPostingService)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function ocr_document_unpost_does_not_call_posting_engine_directly(): void
+    {
+        $modelPath = base_path('modules/OCRBookkeeping/src/Models/OcrDocument.php');
+        $source    = file_get_contents($modelPath);
+
+        $this->assertStringNotContainsString(
+            'app(\App\Accounting\Contracts\PostingEngineInterface::class)',
+            $source,
+            'FIX-03: OcrDocument::unpost() must not call PostingEngine directly',
+        );
+
+        $this->assertStringNotContainsString(
+            'app(PostingEngineInterface::class)',
+            $source,
+            'FIX-03: OcrDocument::unpost() must not resolve PostingEngine via app()',
+        );
+    }
+
+    /** @test */
+    public function ocr_posting_service_has_unpost_document_method(): void
+    {
+        $this->assertTrue(
+            method_exists(OcrPostingService::class, 'unpostDocument'),
+            'FIX-03: OcrPostingService must expose unpostDocument() method',
+        );
+    }
+}

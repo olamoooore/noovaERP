@@ -5,6 +5,7 @@ namespace Modules\OCRBookkeeping\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Services\AccountMappingService;
 use App\Models\JournalEntry;
 use App\Models\ChartOfAccount;
@@ -703,6 +704,43 @@ class OcrPostingService
         }
         
         return $account;
+    }
+
+    /**
+     * Reverse the GL entry for an OCR document (FIX-03 WS-08).
+     *
+     * Extracted from OcrDocument::unpost() so that the PostingEngine is never
+     * called directly from an Eloquent model. The model delegates here, keeping
+     * all GL mutation behind PostingEngine in the service layer.
+     *
+     * @throws \Exception on reversal failure
+     */
+    public function unpostDocument(OcrDocument $document, int $actorUserId): void
+    {
+        if (!$document->isPosted()) {
+            throw new \Exception("Cannot unpost document '{$document->uuid}': current status is '{$document->status}'.");
+        }
+
+        if ($document->journal_entry_id) {
+            $result = $this->postingEngine->reverse(new ReversalRequest(
+                journalEntryId: (int) $document->journal_entry_id,
+                reversalDate:   now()->toDateString(),
+                reason:         "Unpost OCR document {$document->uuid}",
+                reasonCode:     'OCR_UNPOST',
+                actorUserId:    $actorUserId,
+            ));
+
+            if (!$result->success) {
+                throw new \Exception("Failed to reverse journal entry: {$result->error}");
+            }
+        }
+
+        $document->update([
+            'status'          => 'NEEDS_REVIEW',
+            'journal_entry_id' => null,
+            'posted_at'       => null,
+            'posted_by'       => null,
+        ]);
     }
 
 }

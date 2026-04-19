@@ -2,7 +2,6 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
-use App\Accounting\DTOs\ReversalRequest;
 use Database\Factories\OcrDocumentFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -224,38 +223,19 @@ class OcrDocument extends Model
     /**
      * Unpost a document and reverse its journal entry
      * Transition: POSTED -> NEEDS_REVIEW
-     * 
+     *
+     * Delegates GL reversal to OcrPostingService to avoid calling PostingEngine
+     * directly from the model layer (WS-08 FIX-03).
+     *
      * @return bool
      */
     public function unpost(): bool
     {
-        if (!$this->isPosted()) {
-            throw new \Exception("Cannot unpost document. Current status: {$this->status}");
-        }
+        // Delegate all GL work to OcrPostingService — model must not call PostingEngine directly.
+        app(\Modules\OCRBookkeeping\Services\OcrPostingService::class)
+            ->unpostDocument($this, TenantUserHelper::getTenantUserId());
 
-        // Reverse the journal entry via PostingEngine (immutable audit trail)
-        if ($this->journal_entry_id && $this->journalEntry) {
-            $postingEngine = app(\App\Accounting\Contracts\PostingEngineInterface::class);
-            $result = $postingEngine->reverse(new ReversalRequest(
-                journalEntryId: (int) $this->journal_entry_id,
-                reversalDate: now()->toDateString(),
-                reason: "Unpost OCR document {$this->uuid}",
-                reasonCode: 'OCR_UNPOST',
-                actorUserId: TenantUserHelper::getTenantUserId(),
-            ));
-
-            if (!$result->success) {
-                throw new \Exception("Failed to reverse journal entry: {$result->error}");
-            }
-        }
-
-        // Reset document to needs review
-        return $this->update([
-            'status' => 'NEEDS_REVIEW',
-            'journal_entry_id' => null,
-            'posted_at' => null,
-            'posted_by' => null,
-        ]);
+        return true;
     }
 
     /**

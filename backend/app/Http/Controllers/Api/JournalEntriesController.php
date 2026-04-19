@@ -10,6 +10,7 @@ use App\Accounting\DTOs\ReversalRequest;
 use App\Models\JournalEntry;
 use App\Models\Journal;
 use App\Models\LockDate;
+use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use App\Services\ManualJournalPostingService;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class JournalEntriesController extends Controller
 {
     public function __construct(
         private LockDateValidationService $lockDateService,
+        private FiscalPeriodValidator $fiscalValidator,
         private PostingEngineInterface $postingEngine,
         private ManualJournalPostingService $manualJournalService,
     ) {}
@@ -124,6 +126,29 @@ class JournalEntriesController extends Controller
         }
 
         try {
+            // ── FIX-01 (WS-08): Apply lock-date and fiscal-period validation at draft creation ──
+            // Draft entries must not bypass period controls. If the entry_date falls in a
+            // locked period, the accountant must obtain an override before creating the draft.
+            // This mirrors the protection applied by ManualJournalPostingService::post().
+            $lockResult = $this->lockDateService->validateTransactionDate(
+                'journal_entries',
+                $validated['entry_date'],
+            );
+
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message'           => $lockResult['message'],
+                    'requires_override' => true,
+                    'lock_date'         => $lockResult['lock_date'],
+                ], 422);
+            }
+
+            $fiscalResult = $this->fiscalValidator->validateDate($validated['entry_date']);
+            if (!$fiscalResult['allowed']) {
+                return response()->json(['message' => $fiscalResult['reason']], 422);
+            }
+            // ── end FIX-01 ──
+
             DB::beginTransaction();
 
             // Validate balance
