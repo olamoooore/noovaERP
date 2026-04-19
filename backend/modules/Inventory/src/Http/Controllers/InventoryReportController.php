@@ -34,7 +34,13 @@ class InventoryReportController extends Controller
 
         // Low/out-of-stock counts from stock_levels
         $lowStockCount = StockLevel::where('quantity', '>', 0)
-            ->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+            ->where(function ($query) {
+                $query->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+                    ->orWhere(function ($fallback) {
+                        $fallback->whereRaw('(min_quantity IS NULL OR min_quantity = 0)')
+                            ->where('quantity', '<=', 10);
+                    });
+            })
             ->whereHas('product', fn($q) => $q->where('is_active', true)->where('track_inventory', true))
             ->distinct('product_id')
             ->count('product_id');
@@ -88,8 +94,16 @@ class InventoryReportController extends Controller
     public function lowStockReport(Request $request)
     {
         $query = StockLevel::with(['product', 'warehouse'])
-            ->whereColumn('quantity', '<=', 'min_quantity')
-            ->where('quantity', '>', 0);
+            ->where('quantity', '>', 0)
+            ->where(function ($query) {
+                $query->whereColumn('quantity', '<=', 'min_quantity')
+                    ->orWhere(function ($fallback) {
+                        $fallback->where(function ($nullOrZero) {
+                            $nullOrZero->whereNull('min_quantity')
+                                ->orWhere('min_quantity', 0);
+                        })->where('quantity', '<=', 10);
+                    });
+            });
 
         if ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->input('warehouse_id'));
