@@ -136,7 +136,7 @@ class SalesOrderService
             throw new \Exception('Only fulfilled or allocated orders can be invoiced.');
         }
 
-        return DB::transaction(function () use ($order, $invoiceService) {
+        return DB::transaction(function () use ($order, $totalOverrides, $invoiceService) {
             $invoiceService = $invoiceService ?? app(InvoiceService::class);
 
             $invoiceData = [

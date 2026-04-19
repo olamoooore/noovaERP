@@ -3,6 +3,7 @@
 namespace Modules\POS\Services;
 
 use App\Models\StockMovement;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Services\InventoryService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -24,73 +25,82 @@ class PosPaymentCompletionService
         ?int $receivedBy = null,
         ?string $notes = null,
     ): PosOrder {
-        $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse');
+        return DB::transaction(function () use ($posOrder, $amount, $paymentMethod, $reference, $receivedBy, $notes) {
+            $posOrder = PosOrder::whereKey($posOrder->id)->lockForUpdate()->firstOrFail();
+            
+            $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse');
 
-        $existingPayment = PosPayment::where('pos_order_id', $posOrder->id)
-            ->where('reference', $reference)
-            ->first();
-
-        if (!$existingPayment) {
-            PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method' => $paymentMethod,
-                'amount' => $amount,
-                'reference' => $reference,
-                'notes' => $notes,
-                'received_by' => TenantUserHelper::requireTenantUserId($receivedBy ?? $posOrder->created_by),
-            ]);
-        }
-
-        $entry = $this->posPostingService->postPaidOrder(
-            $posOrder,
-            $amount,
-            $paymentMethod
-        );
-
-        $warehouseId = $this->resolveWarehouseId($posOrder);
-
-        if ($warehouseId) {
-            foreach ($posOrder->items as $item) {
-                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
-                $trackInventory = $item->variant
-                    ? (bool) $item->variant->track_inventory
-                    : (bool) ($item->product?->track_inventory ?? false);
-
-                if (!$productId || !$trackInventory) {
-                    continue;
-                }
-
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                    ->where('reference_id', $posOrder->id)
-                    ->where('type', 'sale')
-                    ->where('product_id', $productId)
-                    ->sum('quantity');
-                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-
-                if ($remainingToDeduct <= 0) {
-                    continue;
-                }
-
-                $this->inventoryService->adjustStock(
-                    productId: $productId,
-                    warehouseId: $warehouseId,
-                    quantity: $remainingToDeduct,
-                    type: 'sale',
-                    reference: $posOrder->order_number,
-                    referenceType: 'PosOrder',
-                    referenceId: $posOrder->id,
-                );
+            if ($posOrder->status === 'paid' || $posOrder->paid_at) {
+                Log::info('Skipping already-paid order in completion', [
+                    'order_id' => $posOrder->id,
+                ]);
+                return $posOrder;
             }
-        }
 
-        $posOrder->update([
-            'status' => 'paid',
-            'paid_at' => $posOrder->paid_at ?? now(),
-            'journal_entry_id' => $entry->id,
-            'receipt_number' => $posOrder->receipt_number ?: PosOrder::generateReceiptNumber(),
-        ]);
+            $existingPayment = PosPayment::where('pos_order_id', $posOrder->id)
+                ->where('reference', $reference)
+                ->first();
 
-        return $posOrder->fresh(['items', 'payments', 'journalEntry', 'customer']);
+            if (!$existingPayment) {
+                PosPayment::create([
+                    'pos_order_id' => $posOrder->id,
+                    'method' => $paymentMethod,
+                    'amount' => $amount,
+                    'reference' => $reference,
+                    'notes' => $notes,
+                    'received_by' => TenantUserHelper::requireTenantUserId($receivedBy ?? $posOrder->created_by),
+                ]);
+            }
+
+            $entry = $this->posPostingService->postPaidOrder(
+                $posOrder,
+                $amount,
+                $paymentMethod
+            );
+
+            $warehouseId = $this->resolveWarehouseId($posOrder);
+
+            if ($warehouseId) {
+                foreach ($posOrder->items as $item) {
+                    $productId = $item->variant ? $item->variant->product_id : $item->product_id;
+                    $trackInventory = $item->variant
+                        ? (bool) $item->variant->track_inventory
+                        : (bool) ($item->product?->track_inventory ?? false);
+
+                    if (!$productId || !$trackInventory) {
+                        continue;
+                    }
+
+                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                        ->where('reference_id', $posOrder->id)
+                        ->where('type', 'sale')
+                        ->where('product_id', $productId)
+                        ->sum('quantity');
+                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+
+                    if ($remainingToDeduct <= 0) {
+                        continue;
+                    }
+
+                    $this->inventoryService->adjustStock(
+                        productId: $productId,
+                        warehouseId: $warehouseId,
+                        quantity: $remainingToDeduct,
+                        type: 'sale',
+                        reference: $posOrder->order_number,
+                        referenceType: 'PosOrder',
+                    );
+                }
+            }
+
+            $posOrder->update([
+                'status' => 'paid',
+                'paid_at' => now(),
+                'journal_entry_id' => $entry?->id,
+            ]);
+
+            return $posOrder->fresh();
+        });
     }
 
     private function resolveWarehouseId(PosOrder $posOrder): ?int

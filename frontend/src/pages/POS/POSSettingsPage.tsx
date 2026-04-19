@@ -147,13 +147,29 @@ export function POSSettingsPage() {
   })
 
   // ----- Fetch warehouses -----
-  const { data: warehouses } = useQuery({
+  const { data: warehouses, isLoading: warehousesLoading } = useQuery({
     queryKey: ['pos-warehouses'],
     queryFn: async () => {
-      const res = await api.get('/pos/warehouses')
-      const raw = res.data?.data ?? res.data?.warehouses ?? res.data
-      return (Array.isArray(raw) ? raw : []) as Warehouse[]
+      try {
+        const res = await api.get('/pos/warehouses')
+        const raw = res.data?.data ?? res.data?.warehouses ?? res.data
+        
+        // Ensure we always return an array
+        if (!raw) return []
+        if (!Array.isArray(raw)) return []
+        
+        return raw.filter((w: Warehouse) => w && w.id && w.name).map((w: Warehouse) => ({
+          id: w.id,
+          name: w.name,
+          code: w.code,
+        }))
+      } catch (e) {
+        console.error('Failed to fetch warehouses:', e)
+        return []
+      }
     },
+    retry: 1,
+    staleTime: 0,
   })
 
   // ----- Fetch terminals -----
@@ -331,7 +347,7 @@ function GeneralSettingsTab({
                 <SelectValue placeholder="Select warehouse" />
               </SelectTrigger>
               <SelectContent>
-                {warehouses.map((w) => (
+                {(Array.isArray(warehouses) ? warehouses : []).map((w: Warehouse) => (
                   <SelectItem key={w.id} value={w.id.toString()}>
                     {w.name}
                   </SelectItem>
@@ -703,7 +719,7 @@ function TerminalsTab({
                   <SelectValue placeholder="Select warehouse" />
                 </SelectTrigger>
                 <SelectContent>
-                  {warehouses.map((w) => (
+                  {(Array.isArray(warehouses) ? warehouses : []).map((w: Warehouse) => (
                     <SelectItem key={w.id} value={w.id.toString()}>
                       {w.name}
                     </SelectItem>

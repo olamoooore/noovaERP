@@ -4,6 +4,7 @@ namespace Modules\IoT\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -20,8 +21,10 @@ use Modules\POS\Services\PosPaymentCompletionService;
  * Handles payment webhook processing asynchronously with retry logic.
  * This ensures the webhook endpoint returns quickly to HitPay while
  * processing happens in the background with automatic retries.
+ * 
+ * Implements ShouldBeUnique to prevent concurrent job instances for the same order.
  */
-class ProcessPaymentWebhook implements ShouldQueue
+class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -45,6 +48,22 @@ class ProcessPaymentWebhook implements ShouldQueue
      * Delete the job if its models no longer exist.
      */
     public $deleteWhenMissingModels = true;
+
+    /**
+     * The unique ID of the job for deduplication.
+     */
+    public function uniqueId(): string
+    {
+        return "iot_payment_webhook_{$this->orderId}_{$this->tenantId}";
+    }
+
+    /**
+     * The number of seconds the job should remain unique.
+     */
+    public function uniqueFor(): int
+    {
+        return 300; // 5 minutes - prevents concurrent dispatches for same order
+    }
 
     /**
      * Create a new job instance.

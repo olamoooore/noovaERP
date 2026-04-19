@@ -56,25 +56,26 @@ class ThreeWayMatchService
 
         foreach ($bill->lines as $billLine) {
             if (!$billLine->purchase_order_item_id) {
+                $errors[] = "Bill line {$billLine->id} is missing purchase order lineage for PO {$purchaseOrder->po_number}.";
                 continue;
             }
 
             $poLine = $purchaseOrder->items->firstWhere('id', $billLine->purchase_order_item_id);
 
             if (!$poLine) {
-                $errors[] = "Bill line references a purchase order item that does not exist on PO {$purchaseOrder->order_number}.";
+                $errors[] = "Bill line references a purchase order item that does not exist on PO {$purchaseOrder->po_number}.";
                 continue;
             }
 
-            $qtyVariance = $billLine->quantity - $poLine->quantity;
+            $qtyVariance = (float) $billLine->quantity - (float) $poLine->quantity_ordered;
             if ($qtyVariance > $tolerances['quantity_tolerance']) {
-                $errors[] = "Bill line quantity ({$billLine->quantity}) exceeds PO quantity ({$poLine->quantity}) for product {$poLine->product?->name}.";
+                $errors[] = "Bill line quantity ({$billLine->quantity}) exceeds PO quantity ({$poLine->quantity_ordered}) for product {$poLine->product?->name}.";
             }
 
-            if ($poLine->unit_price > 0) {
-                $priceVariancePercent = abs($billLine->unit_price - $poLine->unit_price) / $poLine->unit_price * 100;
+            if ((float) $poLine->unit_cost > 0) {
+                $priceVariancePercent = abs((float) $billLine->unit_price - (float) $poLine->unit_cost) / (float) $poLine->unit_cost * 100;
                 if ($priceVariancePercent > $tolerances['price_tolerance_percent']) {
-                    $errors[] = "Bill line unit price (" . number_format($billLine->unit_price, 2) . ") differs from PO price (" . number_format($poLine->unit_price, 2) . ") by " . number_format($priceVariancePercent, 1) . "% for product {$poLine->product?->name}.";
+                    $errors[] = "Bill line unit price (" . number_format((float) $billLine->unit_price, 2) . ") differs from PO price (" . number_format((float) $poLine->unit_cost, 2) . ") by " . number_format($priceVariancePercent, 1) . "% for product {$poLine->product?->name}.";
                 }
             }
         }
@@ -94,6 +95,7 @@ class ThreeWayMatchService
 
         foreach ($bill->lines as $billLine) {
             if (!$billLine->goods_receipt_line_id) {
+                $errors[] = "Bill line {$billLine->id} is missing goods receipt lineage for GRN {$goodsReceipt->grn_number}.";
                 continue;
             }
 

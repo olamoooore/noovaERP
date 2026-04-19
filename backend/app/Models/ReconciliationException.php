@@ -31,6 +31,7 @@ class ReconciliationException extends Model
         'notes',
         'resolved_at',
         'resolved_by',
+        'reconciliation_control_result_id',
     ];
 
     protected $casts = [
@@ -99,6 +100,14 @@ class ReconciliationException extends Model
     public function resolvedByUser()
     {
         return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    /**
+     * Get the reconciliation control result that generated this exception
+     */
+    public function reconciliationControlResult()
+    {
+        return $this->belongsTo(ReconciliationControlResult::class, 'reconciliation_control_result_id');
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Models\APTransaction;
 use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
 use App\Models\ReconciliationControlResult;
+use App\Models\ReconciliationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -77,6 +78,11 @@ class APGLReconciliationService
             'executed_by' => TenantUserHelper::requireTenantUserId(),
             'notes' => null,
         ]);
+
+        // Automatically create reconciliation exceptions for each discrepancy
+        if ($result->status === 'failed' && !empty($discrepancies)) {
+            $this->createExceptionsFromDiscrepancies($result, $discrepancies);
+        }
         
         Log::info('AP to GL reconciliation completed', [
             'as_of_date' => $asOfDate->toDateString(),
@@ -376,5 +382,67 @@ class APGLReconciliationService
             ->with('vendor:id,name')
             ->get()
             ->toArray();
+    }
+
+    /**
+     * Map discrepancy type to exception type
+     */
+    private function mapDiscrepancyType(string $discrepancyType): string
+    {
+        return match ($discrepancyType) {
+            'unposted_bills' => ReconciliationException::TYPE_UNMATCHED_TRANSACTION,
+            'unposted_payments' => ReconciliationException::TYPE_UNMATCHED_TRANSACTION,
+            'missing_subledger' => ReconciliationException::TYPE_TIMING_DIFFERENCE,
+            'timing_differences' => ReconciliationException::TYPE_TIMING_DIFFERENCE,
+            default => ReconciliationException::TYPE_UNMATCHED_TRANSACTION,
+        };
+    }
+
+    /**
+     * Create reconciliation exceptions from discrepancies
+     * 
+     * Idempotent: only creates exceptions for items that don't already have an open exception
+     */
+    private function createExceptionsFromDiscrepancies(ReconciliationControlResult $result, array $discrepancies): void
+    {
+        foreach ($discrepancies as $discrepancy) {
+            $exceptionType = $this->mapDiscrepancyType($discrepancy['type']);
+            
+            foreach ($discrepancy['items'] ?? [] as $item) {
+                $reference = $item['document_number'] ?? $item['reference'] ?? null;
+                
+                // Skip if no reference to track
+                if (!$reference) {
+                    continue;
+                }
+                
+                // Idempotent: check if an open exception already exists for this reference
+                $existingException = ReconciliationException::where('reference', $reference)
+                    ->whereIn('status', [ReconciliationException::STATUS_OPEN, ReconciliationException::STATUS_IN_PROGRESS])
+                    ->first();
+                
+                if ($existingException) {
+                    continue;
+                }
+                
+                ReconciliationException::create([
+                    'exception_type' => $exceptionType,
+                    'amount' => $item['amount'] ?? $item['total_amount'] ?? null,
+                    'transaction_date' => $item['transaction_date'] ?? $item['entry_date'] ?? null,
+                    'reference' => $reference,
+                    'description' => $discrepancy['description'],
+                    'priority' => ReconciliationException::PRIORITY_MEDIUM,
+                    'status' => ReconciliationException::STATUS_OPEN,
+                    'aging_bucket' => ReconciliationException::BUCKET_CURRENT,
+                    'days_open' => 0,
+                    'reconciliation_control_result_id' => $result->id,
+                ]);
+            }
+        }
+        
+        Log::info('AP reconciliation exceptions created', [
+            'control_result_id' => $result->id,
+            'discrepancy_count' => count($discrepancies),
+        ]);
     }
 }

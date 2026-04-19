@@ -9,6 +9,7 @@ use App\Models\BankAccount;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Payment;
+use App\Models\SettlementAuditLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\InventoryService;
@@ -287,7 +288,7 @@ class InvoiceService
             ]);
 
             // Update invoice paid amount and balance — single canonical path
-            $this->syncInvoicePaymentState($invoice, (float) $payment->amount);
+            $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
 
             DB::commit();
             
@@ -391,7 +392,7 @@ class InvoiceService
 
         $payment = Payment::create($paymentData);
 
-        $this->syncInvoicePaymentState($invoice->fresh(), (float) $payment->amount);
+        $this->syncInvoicePaymentState($invoice->fresh(), (float) $payment->amount, $payment);
 
         return $payment;
     }
@@ -436,8 +437,14 @@ class InvoiceService
      * — used by both recordPayment (which also posts GL) and
      * recordChannelPayment (which skips GL because the channel already posted).
      */
-    private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount): void
+    private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
     {
+        $beforeState = [
+            'paid_amount' => $invoice->paid_amount,
+            'balance' => $invoice->balance,
+            'status' => $invoice->status,
+        ];
+
         Invoice::where('id', $invoice->id)
             ->increment('paid_amount', $paymentAmount);
 
@@ -451,6 +458,21 @@ class InvoiceService
         ]);
 
         $invoice->refresh();
+
+        // Create settlement audit log
+        SettlementAuditLog::create([
+            'invoice_id' => $invoice->id,
+            'payment_id' => $payment?->id,
+            'payment_amount' => $paymentAmount,
+            'before_paid_amount' => $beforeState['paid_amount'],
+            'after_paid_amount' => $invoice->paid_amount,
+            'before_balance' => $beforeState['balance'],
+            'after_balance' => $invoice->balance,
+            'before_status' => $beforeState['status'],
+            'after_status' => $invoice->status,
+            'actor_user_id' => TenantUserHelper::resolveTenantUserId(),
+            'settlement_method' => $payment?->payment_method ?? 'unknown',
+        ]);
 
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
