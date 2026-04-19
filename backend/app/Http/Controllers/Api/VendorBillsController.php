@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillLine;
 use App\Models\GoodsReceipt;
+use App\Services\BillService;
 use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Modules\Inventory\Models\PurchaseOrder;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class VendorBillsController extends Controller
@@ -120,166 +122,87 @@ class VendorBillsController extends Controller
 
     public function __construct(
         private readonly ThreeWayMatchService $threeWayMatchService,
+        private readonly BillService $billService,
     ) {}
 
     /**
      * Create a new vendor bill
-     * 
+     *
+     * Delegates to BillService::createBill() — canonical bill creation owner.
+     * bill_type enforcement (FIX-02) and three-way match enforcement (FIX-02/FIX-03)
+     * are handled by BillService.
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
         try {
-            // Validate request
             $validator = Validator::make($request->all(), [
-                'bill_number' => 'nullable|string|unique:bills,bill_number',
-                'vendor_id' => 'required|exists:vendors,id',
-                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
-                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
-                'bill_date' => 'required|date',
-                'due_date' => 'nullable|date',
-                'vendor_reference' => 'nullable|string|max:100',
-                'internal_reference' => 'nullable|string|max:100',
-                'attention_to' => 'nullable|string|max:255',
-                'contact_email' => 'nullable|email|max:255',
-                'contact_phone' => 'nullable|string|max:50',
-                'vendor_address_snapshot' => 'nullable|string',
-                'remittance_address_snapshot' => 'nullable|string',
-                'company_registration_number' => 'nullable|string|max:100',
-                'tax_registration_number' => 'nullable|string|max:100',
-                'notes' => 'nullable|string',
-                'terms' => 'nullable|string',
-                'discount_amount' => 'nullable|numeric|min:0',
-                'lines' => 'required|array|min:1',
-                'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
-                'lines.*.description' => 'nullable|string',
-                'lines.*.quantity' => 'required|numeric|min:0',
-                'lines.*.unit_price' => 'required|numeric',
-                'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+                'bill_number'                    => 'nullable|string|unique:bills,bill_number',
+                'vendor_id'                      => 'required|exists:vendors,id',
+                'bill_type'                      => 'nullable|string|in:procurement,expense',
+                'purchase_order_id'              => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id'               => 'nullable|exists:goods_receipts,id',
+                'bill_date'                      => 'required|date',
+                'due_date'                       => 'nullable|date',
+                'vendor_reference'               => 'nullable|string|max:100',
+                'internal_reference'             => 'nullable|string|max:100',
+                'attention_to'                   => 'nullable|string|max:255',
+                'contact_email'                  => 'nullable|email|max:255',
+                'contact_phone'                  => 'nullable|string|max:50',
+                'vendor_address_snapshot'        => 'nullable|string',
+                'remittance_address_snapshot'    => 'nullable|string',
+                'company_registration_number'    => 'nullable|string|max:100',
+                'tax_registration_number'        => 'nullable|string|max:100',
+                'notes'                          => 'nullable|string',
+                'terms'                          => 'nullable|string',
+                'discount_amount'                => 'nullable|numeric|min:0',
+                'lines'                          => 'required|array|min:1',
+                'lines.*.account_id'             => 'required|exists:chart_of_accounts,id',
+                'lines.*.description'            => 'nullable|string',
+                'lines.*.quantity'               => 'required|numeric|min:0',
+                'lines.*.unit_price'             => 'required|numeric',
+                'lines.*.tax_rate'               => 'nullable|numeric|min:0|max:100',
                 'lines.*.purchase_order_item_id' => 'nullable|integer',
-                'lines.*.goods_receipt_line_id' => 'nullable|integer',
+                'lines.*.goods_receipt_line_id'  => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors'  => $validator->errors(),
                 ], 422);
             }
 
-            DB::beginTransaction();
-
-            $goodsReceipt = null;
-            if ($request->filled('goods_receipt_id')) {
-                $goodsReceipt = GoodsReceipt::findOrFail((int) $request->goods_receipt_id);
-            }
-
-            $resolvedPurchaseOrderId = $request->purchase_order_id;
-            if ($goodsReceipt) {
-                if ($resolvedPurchaseOrderId && (int) $resolvedPurchaseOrderId !== (int) $goodsReceipt->purchase_order_id) {
-                    return response()->json([
-                        'message' => 'goods_receipt_id does not belong to the provided purchase_order_id',
-                    ], 422);
-                }
-                $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
-            }
-
-            // Run three-way match validation if PO or GRN is linked
-            // NOTE: Deferred to after bill+lines creation so the service can inspect real lines.
-            // See validation block below (after line creation).
-
-            // Create bill
-            $bill = Bill::create([
-                'bill_number' => $request->bill_number,
-                'vendor_id' => $request->vendor_id,
-                'purchase_order_id' => $resolvedPurchaseOrderId,
-                'goods_receipt_id' => $goodsReceipt?->id,
-                'bill_date' => $request->bill_date,
-                'due_date' => $request->due_date,
-                'vendor_reference' => $request->vendor_reference,
-                'internal_reference' => $request->internal_reference,
-                'attention_to' => $request->attention_to,
-                'contact_email' => $request->contact_email,
-                'contact_phone' => $request->contact_phone,
-                'vendor_address_snapshot' => $request->vendor_address_snapshot,
-                'remittance_address_snapshot' => $request->remittance_address_snapshot,
-                'company_registration_number' => $request->company_registration_number,
-                'tax_registration_number' => $request->tax_registration_number,
-                'status' => 'draft',
-                'notes' => $request->notes,
-                'terms' => $request->terms,
-                'discount_amount' => $request->discount_amount ?? 0,
-                'subtotal' => 0,
-                'tax_amount' => 0,
-                'total' => 0,
-                'paid_amount' => 0,
-                'balance' => 0,
-                'created_by' => TenantUserHelper::resolveTenantUserId(),
-            ]);
-
-            // Create bill lines
-            foreach ($request->lines as $lineData) {
-                $quantity = $lineData['quantity'];
-                $unitPrice = $lineData['unit_price'];
-                $taxRate = $lineData['tax_rate'] ?? 0;
-                
-                $lineTotal = $quantity * $unitPrice;
-                $taxAmount = $lineTotal * ($taxRate / 100);
-
-                BillLine::create([
-                    'bill_id' => $bill->id,
-                    'account_id' => $lineData['account_id'],
-                    'description' => $lineData['description'] ?? null,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'tax_rate' => $taxRate,
-                    'tax_amount' => $taxAmount,
-                    'line_total' => $lineTotal,
-                    'purchase_order_item_id' => $lineData['purchase_order_item_id'] ?? null,
-                    'goods_receipt_line_id' => $lineData['goods_receipt_line_id'] ?? null,
-                ]);
-            }
-
-            // Calculate totals
-            $bill->load('lines');
-            $bill->subtotal = $bill->lines->sum('line_total');
-            $bill->tax_amount = $bill->lines->sum('tax_amount');
-            $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
-            $bill->balance = $bill->total - $bill->paid_amount;
-            $bill->save();
-
-            // Run three-way match validation AFTER lines exist so the service
-            // can actually compare bill line quantities/prices against PO/GRN.
-            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
-                $bill->load(['purchaseOrder.items.product', 'goodsReceipt.lines.product']);
-                $matchResult = $this->threeWayMatchService->validate($bill);
-                if (!$matchResult['valid']) {
-                    DB::rollBack();
-                    return response()->json([
-                        'message' => 'Three-way match validation failed',
-                        'errors' => $matchResult['errors'],
-                        'warnings' => $matchResult['warnings'],
-                    ], 422);
-                }
-            }
-
-            DB::commit();
-
-            // Reload with relationships
-            $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
+            // BillService owns GRN/PO consistency, bill_type enforcement,
+            // line creation, total calculation, and three-way match (WS-07 FIX-02/FIX-03).
+            $bill = $this->billService->createBill(
+                $request->only([
+                    'bill_number', 'vendor_id', 'bill_type', 'purchase_order_id',
+                    'goods_receipt_id', 'bill_date', 'due_date', 'vendor_reference',
+                    'internal_reference', 'attention_to', 'contact_email', 'contact_phone',
+                    'vendor_address_snapshot', 'remittance_address_snapshot',
+                    'company_registration_number', 'tax_registration_number',
+                    'notes', 'terms', 'discount_amount', 'lines',
+                ]),
+                TenantUserHelper::resolveTenantUserId() ?? 0,
+            );
 
             return response()->json([
                 'message' => 'Vendor bill created successfully',
-                'data' => $bill
+                'data'    => $bill,
             ], 201);
 
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Failed to create vendor bill: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Failed to create vendor bill',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -318,6 +241,7 @@ class VendorBillsController extends Controller
                 'vendor_id' => 'nullable|exists:vendors,id',
                 'purchase_order_id' => 'nullable|exists:purchase_orders,id',
                 'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
+                'bill_type' => 'nullable|string|in:procurement,expense',
                 'bill_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
                 'vendor_reference' => 'nullable|string|max:100',
@@ -364,12 +288,41 @@ class VendorBillsController extends Controller
                 $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
             }
 
+            $purchaseOrder = $resolvedPurchaseOrderId
+                ? PurchaseOrder::with('items')->findOrFail((int) $resolvedPurchaseOrderId)
+                : null;
+
+            if (isset($goodsReceipt)) {
+                $goodsReceipt->loadMissing('lines');
+            }
+
+            $linePayloads = $request->has('lines')
+                ? $request->input('lines', [])
+                : $bill->lines()
+                    ->get(['purchase_order_item_id', 'goods_receipt_line_id'])
+                    ->map(fn (BillLine $line) => [
+                        'purchase_order_item_id' => $line->purchase_order_item_id,
+                        'goods_receipt_line_id' => $line->goods_receipt_line_id,
+                    ])
+                    ->all();
+
+            $lineageErrors = $this->validateProcurementLineage($linePayloads, $purchaseOrder, $resolvedGoodsReceiptId ? $goodsReceipt : null);
+            if ($lineageErrors !== []) {
+                DB::rollBack();
+
+                return response()->json([
+                    'message' => 'Procurement linkage validation failed',
+                    'errors' => $lineageErrors,
+                ], 422);
+            }
+
             // Update bill — 'status' is intentionally excluded from this list.
             $bill->update($request->only([
                 'bill_number',
                 'vendor_id',
                 'purchase_order_id',
                 'goods_receipt_id',
+                'bill_type',
                 'bill_date',
                 'due_date',
                 'vendor_reference',
@@ -555,5 +508,63 @@ class VendorBillsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * When a bill is linked to a PO/GRN, every line must keep explicit lineage
+     * back to the linked procurement documents instead of being treated as a
+     * generic AP line.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<string, array<int, string>>
+     */
+    private function validateProcurementLineage(array $lines, ?PurchaseOrder $purchaseOrder, ?GoodsReceipt $goodsReceipt): array
+    {
+        if (!$purchaseOrder && !$goodsReceipt) {
+            return [];
+        }
+
+        $errors = [];
+
+        foreach (array_values($lines) as $index => $lineData) {
+            $grnLine = null;
+            $goodsReceiptLineId = isset($lineData['goods_receipt_line_id']) && $lineData['goods_receipt_line_id'] !== ''
+                ? (int) $lineData['goods_receipt_line_id']
+                : null;
+            $purchaseOrderItemId = isset($lineData['purchase_order_item_id']) && $lineData['purchase_order_item_id'] !== ''
+                ? (int) $lineData['purchase_order_item_id']
+                : null;
+
+            if ($goodsReceipt) {
+                if (!$goodsReceiptLineId) {
+                    $errors["lines.{$index}.goods_receipt_line_id"][] = 'A goods receipt line reference is required when goods_receipt_id is provided.';
+                } else {
+                    $grnLine = $goodsReceipt->lines->firstWhere('id', $goodsReceiptLineId);
+
+                    if (!$grnLine) {
+                        $errors["lines.{$index}.goods_receipt_line_id"][] = 'The selected goods receipt line does not belong to the linked goods receipt.';
+                    }
+                }
+            }
+
+            if ($purchaseOrder) {
+                if (!$purchaseOrderItemId) {
+                    $errors["lines.{$index}.purchase_order_item_id"][] = 'A purchase order item reference is required when purchase_order_id is provided.';
+                } elseif (!$purchaseOrder->items->firstWhere('id', $purchaseOrderItemId)) {
+                    $errors["lines.{$index}.purchase_order_item_id"][] = 'The selected purchase order item does not belong to the linked purchase order.';
+                }
+
+                if (
+                    $purchaseOrderItemId
+                    && $grnLine
+                    && $grnLine->purchase_order_item_id
+                    && $purchaseOrderItemId !== (int) $grnLine->purchase_order_item_id
+                ) {
+                    $errors["lines.{$index}.purchase_order_item_id"][] = 'The purchase order item does not match the selected goods receipt line.';
+                }
+            }
+        }
+
+        return $errors;
     }
 }

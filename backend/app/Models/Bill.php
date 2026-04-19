@@ -30,6 +30,7 @@ class Bill extends Model
         'company_registration_number',
         'tax_registration_number',
         'status',
+        'bill_type',
         'subtotal',
         'tax_amount',
         'discount_amount',
