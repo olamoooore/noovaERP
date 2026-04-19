@@ -2,10 +2,12 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use App\Models\Feature;
+use App\Models\Tenant;
 use App\SuperAdmin\Application\FeatureGateService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 use Mockery;
 use Modules\EventManagement\Http\Middleware\FeatureFlagMiddleware;
 use Tests\TestCase;
@@ -25,6 +27,8 @@ class FeatureFlagMiddlewareTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->ensureFeaturesTableExists();
 
         $this->featureGate = Mockery::mock(FeatureGateService::class);
         $this->middleware  = new FeatureFlagMiddleware($this->featureGate);
@@ -51,8 +55,41 @@ class FeatureFlagMiddlewareTest extends TestCase
 
     private function mockTenant(string $tenantId): void
     {
-        if (function_exists('tenant')) {
-            app()->instance('currentTenantId', $tenantId);
+        app()->instance(\Stancl\Tenancy\Contracts\Tenant::class, new Tenant([
+            'id' => $tenantId,
+            'name' => 'Middleware Test Tenant',
+        ]));
+    }
+
+    private function ensureFeatureRecord(string $key, bool $isCore = false): void
+    {
+        Schema::disableForeignKeyConstraints();
+
+        \DB::table('features')->updateOrInsert(
+            ['key' => $key],
+            [
+                'name' => ucfirst($key),
+                'description' => null,
+                'is_core' => $isCore,
+                'price' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+    }
+
+    private function ensureFeaturesTableExists(): void
+    {
+        if (!Schema::hasTable('features')) {
+            Schema::create('features', function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->string('name');
+                $table->text('description')->nullable();
+                $table->boolean('is_core')->default(false);
+                $table->decimal('price', 10, 2)->default(0);
+                $table->timestamps();
+            });
         }
     }
 
@@ -61,6 +98,7 @@ class FeatureFlagMiddlewareTest extends TestCase
     /** @test */
     public function it_allows_request_when_feature_is_entitled(): void
     {
+        $this->ensureFeatureRecord('event_management');
         $this->mockTenant('test-tenant');
 
         $this->featureGate
@@ -86,6 +124,7 @@ class FeatureFlagMiddlewareTest extends TestCase
     /** @test */
     public function it_blocks_request_when_feature_is_not_entitled(): void
     {
+        $this->ensureFeatureRecord('event_management');
         $this->mockTenant('test-tenant');
 
         $this->featureGate
@@ -108,6 +147,7 @@ class FeatureFlagMiddlewareTest extends TestCase
     public function it_calls_feature_gate_service_check_not_legacy_controller(): void
     {
         // Proves FeatureGateService::check() is called — not FeatureFlagController::hasFeature().
+        $this->ensureFeatureRecord('event_management');
         $this->mockTenant('tenant-abc');
 
         $this->featureGate
@@ -125,6 +165,7 @@ class FeatureFlagMiddlewareTest extends TestCase
     /** @test */
     public function it_can_check_custom_feature_flag(): void
     {
+        $this->ensureFeatureRecord('custom_feature');
         $this->mockTenant('test-tenant');
 
         $this->featureGate

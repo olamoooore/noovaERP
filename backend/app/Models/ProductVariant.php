@@ -72,9 +72,6 @@ class ProductVariant extends Model
                     referenceId:   $this->id,
                 );
 
-                // Keep the variant's own stock_quantity in sync as a projection
-                $this->stock_quantity += ($type === 'in' ? abs($quantity) : -abs($quantity));
-                $this->saveQuietly();
                 return;
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::error('ProductVariant::adjustStock delegation failed', [

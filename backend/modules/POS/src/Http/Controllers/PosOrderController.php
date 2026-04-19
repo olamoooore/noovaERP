@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Invoice;
-use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -768,7 +767,13 @@ class PosOrderController extends Controller
         $returnOrder = $posOrder->createReturn($items, $notes);
 
         $terminal = $posOrder->terminal()->with('warehouse')->first();
-        $warehouseId = $terminal?->warehouse_id ?? Warehouse::getDefault()?->id;
+        $warehouseId = $terminal?->warehouse_id;
+
+        if (!$warehouseId) {
+            Log::warning('POS return has no terminal warehouse — stock restock skipped', [
+                'pos_order_id' => $posOrder->id,
+            ]);
+        }
 
         if ($warehouseId) {
             $inventoryService = app(InventoryService::class);

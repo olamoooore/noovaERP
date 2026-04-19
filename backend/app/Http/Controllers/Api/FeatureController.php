@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Feature;
 use App\SuperAdmin\Application\FeatureGateService;
-use Illuminate\Http\Request;
-
 /**
- * FeatureController — lists and toggles features for the current tenant.
+ * FeatureController — lists features for the current tenant.
  *
  * Entitlement checks now read from `tenant_entitlements` via FeatureGateService
  * (the canonical platform entitlement snapshot) rather than the legacy
@@ -44,27 +42,6 @@ class FeatureController extends Controller
         });
 
         return response()->json($features);
-    }
-
-    public function toggle(Request $request, $id)
-    {
-        $feature = Feature::findOrFail($id);
-
-        if ($feature->is_core) {
-            return response()->json(['message' => 'Cannot disable core features'], 403);
-        }
-
-        $tenantId = $this->currentTenantId();
-        if ($tenantId === null) {
-            return response()->json(['message' => 'No tenant context available'], 403);
-        }
-
-        $current = $this->featureGate->check($tenantId, $feature->key, fresh: true);
-
-        return response()->json([
-            'message' => 'Feature entitlement changes must be managed through plan configuration.',
-            'enabled' => $current['is_entitled'],
-        ], 403);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

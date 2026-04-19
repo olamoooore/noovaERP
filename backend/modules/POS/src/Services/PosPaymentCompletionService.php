@@ -3,7 +3,7 @@
 namespace Modules\POS\Services;
 
 use App\Models\StockMovement;
-use App\Models\Warehouse;
+use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Services\InventoryService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\POS\Models\PosOrder;
@@ -97,10 +97,13 @@ class PosPaymentCompletionService
     {
         $warehouseId = $posOrder->terminal?->warehouse_id;
 
-        if ($warehouseId) {
-            return (int) $warehouseId;
+        if (!$warehouseId) {
+            Log::warning('POS order has no terminal warehouse — stock deduction skipped', [
+                'pos_order_id' => $posOrder->id,
+            ]);
+            return null;
         }
 
-        return Warehouse::getDefault()?->id;
+        return (int) $warehouseId;
     }
 }

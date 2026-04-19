@@ -3,15 +3,17 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureEntitlementAccess;
-use App\Models\Feature;
-use App\SuperAdmin\Application\EntitlementService;
+use App\Models\Tenant;
 use App\SuperAdmin\Application\FeatureGateService;
 use App\SuperAdmin\Domain\CatalogItem;
+use App\SuperAdmin\Domain\CatalogItemType;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -32,10 +34,13 @@ class ControlPlaneProjectionTest extends TestCase
         parent::setUp();
 
         $this->featureGate = app(FeatureGateService::class);
-        $this->tenantId    = 'ws02-test-tenant-' . uniqid();
+        $this->tenantId    = (string) Str::uuid();
 
         // Ensure we operate on the central (public) schema
         DB::statement("SET search_path TO public");
+
+        $this->ensureLegacyFeatureTablesExist();
+        $this->ensureCatalogTypeExists();
     }
 
     protected function tearDown(): void
@@ -63,9 +68,7 @@ class ControlPlaneProjectionTest extends TestCase
 
         // Ensure the canonical snapshot has is_entitled = false for this tenant+feature
         // (Achieved by simply having no row — absence means not entitled)
-        TenantEntitlement::where('tenant_id', $this->tenantId)
-            ->where('feature_key', $featureKey)
-            ->delete();
+        TenantEntitlement::where('tenant_id', $this->tenantId)->delete();
         $this->featureGate->invalidate($this->tenantId);
 
         // Build a fake request with a resolvable tenant context
@@ -117,15 +120,24 @@ class ControlPlaneProjectionTest extends TestCase
         $featureKey = 'inventory';
 
         // Resolve the Feature model for this key
-        $feature = Feature::where('key', $featureKey)->first();
+        $featureId = DB::table('features')->updateOrInsert(
+            ['key' => $featureKey],
+            [
+                'name' => ucfirst($featureKey),
+                'description' => null,
+                'is_core' => false,
+                'price' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
 
-        if ($feature) {
-            // Write to tenant_features (legacy store) — enable the feature there
-            DB::table('tenant_features')->updateOrInsert(
-                ['feature_id' => $feature->id],
-                ['is_enabled' => true, 'enabled_at' => now(), 'expires_at' => null, 'created_at' => now(), 'updated_at' => now()]
-            );
-        }
+        $featureId = DB::table('features')->where('key', $featureKey)->value('id');
+
+        DB::table('tenant_features')->updateOrInsert(
+            ['feature_id' => $featureId],
+            ['is_enabled' => true, 'enabled_at' => now(), 'expires_at' => null, 'created_at' => now(), 'updated_at' => now()]
+        );
 
         // Ensure tenant_entitlements has NO entitled row (canonical says not entitled)
         TenantEntitlement::where('tenant_id', $this->tenantId)->delete();
@@ -196,7 +208,7 @@ class ControlPlaneProjectionTest extends TestCase
      */
     public function test_feature_is_enabled_for_tenant_throws_logic_exception(): void
     {
-        $feature = new Feature();
+        $feature = new \App\Models\Feature();
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessageMatches('/isEnabledForTenant\(\) is retired/');
@@ -262,14 +274,19 @@ class ControlPlaneProjectionTest extends TestCase
         // Find or create a catalog item for the key
         $item = CatalogItem::firstOrCreate(
             ['key' => $featureKey],
-            ['name' => ucfirst($featureKey), 'type_id' => 1, 'is_active' => true]
+            [
+                'name' => ucfirst($featureKey),
+                'type_id' => $this->catalogTypeId(),
+                'is_active' => true,
+                'effective_from' => now()->toDateString(),
+            ]
         );
 
         TenantEntitlement::updateOrCreate(
             ['tenant_id' => $tenantId, 'catalog_item_id' => $item->id],
             [
                 'is_entitled'   => $entitled,
-                'source'        => 'test_fixture',
+                'source'        => $entitled ? TenantEntitlement::SOURCE_TIER_INCLUDED : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
                 'resolved_at'   => now(),
             ]
         );
@@ -284,11 +301,10 @@ class ControlPlaneProjectionTest extends TestCase
      */
     private function bindFakeTenant(string $tenantId): void
     {
-        // If the tenancy package is available, swap the tenant resolution
-        if (function_exists('tenant')) {
-            // Swap the global tenant() resolution via the app container
-            app()->instance('currentTenantId', $tenantId);
-        }
+        app()->instance(\Stancl\Tenancy\Contracts\Tenant::class, new Tenant([
+            'id' => $tenantId,
+            'name' => 'Projection Test Tenant',
+        ]));
 
         // Monkey-patch: override EnsureEntitlementAccess via a subclass that
         // returns our test tenant ID without requiring the tenancy package to be
@@ -311,5 +327,44 @@ class ControlPlaneProjectionTest extends TestCase
                 }
             };
         });
+    }
+
+    private function ensureCatalogTypeExists(): void
+    {
+        CatalogItemType::query()->firstOrCreate(
+            ['key' => 'module'],
+            ['name' => 'Module', 'description' => 'Test module type', 'sort_order' => 0]
+        );
+    }
+
+    private function catalogTypeId(): int
+    {
+        return (int) CatalogItemType::query()->where('key', 'module')->value('id');
+    }
+
+    private function ensureLegacyFeatureTablesExist(): void
+    {
+        if (!Schema::hasTable('features')) {
+            Schema::create('features', function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->string('name');
+                $table->text('description')->nullable();
+                $table->boolean('is_core')->default(false);
+                $table->decimal('price', 10, 2)->default(0);
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('tenant_features')) {
+            Schema::create('tenant_features', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('feature_id');
+                $table->boolean('is_enabled')->default(true);
+                $table->timestamp('enabled_at')->nullable();
+                $table->timestamp('expires_at')->nullable();
+                $table->timestamps();
+            });
+        }
     }
 }
