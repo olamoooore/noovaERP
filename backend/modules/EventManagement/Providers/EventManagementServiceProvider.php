@@ -11,7 +11,6 @@ use Modules\EventManagement\Services\EventService;
 use Modules\EventManagement\Services\BookingService;
 use Modules\EventManagement\Services\TicketService;
 use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\FeatureFlagController;
 use Modules\EventManagement\Services\TenantSchemaManager;
 use Modules\EventManagement\Services\DataRetentionService;
 use Modules\EventManagement\Services\MigrationMonitoringService;
@@ -34,7 +33,6 @@ class EventManagementServiceProvider extends ServiceProvider
         $this->app->singleton(BookingService::class);
         $this->app->singleton(TicketService::class);
         $this->app->singleton(AuditService::class);
-        $this->app->singleton(FeatureFlagController::class);
         $this->app->singleton(TenantSchemaManager::class);
         $this->app->singleton(DataRetentionService::class);
         $this->app->singleton(MigrationMonitoringService::class);

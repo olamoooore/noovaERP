@@ -26,34 +26,19 @@ class Feature extends Model
     }
 
     /**
-     * Check if this feature is enabled for the current tenant.
+     * @deprecated Retired. Use FeatureGateService::check($tenantId, $key).
      *
-     * @deprecated Use FeatureGateService::check($tenantId, $key) which reads the canonical
-     *             `tenant_entitlements` snapshot. This method is kept as a legacy fallback
-     *             for non-tenant contexts (CLI, tests) and will be retired in Phase 3.
+     * This method previously read from the legacy `tenant_features` table which is not
+     * the canonical runtime access-control store. All runtime entitlement decisions must
+     * go through FeatureGateService → tenant_entitlements.
      *
-     * NOTE: This method is called within a tenant schema context (after search_path is set),
-     *       so `tenant_features` rows are already scoped to the active tenant's schema.
-     *       It is NOT safe to call this method from a central (non-tenant) context.
+     * @throws \LogicException always — calling this method is a programming error.
      */
-    public function isEnabledForTenant(): bool
+    public function isEnabledForTenant(): never
     {
-        // Order by `id DESC` to get the most recently created row.
-        // Within a tenant schema this is safe; avoid calling this from central context.
-        $tf = $this->tenantFeatures()->latest('id')->first();
-
-        if (!$tf) {
-            return false;
-        }
-
-        if (!$tf->is_enabled) {
-            return false;
-        }
-
-        if ($tf->expires_at && $tf->expires_at->isPast()) {
-            return false;
-        }
-
-        return true;
+        throw new \LogicException(
+            'isEnabledForTenant() is retired. Use FeatureGateService::check($tenantId, $key) '.
+            'which reads the canonical tenant_entitlements snapshot.'
+        );
     }
 }
