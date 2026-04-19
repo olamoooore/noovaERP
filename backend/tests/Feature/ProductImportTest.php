@@ -106,16 +106,23 @@ class ProductImportTest extends TestCase
             'name' => 'Existing Product',
             'sku' => 'EXIST-001',
             'price' => 22,
-            'stock_quantity' => 1,
+            'stock_quantity' => 3,
         ]);
-        $this->assertDatabaseMissing('stock_levels', [
+        $warehouseId = Warehouse::where('is_default', true)->value('id');
+        $this->assertDatabaseHas('stock_levels', [
             'product_id' => Product::where('name', 'Alpha Product')->value('id'),
+            'warehouse_id' => $warehouseId,
+            'quantity' => 1,
         ]);
-        $this->assertDatabaseMissing('stock_levels', [
+        $this->assertDatabaseHas('stock_levels', [
             'product_id' => Product::where('name', 'Beta Product')->value('id'),
+            'warehouse_id' => $warehouseId,
+            'quantity' => 2,
         ]);
-        $this->assertDatabaseMissing('stock_levels', [
+        $this->assertDatabaseHas('stock_levels', [
             'product_id' => Product::where('sku', 'EXIST-001')->value('id'),
+            'warehouse_id' => $warehouseId,
+            'quantity' => 3,
         ]);
     }
 
@@ -190,7 +197,7 @@ class ProductImportTest extends TestCase
         ]);
     }
 
-    public function test_import_does_not_create_default_warehouse_when_none_exists(): void
+    public function test_import_creates_default_warehouse_when_none_exists(): void
     {
         $user = User::factory()->create();
 
@@ -214,14 +221,17 @@ class ProductImportTest extends TestCase
         ]);
 
         $productId = Product::where('sku', 'IMPORTED-WH-001')->value('id');
+        $warehouse = Warehouse::where('is_default', true)->first();
 
-        $this->assertDatabaseCount('warehouses', 0);
+        $this->assertNotNull($warehouse);
         $this->assertDatabaseHas('products', [
             'id' => $productId,
-            'stock_quantity' => 0,
+            'stock_quantity' => 6,
         ]);
-        $this->assertDatabaseMissing('stock_levels', [
+        $this->assertDatabaseHas('stock_levels', [
             'product_id' => $productId,
+            'warehouse_id' => $warehouse->id,
+            'quantity' => 6,
         ]);
     }
 

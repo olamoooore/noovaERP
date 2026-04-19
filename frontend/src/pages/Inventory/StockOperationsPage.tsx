@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,7 +39,6 @@ interface AdjustmentReason {
 
 export function StockOperationsPage() {
   const { toast } = useToast()
-  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('stock-in')
 
   // Stock In state
@@ -92,114 +91,19 @@ export function StockOperationsPage() {
     },
   })
 
-  // Stock In mutation
-  const stockInMutation = useMutation({
-    mutationFn: async () => {
-      return api.post('/stock/in', {
-        product_id: parseInt(stockInData.productId),
-        warehouse_id: parseInt(stockInData.warehouseId),
-        quantity: parseInt(stockInData.quantity),
-        reference: stockInData.reference || null,
-        notes: stockInData.notes || null,
-        batch_number: stockInData.batchNumber || null,
-        expiry_date: stockInData.expiryDate || null,
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-list'] })
-      queryClient.invalidateQueries({ queryKey: ['products-search'] })
-      toast({ title: 'Stock added successfully' })
-      setStockInData({
-        productId: '',
-        warehouseId: '',
-        quantity: '',
-        reference: '',
-        notes: '',
-        batchNumber: '',
-        expiryDate: '',
-      })
-      setSelectedStockInProduct(undefined)
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to add stock',
-        variant: 'destructive',
-      })
-    },
-  })
+  const showWorkflowToast = (operation: 'stock-in' | 'stock-out' | 'adjust') => {
+    const descriptions = {
+      'stock-in': 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow to receive inventory.',
+      'stock-out': 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows to reduce inventory.',
+      'adjust': 'Direct stock adjustment is disabled. Use an approved inventory adjustment workflow instead.',
+    }
 
-  // Stock Out mutation
-  const stockOutMutation = useMutation({
-    mutationFn: async () => {
-      return api.post('/stock/out', {
-        product_id: parseInt(stockOutData.productId),
-        warehouse_id: parseInt(stockOutData.warehouseId),
-        quantity: parseInt(stockOutData.quantity),
-        reference: stockOutData.reference || null,
-        notes: stockOutData.notes || null,
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-list'] })
-      queryClient.invalidateQueries({ queryKey: ['products-search'] })
-      toast({ title: 'Stock removed successfully' })
-      setStockOutData({
-        productId: '',
-        warehouseId: '',
-        quantity: '',
-        reference: '',
-        notes: '',
-      })
-      setSelectedStockOutProduct(undefined)
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to remove stock',
-        variant: 'destructive',
-      })
-    },
-  })
-
-  // Adjust mutation
-  const adjustMutation = useMutation({
-    mutationFn: async () => {
-      return api.post('/stock/adjust', {
-        product_id: parseInt(adjustData.productId),
-        warehouse_id: parseInt(adjustData.warehouseId),
-        new_quantity: parseInt(adjustData.newQuantity),
-        reason_id: adjustData.reasonId ? parseInt(adjustData.reasonId) : null,
-        notes: adjustData.notes || null,
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-list'] })
-      queryClient.invalidateQueries({ queryKey: ['products-search'] })
-      toast({ title: 'Stock adjusted successfully' })
-      setAdjustData({
-        productId: '',
-        warehouseId: '',
-        newQuantity: '',
-        reasonId: '',
-        notes: '',
-      })
-      setSelectedAdjustProduct(undefined)
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to adjust stock',
-        variant: 'destructive',
-      })
-    },
-  })
+    toast({
+      title: 'Direct stock mutations are disabled',
+      description: descriptions[operation],
+      variant: 'destructive',
+    })
+  }
 
   const handleStockIn = (e: React.FormEvent) => {
     e.preventDefault()
@@ -207,7 +111,7 @@ export function StockOperationsPage() {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    stockInMutation.mutate()
+    showWorkflowToast('stock-in')
   }
 
   const handleStockOut = (e: React.FormEvent) => {
@@ -216,7 +120,7 @@ export function StockOperationsPage() {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    stockOutMutation.mutate()
+    showWorkflowToast('stock-out')
   }
 
   const handleAdjust = (e: React.FormEvent) => {
@@ -225,7 +129,7 @@ export function StockOperationsPage() {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    adjustMutation.mutate()
+    showWorkflowToast('adjust')
   }
 
   return (
@@ -351,18 +255,11 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" disabled={stockInMutation.isPending} className="w-full md:w-auto">
-                  {stockInMutation.isPending ? (
-                    <>
-                      <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-                      Add Stock
-                    </>
-                  )}
+                <Button type="submit" className="w-full md:w-auto">
+                  <>
+                    <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+                    Use Supported Workflow
+                  </>
                 </Button>
               </form>
             </CardContent>
@@ -449,18 +346,11 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" variant="destructive" disabled={stockOutMutation.isPending} className="w-full md:w-auto">
-                  {stockOutMutation.isPending ? (
-                    <>
-                      <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
-                      Remove Stock
-                    </>
-                  )}
+                <Button type="submit" variant="destructive" className="w-full md:w-auto">
+                  <>
+                    <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
+                    Use Supported Workflow
+                  </>
                 </Button>
               </form>
             </CardContent>
@@ -571,18 +461,11 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" disabled={adjustMutation.isPending} className="w-full md:w-auto">
-                  {adjustMutation.isPending ? (
-                    <>
-                      <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                      Adjust Stock
-                    </>
-                  )}
+                <Button type="submit" className="w-full md:w-auto">
+                  <>
+                    <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
+                    Use Supported Workflow
+                  </>
                 </Button>
               </form>
             </CardContent>

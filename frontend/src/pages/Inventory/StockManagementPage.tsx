@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -98,7 +98,6 @@ type ActiveTab = 'products' | 'movements' | 'low-stock' | 'out-of-stock'
 
 export function StockManagementPage() {
   const { toast } = useToast()
-  const queryClient = useQueryClient()
   
   // Tab state
   const [activeTab, setActiveTab] = useState<ActiveTab>('products')
@@ -204,72 +203,19 @@ export function StockManagementPage() {
     },
   })
 
-  // Mutations
-  const stockInMutation = useMutation({
-    mutationFn: () => api.post('/stock/in', {
-      product_id: parseInt(productId),
-      warehouse_id: parseInt(warehouseId),
-      quantity: parseInt(quantity),
-      reference: reference || null,
-      notes: notes || null,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
-      toast({ title: 'Stock added successfully' })
-      closeDialog()
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to add stock', variant: 'destructive' })
-    },
-  })
+  const showWorkflowToast = (type: OperationType) => {
+    const descriptions: Record<OperationType, string> = {
+      in: 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow to receive inventory.',
+      out: 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows to reduce inventory.',
+      adjust: 'Direct stock adjustment is disabled. Use an approved inventory adjustment workflow instead.',
+    }
 
-  const stockOutMutation = useMutation({
-    mutationFn: () => api.post('/stock/out', {
-      product_id: parseInt(productId),
-      warehouse_id: parseInt(warehouseId),
-      quantity: parseInt(quantity),
-      reference: reference || null,
-      notes: notes || null,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
-      toast({ title: 'Stock removed successfully' })
-      closeDialog()
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to remove stock', variant: 'destructive' })
-    },
-  })
-
-  const adjustMutation = useMutation({
-    mutationFn: () => api.post('/stock/adjust', {
-      product_id: parseInt(productId),
-      warehouse_id: parseInt(warehouseId),
-      new_quantity: parseInt(newQuantity),
-      reason_id: parseInt(reasonId),
-      notes: notes || null,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['low-stock'] })
-      queryClient.invalidateQueries({ queryKey: ['out-of-stock'] })
-      toast({ title: 'Stock adjusted successfully' })
-      closeDialog()
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to adjust stock', variant: 'destructive' })
-    },
-  })
+    toast({
+      title: 'Direct stock mutations are disabled',
+      description: descriptions[type],
+      variant: 'destructive',
+    })
+  }
 
   const closeDialog = () => {
     setIsDialogOpen(false)
@@ -301,17 +247,13 @@ export function StockManagementPage() {
         toast({ title: 'Please fill all required fields', variant: 'destructive' })
         return
       }
-      adjustMutation.mutate()
+      showWorkflowToast('adjust')
     } else {
       if (!quantity || parseInt(quantity) <= 0) {
         toast({ title: 'Please enter a valid quantity', variant: 'destructive' })
         return
       }
-      if (operationType === 'in') {
-        stockInMutation.mutate()
-      } else {
-        stockOutMutation.mutate()
-      }
+      showWorkflowToast(operationType)
     }
   }
 
@@ -325,7 +267,7 @@ export function StockManagementPage() {
   const selectedProduct = dialogProducts.find(p => p.id === parseInt(productId))
   const lowStockCount = inventoryDashboard?.summary?.low_stock_count ?? lowStockItems.length
   const outOfStockCount = inventoryDashboard?.summary?.out_of_stock_count ?? outOfStockItems.length
-  const isSubmitting = stockInMutation.isPending || stockOutMutation.isPending || adjustMutation.isPending
+  const isSubmitting = false
 
   const getTypeConfig = (type: string) => {
     const configs: Record<string, { color: string; icon: string; label: string }> = {
@@ -912,9 +854,9 @@ export function StockManagementPage() {
               )}
             </DialogTitle>
             <DialogDescription>
-              {operationType === 'in' && 'Add stock to your inventory'}
-              {operationType === 'out' && 'Remove stock from your inventory'}
-              {operationType === 'adjust' && 'Set a new stock quantity for a product'}
+              {operationType === 'in' && 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow instead.'}
+              {operationType === 'out' && 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows instead.'}
+              {operationType === 'adjust' && 'Direct stock adjustment is disabled until an approved adjustment workflow is used.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1064,9 +1006,7 @@ export function StockManagementPage() {
                 </>
               ) : (
                 <>
-                  {operationType === 'in' && 'Add Stock'}
-                  {operationType === 'out' && 'Remove Stock'}
-                  {operationType === 'adjust' && 'Adjust Stock'}
+                  Use Supported Workflow
                 </>
               )}
             </Button>

@@ -76,13 +76,13 @@ export function StockMovementsPage() {
         <h1 className="text-3xl font-bold">Stock Movements</h1>
         <div className="flex gap-2">
           <Button variant="outline" asChild>
-            <Link to="/inventory/stock/out">
+            <Link to="/inventory/operations">
               <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
               Stock Out
             </Link>
           </Button>
           <Button asChild>
-            <Link to="/inventory/stock/in">
+            <Link to="/inventory/operations">
               <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
               Stock In
             </Link>

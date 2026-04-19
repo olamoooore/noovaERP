@@ -165,13 +165,13 @@ export function ProductViewPage() {
               <CardTitle>Stock Levels by Warehouse</CardTitle>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" asChild>
-                  <Link to={`/inventory/stock/in?product_id=${product.id}`}>
+                  <Link to="/inventory/operations">
                     <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
                     Stock In
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild>
-                  <Link to={`/inventory/stock/out?product_id=${product.id}`}>
+                  <Link to="/inventory/operations">
                     <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
                     Stock Out
                   </Link>

@@ -7,10 +7,12 @@ use App\Models\ProductCustomFieldValue;
 use App\Models\ProductFeatureValue;
 use App\Models\Product;
 use App\Models\ProductAuditLog;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Services\InventoryService;
 
 class ProductController extends Controller
 {
@@ -712,6 +714,7 @@ class ProductController extends Controller
         $updated = 0;
         $errors = [];
         $categoriesCache = [];
+        $defaultWarehouse = null;
 
         foreach ($rows as $index => $row) {
             $name = trim((string) ($row['name'] ?? ''));
@@ -757,6 +760,10 @@ class ProductController extends Controller
                 $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
                 $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
                 $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
+                $hasImportedStockQuantity = array_key_exists('stock_quantity', $row);
+                $importedStockQuantity = $hasImportedStockQuantity
+                    ? max(0, (int) round($this->parseNumericValue($row['stock_quantity'] ?? null)))
+                    : null;
 
                 // Match by SKU when available. Barcode alone is not reliable because
                 // multiple distinct products in the same catalog can legitimately share it.
@@ -788,13 +795,31 @@ class ProductController extends Controller
                     ];
 
                 try {
-                    if ($existingProduct) {
-                        $existingProduct->update($productData);
-                        $updated++;
-                    } else {
-                        Product::create($productData);
-                        $created++;
-                    }
+                    DB::transaction(function () use (&$defaultWarehouse, $existingProduct, $productData, $hasImportedStockQuantity, $importedStockQuantity, &$created, &$updated) {
+                        if ($existingProduct) {
+                            $existingProduct->update($productData);
+                            $product = $existingProduct->fresh();
+                            $updated++;
+                        } else {
+                            $product = Product::create($productData);
+                            $created++;
+                        }
+
+                        if (!$hasImportedStockQuantity || !$product->track_inventory || $product->type !== 'product') {
+                            return;
+                        }
+
+                        $defaultWarehouse ??= $this->resolveImportWarehouse();
+
+                        app(InventoryService::class)->adjustStock(
+                            productId: $product->id,
+                            warehouseId: $defaultWarehouse->id,
+                            quantity: $importedStockQuantity,
+                            type: 'adjustment',
+                            reference: 'PRODUCT-IMPORT',
+                            notes: 'CSV product import stock sync'
+                        );
+                    });
                 } catch (\Throwable $e) {
                     $msg = $e->getMessage();
                     $enc = mb_detect_encoding($msg, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true) ?: 'ISO-8859-1';
@@ -810,6 +835,35 @@ class ProductController extends Controller
             'updated' => $updated,
             'errors' => $errors,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    private function resolveImportWarehouse(): Warehouse
+    {
+        $defaultWarehouse = Warehouse::where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+
+        if ($defaultWarehouse) {
+            return $defaultWarehouse;
+        }
+
+        return DB::transaction(function () {
+            $existingDefault = Warehouse::where('is_default', true)
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existingDefault) {
+                return $existingDefault;
+            }
+
+            return Warehouse::create([
+                'name' => 'Main Warehouse',
+                'code' => 'MAIN',
+                'is_active' => true,
+                'is_default' => true,
+            ]);
+        });
     }
 
     /**
