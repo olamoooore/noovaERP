@@ -130,7 +130,7 @@ class SalesOrderService
         });
     }
 
-    public function createInvoice(SalesOrder $order, ?InvoiceService $invoiceService = null): \App\Models\Invoice
+    public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceService = null): \App\Models\Invoice
     {
         if (!$order->isFulfilled() && !$order->isAllocated()) {
             throw new \Exception('Only fulfilled or allocated orders can be invoiced.');
@@ -175,6 +175,13 @@ class SalesOrderService
             ]);
 
             $invoice->update(['sales_order_id' => $order->id]);
+
+            // Apply channel-level total overrides (e.g. pre-paid POS/web amounts) BEFORE
+            // synchronizeInvoiceBookkeeping() so that quantity_invoiced is based on final totals.
+            if (!empty($totalOverrides)) {
+                $invoice->update($totalOverrides);
+            }
+
             $this->synchronizeInvoiceBookkeeping($order->fresh('lines'), $invoice->fresh('lines'));
 
             $this->lifecycleService->markInvoiced($order, 'Invoice created');

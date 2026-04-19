@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Services\InvoiceService;
 use Illuminate\Http\Request;
+use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
 {
     public function __construct(
-        private InvoiceService $invoiceService
+        private InvoiceService $invoiceService,
+        private SalesOrderService $salesOrderService,
     ) {}
 
     public function index(Request $request)
@@ -70,7 +72,52 @@ class InvoiceController extends Controller
         ]);
 
         try {
-            $invoice = $this->invoiceService->createInvoice($validated);
+            // Map invoice lines to SalesOrder line format
+            $salesLines = array_map(fn ($line) => [
+                'product_id'      => $line['product_id'] ?? null,
+                'description'     => $line['description'],
+                'quantity'        => $line['quantity'],
+                'unit_price'      => $line['unit_price'],
+                'tax_rate'        => $line['tax_rate'] ?? 0,
+                'discount_amount' => $line['discount_amount'] ?? 0,
+            ], $validated['lines']);
+
+            // Create SalesOrder on the admin channel so every manual invoice
+            // is tracked by the SalesOrder backbone and has a SalesInvoiceLink.
+            $salesOrder = $this->salesOrderService->createOrder([
+                'customer_id' => $validated['customer_id'],
+                'channel'     => 'admin',
+                'notes'       => $validated['notes'] ?? null,
+                'lines'       => $salesLines,
+            ]);
+
+            // Fast-track admin orders through the full lifecycle immediately
+            $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+            $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
+            $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
+
+            // Collect invoice-specific fields that are not on SalesOrder lines
+            $invoiceOverrides = array_filter([
+                'invoice_date'                => $validated['invoice_date'] ?? null,
+                'due_date'                    => $validated['due_date'] ?? null,
+                'customer_reference'          => $validated['customer_reference'] ?? null,
+                'internal_reference'          => $validated['internal_reference'] ?? null,
+                'attention_to'                => $validated['attention_to'] ?? null,
+                'contact_email'               => $validated['contact_email'] ?? null,
+                'contact_phone'               => $validated['contact_phone'] ?? null,
+                'billing_address_snapshot'    => $validated['billing_address_snapshot'] ?? null,
+                'shipping_address_snapshot'   => $validated['shipping_address_snapshot'] ?? null,
+                'company_registration_number' => $validated['company_registration_number'] ?? null,
+                'tax_registration_number'     => $validated['tax_registration_number'] ?? null,
+                'notes'                       => $validated['notes'] ?? null,
+                'terms'                       => $validated['terms'] ?? null,
+                'discount_amount'             => $validated['discount_amount'] ?? null,
+            ], fn ($v) => $v !== null);
+
+            $invoice = $this->salesOrderService->createInvoice(
+                $salesOrder,
+                empty($invoiceOverrides) ? null : $invoiceOverrides
+            );
 
             return response()->json($invoice, 201);
 

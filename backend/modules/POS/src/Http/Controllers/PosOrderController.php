@@ -710,12 +710,9 @@ class PosOrderController extends Controller
                     $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
                 }
 
-                // Create invoice via canonical SalesOrderService → InvoiceService path
-                $inv = $salesOrderService->createInvoice($salesOrder);
-
-                // Override totals to match the already-paid POS order and reconcile
-                // invoice balances via InvoiceService without posting duplicate GL.
-                $inv->update([
+                // Create invoice via canonical SalesOrderService → InvoiceService path,
+                // passing POS totals as overrides so synchronizeInvoiceBookkeeping runs on final amounts.
+                $inv = $salesOrderService->createInvoice($salesOrder, [
                     'subtotal'         => $posOrder->subtotal,
                     'tax_amount'       => $posOrder->tax_amount ?? 0,
                     'discount_amount'  => $posOrder->discount_amount ?? 0,

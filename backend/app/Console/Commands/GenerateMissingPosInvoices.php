@@ -116,12 +116,9 @@ class GenerateMissingPosInvoices extends Command
                     $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
                 }
 
-                // Create invoice via canonical SalesOrderService → InvoiceService path
-                $invoice = $salesOrderService->createInvoice($salesOrder);
-
-                // Override totals to match already-paid POS order and reconcile
-                // invoice balances via InvoiceService without posting duplicate GL.
-                $invoice->update([
+                // Create invoice via canonical SalesOrderService → InvoiceService path,
+                // passing POS totals as overrides so synchronizeInvoiceBookkeeping runs on final amounts.
+                $invoice = $salesOrderService->createInvoice($salesOrder, [
                     'subtotal'        => $order->subtotal,
                     'tax_amount'      => $order->tax_amount ?? 0,
                     'discount_amount' => $order->discount_amount ?? 0,

@@ -275,12 +275,9 @@ class WebOrder extends Model
             $salesOrder = $salesOrderService->fulfilOrder($salesOrder);
         }
 
-        // Create invoice via canonical SalesOrderService → InvoiceService path
-        $invoice = $salesOrderService->createInvoice($salesOrder);
-
-        // Override totals to match the already-paid web order and reconcile
-        // invoice balances via InvoiceService without posting duplicate GL.
-        $invoice->update([
+        // Create invoice via canonical SalesOrderService → InvoiceService path,
+        // passing web order totals as overrides so synchronizeInvoiceBookkeeping runs on final amounts.
+        $invoice = $salesOrderService->createInvoice($salesOrder, [
             'subtotal'        => $this->subtotal,
             'tax_amount'      => $this->tax_amount,
             'discount_amount' => $this->discount_amount + $this->loyalty_discount,
