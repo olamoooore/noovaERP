@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use App\Models\JournalEntryLink;
 use App\Models\Customer;
+use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use Illuminate\Support\Facades\Auth;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -137,7 +138,8 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order, $totalOverrides, $invoiceService) {
-            $invoiceService = $invoiceService ?? InvoiceService::allowDirectCalls();
+            $invoiceService = $invoiceService ?? app(InvoiceService::class);
+            $token = $invoiceService->issueCreationToken();
 
             $invoiceData = [
                 'customer_id' => $order->customer_id,
@@ -162,7 +164,7 @@ class SalesOrderService
             }
             $invoiceData['lines'] = $lines;
 
-            $invoice = $invoiceService->createInvoice($invoiceData);
+            $invoice = $invoiceService->createInvoiceInternal($token, $invoiceData);
 
             SalesInvoiceLink::create([
                 'sales_order_id' => $order->id,

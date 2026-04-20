@@ -33,12 +33,18 @@ class JournalEntry extends Model
         'is_reversal',
         'legal_entity_id',
         'entity_book_id',
+        'origin_type',
+        'origin_reference_type',
+        'origin_reference_id',
+        'origin_context',
+        'created_via_module',
     ];
 
     protected $casts = [
         'entry_date' => 'date',
         'posted_at' => 'datetime',
         'is_reversal' => 'boolean',
+        'origin_context' => 'array',
     ];
 
     protected $appends = ['is_balanced'];

@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\PaymentTermsController;
 use App\Http\Controllers\Api\TaxRatesController;
 use App\Http\Controllers\Api\BankAccountsController;
 use App\Http\Controllers\Api\VendorBillsController;
+use App\Http\Controllers\Api\AccountingOriginController;
 use App\Http\Controllers\Api\BillPaymentsController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
@@ -217,6 +218,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/vendor-bills/{id}', [VendorBillsController::class, 'destroy']);
         Route::post('/vendor-bills/{id}/post', [VendorBillsController::class, 'post']);
         
+        // Accounting-Origin Documents (direct AR/AP creation by accountants)
+        Route::post('/origin/invoices', [AccountingOriginController::class, 'storeInvoice']);
+        Route::post('/origin/invoices/{id}/post', [AccountingOriginController::class, 'postInvoice'])
+            ->middleware(EnsureAccountingPostAccess::class);
+        Route::post('/origin/bills', [AccountingOriginController::class, 'storeBill']);
+        Route::post('/origin/bills/{id}/post', [AccountingOriginController::class, 'postBill'])
+            ->middleware(EnsureAccountingPostAccess::class);
+
         // Aged Receivables Report
         Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
         Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);

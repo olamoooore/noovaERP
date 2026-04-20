@@ -42,6 +42,12 @@ class Bill extends Model
         'journal_entry_id',
         'received_at',
         'created_by',
+        'origin_type',
+        'origin_reference_type',
+        'origin_reference_id',
+        'origin_context',
+        'created_via_module',
+        'created_via_role',
     ];
 
     protected $casts = [
@@ -54,6 +60,7 @@ class Bill extends Model
         'total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'balance' => 'decimal:2',
+        'origin_context' => 'array',
     ];
 
     protected static function boot(): void
@@ -120,6 +127,22 @@ class Bill extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Is this an expense-style bill (non-PO, non-stock, free-text lines)?
+     */
+    public function isExpense(): bool
+    {
+        return $this->bill_type === 'expense';
+    }
+
+    /**
+     * Is this a procurement bill (PO/GRN-backed, three-way match enforced)?
+     */
+    public function isProcurement(): bool
+    {
+        return $this->bill_type === 'procurement';
     }
 
     public static function generateBillNumber(): string

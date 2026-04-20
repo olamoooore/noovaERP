@@ -288,6 +288,46 @@ class VendorBillsController extends Controller
                 $resolvedPurchaseOrderId = $goodsReceipt->purchase_order_id;
             }
 
+            // ── Bill type inference (mirrors BillService::createBill) ─────────────
+            $billType = $request->input('bill_type', $bill->bill_type ?? 'expense');
+            if ($resolvedPurchaseOrderId || $resolvedGoodsReceiptId) {
+                $billType = 'procurement';
+            }
+            if ($billType === 'procurement' && !$resolvedPurchaseOrderId && !$resolvedGoodsReceiptId) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => "A bill with bill_type 'procurement' must be linked to a purchase_order_id or goods_receipt_id.",
+                ], 422);
+            }
+
+            // ── Expense line validation ───────────────────────────────────────────
+            $linePayloads = $request->has('lines') ? $request->input('lines', []) : null;
+            if ($billType === 'expense' && $linePayloads !== null) {
+                foreach ($linePayloads as $idx => $lineData) {
+                    if (empty(trim($lineData['description'] ?? ''))) {
+                        DB::rollBack();
+                        return response()->json([
+                            'message' => 'Validation failed',
+                            'errors' => ["lines.{$idx}.description" => ['Expense bill lines require a description since they have no product linkage.']],
+                        ], 422);
+                    }
+                    if (!empty($lineData['purchase_order_item_id']) || !empty($lineData['goods_receipt_line_id'])) {
+                        DB::rollBack();
+                        return response()->json([
+                            'message' => 'Validation failed',
+                            'errors' => ["lines.{$idx}" => ['Expense bill lines cannot carry PO/GRN linkage.']],
+                        ], 422);
+                    }
+                    if (!empty($lineData['product_id'])) {
+                        DB::rollBack();
+                        return response()->json([
+                            'message' => 'Validation failed',
+                            'errors' => ["lines.{$idx}.product_id" => ['Expense bill lines should not reference products. Use a GL account and description instead.']],
+                        ], 422);
+                    }
+                }
+            }
+
             $purchaseOrder = $resolvedPurchaseOrderId
                 ? PurchaseOrder::with('items')->findOrFail((int) $resolvedPurchaseOrderId)
                 : null;
@@ -296,15 +336,16 @@ class VendorBillsController extends Controller
                 $goodsReceipt->loadMissing('lines');
             }
 
-            $linePayloads = $request->has('lines')
-                ? $request->input('lines', [])
-                : $bill->lines()
+            // Reuse $linePayloads from expense validation above, or resolve for existing lines.
+            if ($linePayloads === null) {
+                $linePayloads = $bill->lines()
                     ->get(['purchase_order_item_id', 'goods_receipt_line_id'])
                     ->map(fn (BillLine $line) => [
                         'purchase_order_item_id' => $line->purchase_order_item_id,
                         'goods_receipt_line_id' => $line->goods_receipt_line_id,
                     ])
                     ->all();
+            }
 
             $lineageErrors = $this->validateProcurementLineage($linePayloads, $purchaseOrder, $resolvedGoodsReceiptId ? $goodsReceipt : null);
             if ($lineageErrors !== []) {
@@ -317,32 +358,32 @@ class VendorBillsController extends Controller
             }
 
             // Update bill — 'status' is intentionally excluded from this list.
-            $bill->update($request->only([
-                'bill_number',
-                'vendor_id',
-                'purchase_order_id',
-                'goods_receipt_id',
-                'bill_type',
-                'bill_date',
-                'due_date',
-                'vendor_reference',
-                'internal_reference',
-                'attention_to',
-                'contact_email',
-                'contact_phone',
-                'vendor_address_snapshot',
-                'remittance_address_snapshot',
-                'company_registration_number',
-                'tax_registration_number',
-                'notes',
-                'terms',
-                'discount_amount',
-            ]));
-
-            $bill->update([
-                'purchase_order_id' => $resolvedPurchaseOrderId,
-                'goods_receipt_id' => $resolvedGoodsReceiptId,
-            ]);
+            // bill_type is set from our resolved value, not raw input (prevents bypass).
+            $bill->update(array_merge(
+                $request->only([
+                    'bill_number',
+                    'vendor_id',
+                    'bill_date',
+                    'due_date',
+                    'vendor_reference',
+                    'internal_reference',
+                    'attention_to',
+                    'contact_email',
+                    'contact_phone',
+                    'vendor_address_snapshot',
+                    'remittance_address_snapshot',
+                    'company_registration_number',
+                    'tax_registration_number',
+                    'notes',
+                    'terms',
+                    'discount_amount',
+                ]),
+                [
+                    'bill_type' => $billType,
+                    'purchase_order_id' => $resolvedPurchaseOrderId,
+                    'goods_receipt_id' => $resolvedGoodsReceiptId,
+                ]
+            ));
 
             // Update lines if provided
             if ($request->has('lines')) {
@@ -381,8 +422,9 @@ class VendorBillsController extends Controller
                 $bill->save();
             }
 
-            // Re-validate three-way match after update (lines may have changed)
-            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+            // Re-validate three-way match after update (lines may have changed).
+            // Uses bill_type (not PO/GRN presence) for consistency with BillService.
+            if ($billType === 'procurement') {
                 $bill->load(['lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product']);
                 $matchResult = $this->threeWayMatchService->validate($bill);
                 if (!$matchResult['valid']) {
@@ -431,8 +473,9 @@ class VendorBillsController extends Controller
                 return response()->json(['message' => 'Vendor bill not found'], 404);
             }
 
-            // Three-way match gate: reject posting if PO/GRN constraints are violated.
-            if ($bill->purchase_order_id || $bill->goods_receipt_id) {
+            // Three-way match gate: reject posting if procurement constraints are violated.
+            // Uses bill_type (not PO/GRN presence) so it cannot be bypassed by omitting linkage fields.
+            if ($bill->isProcurement()) {
                 $matchResult = $this->threeWayMatchService->validate($bill);
                 if (!$matchResult['valid']) {
                     return response()->json([
@@ -440,6 +483,17 @@ class VendorBillsController extends Controller
                         'errors' => $matchResult['errors'],
                         'warnings' => $matchResult['warnings'],
                     ], 422);
+                }
+            }
+
+            // Expense bills: verify every line has a description before posting.
+            if ($bill->isExpense()) {
+                foreach ($bill->lines as $line) {
+                    if (empty(trim($line->description ?? ''))) {
+                        return response()->json([
+                            'message' => "Cannot post: expense bill line #{$line->id} has no description.",
+                        ], 422);
+                    }
                 }
             }
 

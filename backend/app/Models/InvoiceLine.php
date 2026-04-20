@@ -12,7 +12,13 @@ class InvoiceLine extends Model
 
     protected $fillable = [
         'invoice_id',
+        'line_type',
         'product_id',
+        'gl_account_id',
+        'cost_center_id',
+        'project_id',
+        'department_id',
+        'branch_id',
         'description',
         'quantity',
         'unit_price',

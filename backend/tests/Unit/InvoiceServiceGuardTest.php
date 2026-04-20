@@ -2,52 +2,39 @@
 
 namespace Tests\Unit;
 
+use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use PHPUnit\Framework\TestCase;
 
 class InvoiceServiceGuardTest extends TestCase
 {
     /** @test */
-    public function test_create_invoice_throws_when_called_directly(): void
+    public function test_creation_token_cannot_be_reused(): void
     {
         $invoiceService = new InvoiceService(
             $this->createMock(\App\Accounting\Contracts\PostingEngineInterface::class),
             $this->createMock(\Modules\Inventory\Services\InventoryService::class)
         );
 
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('InvoiceService::createInvoice() must only be called from SalesOrderService');
+        $token = $invoiceService->issueCreationToken();
+        $token->consume();
 
-        $invoiceService->createInvoice([
-            'customer_id' => 1,
-            'lines' => [
-                [
-                    'product_id' => 1,
-                    'description' => 'Test',
-                    'quantity' => 1,
-                    'unit_price' => 10,
-                ]
-            ],
-        ]);
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('InvoiceCreationToken has already been consumed');
+
+        $token->consume();
     }
 
     /** @test */
-    public function test_allow_direct_calls_factory_enables_creation(): void
+    public function test_creation_token_is_not_consumed_initially(): void
     {
-        $invoiceService = InvoiceService::allowDirectCalls();
+        $invoiceService = new InvoiceService(
+            $this->createMock(\App\Accounting\Contracts\PostingEngineInterface::class),
+            $this->createMock(\Modules\Inventory\Services\InventoryService::class)
+        );
 
-        $invoiceService->createInvoice([
-            'customer_id' => 1,
-            'invoice_date' => now()->toDateString(),
-            'due_date' => now()->addDays(30)->toDateString(),
-            'lines' => [
-                [
-                    'product_id' => 1,
-                    'description' => 'Test',
-                    'quantity' => 1,
-                    'unit_price' => 10,
-                ]
-            ],
-        ]);
+        $token = $invoiceService->issueCreationToken();
+
+        $this->assertFalse($token->isConsumed());
     }
 }

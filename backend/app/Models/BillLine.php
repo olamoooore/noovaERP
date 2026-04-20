@@ -12,6 +12,7 @@ class BillLine extends Model
 
     protected $fillable = [
         'bill_id',
+        'line_type',
         'product_id',
         'description',
         'quantity',
@@ -20,6 +21,10 @@ class BillLine extends Model
         'tax_amount',
         'line_total',
         'account_id',
+        'cost_center_id',
+        'project_id',
+        'department_id',
+        'branch_id',
         'purchase_order_item_id',
         'goods_receipt_line_id',
     ];

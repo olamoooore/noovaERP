@@ -18,51 +18,44 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
 /**
- * Invoice Service - Handles invoice workflow
- * Auto-posts to accounting ledger
- * Updates inventory
+ * Invoice Service - Handles invoice workflow (posting, payments, balance sync).
  *
- * @internal This class should only be instantiated via the service container.
- *           Use SalesOrderService::createInvoice() to create invoices.
+ * Invoice creation is NOT public. Only authorised internal collaborators
+ * (SalesOrderService, AccountingOriginInvoiceService) may create invoices
+ * by calling the protected createInvoiceInternal() method via the
+ * InvoiceCreationToken pattern — no debug_backtrace heuristics.
  */
 class InvoiceService
 {
-    private bool $allowDirectCall = false;
-
     public function __construct(
         private PostingEngineInterface $postingEngine,
         private InventoryService $inventoryService,
     ) {}
 
     /**
-     * Internal factory to create InvoiceService that allows direct calls.
-     * Used by SalesOrderService to enable the guarded createInvoice method.
+     * Create an InvoiceCreationToken that grants one-shot access to
+     * createInvoiceInternal(). Only trusted orchestrators should call this.
      *
-     * @internal This is for internal use only - SalesOrderService should use this
+     * @internal For use by SalesOrderService and AccountingOriginInvoiceService only.
      */
-    public static function allowDirectCalls(): self
+    public function issueCreationToken(): InvoiceCreationToken
     {
-        $instance = new self(
-            app(PostingEngineInterface::class),
-            app(InventoryService::class)
-        );
-        $instance->allowDirectCall = true;
-        return $instance;
+        return new InvoiceCreationToken($this);
     }
 
     /**
-     * Create invoice with lines
-     * 
-     * @internal This method should only be called by SalesOrderService. Direct calls bypass SalesInvoiceLink creation.
-     * @throws \LogicException If called outside of SalesOrderService context
+     * Create invoice with lines — structurally non-public.
+     *
+     * Callers must hold a valid InvoiceCreationToken obtained from issueCreationToken().
+     * This replaces the old debug_backtrace guard with a structural enforcement pattern.
+     *
+     * @internal Use SalesOrderService::createInvoice() or AccountingOriginInvoiceService for external flows.
      */
-    public function createInvoice(array $data): Invoice
+    public function createInvoiceInternal(InvoiceCreationToken $token, array $data): Invoice
     {
-        $this->ensureCalledFromSalesOrderService();
-        
-        DB::beginTransaction();
-        
-        try {
+        $token->consume(); // throws if already used
+
+        return DB::transaction(function () use ($data) {
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
@@ -73,7 +66,6 @@ class InvoiceService
 
             $invoice = Invoice::create($data);
 
-            // Add lines
             foreach ($lines as $lineData) {
                 $invoice->lines()->create([
                     'product_id' => $lineData['product_id'] ?? null,
@@ -88,14 +80,8 @@ class InvoiceService
             $invoice->refresh();
             $invoice->calculateTotals();
 
-            DB::commit();
-            
             return $invoice->load(['customer', 'lines.product']);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
     }
 
     /**
@@ -504,34 +490,5 @@ class InvoiceService
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
         }
-    }
-    
-    private function ensureCalledFromSalesOrderService(): void
-    {
-        if ($this->allowDirectCall) {
-            return;
-        }
-
-        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-
-        $allowedClasses = [
-            SalesOrderService::class,
-            'Modules\Sales\Services\SalesOrderService',
-        ];
-
-        foreach ($backtrace as $frame) {
-            $callerClass = $frame['class'] ?? '';
-            $callerFunction = $frame['function'] ?? '';
-
-            if (in_array($callerClass, $allowedClasses, true)) {
-                return;
-            }
-        }
-
-        throw new \LogicException(
-            'InvoiceService::createInvoice() must only be called from SalesOrderService. ' .
-            'Direct calls bypass SalesInvoiceLink creation which is required for invoice lifecycle tracking. ' .
-            'Use SalesOrderService::createInvoice() instead.'
-        );
     }
 }

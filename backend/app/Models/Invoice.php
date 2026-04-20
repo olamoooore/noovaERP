@@ -41,6 +41,12 @@ class Invoice extends Model
         'sales_order_id',
         'sent_at',
         'created_by',
+        'origin_type',
+        'origin_reference_type',
+        'origin_reference_id',
+        'origin_context',
+        'created_via_module',
+        'created_via_role',
     ];
 
     protected $casts = [
@@ -53,6 +59,7 @@ class Invoice extends Model
         'total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'balance' => 'decimal:2',
+        'origin_context' => 'array',
     ];
 
     protected static function boot(): void

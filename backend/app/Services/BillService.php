@@ -93,6 +93,30 @@ class BillService
                 );
             }
 
+            // ── Expense bill line constraints ─────────────────────────────────────
+            // Expense-style AP allows free-text descriptions without product creation,
+            // but enforces: (a) description is mandatory (no product to identify the line),
+            // (b) PO/GRN linkage is forbidden (use bill_type 'procurement' for that).
+            if ($billType === 'expense') {
+                foreach ($data['lines'] as $idx => $lineData) {
+                    if (empty(trim($lineData['description'] ?? ''))) {
+                        throw new \InvalidArgumentException(
+                            "Line #" . ($idx + 1) . ": Expense bill lines require a description since they have no product linkage."
+                        );
+                    }
+                    if (!empty($lineData['purchase_order_item_id']) || !empty($lineData['goods_receipt_line_id'])) {
+                        throw new \InvalidArgumentException(
+                            "Line #" . ($idx + 1) . ": Expense bill lines cannot carry PO/GRN linkage. Use bill_type 'procurement' for PO-backed bills."
+                        );
+                    }
+                    if (!empty($lineData['product_id'])) {
+                        throw new \InvalidArgumentException(
+                            "Line #" . ($idx + 1) . ": Expense bill lines should not reference products. Use a GL account and description instead."
+                        );
+                    }
+                }
+            }
+
             // ── Create bill ───────────────────────────────────────────────────────
             $bill = Bill::create([
                 'bill_number'                    => $data['bill_number'] ?? null,
