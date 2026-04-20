@@ -211,8 +211,52 @@ class PostingEngine implements PostingEngineInterface
             return DB::transaction(function () use ($request, $actorId, $approvedBy) {
                 $original = JournalEntry::with('lines')->findOrFail($request->journalEntryId);
 
-                // Delegate to model method, now passing the explicit reversal date
-                $reversal = $original->reverse($request->reason, $request->reversalDate);
+                if ($original->status !== 'posted') {
+                    throw new \Exception('Can only reverse posted entries');
+                }
+
+                if ($original->is_reversal) {
+                    throw new \Exception('Cannot reverse a reversal entry');
+                }
+
+                if ($original->reversalEntry()->exists()) {
+                    throw new \Exception('Entry has already been reversed');
+                }
+
+                // Perform reversal inline (JournalEntry::reverse() is deprecated)
+                $reversalEntry = JournalEntry::create([
+                    'journal_id'        => $original->journal_id,
+                    'entry_number'    => JournalEntry::generateEntryNumber(),
+                    'entry_date'       => $request->reversalDate,
+                    'type'             => $original->type,
+                    'reference'        => $original->reference,
+                    'description'     => 'REVERSAL: ' . ($request->reason ?? $original->description),
+                    'status'           => 'posted',
+                    'posted_at'        => now(),
+                    'posted_by'        => $actorId,
+                    'created_by'       => $actorId,
+                    'reversed_entry_id' => $original->id,
+                    'is_reversal'       => true,
+                    'legal_entity_id'  => $original->legal_entity_id,
+                    'entity_book_id'   => $original->entity_book_id,
+                ]);
+
+                // Create reversed lines (swap debits and credits)
+                foreach ($original->lines as $line) {
+                    $reversalEntry->lines()->create([
+                        'account_id'      => $line->account_id,
+                        'debit'           => $line->credit,
+                        'credit'          => $line->debit,
+                        'description'    => 'REVERSAL: ' . $line->description,
+                        'reference'      => $line->reference,
+                        'currency_code'  => $line->currency_code,
+                        'original_amount' => $line->original_amount ? -$line->original_amount : null,
+                        'exchange_rate'   => $line->exchange_rate,
+                        'department_id'  => $line->department_id,
+                        'project_id'     => $line->project_id,
+                        'location_id'    => $line->location_id,
+                    ]);
+                }
 
                 // Find the original document link to propagate source info
                 $originalLink = JournalEntryLink::where('journal_entry_id', $original->id)
@@ -221,13 +265,13 @@ class PostingEngine implements PostingEngineInterface
 
                 if ($originalLink) {
                     $originalLink->update([
-                        'reversal_journal_entry_id' => $reversal->id,
+                        'reversal_journal_entry_id' => $reversalEntry->id,
                     ]);
 
                     JournalEntryLink::create([
                         'source_document_type'      => $originalLink->source_document_type,
                         'source_document_id'        => $originalLink->source_document_id,
-                        'journal_entry_id'          => $reversal->id,
+                        'journal_entry_id'          => $reversalEntry->id,
                         'original_journal_entry_id' => $original->id,
                         'relation_type'             => 'reversal',
                     ]);
@@ -237,7 +281,7 @@ class PostingEngine implements PostingEngineInterface
                 $auditLog = PostingAuditLog::create([
                     'document_type'    => $originalLink?->source_document_type ?? 'journal_entry',
                     'document_id'      => $originalLink?->source_document_id ?? $original->id,
-                    'journal_entry_id' => $reversal->id,
+                    'journal_entry_id' => $reversalEntry->id,
                     'action'           => 'reverse',
                     'actor_user_id'    => $actorId,
                     'approval_user_id' => $approvedBy,
@@ -249,7 +293,7 @@ class PostingEngine implements PostingEngineInterface
                     ],
                 ]);
 
-                return PostingResult::success($reversal->load('lines'), $auditLog->id);
+                return PostingResult::success($reversalEntry->load('lines'), $auditLog->id);
             });
         } catch (\Exception $e) {
             Log::error('PostingEngine::reverse failed', [
