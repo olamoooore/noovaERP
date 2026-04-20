@@ -162,65 +162,16 @@ class JournalEntry extends Model
     /**
      * Reverse the journal entry.
      *
-     * @param string|null $reason        Human-readable reason for the reversal
-     * @param string|null $reversalDate  Effective date (Y-m-d). Defaults to today when null.
-     *                                   Callers (e.g. PostingEngine) are responsible for
-     *                                   validating this date against lock + fiscal controls
-     *                                   BEFORE invoking this method.
+     * @deprecated Use PostingEngine::reverse() instead. This method does not create
+     *              JournalEntryLink or PostingAuditLog which are required for audit compliance.
+     * @throws \BadMethodCallException Always throws since this method is deprecated
      */
     public function reverse(?string $reason = null, ?string $reversalDate = null): self
     {
-        if ($this->status !== 'posted') {
-            throw new \Exception('Can only reverse posted entries');
-        }
-
-        if ($this->is_reversal) {
-            throw new \Exception('Cannot reverse a reversal entry');
-        }
-
-        // Check if already reversed
-        if ($this->reversalEntry()->exists()) {
-            throw new \Exception('Entry has already been reversed');
-        }
-
-        $effectiveDate = $reversalDate ?? now()->toDateString();
-
-        // Create reversal entry
-        $reversalEntry = static::create([
-            'journal_id'        => $this->journal_id,
-            'entry_number'      => $this->journal ? $this->journal->getNextEntryNumber() : static::generateEntryNumber(),
-            'entry_date'        => $effectiveDate,
-            'type'              => $this->type,
-            'reference'         => $this->reference,
-            'description'       => 'REVERSAL: ' . ($reason ?? $this->description),
-            'status'            => 'posted',
-            'posted_at'         => now(),
-            'posted_by'         => TenantUserHelper::requireTenantUserId(),
-            'created_by'        => TenantUserHelper::requireTenantUserId(),
-            'reversed_entry_id' => $this->id,
-            'is_reversal'       => true,
-            'legal_entity_id'   => $this->legal_entity_id,
-            'entity_book_id'    => $this->entity_book_id,
-        ]);
-
-        // Create reversed lines
-        foreach ($this->lines as $line) {
-            $reversalEntry->lines()->create([
-                'account_id' => $line->account_id,
-                'debit' => $line->credit, // Swap debit and credit
-                'credit' => $line->debit,
-                'description' => 'REVERSAL: ' . $line->description,
-                'reference' => $line->reference,
-                'currency_code' => $line->currency_code,
-                'original_amount' => $line->original_amount ? -$line->original_amount : null,
-                'exchange_rate' => $line->exchange_rate,
-                'department_id' => $line->department_id,
-                'project_id' => $line->project_id,
-                'location_id' => $line->location_id,
-            ]);
-        }
-
-        return $reversalEntry;
+        throw new \BadMethodCallException(
+            'JournalEntry::reverse() is deprecated. Use PostingEngine::reverse() instead. ' .
+            'This method does not create JournalEntryLink or PostingAuditLog which are required for audit compliance.'
+        );
     }
 
     /**

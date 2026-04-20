@@ -30,7 +30,6 @@ class PIIRetentionJob implements ShouldQueue
     protected bool $dryRun;
     protected array $retentionPolicies;
     protected ?string $tenantId;
-    protected bool $processAllTenants;
 
     /**
      * Create a new job instance.
@@ -43,14 +42,12 @@ class PIIRetentionJob implements ShouldQueue
         int $batchSize = 100,
         bool $dryRun = false,
         array $retentionPolicies = [],
-        ?string $tenantId = null,
-        bool $processAllTenants = false
+        ?string $tenantId = null
     ) {
         $this->batchSize = $batchSize;
         $this->dryRun = $dryRun;
         $this->retentionPolicies = $retentionPolicies;
         $this->tenantId = $tenantId;
-        $this->processAllTenants = $processAllTenants;
         
         // Set queue and connection
         $this->onQueue('pii-retention');
@@ -72,21 +69,18 @@ class PIIRetentionJob implements ShouldQueue
             'dry_run' => $this->dryRun,
             'retention_policies' => $this->retentionPolicies,
             'tenant_id' => $this->tenantId,
-            'process_all_tenants' => $this->processAllTenants,
         ]);
 
         $tenants = collect();
-        
-        if ($this->tenantId) {
-            $tenant = Tenant::find($this->tenantId);
-            if ($tenant) {
-                $tenants = collect([$tenant]);
-            }
-        } elseif ($this->processAllTenants) {
-            $tenants = Tenant::all();
-        } else {
+
+        if (!$this->tenantId) {
             Log::info('PII retention job: no tenant specified, nothing to process');
             return;
+        }
+
+        $tenant = Tenant::find($this->tenantId);
+        if ($tenant) {
+            $tenants = collect([$tenant]);
         }
         
         $totalSummary = [

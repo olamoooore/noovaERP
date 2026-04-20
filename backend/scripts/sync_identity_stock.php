@@ -120,10 +120,23 @@ $summary = [
 $matchedKeys = [];
 
 $applySync = function () use ($products, $desiredQuantities, &$summary, &$matchedKeys, $targetWarehouse, $deactivateOthers) {
-    StockLevel::query()->update([
-        'quantity' => 0,
-        'reserved_quantity' => 0,
-    ]);
+    $inventoryService = app(InventoryService::class);
+
+    foreach ($products as $product) {
+        try {
+            $inventoryService->adjustStock(
+                productId: $product->id,
+                warehouseId: $targetWarehouse->id,
+                quantity: 0,
+                type: 'adjustment',
+                reference: 'sync_identity_stock',
+                referenceType: 'Script',
+                referenceId: 0,
+            );
+        } catch (\Exception $e) {
+            fwrite(STDERR, "Warning: Failed to zero stock for product {$product->id}: {$e->getMessage()}\n");
+        }
+    }
 
     Warehouse::whereKey($targetWarehouse->id)->update([
         'is_active' => true,
@@ -162,19 +175,6 @@ $applySync = function () use ($products, $desiredQuantities, &$summary, &$matche
         if ($desiredQuantity > 0) {
             $summary['positive_products']++;
             $summary['sum_quantity'] += $desiredQuantity;
-
-            $stockLevel = StockLevel::firstOrNew([
-                'product_id' => $product->id,
-                'warehouse_id' => $targetWarehouse->id,
-            ]);
-
-            if (!$stockLevel->exists) {
-                $stockLevel->min_quantity = 0;
-            }
-
-            $stockLevel->quantity = $desiredQuantity;
-            $stockLevel->reserved_quantity = 0;
-            $stockLevel->save();
         }
 
         if ((int) $product->stock_quantity !== $desiredQuantity) {

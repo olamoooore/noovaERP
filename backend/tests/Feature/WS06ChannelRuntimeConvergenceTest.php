@@ -494,25 +494,31 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
     }
 
     /** @test */
-    public function test_process_all_web_orders_repair_path_does_not_call_completion_service_for_stock_only_repair(): void
+    public function test_process_all_web_orders_repair_path_does_not_call_deduct_stock_directly(): void
     {
         $src = file_get_contents(
             base_path('modules/Ecommerce/Console/Commands/ProcessAllWebOrders.php')
         );
 
-        // The known bypass — repair calls deductStock() directly when GL exists but stock is missing.
-        // This test documents the behaviour so it is visible and tracked.
-        $this->assertStringContainsString(
+        // The bypass has been fixed — deductStock() must no longer be called directly
+        $this->assertStringNotContainsString(
             'deductStock(',
             $src,
-            'ProcessAllWebOrders repair path still calls deductStock() directly — known BYPASS-04, tracked for future cleanup'
+            'ProcessAllWebOrders must not call deductStock() directly — use InventoryService via CompletionService'
         );
 
-        // It must ALSO have a canonical path via PaymentTransactionCompletionService for the primary case
+        // It must have a canonical path via PaymentTransactionCompletionService
         $this->assertStringContainsString(
             'PaymentTransactionCompletionService',
             $src,
-            'ProcessAllWebOrders primary path must still use PaymentTransactionCompletionService::complete()'
+            'ProcessAllWebOrders must use PaymentTransactionCompletionService::complete()'
+        );
+
+        // Must delegate to CompletionService for stock operations
+        $this->assertStringContainsString(
+            'completionService->complete(',
+            $src,
+            'ProcessAllWebOrders must delegate to CompletionService for stock operations'
         );
     }
 }

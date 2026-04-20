@@ -55,14 +55,13 @@ class ScheduleAnalyticsAggregationCommand extends Command
 
         $this->info("Starting analytics aggregation: {$type}");
 
+        if (!$tenantId) {
+            $this->error('--tenant is required. Tenant enumeration is not allowed.');
+            return Command::FAILURE;
+        }
+
         try {
-            if ($tenantId) {
-                // Process specific tenant
-                $this->processTenant($tenantId, $type, $date, $hour, $force);
-            } else {
-                // Process all tenants
-                $this->processAllTenants($type, $date, $hour, $force);
-            }
+            $this->processTenant($tenantId, $type, $date, $hour, $force);
 
             $this->info('Analytics aggregation completed successfully');
             return Command::SUCCESS;

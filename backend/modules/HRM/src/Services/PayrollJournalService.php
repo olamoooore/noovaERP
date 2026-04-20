@@ -5,6 +5,7 @@ namespace Modules\HRM\Services;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\PostingEngine;
 use App\Models\Journal;
 use Illuminate\Support\Facades\Log;
@@ -116,7 +117,12 @@ class PayrollJournalService
             return PostingResult::failure("Payroll run {$run->reference} has no journal entry to reverse.");
         }
 
-        $result = $this->postingEngine->reverse($run->journal_entry_id, $reason);
+        $result = $this->postingEngine->reverse(new ReversalRequest(
+            journalEntryId: $run->journal_entry_id,
+            reversalDate: now()->toDateString(),
+            reason: $reason,
+            reasonCode: 'PAYROLL_CORRECTION',
+        ));
 
         if ($result->success) {
             $run->update(['journal_entry_id' => null]);
