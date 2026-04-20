@@ -21,13 +21,34 @@ use Modules\Sales\Services\SalesOrderService;
  * Invoice Service - Handles invoice workflow
  * Auto-posts to accounting ledger
  * Updates inventory
+ *
+ * @internal This class should only be instantiated via the service container.
+ *           Use SalesOrderService::createInvoice() to create invoices.
  */
 class InvoiceService
 {
+    private bool $allowDirectCall = false;
+
     public function __construct(
         private PostingEngineInterface $postingEngine,
         private InventoryService $inventoryService,
     ) {}
+
+    /**
+     * Internal factory to create InvoiceService that allows direct calls.
+     * Used by SalesOrderService to enable the guarded createInvoice method.
+     *
+     * @internal This is for internal use only - SalesOrderService should use this
+     */
+    public static function allowDirectCalls(): self
+    {
+        $instance = new self(
+            app(PostingEngineInterface::class),
+            app(InventoryService::class)
+        );
+        $instance->allowDirectCall = true;
+        return $instance;
+    }
 
     /**
      * Create invoice with lines
@@ -487,22 +508,26 @@ class InvoiceService
     
     private function ensureCalledFromSalesOrderService(): void
     {
+        if ($this->allowDirectCall) {
+            return;
+        }
+
         $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-        
+
         $allowedClasses = [
             SalesOrderService::class,
             'Modules\Sales\Services\SalesOrderService',
         ];
-        
+
         foreach ($backtrace as $frame) {
             $callerClass = $frame['class'] ?? '';
             $callerFunction = $frame['function'] ?? '';
-            
+
             if (in_array($callerClass, $allowedClasses, true)) {
                 return;
             }
         }
-        
+
         throw new \LogicException(
             'InvoiceService::createInvoice() must only be called from SalesOrderService. ' .
             'Direct calls bypass SalesInvoiceLink creation which is required for invoice lifecycle tracking. ' .

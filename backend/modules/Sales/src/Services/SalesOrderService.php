@@ -137,7 +137,7 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order, $totalOverrides, $invoiceService) {
-            $invoiceService = $invoiceService ?? app(InvoiceService::class);
+            $invoiceService = $invoiceService ?? InvoiceService::allowDirectCalls();
 
             $invoiceData = [
                 'customer_id' => $order->customer_id,
