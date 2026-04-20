@@ -13,7 +13,7 @@ class FixJournalEntriesSequence extends Command
      *
      * @var string
      */
-    protected $signature = 'db:fix-sequences';
+    protected $signature = 'db:fix-sequences {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -27,9 +27,21 @@ class FixJournalEntriesSequence extends Command
      */
     public function handle()
     {
-        $this->info('Fixing sequences for all tenants...');
+        $tenantId = $this->option('tenant');
         
-        $tenants = Tenant::all();
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan db:fix-sequences --tenant=<tenant-id>');
+            return Command::FAILURE;
+        }
+        
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return Command::FAILURE;
+        }
+        
+        $this->info("Fixing sequences for tenant: {$tenant->id}");
         
         $tables = [
             'journal_entries',
@@ -49,31 +61,24 @@ class FixJournalEntriesSequence extends Command
             'product_units',
         ];
         
-        foreach ($tenants as $tenant) {
-            $this->info("Processing tenant: {$tenant->id}");
-            
-            $tenant->run(function () use ($tables) {
-                foreach ($tables as $table) {
-                    try {
-                        // Check if table exists
-                        if (!\Schema::hasTable($table)) {
-                            continue;
-                        }
-                        
-                        // Get the max id from the table
-                        $maxId = DB::table($table)->max('id') ?? 0;
-                        
-                        if ($maxId > 0) {
-                            // Reset the sequence
-                            DB::statement("SELECT setval(pg_get_serial_sequence('{$table}', 'id'), {$maxId})");
-                            $this->info("  Fixed {$table} sequence to {$maxId}");
-                        }
-                    } catch (\Exception $e) {
-                        $this->error("  Error fixing {$table}: {$e->getMessage()}");
+        $tenant->run(function () use ($tables) {
+            foreach ($tables as $table) {
+                try {
+                    if (!\Schema::hasTable($table)) {
+                        continue;
                     }
+                    
+                    $maxId = DB::table($table)->max('id') ?? 0;
+                    
+                    if ($maxId > 0) {
+                        DB::statement("SELECT setval(pg_get_serial_sequence('{$table}', 'id'), {$maxId})");
+                        $this->info("  Fixed {$table} sequence to {$maxId}");
+                    }
+                } catch (\Exception $e) {
+                    $this->error("  Error fixing {$table}: {$e->getMessage()}");
                 }
-            });
-        }
+            }
+        });
         
         $this->info('Done!');
         return Command::SUCCESS;

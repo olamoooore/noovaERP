@@ -23,7 +23,7 @@ class FixStuckWebOrders extends Command
      *
      * @var string
      */
-    protected $signature = 'orders:fix-stuck-web {--order_id= : Specific order ID to fix} {--tenant= : Specific tenant ID}';
+    protected $signature = 'orders:fix-stuck-web {--order_id= : Specific order ID to fix} {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -42,23 +42,23 @@ class FixStuckWebOrders extends Command
         $orderId = $this->option('order_id');
         $tenantId = $this->option('tenant');
         
-        // Get tenants to process
-        $tenants = $tenantId 
-            ? Tenant::where('id', $tenantId)->get()
-            : Tenant::all();
-        
-        if ($tenants->isEmpty()) {
-            $this->error('No tenants found.');
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan orders:fix-stuck-web --tenant=<tenant-id>');
+            return Command::FAILURE;
+        }
+
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
             return Command::FAILURE;
         }
         
-        foreach ($tenants as $tenant) {
-            $this->info("Processing tenant: {$tenant->id}");
+        $this->info("Processing tenant: {$tenant->id}");
             
-            $tenant->run(function () use ($orderId) {
-                $this->processTenantOrders($orderId);
-            });
-        }
+        $tenant->run(function () use ($orderId) {
+            $this->processTenantOrders($orderId);
+        });
 
         $this->info('Done!');
         return Command::SUCCESS;

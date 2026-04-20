@@ -29,6 +29,8 @@ class PIIRetentionJob implements ShouldQueue
     protected int $batchSize;
     protected bool $dryRun;
     protected array $retentionPolicies;
+    protected ?string $tenantId;
+    protected bool $processAllTenants;
 
     /**
      * Create a new job instance.
@@ -40,11 +42,15 @@ class PIIRetentionJob implements ShouldQueue
     public function __construct(
         int $batchSize = 100,
         bool $dryRun = false,
-        array $retentionPolicies = []
+        array $retentionPolicies = [],
+        ?string $tenantId = null,
+        bool $processAllTenants = false
     ) {
         $this->batchSize = $batchSize;
         $this->dryRun = $dryRun;
         $this->retentionPolicies = $retentionPolicies;
+        $this->tenantId = $tenantId;
+        $this->processAllTenants = $processAllTenants;
         
         // Set queue and connection
         $this->onQueue('pii-retention');
@@ -61,14 +67,28 @@ class PIIRetentionJob implements ShouldQueue
      */
     public function handle(PIIVaultService $piiVaultService): void
     {
-        Log::info('Starting PII retention job for all tenants', [
+        Log::info('Starting PII retention job', [
             'batch_size' => $this->batchSize,
             'dry_run' => $this->dryRun,
             'retention_policies' => $this->retentionPolicies,
+            'tenant_id' => $this->tenantId,
+            'process_all_tenants' => $this->processAllTenants,
         ]);
 
-        // Get all tenants and process each one
-        $tenants = Tenant::all();
+        $tenants = collect();
+        
+        if ($this->tenantId) {
+            $tenant = Tenant::find($this->tenantId);
+            if ($tenant) {
+                $tenants = collect([$tenant]);
+            }
+        } elseif ($this->processAllTenants) {
+            $tenants = Tenant::all();
+        } else {
+            Log::info('PII retention job: no tenant specified, nothing to process');
+            return;
+        }
+        
         $totalSummary = [
             'processed_records' => 0,
             'anonymized_records' => 0,
@@ -81,7 +101,6 @@ class PIIRetentionJob implements ShouldQueue
 
         foreach ($tenants as $tenant) {
             try {
-                // Initialize tenancy for this tenant
                 Tenancy::initialize($tenant);
                 
                 Log::info('Processing PII retention for tenant', [
@@ -91,7 +110,6 @@ class PIIRetentionJob implements ShouldQueue
                 
                 $tenantSummary = $this->processTenantPII($piiVaultService, $tenant->id);
                 
-                // Aggregate results
                 $totalSummary['processed_records'] += $tenantSummary['processed_records'];
                 $totalSummary['anonymized_records'] += $tenantSummary['anonymized_records'];
                 $totalSummary['skipped_records'] += $tenantSummary['skipped_records'];
@@ -100,7 +118,6 @@ class PIIRetentionJob implements ShouldQueue
                 $totalSummary['cleaned_export_requests'] += $tenantSummary['cleaned_export_requests'];
                 $totalSummary['tenants_processed']++;
                 
-                // End tenancy for this tenant
                 Tenancy::end();
                 
             } catch (\Exception $e) {
@@ -110,11 +127,9 @@ class PIIRetentionJob implements ShouldQueue
                 ]);
                 $totalSummary['error_count']++;
                 
-                // Ensure tenancy is ended even on error
                 try {
                     Tenancy::end();
                 } catch (\Exception $endEx) {
-                    // Ignore errors during tenancy cleanup
                 }
             }
         }
@@ -122,9 +137,8 @@ class PIIRetentionJob implements ShouldQueue
         $totalSummary['dry_run'] = $this->dryRun;
         $totalSummary['timestamp'] = Carbon::now()->toISOString();
 
-        Log::info('PII retention job completed for all tenants', $totalSummary);
+        Log::info('PII retention job completed', $totalSummary);
 
-        // Check for critical issues
         $this->checkForCriticalIssues($totalSummary);
     }
 

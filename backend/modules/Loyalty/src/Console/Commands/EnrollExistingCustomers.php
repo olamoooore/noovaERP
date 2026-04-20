@@ -16,7 +16,7 @@ class EnrollExistingCustomers extends Command
      *
      * @var string
      */
-    protected $signature = 'loyalty:enroll-existing {--tenant= : Specific tenant ID to enroll customers for}';
+    protected $signature = 'loyalty:enroll-existing {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -30,41 +30,17 @@ class EnrollExistingCustomers extends Command
      */
     public function handle(): int
     {
-        $specificTenant = $this->option('tenant');
+        $tenantId = $this->option('tenant');
 
-        if ($specificTenant) {
-            // Process specific tenant
-            $this->processTenant($specificTenant);
-        } else {
-            // Process all tenants
-            $this->processAllTenants();
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan loyalty:enroll-existing --tenant=<tenant-id>');
+            return self::FAILURE;
         }
+
+        $this->processTenant($tenantId);
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Process all tenants
-     */
-    protected function processAllTenants(): void
-    {
-        $this->info('Processing all tenants for loyalty enrollment...');
-
-        // Get all tenants using the Tenant model
-        $tenants = Tenant::all();
-
-        if ($tenants->isEmpty()) {
-            $this->warn('No tenants found.');
-            return;
-        }
-
-        $this->info("Found {$tenants->count()} tenants to process.");
-
-        foreach ($tenants as $tenant) {
-            $this->newLine();
-            $this->info("Processing tenant: {$tenant->id}");
-            $this->processTenant($tenant->id);
-        }
     }
 
     /**

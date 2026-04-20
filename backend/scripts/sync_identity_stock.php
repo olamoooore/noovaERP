@@ -8,6 +8,7 @@ use App\Models\Warehouse;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\StockLevel;
+use Modules\Inventory\Services\InventoryService;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -177,8 +178,21 @@ $applySync = function () use ($products, $desiredQuantities, &$summary, &$matche
         }
 
         if ((int) $product->stock_quantity !== $desiredQuantity) {
-            $product->stock_quantity = $desiredQuantity;
-            $product->save();
+            try {
+                $inventoryService = app(InventoryService::class);
+                
+                $inventoryService->adjustStock(
+                    productId: $product->id,
+                    warehouseId: $targetWarehouse->id,
+                    quantity: $desiredQuantity,
+                    type: 'adjustment',
+                    reference: 'sync_identity_stock',
+                    referenceType: 'Script',
+                    referenceId: 0,
+                );
+            } catch (\Exception $e) {
+                fwrite(STDERR, "Warning: Failed to adjust stock for product {$product->id}: {$e->getMessage()}\n");
+            }
         }
     }
 };

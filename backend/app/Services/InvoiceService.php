@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\InventoryService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderService;
 
 /**
  * Invoice Service - Handles invoice workflow
@@ -30,9 +31,14 @@ class InvoiceService
 
     /**
      * Create invoice with lines
+     * 
+     * @internal This method should only be called by SalesOrderService. Direct calls bypass SalesInvoiceLink creation.
+     * @throws \LogicException If called outside of SalesOrderService context
      */
     public function createInvoice(array $data): Invoice
     {
+        $this->ensureCalledFromSalesOrderService();
+        
         DB::beginTransaction();
         
         try {
@@ -477,5 +483,30 @@ class InvoiceService
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
         }
+    }
+    
+    private function ensureCalledFromSalesOrderService(): void
+    {
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        
+        $allowedClasses = [
+            SalesOrderService::class,
+            'Modules\Sales\Services\SalesOrderService',
+        ];
+        
+        foreach ($backtrace as $frame) {
+            $callerClass = $frame['class'] ?? '';
+            $callerFunction = $frame['function'] ?? '';
+            
+            if (in_array($callerClass, $allowedClasses, true)) {
+                return;
+            }
+        }
+        
+        throw new \LogicException(
+            'InvoiceService::createInvoice() must only be called from SalesOrderService. ' .
+            'Direct calls bypass SalesInvoiceLink creation which is required for invoice lifecycle tracking. ' .
+            'Use SalesOrderService::createInvoice() instead.'
+        );
     }
 }

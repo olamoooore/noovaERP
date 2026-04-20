@@ -15,7 +15,7 @@ class RecalculateCustomerStats extends Command
      *
      * @var string
      */
-    protected $signature = 'customers:recalculate-stats {--tenant= : Specific tenant ID to process}';
+    protected $signature = 'customers:recalculate-stats {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -31,24 +31,22 @@ class RecalculateCustomerStats extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if ($tenantId) {
-            $tenant = Tenant::find($tenantId);
-            if (!$tenant) {
-                $this->error("Tenant not found: {$tenantId}");
-                return 1;
-            }
-            $this->processTenant($tenant);
-        } else {
-            $tenants = Tenant::all();
-            $this->info("Processing {$tenants->count()} tenants...");
-            
-            foreach ($tenants as $tenant) {
-                $this->processTenant($tenant);
-            }
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan customers:recalculate-stats --tenant=<tenant-id>');
+            return Command::FAILURE;
         }
 
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return Command::FAILURE;
+        }
+
+        $this->processTenant($tenant);
+
         $this->info('Customer stats recalculation completed!');
-        return 0;
+        return Command::SUCCESS;
     }
 
     private function processTenant(Tenant $tenant)

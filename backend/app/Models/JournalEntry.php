@@ -146,26 +146,17 @@ class JournalEntry extends Model
 
     /**
      * Post the journal entry
+     * 
+     * @deprecated Use PostingEngine::post() instead. This method does not create JournalEntryLink or PostingAuditLog.
+     *             PostingEngine provides idempotency, audit trail, and proper transaction handling.
+     * @throws \BadMethodCallException Always throws since this method is deprecated
      */
     public function post(): void
     {
-        if ($this->status === 'posted') {
-            throw new \Exception('Journal entry already posted');
-        }
-
-        if (!$this->is_balanced) {
-            throw new \Exception('Journal entry must balance before posting');
-        }
-
-        // Route lock-date check through LockDateValidationService (uses consistent lte boundary).
-        // LockDate::isDateLocked() used strict < which was inconsistent with the service.
-        app(LockDateValidationService::class)->validateOrFail('journal_entries', $this->entry_date);
-
-        $this->update([
-            'status' => 'posted',
-            'posted_at' => now(),
-            'posted_by' => TenantUserHelper::requireTenantUserId(),
-        ]);
+        throw new \BadMethodCallException(
+            'JournalEntry::post() is deprecated. Use PostingEngine::post() instead. ' .
+            'This method does not create JournalEntryLink or PostingAuditLog which are required for audit compliance.'
+        );
     }
 
     /**

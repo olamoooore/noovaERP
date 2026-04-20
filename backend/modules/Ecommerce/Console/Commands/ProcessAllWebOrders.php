@@ -25,7 +25,7 @@ class ProcessAllWebOrders extends Command
      *
      * @var string
      */
-    protected $signature = 'orders:process-all-web {--tenant= : Specific tenant ID}';
+    protected $signature = 'orders:process-all-web {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -43,23 +43,23 @@ class ProcessAllWebOrders extends Command
 
         $tenantId = $this->option('tenant');
         
-        // Get tenants to process
-        $tenants = $tenantId 
-            ? Tenant::where('id', $tenantId)->get()
-            : Tenant::all();
-        
-        if ($tenants->isEmpty()) {
-            $this->error('No tenants found.');
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan orders:process-all-web --tenant=<tenant-id>');
+            return Command::FAILURE;
+        }
+
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
             return Command::FAILURE;
         }
         
-        foreach ($tenants as $tenant) {
-            $this->info("Processing tenant: {$tenant->id}");
+        $this->info("Processing tenant: {$tenant->id}");
             
-            $tenant->run(function () {
-                $this->processTenantOrders();
-            });
-        }
+        $tenant->run(function () {
+            $this->processTenantOrders();
+        });
 
         $this->info('Done!');
         return Command::SUCCESS;
@@ -176,11 +176,19 @@ class ProcessAllWebOrders extends Command
                     $this->info("    Canonical completion created journal entry link: {$postingLink->journal_entry_id}");
                 }
             } else {
-                // Journal entry exists but stock might not be deducted (must be backed by posting link).
-                if (!$hasStockDeduction && $hasPostingLink) {
-                    $postingService = app(\Modules\Ecommerce\Services\WebOrderPostingService::class);
-                    $postingService->deductStock($order);
-                    $this->info("    Stock deducted for order");
+                // Journal entry exists but stock might not be deducted.
+                // Route through canonical completion service to ensure audit trail and proper transaction handling.
+                if (!$hasStockDeduction && $hasPostingLink && $transaction) {
+                    try {
+                        $this->completionService->complete(
+                            $transaction,
+                            $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
+                        );
+                        $this->info("    Stock deducted via canonical completion service");
+                    } catch (\Exception $e) {
+                        $this->warn("    Stock deduction failed: {$e->getMessage()}");
+                        throw $e;
+                    }
                 }
             }
             
