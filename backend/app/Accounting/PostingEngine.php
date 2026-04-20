@@ -48,6 +48,8 @@ class PostingEngine implements PostingEngineInterface
                     'document_type' => $request->documentType,
                     'document_id'   => $request->documentId,
                     'entry_id'      => $existingLink->journal_entry_id,
+                    'request_id' => $request->requestId,
+                    'correlation_id' => $request->correlationId,
                 ]);
 
                 return PostingResult::success(
@@ -141,7 +143,7 @@ class PostingEngine implements PostingEngineInterface
                     ]);
                 }
 
-                // ── audit log ──
+                // ── audit log with correlation tracking ──
                 $auditLog = PostingAuditLog::create([
                     'document_type'    => $request->documentType,
                     'document_id'      => $request->documentId,
@@ -155,6 +157,9 @@ class PostingEngine implements PostingEngineInterface
                         'posting_date' => $request->postingDate,
                         'lines_count' => count($resolvedLines),
                         'total_debit' => array_sum(array_column($resolvedLines, 'debit')),
+                        'request_id' => $request->requestId,
+                        'correlation_id' => $request->correlationId,
+                        'tenant_id' => $request->tenantId,
                         'metadata' => $request->metadata,
                     ],
                 ]);
