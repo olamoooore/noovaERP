@@ -153,6 +153,23 @@ class PostingEngine implements PostingEngineInterface
      */
     public function reverse(ReversalRequest $request): PostingResult
     {
+        // ── 0. Reversal Idempotency guard ────────────────────────────────
+        $existingReversalLink = JournalEntryLink::where('original_journal_entry_id', $request->journalEntryId)
+            ->where('relation_type', 'reversal')
+            ->first();
+
+        if ($existingReversalLink) {
+            Log::info('PostingEngine::reverse — duplicate reversal prevented', [
+                'original_entry_id' => $request->journalEntryId,
+                'existing_reversal_id' => $existingReversalLink->journal_entry_id,
+            ]);
+
+            return PostingResult::success(
+                JournalEntry::find($existingReversalLink->journal_entry_id)->load('lines'),
+                null,
+            );
+        }
+
         // ── Self-approval guard ──────────────────────────────────────────────
         $actorId    = TenantUserHelper::requireTenantUserId($request->actorUserId);
         $approvedBy = $request->approvalUserId;
