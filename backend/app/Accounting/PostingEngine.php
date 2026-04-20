@@ -13,6 +13,8 @@ use App\Models\Journal;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
+use App\Models\User;
+use App\Services\ApprovalPolicyService;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,7 @@ class PostingEngine implements PostingEngineInterface
         private readonly AccountRoleResolver $roleResolver,
         private readonly LockDateValidationService $lockDateValidator,
         private readonly FiscalPeriodValidator $fiscalValidator,
+        private readonly ApprovalPolicyService $approvalPolicy,
     ) {}
 
     /**
@@ -76,6 +79,30 @@ class PostingEngine implements PostingEngineInterface
             return PostingResult::failure(
                 "Journal entry is unbalanced. Debit: {$totalDebit}, Credit: {$totalCredit}"
             );
+        }
+
+        // ── 3b. Approval policy check for manual journals ──────────
+        $userId = TenantUserHelper::resolveTenantUserId($request->userId);
+        if ($userId && $this->isManualJournal($request->documentType)) {
+            $approvalCheck = $this->approvalPolicy->requiresApproval(
+                'manual_journal',
+                $totalDebit,
+                User::find($userId),
+                $request->overrideReason
+            );
+
+            if ($approvalCheck['required']) {
+                Log::warning('Manual journal requires approval', [
+                    'document_type' => $request->documentType,
+                    'amount' => $totalDebit,
+                    'threshold' => $approvalCheck['threshold'],
+                ]);
+
+                return PostingResult::failure(
+                    "Approval required: {$approvalCheck['reason']}. Required roles: " .
+                    implode(', ', $approvalCheck['approver_roles'])
+                );
+            }
         }
 
         // ── 4. Atomic create + post ───────────────────────────
@@ -477,5 +504,14 @@ class PostingEngine implements PostingEngineInterface
         }
 
         return JournalEntry::generateEntryNumber();
+    }
+
+    private function isManualJournal(string $documentType): bool
+    {
+        return in_array($documentType, [
+            'manual_journal',
+            'journal_entry',
+            'adjustment',
+        ]);
     }
 }
