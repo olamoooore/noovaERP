@@ -156,7 +156,7 @@ class GenerateMissingPosInvoices extends Command
                     'pos_order_id'    => $order->id,
                 ]);
 
-                app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
+                $salesOrderService->recordChannelPayment($invoice->fresh(), [
                     'payment_date' => now(),
                     'method' => 'card',
                     'reference' => "POS-{$order->order_number}",

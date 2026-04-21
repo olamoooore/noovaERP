@@ -19,6 +19,7 @@ class SalesOrderService
 {
     public function __construct(
         private OrderLifecycleService $lifecycleService,
+        private InvoiceService $invoiceService,
     ) {}
 
     public function createOrder(array $data): SalesOrder
@@ -131,14 +132,14 @@ class SalesOrderService
         });
     }
 
-    public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceService = null): \App\Models\Invoice
+    public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice
     {
         if (!$order->isFulfilled() && !$order->isAllocated()) {
             throw new \Exception('Only fulfilled or allocated orders can be invoiced.');
         }
 
-        return DB::transaction(function () use ($order, $totalOverrides, $invoiceService) {
-            $invoiceService = $invoiceService ?? app(InvoiceService::class);
+        return DB::transaction(function () use ($order, $totalOverrides, $invoiceServiceOverride) {
+            $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
             $invoiceData = [
@@ -190,6 +191,11 @@ class SalesOrderService
 
             return $invoice;
         });
+    }
+
+    public function recordChannelPayment(\App\Models\Invoice $invoice, array $paymentData): \App\Models\Payment
+    {
+        return $this->invoiceService->recordChannelPayment($invoice, $paymentData);
     }
 
     public function cancelOrder(SalesOrder $order, string $reason): SalesOrder
