@@ -39,6 +39,9 @@ class OllamaService
      */
     public function chat(array $messages, array $functions = []): array
     {
+
+        set_time_limit(180); // add this line here
+
         $payload = [
             'model' => $this->model,
             'messages' => $messages,
@@ -50,9 +53,11 @@ class OllamaService
         if (!empty($functions)) {
             $payload['tools'] = $this->formatFunctions($functions);
         }
-        
+
         try {
             $response = Http::timeout($this->timeout)
+                ->connectTimeout(30)
+                ->withToken(env('GROQ_API_KEY'))
                 ->post($this->baseUrl . '/chat/completions', $payload);
             
             if (!$response->successful()) {

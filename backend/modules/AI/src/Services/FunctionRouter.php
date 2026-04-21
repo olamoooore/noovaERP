@@ -10,6 +10,8 @@ use Modules\AI\Functions\ProductFunctions;
 use Modules\AI\Functions\InvoiceFunctions;
 use Modules\AI\Functions\TicketFunctions;
 use Modules\AI\Functions\InventoryFunctions;
+use Modules\AI\Functions\AccountingFunctions;
+use Modules\AI\Functions\CopilotFunctions;
 
 /**
  * Function Router Service
@@ -62,8 +64,24 @@ class FunctionRouter
                 'list_warehouses' => InventoryFunctions::listWarehouses($arguments),
                 'list_recent_stock_movements' => InventoryFunctions::listRecentStockMovements($arguments),
                 'get_invoice' => InvoiceFunctions::getDetails($arguments),
+                'get_outstanding_invoices' => AccountingFunctions::getOutstandingInvoices($arguments),
+                'get_invoice_details' => AccountingFunctions::getInvoiceDetails($arguments),
+                'get_overdue_invoices' => AccountingFunctions::getOverdueInvoices($arguments),
+                'get_recent_payments' => AccountingFunctions::getRecentPayments($arguments),
+                'get_customer_balance' => AccountingFunctions::getCustomerBalance($arguments),
+                'get_revenue_summary' => AccountingFunctions::getRevenueSummary($arguments),
+                'get_journal_entries' => AccountingFunctions::getJournalEntries($arguments),
+                'get_supplier_invoices' => AccountingFunctions::getSupplierInvoices($arguments),
+                'get_financial_report' => AccountingFunctions::getFinancialReport($arguments),
+                'get_customer_ledger' => AccountingFunctions::getCustomerLedger($arguments),
+                'get_supplier_ledger' => AccountingFunctions::getSupplierLedger($arguments),
                 'create_ticket' => TicketFunctions::create($arguments, $customerId, $conversationId),
                 'transfer_to_human' => $this->transferToHuman($arguments),
+                // Copilot Functions
+                'detect_close_anomalies' => CopilotFunctions::detectCloseAnomalies($arguments),
+                'prioritize_collections' => CopilotFunctions::prioritizeCollections($arguments),
+                'suggest_ap_coding' => CopilotFunctions::suggestAPCoding($arguments),
+                'review_revenue' => CopilotFunctions::reviewRevenue($arguments),
                 default => [
                     'success' => false,
                     'error' => 'Unknown function: ' . $functionName,
