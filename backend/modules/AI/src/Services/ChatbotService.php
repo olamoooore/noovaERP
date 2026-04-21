@@ -401,7 +401,11 @@ class ChatbotService
         try {
             $functionCall = $response['function_call'];
             $functionName = $functionCall['function']['name'];
-            $arguments = json_decode($functionCall['function']['arguments'], true);
+            $arguments = is_array($functionCall['function']['arguments']) 
+                ? $functionCall['function']['arguments'] 
+                : json_decode($functionCall['function']['arguments'], true);
+
+            $arguments = $arguments ?? [];
             
             // Execute function (may fail)
             try {

@@ -35,6 +35,7 @@
             "Modules\\Core\\": "modules/Core/src/",
             "Modules\\POS\\": "modules/POS/src/",
             "Modules\\FinancialReporting\\": "modules/FinancialReporting/src/",
+            "Modules\\FinancialClose\\": "modules/FinancialClose/src/",
             "Modules\\OCRBookkeeping\\": "modules/OCRBookkeeping/src/",
             "Modules\\Loyalty\\": "modules/Loyalty/src/",
             "Modules\\Ecommerce\\": "modules/Ecommerce/src/",

@@ -42,7 +42,23 @@ class FunctionDefinitions
             self::listRecentStockMovements(),
             // Other Functions
             self::getInvoice(),
+            self::getOutstandingInvoices(),
+            self::getInvoiceDetails(),
+            self::getOverdueInvoices(),
+            self::getRecentPayments(),
+            self::getCustomerBalance(),
+            self::getRevenueSummary(),
+            self::getJournalEntries(),
+            self::getSupplierInvoices(),
+            self::getFinancialReport(),
+            self::getCustomerLedger(),
+            self::getSupplierLedger(),
             self::createTicket(),
+            // Copilot Functions
+            self::detectCloseAnomalies(),
+            self::prioritizeCollections(),
+            self::suggestAPCoding(),
+            self::reviewRevenue(),
         ];
     }
 
@@ -340,6 +356,228 @@ class FunctionDefinitions
             ],
         ];
     }
+
+    protected static function getOutstandingInvoices(): array
+    {
+        return [
+            'name' => 'get_outstanding_invoices',
+            'description' => 'Get a list of outstanding or unpaid invoices. Use this when the user asks about unpaid invoices, outstanding invoices, invoices pending payment, or how much is owed.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of invoices to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getInvoiceDetails(): array
+    {
+        return [
+            'name' => 'get_invoice_details',
+            'description' => 'Get full details of a specific invoice by invoice number. Use this when the user asks about a specific invoice, wants to see invoice details, or asks about a particular invoice number.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'invoice_number' => [
+                        'type' => 'string',
+                        'description' => 'The invoice number to look up (e.g. INV-2026-0001)',
+                    ],
+                ],
+                'required' => ['invoice_number'],
+            ],
+        ];
+    }
+
+    protected static function getOverdueInvoices(): array
+    {
+        return [
+            'name' => 'get_overdue_invoices',
+            'description' => 'Get a list of overdue invoices where the due date has passed and there is still an outstanding balance. Use this when the user asks about overdue invoices, late payments, or past due invoices.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of invoices to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getRecentPayments(): array
+    {
+        return [
+            'name' => 'get_recent_payments',
+            'description' => 'Get a list of recent payments received. Use this when the user asks about recent payments, payment history, or payments received.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of payments to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getCustomerBalance(): array
+    {
+        return [
+            'name' => 'get_customer_balance',
+            'description' => 'Get the outstanding balance for a specific customer. Use this when the user asks about a customer\'s balance, how much a customer owes, or a customer\'s outstanding amount.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'customer_id' => [
+                        'type' => 'integer',
+                        'description' => 'The ID of the customer',
+                    ],
+                    'customer_name' => [
+                        'type' => 'string',
+                        'description' => 'The name of the customer to search for',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getRevenueSummary(): array
+    {
+        return [
+            'name' => 'get_revenue_summary',
+            'description' => 'Get a revenue summary for a given period. Use this when the user asks about revenue, total sales, income summary, or financial performance.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Period to summarise: this_month (default) or this_year',
+                    ],
+                    'date_from' => [
+                        'type' => 'string',
+                        'description' => 'Start date for custom range (YYYY-MM-DD)',
+                    ],
+                    'date_to' => [
+                        'type' => 'string',
+                        'description' => 'End date for custom range (YYYY-MM-DD)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getJournalEntries(): array
+    {
+        return [
+            'name' => 'get_journal_entries',
+            'description' => 'Retrieves recent journal entries from the general ledger. Use this when the user asks about journal entries, GL entries, or posted transactions.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'type' => [
+                        'type' => 'string',
+                        'description' => 'Filter by journal entry type e.g. payment, manual.',
+                    ],
+                    'status' => [
+                        'type' => 'string',
+                        'description' => 'Filter by status e.g. posted, draft.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getSupplierInvoices(): array
+    {
+        return [
+            'name' => 'get_supplier_invoices',
+            'description' => 'Get a list of supplier bills/invoices. Use this when the user asks about supplier bills, vendor invoices, bills to pay, or AP (accounts payable). Present results as a numbered list showing bill number, vendor ID, total, balance, and due date.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => [
+                        'type' => 'string',
+                        'description' => 'Optional filter by status, e.g. unpaid, partial, paid',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getFinancialReport(): array
+    {
+        return [
+            'name' => 'get_financial_report',
+            'description' => 'Get a P&L summary showing total revenue, expenses and net income for a period. Use when user asks about profit and loss, financial performance, income summary, or revenue vs expenses.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Reporting period: this_month, last_month, or this_year. Defaults to this_month.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getCustomerLedger(): array
+    {
+        return [
+            'name' => 'get_customer_ledger',
+            'description' => 'Get a customer ledger showing their invoice history and outstanding balance. Use when the user asks about a specific customer ledger, customer account, or customer invoice history.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'customer_name' => [
+                        'type' => 'string',
+                        'description' => 'Name of the customer to look up',
+                    ],
+                    'customer_id' => [
+                        'type' => 'integer',
+                        'description' => 'ID of the customer to look up',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getSupplierLedger(): array
+    {
+        return [
+            'name' => 'get_supplier_ledger',
+            'description' => 'Get a supplier ledger showing their bill history and total spending. Use when the user asks about a specific supplier or vendor ledger, vendor account, or vendor bill history.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'vendor_name' => [
+                        'type' => 'string',
+                        'description' => 'Name of the vendor to look up',
+                    ],
+                    'vendor_id' => [
+                        'type' => 'string',
+                        'description' => 'ID of the vendor to look up',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
     
     protected static function createTicket(): array
     {
@@ -386,6 +624,71 @@ class FunctionDefinitions
                     ],
                 ],
                 'required' => ['reason'],
+            ],
+        ];
+    }
+    // ========================================
+    // Copilot Functions
+    // ========================================
+
+    protected static function detectCloseAnomalies(): array
+    {
+        return [
+            'name' => 'detect_close_anomalies',
+            'description' => 'Detect anomalies and unusual balances in journal entries. Use when the user asks about anomalies, unusual entries, or wants a close review of journal entries.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'period' => [
+                        'type' => 'string',
+                        'description' => 'Period to check: this_month, last_month, or this_year. Defaults to this_year.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function prioritizeCollections(): array
+    {
+        return [
+            'name' => 'prioritize_collections',
+            'description' => 'Rank customers by collections priority based on outstanding balances and overdue invoices. Use when the user asks about collections, who to chase for payment, or customer priorities.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'string',
+                        'description' => 'Number of customers to return. Defaults to 10.',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function suggestAPCoding(): array
+    {
+        return [
+            'name' => 'suggest_ap_coding',
+            'description' => 'Suggest account codes for AP invoices based on past posted OCR documents. Use when the user asks for account coding suggestions or how to code a supplier invoice.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => new \stdClass(),
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function reviewRevenue(): array
+    {
+        return [
+            'name' => 'review_revenue',
+            'description' => 'Review revenue invoices for anomalies and risks such as unusually large amounts, overdue balances, or draft invoices. Use when the user asks about revenue review, invoice risks, or revenue anomalies.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => new \stdClass(),
+                'required' => [],
             ],
         ];
     }

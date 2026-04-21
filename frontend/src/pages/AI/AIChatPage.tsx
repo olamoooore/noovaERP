@@ -417,12 +417,15 @@ export function AIChatPage() {
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Function Calling</span>
-                    <Badge variant={aiStatus.features?.function_calling ? 'default' : 'secondary'}>
-                      {aiStatus.features?.function_calling ? 'Enabled' : 'Disabled'}
+                    <Badge variant={aiStatus?.features?.function_calling ? 'default' : 'secondary'}>
+                      {aiStatus?.features?.function_calling ? 'Enabled' : 'Disabled'}
                     </Badge>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Multi-language</span>
+                    <Badge variant={aiStatus?.features?.function_calling ? 'default' : 'secondary'}>
+                      {aiStatus?.features?.function_calling ? 'Enabled' : 'Disabled'}
+                    </Badge>
                     <Badge variant={aiStatus.features?.multi_language ? 'default' : 'secondary'}>
                       {aiStatus.features?.multi_language ? 'Enabled' : 'Disabled'}
                     </Badge>
