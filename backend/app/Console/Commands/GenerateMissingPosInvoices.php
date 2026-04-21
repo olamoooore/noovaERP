@@ -8,11 +8,18 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Modules\POS\Models\PosOrder;
+use Modules\POS\Services\PosPostingService;
 use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Services\SalesOrderService;
 
 class GenerateMissingPosInvoices extends Command
 {
+    public function __construct(
+        private readonly PosPostingService $posPostingService,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * The name and signature of the console command.
      */
@@ -133,6 +140,21 @@ class GenerateMissingPosInvoices extends Command
                 if ($salesOrder->isInvoiced()) {
                     $bar->advance();
                     continue;
+                }
+
+                // Post GL if not already posted (repair case: terminal payment didn't post GL,
+                // or PosOrder.journal_entry_id wasn't updated after terminal completion).
+                // Uses JournalEntryLink idempotency to prevent duplicate GL.
+                if (!$order->journal_entry_id) {
+                    try {
+                        $entry = $this->posPostingService->postPaidOrder($order, $order->total, 'card');
+                        if ($entry) {
+                            $order->update(['journal_entry_id' => $entry->id]);
+                            $order->refresh();
+                        }
+                    } catch (\Exception $e) {
+                        $this->warn("  GL posting failed for order {$order->order_number}: {$e->getMessage()}");
+                    }
                 }
 
                 // Fast-track through lifecycle for already-paid POS order
