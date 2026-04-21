@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('journal_entry_links')) {
+            return; // Tenant-only table; run via tenants:migrate
+        }
+
         Schema::table('journal_entry_links', function (Blueprint $table) {
             $table->foreignId('tenant_id')
                 ->after('id')
@@ -31,6 +35,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('journal_entry_links')) {
+            return;
+        }
+
         Schema::table('journal_entry_links', function (Blueprint $table) {
             $table->dropUnique('journal_entry_links_post_unique');
             $table->dropUnique('journal_entry_links_reversal_unique');

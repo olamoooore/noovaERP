@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -21,13 +22,15 @@ return new class extends Migration
             $table->string('bill_type')->default('expense')->after('status');
         });
 
-        // Back-fill existing procurement-linked bills
-        DB::statement("
-            UPDATE bills
-            SET bill_type = 'procurement'
-            WHERE purchase_order_id IS NOT NULL
-               OR goods_receipt_id  IS NOT NULL
-        ");
+        // Back-fill existing procurement-linked bills (columns may only exist in tenant schemas)
+        if (Schema::hasColumn('bills', 'purchase_order_id') || Schema::hasColumn('bills', 'goods_receipt_id')) {
+            DB::statement("
+                UPDATE bills
+                SET bill_type = 'procurement'
+                WHERE purchase_order_id IS NOT NULL
+                   OR goods_receipt_id  IS NOT NULL
+            ");
+        }
     }
 
     public function down(): void

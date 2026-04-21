@@ -238,13 +238,25 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
       },
+      {
+        title: 'AI Accounting',
+        href: '/ai/chat?module=accounting_insights',
+        icon: 'solar:magic-stick-3-bold-duotone',
+        featureKey: 'ai',
+      },
+      {
+        title: 'OCR Bookkeeping',
+        href: '/ocr/documents',
+        icon: 'solar:document-add-bold-duotone',
+        featureKey: 'ocr-bookkeeping',
+      },
     ],
   },
   {
     title: 'OCR Documents',
     href: '/ocr/documents',
     icon: 'solar:document-add-bold-duotone',
-    featureKey: 'accounting',
+    featureKey: 'ocr-bookkeeping',
   },
   {
     title: 'Loyalty',

@@ -94,8 +94,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::put('/taxes/{tax}', [TaxController::class, 'update']);
     Route::delete('/taxes/{tax}', [TaxController::class, 'destroy']);
     
-    // Features (read-only — tenant self-service mutation permanently removed)
+    // Features
     Route::get('/features', [FeatureController::class, 'index']);
+    Route::post('/features/{id}/toggle', [FeatureController::class, 'toggle']);
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);

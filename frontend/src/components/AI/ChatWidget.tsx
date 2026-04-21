@@ -33,10 +33,11 @@ interface ChatWidgetProps {
   conversationId?: number | null
   channel?: string
   className?: string
+  initialModule?: string
   onConversationEnd?: () => void
 }
 
-export function ChatWidget({ customerId, conversationId: initialConversationId = null, channel = 'web', className = '', onConversationEnd }: ChatWidgetProps) {
+export function ChatWidget({ customerId, conversationId: initialConversationId = null, channel = 'web', className = '', initialModule, onConversationEnd }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(true) // Auto-open for new chats
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
@@ -219,11 +220,15 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
       } else {
         // New conversation - show greeting with quick options immediately
         showInitialGreeting()
+        // If a module was requested via URL param, auto-select it after a short delay
+        if (initialModule) {
+          setTimeout(() => handleModuleSelect(initialModule), 400)
+        }
       }
     }
 
     loadConversationHistory()
-  }, [initialConversationId, toast])
+  }, [initialConversationId, initialModule, toast])
 
   const showInitialGreeting = () => {
     // Show greeting message with quick options WITHOUT creating conversation yet

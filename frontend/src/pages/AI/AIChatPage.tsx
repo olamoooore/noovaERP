@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +34,9 @@ interface Conversation {
 }
 
 export function AIChatPage() {
+  const [searchParams] = useSearchParams()
+  const initialModule = searchParams.get('module') || undefined
+
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -44,6 +48,14 @@ export function AIChatPage() {
   
   // Use current user's ID as customer_id
   const currentCustomerId = user?.id || 1
+
+  // Auto-open chat on mount (and when module param changes), but only once user is loaded
+  useEffect(() => {
+    if (!user) return
+    setSelectedCustomerId(currentCustomerId)
+    setSelectedConversationId(null)
+    setChatKey(prev => prev + 1)
+  }, [user, initialModule])
 
   // Get AI service status with error handling
   const { data: aiStatus, isError: aiStatusError, error: aiError, isLoading: aiStatusLoading } = useQuery({
@@ -443,6 +455,7 @@ export function AIChatPage() {
           key={chatKey} 
           customerId={selectedCustomerId}
           conversationId={selectedConversationId}
+          initialModule={initialModule}
           onConversationEnd={() => refetch()}
         />
       )}
