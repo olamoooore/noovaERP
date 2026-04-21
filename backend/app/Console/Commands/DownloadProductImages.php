@@ -13,7 +13,7 @@ class DownloadProductImages extends Command
     protected $signature = 'products:download-images
                             {--limit=0 : Max products to process (0 = all)}
                             {--dry-run : Show URLs without downloading}
-                            {--tenant= : Tenant ID to run under}
+                            {--tenant= : Tenant ID to run under (required)}
                             {--source= : Only process URLs matching this domain (e.g. withmuu, ktown4u)}
                             {--skip-existing : Skip products that already have a local image}
                             {--netfunnel-cookie= : NetFunnel cookie value for withmuu.com (get from browser DevTools)}';
@@ -27,10 +27,21 @@ class DownloadProductImages extends Command
     public function handle()
     {
         $tenantId = $this->option('tenant');
-        if ($tenantId) {
-            tenancy()->initialize($tenantId);
-            $this->info("Running under tenant: {$tenantId}");
+
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan products:download-images --tenant=<tenant-id>');
+            return Command::FAILURE;
         }
+
+        $tenant = \App\Models\Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return Command::FAILURE;
+        }
+
+        tenancy()->initialize($tenantId);
+        $this->info("Running under tenant: {$tenantId}");
 
         $query = Product::whereNotNull('image')
             ->where('image', 'like', 'http%');

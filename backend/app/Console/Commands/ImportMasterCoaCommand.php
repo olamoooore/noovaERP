@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 class ImportMasterCoaCommand extends Command
 {
     protected $signature = 'accounting:import-master-coa
-                            {--tenant= : Specific tenant ID (runs for current schema if omitted)}
+                            {--tenant= : Specific tenant ID (required)}
                             {--dry-run : Preview without writing}';
 
     protected $description = 'Import standard COA nodes and map existing entity accounts';
@@ -53,6 +53,32 @@ class ImportMasterCoaCommand extends Command
     ];
 
     public function handle(): int
+    {
+        $tenantId = $this->option('tenant');
+
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan accounting:import-master-coa --tenant=<tenant-id>');
+            return self::FAILURE;
+        }
+
+        $tenant = \App\Models\Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return self::FAILURE;
+        }
+
+        $this->info("Processing tenant: {$tenant->id}");
+
+        return $tenant->run(function () {
+            return $this->processTenantCoa();
+        });
+    }
+
+    /**
+     * Process COA for a tenant.
+     */
+    protected function processTenantCoa(): int
     {
         $dryRun = $this->option('dry-run');
 

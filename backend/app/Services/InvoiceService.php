@@ -37,6 +37,10 @@ class InvoiceService
      * createInvoiceInternal(). Only trusted orchestrators should call this.
      *
      * @internal For use by SalesOrderService and AccountingOriginInvoiceService only.
+     *           Calling this method directly from controllers, commands, or other
+     *           non-trusted contexts is a code quality violation. The token pattern
+     *           provides reuse protection but does NOT authorize arbitrary callers.
+     *           Contact the accounting team before using this in new code paths.
      */
     public function issueCreationToken(): InvoiceCreationToken
     {

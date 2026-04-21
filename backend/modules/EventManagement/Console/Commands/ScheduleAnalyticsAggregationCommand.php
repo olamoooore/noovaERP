@@ -85,36 +85,6 @@ class ScheduleAnalyticsAggregationCommand extends Command
     }
 
     /**
-     * Process analytics aggregation for all tenants
-     */
-    private function processAllTenants(string $type, ?Carbon $date, ?int $hour, bool $force): void
-    {
-        // Get all active tenants
-        $tenants = DB::connection('central')
-            ->table('tenants')
-            ->where('status', 'active')
-            ->pluck('id');
-
-        $this->info("Processing {$tenants->count()} tenants");
-
-        $progressBar = $this->output->createProgressBar($tenants->count());
-        $progressBar->start();
-
-        foreach ($tenants as $tenantId) {
-            try {
-                $this->processTenant($tenantId, $type, $date, $hour, $force);
-                $progressBar->advance();
-            } catch (\Exception $e) {
-                $this->error("\nFailed to process tenant {$tenantId}: {$e->getMessage()}");
-                continue;
-            }
-        }
-
-        $progressBar->finish();
-        $this->newLine();
-    }
-
-    /**
      * Process analytics aggregation for a specific tenant
      */
     private function processTenant(string $tenantId, string $type, ?Carbon $date, ?int $hour, bool $force): void
@@ -212,50 +182,4 @@ class ScheduleAnalyticsAggregationCommand extends Command
         return $query->exists();
     }
 
-    /**
-     * Get aggregation status for monitoring
-     */
-    private function getAggregationStatus(): array
-    {
-        $tenants = DB::connection('central')
-            ->table('tenants')
-            ->where('status', 'active')
-            ->pluck('id');
-
-        $status = [];
-        $yesterday = now()->subDay()->toDateString();
-
-        foreach ($tenants as $tenantId) {
-            try {
-                config(['database.connections.tenant.database' => "tenant_{$tenantId}"]);
-                
-                $dailyProcessed = DB::connection('tenant')
-                    ->table('daily_sales_metrics')
-                    ->where('tenant_id', $tenantId)
-                    ->where('metric_date', $yesterday)
-                    ->whereNull('metric_hour')
-                    ->exists();
-
-                $hourlyProcessed = DB::connection('tenant')
-                    ->table('daily_sales_metrics')
-                    ->where('tenant_id', $tenantId)
-                    ->where('metric_date', $yesterday)
-                    ->whereNotNull('metric_hour')
-                    ->count();
-
-                $status[$tenantId] = [
-                    'daily_processed' => $dailyProcessed,
-                    'hourly_processed' => $hourlyProcessed,
-                    'expected_hourly' => 24
-                ];
-
-            } catch (\Exception $e) {
-                $status[$tenantId] = [
-                    'error' => $e->getMessage()
-                ];
-            }
-        }
-
-        return $status;
     }
-}

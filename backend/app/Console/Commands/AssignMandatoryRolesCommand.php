@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 class AssignMandatoryRolesCommand extends Command
 {
     protected $signature = 'accounting:assign-roles
-                            {--tenant= : Specific tenant ID}
+                            {--tenant= : Specific tenant ID (required)}
                             {--dry-run : Preview without writing}
                             {--force : Skip confirmation for ambiguous assignments}';
 
@@ -49,6 +49,34 @@ class AssignMandatoryRolesCommand extends Command
     ];
 
     public function handle(): int
+    {
+        $tenantId = $this->option('tenant');
+
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan accounting:assign-roles --tenant=<tenant-id>');
+            return self::FAILURE;
+        }
+
+        $tenant = \App\Models\Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return self::FAILURE;
+        }
+
+        $this->info("Processing tenant: {$tenant->id}");
+
+        $tenant->run(function () {
+            $this->processTenantRoles();
+        });
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Process roles for a tenant.
+     */
+    protected function processTenantRoles(): int
     {
         $dryRun = $this->option('dry-run');
         $force = $this->option('force');

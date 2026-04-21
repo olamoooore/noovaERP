@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 class BackfillJournalEntryLinksTenantCommand extends Command
 {
     protected $signature = 'accounting:backfill-journal-entry-links-tenant
+        {--tenant= : Specific tenant ID (required)}
         {--dry-run : Show what would be updated without making changes}
         {--batch=100 : Records per batch}';
 
@@ -24,10 +25,36 @@ class BackfillJournalEntryLinksTenantCommand extends Command
 
     public function handle(): int
     {
+        $tenantId = $this->option('tenant');
+
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan accounting:backfill-journal-entry-links-tenant --tenant=<tenant-id>');
+            return Command::FAILURE;
+        }
+
+        $tenant = \App\Models\Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return Command::FAILURE;
+        }
+
+        $this->info("Processing tenant: {$tenant->id}");
+
+        return $tenant->run(function () {
+            return $this->processBackfill();
+        });
+    }
+
+    /**
+     * Process the backfill within tenant context.
+     */
+    protected function processBackfill(): int
+    {
         $dryRun = $this->option('dry-run');
         $batchSize = (int) $this->option('batch');
 
-        $this->info("Starting backfill (dry-run: " . ($dryRun ? 'yes' : 'no') . ")");
+        $this->info("Starting backfill (dry-run: " . ($dryRun ? 'yes' : 'no') . ')');
 
         $totalProcessed = 0;
         $totalSkipped = 0;

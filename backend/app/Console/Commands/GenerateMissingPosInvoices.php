@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Modules\POS\Models\PosOrder;
@@ -15,7 +16,7 @@ class GenerateMissingPosInvoices extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'pos:generate-invoices';
+    protected $signature = 'pos:generate-invoices {--tenant= : Specific tenant ID (required)}';
 
     /**
      * The console command description.
@@ -27,6 +28,35 @@ class GenerateMissingPosInvoices extends Command
      */
     public function handle()
     {
+        $tenantId = $this->option('tenant');
+
+        if (!$tenantId) {
+            $this->error('The --tenant flag is required for this command.');
+            $this->info('Usage: php artisan pos:generate-invoices --tenant=<tenant-id>');
+            return Command::FAILURE;
+        }
+
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            $this->error("Tenant not found: {$tenantId}");
+            return Command::FAILURE;
+        }
+
+        $this->info("Processing tenant: {$tenant->id}");
+
+        $tenant->run(function () {
+            $this->processTenantOrders();
+        });
+
+        $this->info('Done!');
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Process tenant orders.
+     */
+    protected function processTenantOrders()
+    {
         $this->info('Finding paid POS orders without invoices...');
 
         // Authenticate as system user for proper audit trail (required by SalesOrderService)
@@ -35,7 +65,7 @@ class GenerateMissingPosInvoices extends Command
             auth()->login($systemUser);
         } else {
             $this->error('No users found in the system. Cannot run without an authenticated user.');
-            return 1;
+            return;
         }
 
         // Get all paid POS orders

@@ -146,16 +146,10 @@ class FixStuckWebOrders extends Command
         }
         
         try {
-            $transaction = $this->completionService->complete(
+            $this->completionService->complete(
                 $transaction,
                 $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
             );
-
-            $transaction->update([
-                'status' => 'completed',
-                'processed_at' => $transaction->processed_at ?? now(),
-                'error_message' => null,
-            ]);
 
             $order->refresh();
 
