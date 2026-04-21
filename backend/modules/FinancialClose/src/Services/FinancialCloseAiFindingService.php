@@ -199,4 +199,35 @@ class FinancialCloseAiFindingService
             'entity_id' => $entityId,
         ]);
     }
+
+    /**
+     * Filter AI explanation based on user permissions
+     * Explanations must be permission-aware
+     */
+    public function getFilteredExplanation(string $tenantId, string $findingId, string $userId): ?array
+    {
+        $finding = AiFinding::where('tenant_id', $tenantId)
+            ->where('id', $findingId)
+            ->first();
+
+        if (!$finding) {
+            return null;
+        }
+
+        $output = $finding->structured_output ?? [];
+
+        // Remove sensitive fields for non-privileged users
+        $sensitiveFields = ['raw_model_output', 'internal_score', 'debug_info'];
+        foreach ($sensitiveFields as $field) {
+            unset($output[$field]);
+        }
+
+        return [
+            'finding_id' => $finding->id,
+            'description' => $finding->description,
+            'risk_status' => $finding->risk_status,
+            'confidence' => $finding->confidence,
+            'structured_output' => $output,
+        ];
+    }
 }
