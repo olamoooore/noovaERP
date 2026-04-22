@@ -20,6 +20,16 @@ interface UploadFile {
   uuid?: string
 }
 
+interface UploadResponse {
+  message: string
+  error?: string
+  data?: {
+    uuid?: string
+    status?: string
+    error_message?: string | null
+  }
+}
+
 export function DocumentUpload({ onComplete, onCancel }: DocumentUploadProps) {
   const [files, setFiles] = useState<UploadFile[]>([])
   const { toast } = useToast()
@@ -48,22 +58,45 @@ export function DocumentUpload({ onComplete, onCancel }: DocumentUploadProps) {
 
       return response.data
     },
-    onSuccess: (data, file) => {
+    onSuccess: (data: UploadResponse, file) => {
+      if (data.data?.status === 'EXTRACTION_FAILED') {
+        const errorMessage = data.error || data.data.error_message || 'OCR extraction failed'
+
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.file === file
+              ? { ...f, status: 'error', progress: 100, error: errorMessage, uuid: data.data?.uuid }
+              : f
+          )
+        )
+
+        toast({
+          variant: 'destructive',
+          title: 'OCR extraction failed',
+          description: errorMessage,
+        })
+
+        return
+      }
+
       setFiles((prev) =>
         prev.map((f) =>
           f.file === file
-            ? { ...f, status: 'success', progress: 100, uuid: data.data.uuid }
+            ? { ...f, status: 'success', progress: 100, uuid: data.data?.uuid }
             : f
         )
       )
     },
     onError: (error: any, file) => {
-      const errorMessage = error.response?.data?.message || 'Upload failed'
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Upload failed'
+      const uuid = error.response?.data?.data?.uuid
+
       setFiles((prev) =>
         prev.map((f) =>
-          f.file === file ? { ...f, status: 'error', error: errorMessage } : f
+          f.file === file ? { ...f, status: 'error', error: errorMessage, uuid } : f
         )
       )
+
       toast({
         variant: 'destructive',
         title: 'Upload failed',
@@ -105,7 +138,7 @@ export function DocumentUpload({ onComplete, onCancel }: DocumentUploadProps) {
     if (hasSuccess) {
       toast({
         title: 'Upload complete',
-        description: `${files.filter((f) => f.status === 'success').length} document(s) uploaded successfully`,
+        description: `${files.filter((f) => f.status === 'success').length} document(s) uploaded and extracted successfully`,
       })
       onComplete()
     }
@@ -182,7 +215,7 @@ export function DocumentUpload({ onComplete, onCancel }: DocumentUploadProps) {
 
               {uploadFile.status === 'success' && (
                 <p className="text-sm text-green-600">
-                  Upload complete - OCR processing started
+                  Upload complete - OCR extraction finished successfully
                 </p>
               )}
             </div>

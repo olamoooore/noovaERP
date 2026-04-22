@@ -47,14 +47,60 @@ app = FastAPI(title="OCR Bookkeeping Service", version="1.0.0")
 # Helpers
 # ---------------------------------------------------------------------------
 
+def render_pdf_pages(image_bytes: bytes, dpi: int = 300) -> list[Image.Image]:
+    """Render PDF pages to PIL images without requiring Poppler at runtime."""
+    poppler_path = os.environ.get("OCR_POPPLER_PATH") or os.environ.get("POPPLER_PATH")
+
+    if not poppler_path:
+        for candidate in ("/opt/homebrew/bin", "/usr/local/bin"):
+            if _os.path.isfile(_os.path.join(candidate, "pdftoppm")):
+                poppler_path = candidate
+                break
+
+    pdf2image_error: Exception | None = None
+
+    try:
+        from pdf2image import convert_from_bytes
+
+        convert_kwargs = {"dpi": dpi}
+        if poppler_path:
+            convert_kwargs["poppler_path"] = poppler_path
+
+        return convert_from_bytes(image_bytes, **convert_kwargs)
+    except Exception as exc:
+        pdf2image_error = exc
+
+    try:
+        import fitz
+
+        scale = dpi / 72
+        matrix = fitz.Matrix(scale, scale)
+        pages: list[Image.Image] = []
+
+        with fitz.open(stream=image_bytes, filetype="pdf") as document:
+            for page in document:
+                pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+                image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+                pages.append(image)
+
+        if pages:
+            return pages
+
+        raise ValueError("PDF contained no pages")
+    except Exception as exc:
+        details = []
+        if pdf2image_error is not None:
+            details.append(f"pdf2image failed: {pdf2image_error}")
+        details.append(f"PyMuPDF failed: {exc}")
+        raise HTTPException(status_code=422, detail="PDF conversion failed: " + " | ".join(details))
+
 def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     """Run Tesseract OCR on an image or PDF and return the raw text."""
     lower = filename.lower()
 
     if lower.endswith(".pdf"):
         try:
-            from pdf2image import convert_from_bytes
-            pages = convert_from_bytes(image_bytes, dpi=300)
+            pages = render_pdf_pages(image_bytes, dpi=300)
             texts = [pytesseract.image_to_string(page) for page in pages]
             return "\n".join(texts)
         except Exception as e:
@@ -170,9 +216,7 @@ def extract_text_with_paddle(image_bytes: bytes, filename: str) -> tuple[str, fl
 
     if lower.endswith(".pdf"):
         try:
-            from pdf2image import convert_from_bytes
-
-            pages = convert_from_bytes(image_bytes, dpi=300)
+            pages = render_pdf_pages(image_bytes, dpi=300)
             for page in pages:
                 all_lines.extend(ocr_image(page))
         except Exception as e:

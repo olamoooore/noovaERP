@@ -143,7 +143,7 @@ export const VendorBills: React.FC = () => {
     refetch();
     toast({
       title: 'Upload complete',
-      description: 'Vendor bills uploaded and OCR processing started',
+      description: 'Vendor bills uploaded and OCR extraction completed',
     });
   };
 

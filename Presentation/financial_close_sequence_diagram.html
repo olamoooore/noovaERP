@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Financial Close Developer Sequence Diagram</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --border: #d9e1ec;
+      --text: #142132;
+      --muted: #62758c;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --line: #8ea0b8;
+      --user: #0b74d1;
+      --app: #6f2dbd;
+      --ai: #c6286e;
+      --control: #c96a00;
+      --data: #2e7d32;
+      --event: #455a64;
+      --user-soft: #eaf6ff;
+      --app-soft: #f3ecff;
+      --ai-soft: #fff0f6;
+      --control-soft: #fff4e8;
+      --data-soft: #eef8ef;
+      --event-soft: #eef2f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1900px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+    .hero, .legend, .notes {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.12;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+      max-width: 1250px;
+    }
+    .diagram-shell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      overflow: auto;
+      padding: 20px;
+    }
+    .diagram {
+      min-width: 1680px;
+      position: relative;
+    }
+    .participants {
+      display: grid;
+      grid-template-columns: 180px repeat(7, 200px);
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 12px;
+      position: sticky;
+      top: 0;
+      background: linear-gradient(var(--panel), var(--panel));
+      z-index: 5;
+      padding-bottom: 12px;
+    }
+    .spacer { height: 1px; }
+    .participant {
+      border: 2px solid transparent;
+      border-radius: 16px;
+      padding: 12px 10px;
+      text-align: center;
+      font-weight: 700;
+      line-height: 1.35;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .p-user { background: var(--user-soft); border-color: var(--user); color: var(--user); }
+    .p-app { background: var(--app-soft); border-color: var(--app); color: var(--app); }
+    .p-ai { background: var(--ai-soft); border-color: var(--ai); color: var(--ai); }
+    .p-control { background: var(--control-soft); border-color: var(--control); color: var(--control); }
+    .p-event { background: var(--event-soft); border-color: var(--event); color: var(--event); }
+    .p-data { background: var(--data-soft); border-color: var(--data); color: var(--data); }
+
+    .grid {
+      position: relative;
+      display: grid;
+      grid-template-columns: 180px repeat(7, 200px);
+      gap: 16px;
+      align-items: center;
+    }
+    .lane-col {
+      position: relative;
+      min-height: 1600px;
+    }
+    .lifeline {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: repeating-linear-gradient(
+        to bottom,
+        #cfd8e3 0,
+        #cfd8e3 8px,
+        transparent 8px,
+        transparent 16px
+      );
+      transform: translateX(-50%);
+      z-index: 0;
+    }
+    .step-labels {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 180px;
+      z-index: 2;
+    }
+    .step-row {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 72px;
+    }
+    .step-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 38px;
+      height: 28px;
+      border-radius: 999px;
+      background: #122033;
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .step-text {
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+      max-width: 160px;
+    }
+    .message {
+      position: absolute;
+      height: 72px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .message .line {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: currentColor;
+      border-radius: 999px;
+    }
+    .message .arrow {
+      position: absolute;
+      top: 12px;
+      right: -1px;
+      width: 12px;
+      height: 12px;
+      border-top: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      transform: rotate(45deg);
+    }
+    .message.left .arrow {
+      right: auto;
+      left: -1px;
+      border-right: none;
+      border-left: 2px solid currentColor;
+      transform: rotate(-135deg);
+    }
+    .message .label {
+      position: absolute;
+      top: 0;
+      left: 12px;
+      right: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      background: rgba(255,255,255,0.92);
+      padding: 0 6px;
+      display: inline-block;
+    }
+    .m-user { color: var(--user); }
+    .m-app { color: var(--app); }
+    .m-ai { color: var(--ai); }
+    .m-control { color: var(--control); }
+    .m-event { color: var(--event); }
+    .m-data { color: var(--data); }
+
+    .activation {
+      position: absolute;
+      width: 16px;
+      border-radius: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(111, 45, 189, 0.15);
+      border: 2px solid rgba(111, 45, 189, 0.35);
+      z-index: 1;
+    }
+    .a-user { background: rgba(11,116,209,.12); border-color: rgba(11,116,209,.3); }
+    .a-app { background: rgba(111,45,189,.12); border-color: rgba(111,45,189,.32); }
+    .a-ai { background: rgba(198,40,110,.12); border-color: rgba(198,40,110,.32); }
+    .a-control { background: rgba(201,106,0,.12); border-color: rgba(201,106,0,.32); }
+    .a-event { background: rgba(69,90,100,.12); border-color: rgba(69,90,100,.32); }
+    .a-data { background: rgba(46,125,50,.12); border-color: rgba(46,125,50,.32); }
+
+    .legend-grid, .note-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(240px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: #fff;
+    }
+    .legend-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 2px solid currentColor;
+      background: currentColor;
+      opacity: .95;
+      flex: 0 0 auto;
+    }
+    .card span, .card li {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .card ul { margin: 8px 0 0 18px; padding: 0; }
+    .legend .title, .notes .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    @media (max-width: 980px) {
+      .legend-grid, .note-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Financial Close — Developer Sequence Diagram</h1>
+      <div class="sub">
+        Developer-grade sequence view showing how a close review request flows from UI through application services, AI-OCR and AI analysis, policy gates, events/jobs, and canonical data stores. This sequence is intentionally implementation-oriented and maps to controller → service → policy → event → persistence patterns.
+      </div>
+    </section>
+
+    <section class="diagram-shell">
+      <div class="diagram">
+        <div class="participants">
+          <div class="spacer"></div>
+          <div class="participant p-user">User / UI</div>
+          <div class="participant p-app">App Layer<br>(Controllers + Services)</div>
+          <div class="participant p-ai">AI / OCR Services</div>
+          <div class="participant p-control">Policy / Security</div>
+          <div class="participant p-event">Events / Jobs</div>
+          <div class="participant p-data">Workspace / App Data</div>
+          <div class="participant p-data">Canonical Truth + Audit</div>
+        </div>
+
+        <div class="grid">
+          <div class="step-labels">
+            <div class="step-row" style="top: 20px;"><div class="step-tag">1</div><div class="step-text">User opens close workspace and requests review context.</div></div>
+            <div class="step-row" style="top: 120px;"><div class="step-tag">2</div><div class="step-text">App loads review, evidence, tie-out, and task state.</div></div>
+            <div class="step-row" style="top: 230px;"><div class="step-tag">3</div><div class="step-text">User uploads manual file or enters draft data.</div></div>
+            <div class="step-row" style="top: 330px;"><div class="step-tag">4</div><div class="step-text">AI-OCR extracts fields and suggests account data.</div></div>
+            <div class="step-row" style="top: 445px;"><div class="step-tag">5</div><div class="step-text">Policy validates scope, entitlement, and AI output.</div></div>
+            <div class="step-row" style="top: 555px;"><div class="step-tag">6</div><div class="step-text">App persists evidence, extracted draft context, and audit.</div></div>
+            <div class="step-row" style="top: 670px;"><div class="step-tag">7</div><div class="step-text">User requests AI analysis for close review.</div></div>
+            <div class="step-row" style="top: 770px;"><div class="step-tag">8</div><div class="step-text">AI generates findings, explanations, readiness, and scenario outputs.</div></div>
+            <div class="step-row" style="top: 890px;"><div class="step-tag">9</div><div class="step-text">App stores AI artifacts and emits refresh events/jobs.</div></div>
+            <div class="step-row" style="top: 1005px;"><div class="step-tag">10</div><div class="step-text">User accepts, edits, rejects, or submits review.</div></div>
+            <div class="step-row" style="top: 1115px;"><div class="step-tag">11</div><div class="step-text">Policy enforces SoD, override, and action permissions.</div></div>
+            <div class="step-row" style="top: 1230px;"><div class="step-tag">12</div><div class="step-text">App records sign-off/update, runs readiness gate, and requests close.</div></div>
+            <div class="step-row" style="top: 1345px;"><div class="step-tag">13</div><div class="step-text">Canonical close executes, evidence freezes, and audit is finalized.</div></div>
+          </div>
+
+          <div class="lane-col"></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-user" style="top: 10px; height: 1450px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-app" style="top: 90px; height: 1220px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-ai" style="top: 300px; height: 610px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-control" style="top: 420px; height: 860px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-event" style="top: 870px; height: 300px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-data" style="top: 110px; height: 1130px;"></div></div>
+          <div class="lane-col"><div class="lifeline"></div><div class="activation a-data" style="top: 100px; height: 1280px;"></div></div>
+
+          <!-- Messages -->
+          <div class="message m-user" style="top: 20px; left: 196px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">GET close workspace / review context</div></div>
+          <div class="message m-app" style="top: 120px; left: 412px; width: 632px;"><div class="line"></div><div class="arrow"></div><div class="label">load review, tie-out, evidence, tasks, readiness projections</div></div>
+          <div class="message m-user" style="top: 230px; left: 196px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">upload document / submit draft input</div></div>
+          <div class="message m-app" style="top: 260px; left: 412px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">invoke OCR / extraction</div></div>
+          <div class="message m-ai" style="top: 330px; left: 628px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">extract fields + suggest account code, account name, missing values</div></div>
+          <div class="message m-control" style="top: 445px; left: 844px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">validate scope, entitlement, SoD, AI/OCR payload</div></div>
+          <div class="message m-app" style="top: 555px; left: 412px; width: 416px;"><div class="line"></div><div class="arrow"></div><div class="label">persist evidence, draft context, comments, audit hooks</div></div>
+          <div class="message m-user" style="top: 670px; left: 196px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">request AI analysis</div></div>
+          <div class="message m-app" style="top: 700px; left: 412px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">invoke FinancialCloseAiFindingService</div></div>
+          <div class="message m-ai" style="top: 770px; left: 628px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">anomaly, support gap, explanation, cause, readiness, scenario</div></div>
+          <div class="message m-app" style="top: 890px; left: 412px; width: 416px;"><div class="line"></div><div class="arrow"></div><div class="label">store AI findings, feedback placeholders, snapshots, evidence summary</div></div>
+          <div class="message m-event" style="top: 920px; left: 1060px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">emit analysis / readiness / refresh events</div></div>
+          <div class="message m-user" style="top: 1005px; left: 196px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">accept / edit / reject / submit</div></div>
+          <div class="message m-control" style="top: 1115px; left: 844px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">enforce action permission, override policy, review-first controls</div></div>
+          <div class="message m-app" style="top: 1230px; left: 412px; width: 632px;"><div class="line"></div><div class="arrow"></div><div class="label">update task/review/sign-off state, run readiness gate, request close if conditions pass</div></div>
+          <div class="message m-data" style="top: 1345px; left: 1280px; width: 200px;"><div class="line"></div><div class="arrow"></div><div class="label">execute canonical period close + freeze evidence + finalize audit</div></div>
+
+          <!-- Returns -->
+          <div class="message m-data left" style="top: 165px; left: 848px; width: 196px;"><div class="line"></div><div class="arrow"></div><div class="label">review/evidence/task data</div></div>
+          <div class="message m-ai left" style="top: 385px; left: 628px; width: 196px;"><div class="line"></div><div class="arrow"></div><div class="label">OCR result + suggestions</div></div>
+          <div class="message m-control left" style="top: 500px; left: 844px; width: 196px;"><div class="line"></div><div class="arrow"></div><div class="label">allow / deny / redact</div></div>
+          <div class="message m-ai left" style="top: 825px; left: 628px; width: 196px;"><div class="line"></div><div class="arrow"></div><div class="label">structured AI outputs</div></div>
+          <div class="message m-event left" style="top: 965px; left: 1060px; width: 196px;"><div class="line"></div><div class="arrow"></div><div class="label">jobs update queues / snapshots</div></div>
+          <div class="message m-data left" style="top: 1395px; left: 1280px; width: 412px;"><div class="line"></div><div class="arrow"></div><div class="label">close result, frozen evidence refs, final audit-safe state returned to app/UI</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="legend">
+      <div class="title">Legend</div>
+      <div class="legend-grid">
+        <div class="card"><div class="legend-row p-user"><span class="swatch"></span>User / UI</div><span>Human-initiated requests and visible UI actions.</span></div>
+        <div class="card"><div class="legend-row p-app"><span class="swatch"></span>App Layer</div><span>Controllers, services, DTOs, workspace logic, orchestration logic.</span></div>
+        <div class="card"><div class="legend-row p-ai"><span class="swatch"></span>AI / OCR</div><span>Document extraction, account suggestions, anomaly detection, explanations, scoring.</span></div>
+        <div class="card"><div class="legend-row p-control"><span class="swatch"></span>Policy / Security</div><span>Entitlement, scope, SoD, policy checks, AI validation, audit gates.</span></div>
+        <div class="card"><div class="legend-row p-event"><span class="swatch"></span>Events / Jobs</div><span>Event-driven refresh, queue jobs, reminders, readiness refresh, health alerts.</span></div>
+        <div class="card"><div class="legend-row p-data"><span class="swatch"></span>Data / Canonical</div><span>Workspace persistence, AI artifacts, canonical truth, final close execution.</span></div>
+      </div>
+    </section>
+
+    <section class="notes">
+      <div class="title">Developer Notes</div>
+      <div class="note-grid">
+        <div class="card">
+          <strong>Key rule</strong>
+          <ul>
+            <li>AI may enrich draft and review state.</li>
+            <li>AI must not become the accounting or reconciliation truth owner.</li>
+            <li>Final close authority remains canonical.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <strong>Suggested mapping</strong>
+          <ul>
+            <li>User / UI → controllers + requests</li>
+            <li>App Layer → FinancialClose* services</li>
+            <li>AI / OCR → AiOutputValidationService + FinancialCloseAiFindingService</li>
+            <li>Policy / Security → FinancialClosePolicyService + access control layer</li>
+          </ul>
+        </div>
+        <div class="card">
+          <strong>Acronyms</strong>
+          <ul>
+            <li>AI = Artificial Intelligence</li>
+            <li>OCR = Optical Character Recognition</li>
+            <li>SoD = Segregation of Duties</li>
+            <li>SLA = Service Level Agreement</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

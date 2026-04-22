@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Financial Close System + Data Application Flow</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --border: #d9e1ec;
+      --text: #142132;
+      --muted: #62758c;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+
+      --user: #0b74d1;
+      --app: #6f2dbd;
+      --ai: #c6286e;
+      --control: #c96a00;
+      --data: #2e7d32;
+      --event: #455a64;
+
+      --user-soft: #eaf6ff;
+      --app-soft: #f3ecff;
+      --ai-soft: #fff0f6;
+      --control-soft: #fff4e8;
+      --data-soft: #eef8ef;
+      --event-soft: #eef2f4;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1780px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.12;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+      max-width: 1220px;
+    }
+
+    .diagram {
+      display: grid;
+      gap: 14px;
+      overflow-x: auto;
+      padding-bottom: 14px;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 270px minmax(1380px, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .lane-label {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      min-height: 124px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .lane-label h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .lane-label p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .lane-flow {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px 20px 28px;
+      box-shadow: var(--shadow);
+      min-width: 1380px;
+    }
+
+    .rail {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 50%;
+      height: 3px;
+      background: #dbe3ee;
+      transform: translateY(-50%);
+      border-radius: 999px;
+      z-index: 0;
+    }
+
+    .steps {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(var(--cols, 4), minmax(185px, 1fr));
+      align-items: center;
+      min-height: 76px;
+    }
+
+    .step {
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      min-height: 84px;
+      border: 2px solid transparent;
+      position: relative;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .step::after {
+      content: "";
+      position: absolute;
+      right: -11px;
+      top: 50%;
+      width: 16px;
+      height: 16px;
+      border-top: 3px solid currentColor;
+      border-right: 3px solid currentColor;
+      transform: translateY(-50%) rotate(45deg);
+    }
+
+    .step:last-child::after { display: none; }
+
+    .user { background: var(--user-soft); border-color: var(--user); color: var(--user); }
+    .app { background: var(--app-soft); border-color: var(--app); color: var(--app); }
+    .ai { background: var(--ai-soft); border-color: var(--ai); color: var(--ai); }
+    .control { background: var(--control-soft); border-color: var(--control); color: var(--control); }
+    .data { background: var(--data-soft); border-color: var(--data); color: var(--data); }
+    .event { background: var(--event-soft); border-color: var(--event); color: var(--event); }
+
+    .kicker {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+      margin-bottom: 6px;
+      opacity: 0.9;
+    }
+
+    .title {
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .section-title {
+      margin: 20px 0 10px;
+      font-size: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 2px solid currentColor;
+      background: currentColor;
+      opacity: 0.95;
+      flex: 0 0 auto;
+    }
+
+    .card strong {
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .card span, .card li {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .card ul { margin: 8px 0 0 18px; padding: 0; }
+
+    .footer-note {
+      margin-top: 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+      box-shadow: var(--shadow);
+    }
+
+    @media (max-width: 980px) {
+      .lane { grid-template-columns: 1fr; }
+      .lane-label { position: static; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Financial Close System + Data Application Flow</h1>
+      <div class="sub">
+        System-centric application flow derived from the AI accounting user journey. This view shows how user actions move through UI, application services, AI services, policy gates, events, and canonical data stores during financial close. It also includes AI-OCR preparation support for manual source documents.
+      </div>
+    </section>
+
+    <section class="diagram">
+      <div class="lane">
+        <div class="lane-label">
+          <h2>1. User / UI Interaction</h2>
+          <p>Where preparers, reviewers, controllers, and CFOs interact with the ERP.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 7;">
+            <div class="step user"><div class="kicker">UI</div><div class="title">Open Close Workspace / My Tasks</div></div>
+            <div class="step user"><div class="kicker">Input</div><div class="title">Upload Manual Documents or Enter Draft Data</div></div>
+            <div class="step user"><div class="kicker">Review</div><div class="title">Review Account, Balance, and Evidence</div></div>
+            <div class="step user"><div class="kicker">Action</div><div class="title">Inspect AI Suggestions and Findings</div></div>
+            <div class="step user"><div class="kicker">Decision</div><div class="title">Accept, Edit, Reject, Submit, Return, or Approve</div></div>
+            <div class="step user"><div class="kicker">Exec</div><div class="title">Review Executive Readiness / Forecast Views</div></div>
+            <div class="step user"><div class="kicker">Close</div><div class="title">Authorize Final Close Request</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>2. Application Layer</h2>
+          <p>HTTP controllers, requests, DTOs, workspace services, orchestration services, and API resources.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 8;">
+            <div class="step app"><div class="kicker">HTTP</div><div class="title">Route + Controller + Request Validation</div></div>
+            <div class="step app"><div class="kicker">Workspace</div><div class="title">FinancialCloseReviewWorkspaceService</div></div>
+            <div class="step app"><div class="kicker">Evidence</div><div class="title">FinancialCloseEvidenceService</div></div>
+            <div class="step app"><div class="kicker">Sign-off</div><div class="title">FinancialCloseSignoffService</div></div>
+            <div class="step app"><div class="kicker">Task</div><div class="title">FinancialCloseTaskService / Checklist / Cycle</div></div>
+            <div class="step app"><div class="kicker">Dependency</div><div class="title">Dependency / Escalation / Completion Services</div></div>
+            <div class="step app"><div class="kicker">Read</div><div class="title">API Resources / UI Response Contracts</div></div>
+            <div class="step app"><div class="kicker">Pack</div><div class="title">Evidence Pack / Executive View Assembly</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>3. AI / OCR Services</h2>
+          <p>Assistive AI functions that work on draft, review, and evidence context without becoming the truth owner.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 8;">
+            <div class="step ai"><div class="kicker">OCR</div><div class="title">AI-OCR Extracts Source Document Text / Fields</div></div>
+            <div class="step ai"><div class="kicker">Assist</div><div class="title">Suggest Account Code, Account Name, and Missing Values</div></div>
+            <div class="step ai"><div class="kicker">Detect</div><div class="title">Anomaly Detection</div></div>
+            <div class="step ai"><div class="kicker">Support</div><div class="title">Missing Support Detection</div></div>
+            <div class="step ai"><div class="kicker">Explain</div><div class="title">Roll-forward Explanation</div></div>
+            <div class="step ai"><div class="kicker">Cause</div><div class="title">Likely-Cause Classification</div></div>
+            <div class="step ai"><div class="kicker">Score</div><div class="title">Close Readiness Scoring</div></div>
+            <div class="step ai"><div class="kicker">Scenario</div><div class="title">Forecast / Scenario + Evidence Summary</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>4. Policy / Security / Control Gates</h2>
+          <p>Guards every important action, AI response, evidence access, and close transition.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 7;">
+            <div class="step control"><div class="kicker">Access</div><div class="title">Entitlement Check</div></div>
+            <div class="step control"><div class="kicker">Scope</div><div class="title">Tenant / Entity / Book Scope Check</div></div>
+            <div class="step control"><div class="kicker">SoD</div><div class="title">Segregation of Duties Check</div></div>
+            <div class="step control"><div class="kicker">AI Guard</div><div class="title">AI Output / OCR Validation</div></div>
+            <div class="step control"><div class="kicker">Policy</div><div class="title">Override / Confidence / Automation Policy</div></div>
+            <div class="step control"><div class="kicker">Audit</div><div class="title">Action / Access / AI Audit Logging</div></div>
+            <div class="step control"><div class="kicker">Close Gate</div><div class="title">Canonical Ready-to-Close Decision Gate</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>5. Events / Jobs / Async Orchestration</h2>
+          <p>Event-driven updates, asynchronous processing, queue-safe refresh, and alerting.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 8;">
+            <div class="step event"><div class="kicker">Event</div><div class="title">FinancialCloseReviewCreated / Updated</div></div>
+            <div class="step event"><div class="kicker">Event</div><div class="title">FinancialCloseAnalysisRequested</div></div>
+            <div class="step event"><div class="kicker">Job</div><div class="title">Task Generation / Assignment / Queue Refresh</div></div>
+            <div class="step event"><div class="kicker">Job</div><div class="title">Readiness Snapshot Generation</div></div>
+            <div class="step event"><div class="kicker">Job</div><div class="title">Escalation Scan / Reminder Processing</div></div>
+            <div class="step event"><div class="kicker">Job</div><div class="title">Forecast / Scenario Processing</div></div>
+            <div class="step event"><div class="kicker">Alert</div><div class="title">Health Events / Failed Job / Stale Snapshot Alerts</div></div>
+            <div class="step event"><div class="kicker">Pack</div><div class="title">Evidence Pack Generation</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>6. Canonical Domain Data Stores</h2>
+          <p>System-of-record data used to build projections and control workflows.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 8;">
+            <div class="step data"><div class="kicker">Truth</div><div class="title">Accounting Core (Journals, Drafts, Fiscal Period)</div></div>
+            <div class="step data"><div class="kicker">Truth</div><div class="title">Reconciliation Engine (Runs, Exceptions, Tie-outs)</div></div>
+            <div class="step data"><div class="kicker">Truth</div><div class="title">Inventory / Sales / Procurement Canonical Data</div></div>
+            <div class="step data"><div class="kicker">Workspace</div><div class="title">Account Reviews / Evidence / Sign-offs</div></div>
+            <div class="step data"><div class="kicker">AI</div><div class="title">AI Findings / Feedback / Readiness Snapshots</div></div>
+            <div class="step data"><div class="kicker">Task</div><div class="title">Close Cycles / Tasks / Dependencies / Escalations</div></div>
+            <div class="step data"><div class="kicker">Enterprise</div><div class="title">Calendars / Overrides / Group Close / Health</div></div>
+            <div class="step data"><div class="kicker">Audit</div><div class="title">Access Logs / Action Audit / Evidence Pack Metadata</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-label">
+          <h2>7. Final Canonical Outcome</h2>
+          <p>The only valid close outcome: reviewed, auditable, policy-compliant, and closed by canonical authority.</p>
+        </div>
+        <div class="lane-flow">
+          <div class="rail"></div>
+          <div class="steps" style="--cols: 6;">
+            <div class="step control"><div class="kicker">Outcome</div><div class="title">Required Tasks Complete</div></div>
+            <div class="step control"><div class="kicker">Outcome</div><div class="title">Evidence and Sign-off Complete</div></div>
+            <div class="step control"><div class="kicker">Outcome</div><div class="title">Critical Exceptions Resolved or Governed</div></div>
+            <div class="step control"><div class="kicker">Outcome</div><div class="title">Readiness Gate Passes</div></div>
+            <div class="step data"><div class="kicker">Authority</div><div class="title">Canonical Period Close Service Executes</div></div>
+            <div class="step data"><div class="kicker">Record</div><div class="title">Frozen Evidence + Audit-Safe Close Record</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <h3 class="section-title">Legend — Flow Types</h3>
+    <section class="grid">
+      <div class="card"><div class="legend-row user"><span class="swatch"></span><strong>User / UI</strong></div><span>Human interaction steps and UI-triggered requests.</span></div>
+      <div class="card"><div class="legend-row app"><span class="swatch"></span><strong>Application Layer</strong></div><span>Controllers, services, DTOs, orchestration, and workspace logic.</span></div>
+      <div class="card"><div class="legend-row ai"><span class="swatch"></span><strong>AI / OCR</strong></div><span>Extraction, suggestion, explanation, scoring, and forecasting assistance.</span></div>
+      <div class="card"><div class="legend-row control"><span class="swatch"></span><strong>Policy / Control Gate</strong></div><span>Entitlement, scope, SoD, policy, validation, audit, and close gating.</span></div>
+      <div class="card"><div class="legend-row event"><span class="swatch"></span><strong>Events / Jobs</strong></div><span>Event-driven refresh, queue jobs, async orchestration, and alerts.</span></div>
+      <div class="card"><div class="legend-row data"><span class="swatch"></span><strong>Canonical / Data Store</strong></div><span>System-of-record truth, workflow tables, AI artifacts, and audit data.</span></div>
+    </section>
+
+    <h3 class="section-title">Legend — Acronyms</h3>
+    <section class="grid">
+      <div class="card"><strong>AI</strong><ul><li>Artificial Intelligence</li></ul></div>
+      <div class="card"><strong>OCR</strong><ul><li>Optical Character Recognition</li></ul></div>
+      <div class="card"><strong>CFO</strong><ul><li>Chief Financial Officer</li></ul></div>
+      <div class="card"><strong>SLA</strong><ul><li>Service Level Agreement</li></ul></div>
+      <div class="card"><strong>SoD</strong><ul><li>Segregation of Duties</li></ul></div>
+      <div class="card"><strong>Entity / Book</strong><ul><li>Entity = reporting scope</li><li>Book = accounting ledger/book scope</li></ul></div>
+    </section>
+
+    <div class="footer-note">
+      <strong>Design rule:</strong> AI-OCR and Financial Close AI may enrich draft and review workflows, but they must not own accounting truth, reconciliation truth, or final period close authority. The application layer may orchestrate, validate, and explain, while canonical services remain the only truth-mutating and close-authorizing boundary.
+    </div>
+  </div>
+</body>
+</html>

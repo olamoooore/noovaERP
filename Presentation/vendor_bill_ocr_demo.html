@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vendor Bill OCR Demo</title>
+  <style>
+    :root {
+      --paper: #ffffff;
+      --ink: #111111;
+      --muted: #555555;
+      --line: #1f1f1f;
+      --soft-line: #bdbdbd;
+      --accent: #0f172a;
+      --bg: #eceff3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 18px auto;
+      background: var(--paper);
+      padding: 18mm 16mm;
+      box-shadow: 0 12px 36px rgba(15, 23, 42, 0.12);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .vendor-block {
+      max-width: 58%;
+    }
+
+    .vendor-name {
+      font-size: 28px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .vendor-meta,
+    .billto,
+    .notes,
+    .remit {
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .document-title {
+      text-align: right;
+      min-width: 250px;
+    }
+
+    .document-title h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      margin: 18px 0 22px;
+    }
+
+    .meta-card {
+      border: 1.5px solid var(--line);
+      padding: 12px 14px;
+      min-height: 86px;
+    }
+
+    .meta-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+
+    .meta-value {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    .panel {
+      border: 1px solid var(--soft-line);
+      padding: 12px 14px;
+      min-height: 122px;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+
+    thead th {
+      background: #f6f6f6;
+      border-top: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    tbody td {
+      border-bottom: 1px solid #d2d2d2;
+      padding: 10px 8px;
+      vertical-align: top;
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .qty {
+      text-align: center;
+      width: 60px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .summary {
+      width: 320px;
+      margin-left: auto;
+      margin-top: 18px;
+      border-top: 2px solid var(--line);
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 9px 0;
+      border-bottom: 1px solid #d6d6d6;
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .summary-row.total {
+      border-bottom: 2px solid var(--line);
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      padding: 12px 0;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .bank-table {
+      width: 100%;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .bank-table td {
+      padding: 4px 0;
+      border: 0;
+    }
+
+    .bank-table td:first-child {
+      width: 42%;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .stamp {
+      margin-top: 28px;
+      padding-top: 10px;
+      border-top: 1px solid #cfcfcf;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .sheet {
+        margin: 0;
+        width: auto;
+        min-height: auto;
+        box-shadow: none;
+        padding: 14mm 12mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="topbar">
+      <div class="vendor-block">
+        <div class="vendor-name">Tech Supplies Inc</div>
+        <div class="vendor-meta">
+          4800 Industrial Park Drive, Suite 210<br />
+          Austin, TX 78758, United States<br />
+          sales@techsupplies.com<br />
+          +1-555-0101
+        </div>
+      </div>
+
+      <div class="document-title">
+        <h1>Vendor Bill</h1>
+        <div class="muted">Payable document for goods supplied</div>
+      </div>
+    </header>
+
+    <section class="meta-grid">
+      <div class="meta-card">
+        <div class="meta-label">Bill Number</div>
+        <div class="meta-value">BILL-TSI-2026-0418</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Bill Date</div>
+        <div class="meta-value">2026-04-18</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Due Date</div>
+        <div class="meta-value">2026-05-18</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Payment Terms</div>
+        <div class="meta-value">Net 30 Days</div>
+      </div>
+    </section>
+
+    <section class="split">
+      <div class="panel billto">
+        <h2>Bill To</h2>
+        NoovaERP Demo Corp<br />
+        Accounts Payable Department<br />
+        17 Raffles Quay, Level 09<br />
+        Singapore 048580<br />
+        ap@acedemo.com
+      </div>
+
+      <div class="panel notes">
+        <h2>Reference</h2>
+        Purchase Order: PO-10482<br />
+        Delivery Note: DN-88419<br />
+        Currency: USD<br />
+        Contact: Melissa Grant
+      </div>
+    </section>
+
+    <table aria-label="Vendor bill line items">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="qty">Qty</th>
+          <th class="num">Unit Price</th>
+          <th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Industrial Barcode Scanner</td>
+          <td class="qty">2</td>
+          <td class="num">245.00</td>
+          <td class="num">490.00</td>
+        </tr>
+        <tr>
+          <td>Warehouse Label Printer</td>
+          <td class="qty">1</td>
+          <td class="num">385.00</td>
+          <td class="num">385.00</td>
+        </tr>
+        <tr>
+          <td>Thermal Label Roll Pack</td>
+          <td class="qty">6</td>
+          <td class="num">32.50</td>
+          <td class="num">195.00</td>
+        </tr>
+        <tr>
+          <td>Mobile Picking Handset</td>
+          <td class="qty">1</td>
+          <td class="num">430.00</td>
+          <td class="num">430.00</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <section class="summary">
+      <div class="summary-row">
+        <span>Subtotal</span>
+        <span>1500.00</span>
+      </div>
+      <div class="summary-row">
+        <span>Tax</span>
+        <span>90.00</span>
+      </div>
+      <div class="summary-row total">
+        <span>Total Due</span>
+        <span>1590.00</span>
+      </div>
+    </section>
+
+    <section class="footer-grid">
+      <div class="panel remit">
+        <h2>Remit To</h2>
+        <table class="bank-table">
+          <tr>
+            <td>Account Name</td>
+            <td>Tech Supplies Inc</td>
+          </tr>
+          <tr>
+            <td>Bank</td>
+            <td>NorthBridge Commercial Bank</td>
+          </tr>
+          <tr>
+            <td>Account No</td>
+            <td>4187729015</td>
+          </tr>
+          <tr>
+            <td>SWIFT</td>
+            <td>NBCBUS44</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="panel notes">
+        <h2>Notes</h2>
+        Please include Bill Number BILL-TSI-2026-0418 on your remittance advice.<br />
+        Goods received in full and accepted by warehouse team on 2026-04-18.<br />
+        No disputes reported at the time of billing.
+      </div>
+    </section>
+
+    <div class="stamp">
+      <span>Generated for OCR vendor bill presentation testing</span>
+      <span>Prepared by Tech Supplies Inc Accounts Receivable</span>
+    </div>
+  </div>
+</body>
+</html>

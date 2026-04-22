@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\OCRBookkeeping\Services\OcrProcessingService;
 
 class OcrDocumentController extends Controller
 {
@@ -33,6 +34,10 @@ class OcrDocumentController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        if ($serviceUnavailableResponse = $this->ensureOcrServiceAvailable()) {
+            return $serviceUnavailableResponse;
         }
 
         try {
@@ -75,12 +80,17 @@ class OcrDocumentController extends Controller
                 $document->refresh();
             }
 
+            if ($document->hasFailed()) {
+                return $this->buildExtractionFailedResponse($document);
+            }
+
             return response()->json([
                 'message' => 'Document uploaded successfully',
                 'data' => [
                     'uuid' => $document->uuid,
                     'file_name' => $document->file_name,
                     'status' => $document->status,
+                    'error_message' => $document->error_message,
                     'created_at' => $document->created_at,
                 ],
             ], 201);
@@ -120,6 +130,10 @@ class OcrDocumentController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        if ($serviceUnavailableResponse = $this->ensureOcrServiceAvailable()) {
+            return $serviceUnavailableResponse;
         }
 
         $uploadedDocuments = [];
@@ -162,6 +176,16 @@ class OcrDocumentController extends Controller
                 } catch (\Exception $jobError) {
                     \Log::warning("OCR processing failed for document {$document->uuid}: " . $jobError->getMessage());
                     $document->refresh();
+                }
+
+                if ($document->hasFailed()) {
+                    $failedUploads[] = [
+                        'uuid' => $document->uuid,
+                        'file_name' => $document->file_name,
+                        'status' => $document->status,
+                        'error' => $document->error_message ?: 'OCR extraction failed',
+                    ];
+                    continue;
                 }
 
                 $uploadedDocuments[] = [
@@ -575,6 +599,10 @@ class OcrDocumentController extends Controller
             ], 422);
         }
 
+        if ($serviceUnavailableResponse = $this->ensureOcrServiceAvailable()) {
+            return $serviceUnavailableResponse;
+        }
+
         try {
             $document->resetForRetry();
 
@@ -648,5 +676,37 @@ class OcrDocumentController extends Controller
                 'message' => 'Promotion failed: ' . $e->getMessage(),
             ], 422);
         }
+    }
+
+    private function ensureOcrServiceAvailable(): ?JsonResponse
+    {
+        $ocrService = app(OcrProcessingService::class);
+
+        if ($ocrService->isServiceAvailable()) {
+            return null;
+        }
+
+        $serviceStatus = $ocrService->getServiceStatus();
+
+        return response()->json([
+            'message' => 'OCR service is unavailable. Start the OCR service and try again.',
+            'error' => $serviceStatus['error'] ?? 'OCR service health check failed.',
+            'service_status' => $serviceStatus['status'] ?? 'unreachable',
+        ], 503);
+    }
+
+    private function buildExtractionFailedResponse(OcrDocument $document): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Document uploaded, but OCR extraction failed.',
+            'error' => $document->error_message ?: 'OCR extraction failed.',
+            'data' => [
+                'uuid' => $document->uuid,
+                'file_name' => $document->file_name,
+                'status' => $document->status,
+                'error_message' => $document->error_message,
+                'created_at' => $document->created_at,
+            ],
+        ], 422);
     }
 }

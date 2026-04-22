@@ -89,7 +89,7 @@ export function OCRDocumentReviewPage() {
       toast({ 
         variant: 'destructive', 
         title: 'Retry failed',
-        description: error.response?.data?.error || 'An error occurred'
+        description: error.response?.data?.error || error.response?.data?.message || 'An error occurred'
       })
     },
   })

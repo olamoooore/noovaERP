@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { formatCurrency } from '@/lib/utils'
+import { useSettingsStore } from '@/store/settingsStore'
 
 interface PostingConfirmationDialogProps {
   open: boolean
@@ -28,6 +29,9 @@ export function PostingConfirmationDialog({
   isPosting,
 }: PostingConfirmationDialogProps) {
   if (!document) return null
+
+  const systemCurrencyCode = useSettingsStore((state) => state.currencyCode)
+  const postingCurrencyCode = systemCurrencyCode || 'USD'
 
   // Validate all line items have accounts assigned
   const hasUnassignedAccounts = document.line_items?.some((item: any) => !item.account_id)
@@ -104,11 +108,11 @@ export function PostingConfirmationDialog({
 
   const totalDebits = journalEntryLines
     .filter((line) => line.type === 'debit')
-    .reduce((sum, line) => sum + (parseFloat(line.amount) || 0), 0)
+    .reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
 
   const totalCredits = journalEntryLines
     .filter((line) => line.type === 'credit')
-    .reduce((sum, line) => sum + (parseFloat(line.amount) || 0), 0)
+    .reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
 
   const isBalanced = Math.abs(totalDebits - totalCredits) < 0.01
 
@@ -149,7 +153,7 @@ export function PostingConfirmationDialog({
                 <div>
                   <p className="text-muted-foreground">Total Amount</p>
                   <p className="font-medium">
-                    {formatCurrency(document.total_amount, document.currency_code || 'USD')}
+                    {formatCurrency(document.total_amount, postingCurrencyCode)}
                   </p>
                 </div>
               </div>
@@ -168,27 +172,27 @@ export function PostingConfirmationDialog({
                 <div className="divide-y">
                   {/* Header */}
                   <div className="grid grid-cols-12 gap-2 p-3 bg-muted/50 text-sm font-medium">
-                    <div className="col-span-5">Account</div>
-                    <div className="col-span-4">Description</div>
-                    <div className="col-span-1 text-right">Debit</div>
-                    <div className="col-span-2 text-right">Credit</div>
+                    <div className="col-span-4">Account</div>
+                    <div className="col-span-3">Description</div>
+                    <div className="col-span-2 text-right">Debit</div>
+                    <div className="col-span-3 text-right">Credit</div>
                   </div>
 
                   {/* Lines */}
                   {journalEntryLines.map((line, index) => (
                     <div key={index} className="grid grid-cols-12 gap-2 p-3 text-sm">
-                      <div className="col-span-5 font-medium">{line.account}</div>
-                      <div className="col-span-4 text-muted-foreground truncate">
+                      <div className="col-span-4 font-medium min-w-0 break-words">{line.account}</div>
+                      <div className="col-span-3 text-muted-foreground min-w-0 truncate">
                         {line.description}
                       </div>
-                      <div className="col-span-1 text-right">
+                      <div className="col-span-2 text-right whitespace-nowrap tabular-nums">
                         {line.type === 'debit'
-                          ? formatCurrency(line.amount, document.currency_code || 'USD')
+                          ? formatCurrency(line.amount, postingCurrencyCode)
                           : '-'}
                       </div>
-                      <div className="col-span-2 text-right">
+                      <div className="col-span-3 text-right whitespace-nowrap tabular-nums">
                         {line.type === 'credit'
-                          ? formatCurrency(line.amount, document.currency_code || 'USD')
+                          ? formatCurrency(line.amount, postingCurrencyCode)
                           : '-'}
                       </div>
                     </div>
@@ -196,12 +200,12 @@ export function PostingConfirmationDialog({
 
                   {/* Totals */}
                   <div className="grid grid-cols-12 gap-2 p-3 bg-muted/50 text-sm font-semibold">
-                    <div className="col-span-9 text-right">Totals:</div>
-                    <div className="col-span-1 text-right">
-                      {formatCurrency(totalDebits, document.currency_code || 'USD')}
+                    <div className="col-span-7 text-right">Totals:</div>
+                    <div className="col-span-2 text-right whitespace-nowrap tabular-nums">
+                      {formatCurrency(totalDebits, postingCurrencyCode)}
                     </div>
-                    <div className="col-span-2 text-right">
-                      {formatCurrency(totalCredits, document.currency_code || 'USD')}
+                    <div className="col-span-3 text-right whitespace-nowrap tabular-nums">
+                      {formatCurrency(totalCredits, postingCurrencyCode)}
                     </div>
                   </div>
                 </div>
@@ -221,7 +225,7 @@ export function PostingConfirmationDialog({
                   Entry is unbalanced! Difference:{' '}
                   {formatCurrency(
                     Math.abs(totalDebits - totalCredits),
-                    document.currency_code || 'USD'
+                    postingCurrencyCode
                   )}
                 </span>
               </div>
