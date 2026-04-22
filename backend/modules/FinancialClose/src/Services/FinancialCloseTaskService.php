@@ -5,9 +5,21 @@ namespace Modules\FinancialClose\Services;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\AuditLog;
+use Modules\FinancialClose\Events\FinancialCloseTaskStarted;
+use Modules\FinancialClose\Events\FinancialCloseTaskSubmitted;
+use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
+use Modules\FinancialClose\Events\FinancialCloseTaskReturned;
+use Modules\FinancialClose\Events\FinancialCloseTaskBlocked;
 
 class FinancialCloseTaskService
 {
+    protected FinancialCloseDependencyService $dependencyService;
+
+    public function __construct(FinancialCloseDependencyService $dependencyService)
+    {
+        $this->dependencyService = $dependencyService;
+    }
+
     /**
      * Get all tasks for a cycle
      */
@@ -53,8 +65,8 @@ class FinancialCloseTaskService
         }
 
         $task->update(['status' => 'in_progress']);
-
         $this->writeAuditLog($tenantId, $userId, 'task_started', $taskId);
+        event(new FinancialCloseTaskStarted($tenantId, $taskId, $userId));
 
         return true;
     }
@@ -71,8 +83,8 @@ class FinancialCloseTaskService
         }
 
         $task->update(['status' => 'submitted']);
-
         $this->writeAuditLog($tenantId, $userId, 'task_submitted', $taskId);
+        event(new FinancialCloseTaskSubmitted($tenantId, $taskId, $userId, $task->cycle_id));
 
         return true;
     }
@@ -89,34 +101,60 @@ class FinancialCloseTaskService
         }
 
         $task->update(['status' => 'returned']);
-
         $this->writeAuditLog($tenantId, $userId, 'task_returned', $taskId);
+        event(new FinancialCloseTaskReturned($tenantId, $taskId, $userId));
 
         return true;
     }
 
     /**
-     * Complete a task
+     * Complete a task — dependency-aware.
+     * Hard dependencies that are not yet completed WILL deny completion.
+     * This is a non-negotiable orchestration rule.
      */
-    public function completeTask(string $tenantId, string $taskId, string $userId): bool
+    public function completeTask(string $tenantId, string $taskId, string $userId): array
     {
         $task = $this->getTask($tenantId, $taskId);
 
         if (!$task || $task->status !== 'submitted') {
-            return false;
+            return ['success' => false, 'reason' => 'Task not found or not in submitted state'];
         }
 
-        $task->update(['status' => 'completed']);
+        if (!$this->dependencyService->canComplete($tenantId, $taskId)) {
+            $blockers = $this->dependencyService->getUnresolvedHardDependencies($tenantId, $taskId);
 
+            Log::warning('FinancialClose: task completion denied — unresolved hard dependencies', [
+                'tenant_id' => $tenantId,
+                'task_id'   => $taskId,
+                'blockers'  => $blockers,
+            ]);
+
+            $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_dependency', $taskId, [
+                'blockers' => $blockers,
+            ]);
+
+            return [
+                'success' => false,
+                'reason'  => 'Hard dependency unresolved',
+                'blockers' => $blockers,
+            ];
+        }
+
+        $task->update(['status' => 'completed', 'completed_at' => now()]);
         $this->writeAuditLog($tenantId, $userId, 'task_completed', $taskId);
 
-        return true;
+        event(new FinancialCloseTaskCompleted($tenantId, $taskId, $userId, $task->cycle_id));
+
+        // Unblock any downstream tasks that had this task as a hard dependency
+        $this->dependencyService->unblockDownstreamTasks($tenantId, $taskId);
+
+        return ['success' => true];
     }
 
     /**
-     * Block a task
+     * Block a task with a mandatory reason
      */
-    public function blockTask(string $tenantId, string $taskId, string $userId): bool
+    public function blockTask(string $tenantId, string $taskId, string $userId, string $reason = ''): bool
     {
         $task = $this->getTask($tenantId, $taskId);
 
@@ -125,8 +163,8 @@ class FinancialCloseTaskService
         }
 
         $task->update(['status' => 'blocked']);
-
-        $this->writeAuditLog($tenantId, $userId, 'task_blocked', $taskId);
+        $this->writeAuditLog($tenantId, $userId, 'task_blocked', $taskId, ['reason' => $reason]);
+        event(new FinancialCloseTaskBlocked($tenantId, $taskId, $userId, $reason));
 
         return true;
     }
@@ -177,14 +215,15 @@ class FinancialCloseTaskService
     /**
      * Write audit log entry
      */
-    protected function writeAuditLog(string $tenantId, string $actorId, string $action, string $entityId): void
+    protected function writeAuditLog(string $tenantId, string $actorId, string $action, string $entityId, array $context = []): void
     {
         AuditLog::create([
-            'tenant_id' => $tenantId,
-            'actor_id' => $actorId,
-            'action' => $action,
+            'tenant_id'   => $tenantId,
+            'actor_id'    => $actorId,
+            'action'      => $action,
             'entity_type' => 'close_task',
-            'entity_id' => $entityId,
+            'entity_id'   => $entityId,
+            'after'       => $context ?: null,
         ]);
     }
 }

@@ -239,10 +239,52 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:settings-bold-duotone',
       },
       {
-        title: 'AI Accounting',
-        href: '/ai/chat?module=accounting_insights',
-        icon: 'solar:magic-stick-3-bold-duotone',
+        title: 'Financial Close',
+        href: '/financial-close',
+        icon: 'solar:calendar-mark-bold-duotone',
         featureKey: 'ai',
+        children: [
+          {
+            title: 'Dashboard',
+            href: '/financial-close',
+            icon: 'solar:home-2-bold-duotone',
+          },
+          {
+            title: 'Close Cycles',
+            href: '/financial-close/cycles',
+            icon: 'solar:calendar-bold-duotone',
+          },
+          {
+            title: 'My Tasks',
+            href: '/financial-close/tasks',
+            icon: 'solar:list-check-bold-duotone',
+          },
+          {
+            title: 'Review Queue',
+            href: '/financial-close/review-queue',
+            icon: 'solar:inbox-bold-duotone',
+          },
+          {
+            title: 'AI Findings',
+            href: '/financial-close/findings',
+            icon: 'solar:magic-stick-3-bold-duotone',
+          },
+          {
+            title: 'Readiness Cockpit',
+            href: '/financial-close/readiness',
+            icon: 'solar:shield-check-bold-duotone',
+          },
+          {
+            title: 'Forecast',
+            href: '/financial-close/forecast',
+            icon: 'solar:chart-2-bold-duotone',
+          },
+          {
+            title: 'Executive Summary',
+            href: '/financial-close/executive',
+            icon: 'solar:chart-bold-duotone',
+          },
+        ],
       },
       {
         title: 'OCR Bookkeeping',

@@ -5,6 +5,7 @@ namespace Modules\FinancialClose\Services;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\AuditLog;
+use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
 
 class FinancialCloseCycleService
 {
@@ -13,8 +14,11 @@ class FinancialCloseCycleService
      */
     public function listCycles(string $tenantId, string $entityId, array $filters = []): array
     {
-        $query = CloseCycle::where('tenant_id', $tenantId)
-            ->where('entity_id', $entityId);
+        $query = CloseCycle::where('tenant_id', $tenantId);
+
+        if ($entityId !== '') {
+            $query->where('entity_id', $entityId);
+        }
 
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -77,6 +81,14 @@ class FinancialCloseCycleService
             'status' => 'opened',
             'opened_at' => now(),
         ]);
+
+        event(new FinancialCloseCycleOpened(
+            $tenantId,
+            $cycleId,
+            $cycle->entity_id,
+            $cycle->period_id,
+            $userId,
+        ));
 
         AuditLog::create([
             'tenant_id' => $tenantId,

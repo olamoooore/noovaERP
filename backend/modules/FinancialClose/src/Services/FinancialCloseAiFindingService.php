@@ -7,6 +7,7 @@ use Modules\FinancialClose\Models\AiFinding;
 use Modules\FinancialClose\Models\AiFeedback;
 use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Services\AiOutputValidationService;
+use Modules\FinancialClose\Events\FinancialCloseFindingGenerated;
 
 class FinancialCloseAiFindingService
 {
@@ -65,18 +66,22 @@ class FinancialCloseAiFindingService
             return null;
         }
 
-        return AiFinding::create([
-            'tenant_id' => $tenantId,
-            'review_id' => $reviewId,
-            'entity_id' => $entityId,
-            'account_code' => $accountCode,
-            'finding_type' => $this->validator->sanitize($validated['finding_type']),
-            'status' => 'open',
-            'risk_status' => $validated['risk_status'],
-            'confidence' => $validated['confidence'],
-            'description' => $this->validator->sanitize($validated['description']),
+        $finding = AiFinding::create([
+            'tenant_id'        => $tenantId,
+            'review_id'        => $reviewId,
+            'entity_id'        => $entityId,
+            'account_code'     => $accountCode,
+            'finding_type'     => $this->validator->sanitize($validated['finding_type']),
+            'status'           => 'open',
+            'risk_status'      => $validated['risk_status'],
+            'confidence'       => $validated['confidence'],
+            'description'      => $this->validator->sanitize($validated['description']),
             'structured_output' => $validated,
         ]);
+
+        event(new FinancialCloseFindingGenerated($tenantId, $finding->id, $reviewId, $validated['risk_status']));
+
+        return $finding;
     }
 
     /**

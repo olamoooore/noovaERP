@@ -109,11 +109,14 @@ class FinancialCloseEscalationService
                 ->first();
 
             if (!$existing) {
+                $daysOverdue = (int) now()->diffInDays($task->due_date);
+                $level       = $this->resolveEscalationLevel($daysOverdue, (bool) $task->is_critical);
+
                 $this->createEscalation(
                     $tenantId,
                     $task->id,
-                    'medium',
-                    'Task is overdue and has not been completed'
+                    $level,
+                    "Task overdue by {$daysOverdue} day(s)"
                 );
                 $escalated++;
             }
@@ -121,10 +124,58 @@ class FinancialCloseEscalationService
 
         Log::info('FinancialClose: overdue task escalation scan complete', [
             'tenant_id' => $tenantId,
-            'cycle_id' => $cycleId,
+            'cycle_id'  => $cycleId,
             'escalated' => $escalated,
         ]);
 
         return $escalated;
+    }
+
+    /**
+     * Determine escalation level from days overdue and criticality.
+     * critical tasks escalate faster.
+     *   < 1 day:    low
+     *   1-2 days:   medium
+     *   3-5 days:   high
+     *   > 5 days:   critical
+     * Critical tasks: bump one level immediately.
+     */
+    protected function resolveEscalationLevel(int $daysOverdue, bool $isCritical): string
+    {
+        $level = match(true) {
+            $daysOverdue < 1  => 'low',
+            $daysOverdue <= 2 => 'medium',
+            $daysOverdue <= 5 => 'high',
+            default           => 'critical',
+        };
+
+        if ($isCritical) {
+            $level = match($level) {
+                'low'    => 'medium',
+                'medium' => 'high',
+                'high'   => 'critical',
+                default  => 'critical',
+            };
+        }
+
+        return $level;
+    }
+
+    /**
+     * Emit a soft-due-date warning for tasks approaching their soft deadline.
+     * Does NOT escalate — advisory only. Returns task IDs that are near soft deadline.
+     */
+    public function getSoftDueDateWarnings(string $tenantId, string $cycleId, int $warningDaysAhead = 1): array
+    {
+        $threshold = now()->addDays($warningDaysAhead);
+
+        return CloseTask::where('tenant_id', $tenantId)
+            ->where('cycle_id', $cycleId)
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->whereNotNull('soft_due_date')
+            ->where('soft_due_date', '<=', $threshold)
+            ->where('soft_due_date', '>=', now())
+            ->get(['id', 'title', 'soft_due_date', 'assigned_to', 'priority'])
+            ->toArray();
     }
 }

@@ -1,0 +1,8 @@
+{
+  "key": "financial-close",
+  "name": "FinancialClose",
+  "type": "feature",
+  "providers": [
+    "Modules\\FinancialClose\\Providers\\FinancialCloseServiceProvider"
+  ]
+}

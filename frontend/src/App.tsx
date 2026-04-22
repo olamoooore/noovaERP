@@ -96,6 +96,16 @@ const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingP
 // AI Module Pages
 const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ default: m.AIChatPage })))
 
+// Financial Close Module Pages
+const CloseDashboard     = lazy(() => import('@/pages/FinancialClose/CloseDashboard').then(m => ({ default: m.CloseDashboard })))
+const CloseCyclesPage    = lazy(() => import('@/pages/FinancialClose/CloseCyclesPage').then(m => ({ default: m.CloseCyclesPage })))
+const MyTasksPage        = lazy(() => import('@/pages/FinancialClose/MyTasksPage').then(m => ({ default: m.MyTasksPage })))
+const ReviewQueuePage    = lazy(() => import('@/pages/FinancialClose/ReviewQueuePage').then(m => ({ default: m.ReviewQueuePage })))
+const AiFindingsPage     = lazy(() => import('@/pages/FinancialClose/AiFindingsPage').then(m => ({ default: m.AiFindingsPage })))
+const ReadinessCockpitPage = lazy(() => import('@/pages/FinancialClose/ReadinessCockpitPage').then(m => ({ default: m.ReadinessCockpitPage })))
+const ForecastPage       = lazy(() => import('@/pages/FinancialClose/ForecastPage').then(m => ({ default: m.ForecastPage })))
+const ExecutiveSummaryPage = lazy(() => import('@/pages/FinancialClose/ExecutiveSummaryPage').then(m => ({ default: m.ExecutiveSummaryPage })))
+
 // Field Service Module Pages
 const FieldServiceDashboard = lazy(() => import('@/pages/FieldService/FieldServiceDashboard').then(m => ({ default: m.FieldServiceDashboard })))
 const WorkOrdersPage = lazy(() => import('@/pages/FieldService/WorkOrdersPage').then(m => ({ default: m.WorkOrdersPage })))
@@ -348,6 +358,16 @@ function App() {
                 
                 {/* AI Module Routes */}
                 <Route path="/ai/chat" element={<AIChatPage />} />
+
+                {/* Financial Close Module Routes */}
+                <Route path="/financial-close" element={<CloseDashboard />} />
+                <Route path="/financial-close/cycles" element={<CloseCyclesPage />} />
+                <Route path="/financial-close/tasks" element={<MyTasksPage />} />
+                <Route path="/financial-close/review-queue" element={<ReviewQueuePage />} />
+                <Route path="/financial-close/findings" element={<AiFindingsPage />} />
+                <Route path="/financial-close/readiness" element={<ReadinessCockpitPage />} />
+                <Route path="/financial-close/forecast" element={<ForecastPage />} />
+                <Route path="/financial-close/executive" element={<ExecutiveSummaryPage />} />
 
                 {/* Field Service Module Routes */}
                 <Route path="/field-service" element={<FieldServiceDashboard />} />
