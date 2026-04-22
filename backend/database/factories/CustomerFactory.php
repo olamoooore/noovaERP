@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Customer;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 class CustomerFactory extends Factory
 {
@@ -12,22 +13,23 @@ class CustomerFactory extends Factory
     public function definition(): array
     {
         return [
-            'type' => 'individual',
-            'name' => fake()->company(),
-            'email' => fake()->unique()->safeEmail(),
-            'phone' => fake()->phoneNumber(),
-            'is_active' => true,
+            'name' => $this->faker->company(),
+            'code' => 'CUST-' . str_pad((string) (Customer::count() + 1), 4, '0', STR_PAD_LEFT),
+            'email' => $this->faker->unique()->companyEmail(),
+            'phone' => $this->faker->optional()->phoneNumber(),
+            'address' => $this->faker->optional()->address(),
+            'city' => $this->faker->optional()->city(),
+            'state' => $this->faker->optional()->state(),
+            'country' => $this->faker->optional()->country(),
+            'postal_code' => $this->faker->optional()->postcode(),
+            'status' => 'active',
         ];
     }
 
-    /**
-     * Company type customer
-     */
-    public function company(): static
+    public function inactive(): static
     {
         return $this->state(fn (array $attributes) => [
-            'type' => 'company',
-            'company' => fake()->company(),
+            'status' => 'inactive',
         ]);
     }
 }

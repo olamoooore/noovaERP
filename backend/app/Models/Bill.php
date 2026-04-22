@@ -48,6 +48,23 @@ class Bill extends Model
         'origin_context',
         'created_via_module',
         'created_via_role',
+        'lifecycle_status',
+        'settlement_status',
+        'reconciliation_status',
+        'correction_group_id',
+        'original_document_id',
+        'replacement_document_id',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
+        'voided_at',
+        'reversed_at',
+        'credited_at',
+        'superseded_at',
+        'reversal_journal_entry_id',
+        'credit_note_id',
+        'version_number',
+        'is_active_version',
     ];
 
     protected $casts = [
@@ -61,6 +78,11 @@ class Bill extends Model
         'paid_amount' => 'decimal:2',
         'balance' => 'decimal:2',
         'origin_context' => 'array',
+        'voided_at' => 'datetime',
+        'reversed_at' => 'datetime',
+        'credited_at' => 'datetime',
+        'superseded_at' => 'datetime',
+        'is_active_version' => 'boolean',
     ];
 
     protected static function boot(): void
@@ -70,6 +92,21 @@ class Bill extends Model
         static::creating(function ($bill) {
             if (!$bill->bill_number) {
                 $bill->bill_number = static::generateBillNumber();
+            }
+            if (!$bill->lifecycle_status) {
+                $bill->lifecycle_status = 'draft';
+            }
+            if (!$bill->settlement_status) {
+                $bill->settlement_status = 'unpaid';
+            }
+            if (!$bill->reconciliation_status) {
+                $bill->reconciliation_status = 'unreconciled';
+            }
+            if (!$bill->version_number) {
+                $bill->version_number = 1;
+            }
+            if ($bill->is_active_version === null) {
+                $bill->is_active_version = true;
             }
         });
 
@@ -159,5 +196,25 @@ class Bill extends Model
         $this->total = $this->subtotal + $this->tax_amount - $this->discount_amount;
         $this->balance = $this->total - $this->paid_amount;
         $this->save();
+    }
+
+    public function scopeActiveVersion($query)
+    {
+        return $query->where('is_active_version', true);
+    }
+
+    public function scopePosted($query)
+    {
+        return $query->where('lifecycle_status', 'posted');
+    }
+
+    public function scopeNotSuperseded($query)
+    {
+        return $query->whereNotIn('lifecycle_status', ['superseded', 'voided', 'reversed']);
+    }
+
+    public function scopeNotVoided($query)
+    {
+        return $query->whereNotIn('lifecycle_status', ['voided', 'reversed']);
     }
 }

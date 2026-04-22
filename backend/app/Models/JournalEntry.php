@@ -38,6 +38,18 @@ class JournalEntry extends Model
         'origin_reference_id',
         'origin_context',
         'created_via_module',
+        'lifecycle_status',
+        'correction_group_id',
+        'original_document_id',
+        'replacement_document_id',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
+        'voided_at',
+        'reversed_at',
+        'superseded_at',
+        'version_number',
+        'is_active_version',
     ];
 
     protected $casts = [
@@ -45,6 +57,10 @@ class JournalEntry extends Model
         'posted_at' => 'datetime',
         'is_reversal' => 'boolean',
         'origin_context' => 'array',
+        'voided_at' => 'datetime',
+        'reversed_at' => 'datetime',
+        'superseded_at' => 'datetime',
+        'is_active_version' => 'boolean',
     ];
 
     protected $appends = ['is_balanced'];
@@ -58,6 +74,18 @@ class JournalEntry extends Model
     protected static function boot(): void
     {
         parent::boot();
+
+        static::creating(function ($entry) {
+            if (!$entry->lifecycle_status) {
+                $entry->lifecycle_status = 'draft';
+            }
+            if (!$entry->version_number) {
+                $entry->version_number = 1;
+            }
+            if ($entry->is_active_version === null) {
+                $entry->is_active_version = true;
+            }
+        });
 
         static::deleting(function ($entry) {
             // Prevent deletion of posted entries
@@ -240,5 +268,20 @@ class JournalEntry extends Model
     public function scopeByJournal($query, int $journalId)
     {
         return $query->where('journal_id', $journalId);
+    }
+
+    public function scopeActiveVersion($query)
+    {
+        return $query->where('is_active_version', true);
+    }
+
+    public function scopeNotSuperseded($query)
+    {
+        return $query->whereNotIn('lifecycle_status', ['superseded', 'voided', 'reversed']);
+    }
+
+    public function scopeNotVoided($query)
+    {
+        return $query->whereNotIn('lifecycle_status', ['voided', 'reversed']);
     }
 }

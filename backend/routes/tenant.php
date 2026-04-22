@@ -93,6 +93,41 @@ Route::middleware([
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
     PreventAccessFromCentralDomains::class,
 ])->prefix('api/v1')->group(function () {
+    // Document correction endpoints
+    Route::prefix('corrections')->group(function () {
+        // Invoice corrections
+        Route::post('/invoices/{id}/void', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'voidInvoice']);
+        Route::post('/invoices/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseInvoice']);
+        Route::post('/invoices/{id}/credit-note', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createInvoiceCreditNote']);
+        Route::post('/invoices/{id}/refund', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'refundInvoice']);
+        Route::post('/invoices/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createInvoiceReplacement']);
+
+        // Bill corrections
+        Route::post('/bills/{id}/void', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'voidBill']);
+        Route::post('/bills/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseBill']);
+        Route::post('/bills/{id}/credit-note', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createBillCreditNote']);
+        Route::post('/bills/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createBillReplacement']);
+
+        // Journal corrections
+        Route::post('/journals/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseJournal']);
+        Route::post('/journals/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createJournalReplacement']);
+
+        // Payment corrections
+        Route::post('/payments/{id}/refund', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'refundPayment']);
+        Route::post('/payments/{id}/reverse', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'reversePayment']);
+        Route::post('/payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyPayment']);
+
+        // Bill payment corrections
+        Route::post('/bill-payments/{id}/refund', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'refundBillPayment']);
+        Route::post('/bill-payments/{id}/reverse', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'reverseBillPayment']);
+        Route::post('/bill-payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyBillPayment']);
+    });
+
+    // Version/correction chain endpoints
+    Route::get('/invoices/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getInvoiceCorrectionChain']);
+    Route::get('/bills/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getBillCorrectionChain']);
+    Route::get('/journals/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getJournalCorrectionChain']);
+
     $modules = app(\App\Modules\ModuleManager::class);
 
     foreach ($modules->tenantApiRouteFiles() as $routesFile) {

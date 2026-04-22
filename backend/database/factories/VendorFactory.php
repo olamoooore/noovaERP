@@ -2,8 +2,9 @@
 
 namespace Database\Factories;
 
-use Illuminate\Database\Eloquent\Factories\Factory;
 use App\Models\Vendor;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 class VendorFactory extends Factory
 {
@@ -12,11 +13,23 @@ class VendorFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->company(),
-            'email' => fake()->companyEmail(),
-            'phone' => fake()->phoneNumber(),
-            'address' => fake()->address(),
-            'is_active' => true,
+            'name' => $this->faker->company(),
+            'code' => 'VEND-' . str_pad((string) (Vendor::count() + 1), 4, '0', STR_PAD_LEFT),
+            'email' => $this->faker->unique()->companyEmail(),
+            'phone' => $this->faker->optional()->phoneNumber(),
+            'address' => $this->faker->optional()->address(),
+            'city' => $this->faker->optional()->city(),
+            'state' => $this->faker->optional()->state(),
+            'country' => $this->faker->optional()->country(),
+            'postal_code' => $this->faker->optional()->postcode(),
+            'status' => 'active',
         ];
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => 'inactive',
+        ]);
     }
 }

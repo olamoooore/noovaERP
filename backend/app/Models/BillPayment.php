@@ -22,11 +22,24 @@ class BillPayment extends Model
         'memo',
         'journal_entry_id',
         'created_by',
+        'tenant_id',
+        'payment_status',
+        'original_payment_id',
+        'refund_payment_id',
+        'correction_group_id',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
+        'unapplied_at',
+        'refunded_at',
+        'reversal_journal_entry_id',
     ];
 
     protected $casts = [
         'payment_date' => 'date',
         'amount' => 'decimal:2',
+        'unapplied_at' => 'datetime',
+        'refunded_at' => 'datetime',
     ];
 
     protected static function boot(): void
@@ -63,6 +76,11 @@ class BillPayment extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     /**

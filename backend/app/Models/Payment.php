@@ -14,7 +14,9 @@ class Payment extends Model
     protected $fillable = [
         'payment_number',
         'customer_id',
+        'vendor_id',
         'invoice_id',
+        'bill_id',
         'payment_date',
         'amount',
         'method',
@@ -22,11 +24,24 @@ class Payment extends Model
         'notes',
         'journal_entry_id',
         'received_by',
+        'tenant_id',
+        'payment_status',
+        'original_payment_id',
+        'refund_payment_id',
+        'correction_group_id',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
+        'unapplied_at',
+        'refunded_at',
+        'reversal_journal_entry_id',
     ];
 
     protected $casts = [
         'payment_date' => 'date',
         'amount' => 'decimal:2',
+        'unapplied_at' => 'datetime',
+        'refunded_at' => 'datetime',
     ];
 
     protected static function boot(): void
@@ -36,6 +51,9 @@ class Payment extends Model
         static::creating(function ($payment) {
             if (!$payment->payment_number) {
                 $payment->payment_number = static::generatePaymentNumber();
+            }
+            if (!$payment->payment_status) {
+                $payment->payment_status = 'recorded';
             }
         });
 
@@ -56,9 +74,19 @@ class Payment extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(Bill::class);
     }
 
     public function journalEntry(): BelongsTo
@@ -69,6 +97,11 @@ class Payment extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     public static function generatePaymentNumber(): string
