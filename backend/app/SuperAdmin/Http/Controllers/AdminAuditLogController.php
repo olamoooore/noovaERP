@@ -98,7 +98,7 @@ class AdminAuditLogController extends Controller
 
     // ─── GET /audit-logs/export ──────────────────────────────────────────────
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
         $validated = $request->validate([
             'search'        => ['nullable', 'string', 'max:200'],
@@ -106,11 +106,21 @@ class AdminAuditLogController extends Controller
             'admin_user_id' => ['nullable', 'integer', 'min:1'],
             'target_type'   => ['nullable', 'string', 'max:100'],
             'target_id'     => ['nullable', 'string', 'max:100'],
-            'date_from'     => ['nullable', 'date'],
-            'date_to'       => ['nullable', 'date'],
+            'date_from'     => ['required', 'date'],
+            'date_to'       => ['nullable', 'date', 'after_or_equal:date_from'],
             'status'        => ['nullable', 'string', 'in:success,failure'],
             'severity'      => ['nullable', 'string', 'in:info,warning,critical'],
         ]);
+
+        // Enforce maximum 90-day export window to prevent unbounded streaming
+        $dateFrom = \Carbon\Carbon::parse($validated['date_from']);
+        $dateTo   = isset($validated['date_to'])
+            ? \Carbon\Carbon::parse($validated['date_to'])
+            : now();
+
+        if ($dateFrom->diffInDays($dateTo) > 90) {
+            return response()->json(['message' => 'Export window cannot exceed 90 days.'], 422);
+        }
 
         $query = AdminActionLog::with(['adminUser:id,name,email'])->orderByDesc('created_at');
         $this->applyFilters($query, $validated);
@@ -168,7 +178,8 @@ class AdminAuditLogController extends Controller
     private function applyFilters(\Illuminate\Database\Eloquent\Builder $query, array $v): void
     {
         if (!empty($v['search'])) {
-            $s = $v['search'];
+            // Escape LIKE wildcards to prevent unintended full-table matches
+            $s = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $v['search']);
             $query->where(function ($q) use ($s) {
                 $q->where('action', 'ILIKE', "%{$s}%")
                   ->orWhere('target_type', 'ILIKE', "%{$s}%")

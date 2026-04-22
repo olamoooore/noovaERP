@@ -25,6 +25,8 @@ class AdminActionLog extends Model
         'reason',
         'ip_address',
         'status',
+        'severity',
+        'human_description',
         'created_at',
     ];
 

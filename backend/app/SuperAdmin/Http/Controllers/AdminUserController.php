@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
@@ -37,7 +38,7 @@ class AdminUserController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:255'],
-            'role'  => ['required', 'string'],
+            'role'  => ['required', 'string', Rule::in(AdminUserService::ROLES)],
         ]);
 
         $result = $this->userService->invite($validated['email'], $validated['role']);
@@ -73,7 +74,7 @@ class AdminUserController extends Controller
         Gate::authorize('manage-admin-users');
 
         $validated = $request->validate([
-            'role' => ['required', 'string'],
+            'role' => ['required', 'string', Rule::in(AdminUserService::ROLES)],
         ]);
 
         $updated = $this->userService->updateRole($user, $validated['role']);
@@ -89,5 +90,15 @@ class AdminUserController extends Controller
         $this->userService->deactivate($user);
 
         return response()->json(['message' => 'Admin user deactivated.']);
+    }
+
+    /** POST /admin/users/{id}/reactivate */
+    public function reactivate(User $user): JsonResponse
+    {
+        Gate::authorize('manage-admin-users');
+
+        $updated = $this->userService->reactivate($user);
+
+        return response()->json(['data' => $updated, 'message' => 'Admin user reactivated.']);
     }
 }

@@ -42,7 +42,7 @@ class AdminUserService
     {
         if (!in_array($role, self::ROLES, true)) {
             throw ValidationException::withMessages([
-                'role' => 'Invalid role. Must be one of: ' . implode(', ', self::ROLES),
+                'role' => 'Invalid role.',
             ]);
         }
 
@@ -141,7 +141,7 @@ class AdminUserService
     {
         return User::whereNotNull('role')
             ->orderBy('created_at')
-            ->get(['id', 'name', 'email', 'role', 'created_at']);
+            ->get(['id', 'name', 'email', 'role', 'is_active', 'deactivated_at', 'created_at']);
     }
 
     public function listPendingInvitations(): Collection
@@ -172,6 +172,16 @@ class AdminUserService
             ]);
         }
 
+        // Prevent demoting the last platform_super_admin — would lock everyone out
+        if ($admin->role === 'platform_super_admin' && $newRole !== 'platform_super_admin') {
+            $superAdminCount = User::where('role', 'platform_super_admin')->count();
+            if ($superAdminCount <= 1) {
+                throw ValidationException::withMessages([
+                    'role' => 'Cannot demote the last platform_super_admin.',
+                ]);
+            }
+        }
+
         // Idempotency: already at target role — return early without duplicate audit log
         if ($admin->role === $newRole) {
             return $admin;
@@ -200,19 +210,48 @@ class AdminUserService
         }
 
         // Idempotency: already deactivated
-        if ($admin->role === null) {
+        if (!$admin->is_active) {
             return;
         }
 
-        $before = ['role' => $admin->role, 'email' => $admin->email];
-        $admin->update(['role' => null]);
+        $before = ['role' => $admin->role, 'email' => $admin->email, 'is_active' => true];
+        $admin->update([
+            'is_active'      => false,
+            'deactivated_at' => now(),
+        ]);
 
         $this->auditLogger->log(
             action: 'admin.user.deactivated',
             target: $admin,
             before: $before,
-            after: ['role' => null],
+            after: ['is_active' => false, 'deactivated_at' => now()->toIso8601String()],
             status: 'success',
         );
+    }
+
+    /**
+     * Reactivate a previously deactivated admin user.
+     */
+    public function reactivate(User $admin): User
+    {
+        if ($admin->is_active) {
+            return $admin; // Idempotency: already active
+        }
+
+        $before = ['is_active' => false];
+        $admin->update([
+            'is_active'      => true,
+            'deactivated_at' => null,
+        ]);
+
+        $this->auditLogger->log(
+            action: 'admin.user.reactivated',
+            target: $admin,
+            before: $before,
+            after: ['is_active' => true],
+            status: 'success',
+        );
+
+        return $admin->fresh();
     }
 }

@@ -37,9 +37,11 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Public — no auth required
-Route::post('/auth/login', [AdminAuthController::class, 'login']);
-Route::post('/users/accept-invite', [AdminUserController::class, 'acceptInvite']);
+// Public — no auth required (rate-limited to prevent brute-force)
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/auth/login',           [AdminAuthController::class, 'login']);
+    Route::post('/users/accept-invite',  [AdminUserController::class, 'acceptInvite']);
+});
 
 // Protected — requires valid Sanctum token + admin role
 Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
@@ -130,10 +132,11 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
 
     // --- Phase 5: Admin User Management (throttled, gate-enforced per method) ---
     Route::prefix('users')->middleware('throttle:30,1')->group(function () {
-        Route::get('/',                [AdminUserController::class, 'index']);
-        Route::post('/invite',         [AdminUserController::class, 'invite']);
-        Route::put('/{user}/role',     [AdminUserController::class, 'updateRole']);
-        Route::delete('/{user}',       [AdminUserController::class, 'deactivate']);
+        Route::get('/',                    [AdminUserController::class, 'index']);
+        Route::post('/invite',             [AdminUserController::class, 'invite']);
+        Route::put('/{user}/role',         [AdminUserController::class, 'updateRole']);
+        Route::delete('/{user}',           [AdminUserController::class, 'deactivate']);
+        Route::post('/{user}/reactivate',  [AdminUserController::class, 'reactivate']);
     });
 
     // --- Phase 5: Collections — tracked at invoice level (throttled, gate-enforced per method) ---

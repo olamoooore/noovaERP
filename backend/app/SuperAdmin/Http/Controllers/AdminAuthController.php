@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AdminAuthController extends Controller
@@ -34,12 +35,21 @@ class AdminAuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
+            Log::warning('Admin login failed: invalid credentials', [
+                'email' => $request->email,
+                'ip'    => $request->ip(),
+            ]);
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
         if (! in_array($user->role, self::ADMIN_ROLES, true)) {
+            Log::warning('Admin login failed: insufficient role', [
+                'email' => $request->email,
+                'role'  => $user->role,
+                'ip'    => $request->ip(),
+            ]);
             throw ValidationException::withMessages([
                 'email' => ['This account does not have platform admin access.'],
             ]);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Http\Controllers;
 
+use App\SuperAdmin\Application\AdminAuditLogger;
 use App\SuperAdmin\Domain\TenantApiKey;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,9 @@ use Illuminate\Support\Facades\Auth;
 
 class AdminTenantApiKeyController extends Controller
 {
+    public function __construct(
+        private readonly AdminAuditLogger $auditLogger,
+    ) {}
     /**
      * GET /tenants/{tenantId}/api-keys
      * List all API keys for a tenant (hashes never exposed).
@@ -47,6 +51,13 @@ class AdminTenantApiKeyController extends Controller
             expiresAt: $expiresAt,
         );
 
+        $this->auditLogger->log(
+            action: 'tenant.api_key.created',
+            target: $model,
+            before: [],
+            after:  ['tenant_id' => $tenantId, 'name' => $data['name'], 'key_prefix' => $model->key_prefix],
+        );
+
         return response()->json([
             'data'    => $model->only(['id', 'name', 'key_prefix', 'is_active', 'expires_at', 'created_at']),
             // Raw key shown ONCE — the client must store it
@@ -68,7 +79,15 @@ class AdminTenantApiKeyController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
+        $before = $key->only(['name', 'is_active']);
         $key->update($data);
+
+        $this->auditLogger->log(
+            action: 'tenant.api_key.updated',
+            target: $key,
+            before: $before,
+            after:  $key->only(['name', 'is_active']),
+        );
 
         return response()->json(['data' => $key->only(['id', 'name', 'key_prefix', 'is_active', 'expires_at', 'last_used_at'])]);
     }
@@ -81,7 +100,15 @@ class AdminTenantApiKeyController extends Controller
     {
         abort_if($key->tenant_id !== $tenantId, 404);
 
+        $snapshot = $key->only(['id', 'name', 'key_prefix', 'tenant_id']);
         $key->delete();
+
+        $this->auditLogger->log(
+            action: 'tenant.api_key.revoked',
+            target: null,
+            before: $snapshot,
+            after:  [],
+        );
 
         return response()->json(['message' => 'API key revoked.']);
     }
