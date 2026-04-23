@@ -38,6 +38,7 @@ Route::post('/tasks/{taskId}/escalations',              [EscalationController::c
 Route::post('/escalations/{escalationId}/resolve',      [EscalationController::class, 'resolve']);
 
 // ─── AI Findings ─────────────────────────────────────────────────────────────
+Route::get('/findings',                                 [FindingController::class, 'listAll']);
 Route::get('/reviews/{reviewId}/findings',              [FindingController::class, 'index']);
 Route::post('/reviews/{reviewId}/findings',             [FindingController::class, 'store']);
 Route::post('/findings/{findingId}/accept',             [FindingController::class, 'accept']);

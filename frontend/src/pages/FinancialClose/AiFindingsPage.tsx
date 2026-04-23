@@ -38,9 +38,11 @@ export function AiFindingsPage() {
   const [riskFilter, setRiskFilter] = useState<string>('all')
 
   const { data: findings = [], isLoading } = useQuery<AiFinding[]>({
-    queryKey: ['ai-findings', reviewId],
-    queryFn: () => findingsApi.list(reviewId).then(r => r.data.data),
-    enabled: !!reviewId,
+    queryKey: ['ai-findings', reviewId || 'all'],
+    queryFn: () =>
+      reviewId
+        ? findingsApi.list(reviewId).then(r => r.data.data)
+        : findingsApi.listAll().then(r => r.data.data),
   })
 
   function invalidate() {
@@ -117,15 +119,7 @@ export function AiFindingsPage() {
         </div>
       )}
 
-      {!reviewId ? (
-        <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <Icon icon="solar:magic-stick-3-bold-duotone" className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">No review selected.</p>
-            <p className="text-sm mt-1">Navigate here from an account review workspace with a review ID.</p>
-          </CardContent>
-        </Card>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
           <Icon icon="solar:spinner-bold" className="h-5 w-5 animate-spin" />
           Loading findings…

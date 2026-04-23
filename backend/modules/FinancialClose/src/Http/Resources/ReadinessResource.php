@@ -17,7 +17,9 @@ class ReadinessResource extends JsonResource
             'open_blockers'       => $this->open_blockers,
             'open_findings'       => $this->open_findings,
             'is_ready'            => $this->readiness_score >= 100 && $this->open_blockers === 0,
+            'snapshot_available'  => true,
             'generated_at'        => $this->generated_at,
+            'accounts'            => $this->section_breakdown ?? [],
         ];
     }
 }

@@ -17,6 +17,25 @@ class FindingController extends Controller
         private readonly FinancialCloseAiFindingService $findingService,
     ) {}
 
+    /** GET /findings — all findings for this tenant */
+    public function listAll(Request $request): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $query = AiFinding::where('tenant_id', $tenantId)
+            ->orderBy('created_at', 'desc');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        if ($request->filled('risk_status')) {
+            $query->where('risk_status', $request->input('risk_status'));
+        }
+
+        return response()->json(['data' => FindingResource::collection($query->get())]);
+    }
+
     /** GET /reviews/{reviewId}/findings */
     public function index(Request $request, string $reviewId): JsonResponse
     {

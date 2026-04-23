@@ -49,13 +49,14 @@ interface BlockerItem {
 export function MyTasksPage() {
   const [params] = useSearchParams()
   const cycleId = params.get('cycleId')
+  const initialStatusFilter = params.get('status') ?? 'all'
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
   const [blockDialogTask, setBlockDialogTask] = useState<CloseTask | null>(null)
   const [blockReason, setBlockReason] = useState('')
   const [blockersModal, setBlockersModal] = useState<BlockerItem[]>([])
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter)
 
   const { data: tasks = [], isLoading } = useQuery<CloseTask[]>({
     queryKey: ['my-tasks', cycleId],

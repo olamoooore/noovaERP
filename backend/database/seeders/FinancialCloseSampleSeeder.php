@@ -56,14 +56,14 @@ class FinancialCloseSampleSeeder extends Seeder
             $taskDefs = [
                 [
                     'title'       => 'Reconcile Cash Account (1010)',
-                    'status'      => 'assigned',
+                    'status'      => 'created',
                     'priority'    => 'high',
                     'is_critical' => false,
                     'due_date'    => now()->addDays(2),
                 ],
                 [
                     'title'       => 'Review AR Aging Report',
-                    'status'      => 'in_progress',
+                    'status'      => 'blocked',
                     'priority'    => 'medium',
                     'is_critical' => false,
                     'due_date'    => now()->addDays(3),
@@ -77,7 +77,7 @@ class FinancialCloseSampleSeeder extends Seeder
                 ],
                 [
                     'title'       => 'Reconcile AP Subledger',
-                    'status'      => 'assigned',
+                    'status'      => 'in_progress',
                     'priority'    => 'high',
                     'is_critical' => false,
                     'due_date'    => now()->subDay(),   // overdue — highlighted in red
@@ -110,7 +110,7 @@ class FinancialCloseSampleSeeder extends Seeder
                 ]);
                 $taskIds[] = $taskId;
             }
-            $this->command->info('  ✓ 5 tasks created (1 overdue, 1 submitted, 1 completed)');
+            $this->command->info('  ✓ 5 tasks created (1 blocked, 1 overdue, 1 submitted, 1 completed)');
 
             // ── 3. An escalation on the overdue task ──────────────────────────
             DB::table('fco_escalation_events')->insert([

@@ -58,6 +58,16 @@ export interface AiFinding {
   created_at: string
 }
 
+export interface ReadinessAccount {
+  review_id: string
+  account_code: string
+  account_name: string
+  status: 'not_started' | 'in_progress' | 'submitted' | 'approved' | 'locked' | 'returned'
+  risk_status: 'normal' | 'watch' | 'high' | 'critical'
+  score: number
+  open_findings: number
+}
+
 export interface ReadinessSummary {
   readiness_score: number
   total_accounts: number
@@ -68,6 +78,7 @@ export interface ReadinessSummary {
   is_ready: boolean
   snapshot_available: boolean
   generated_at: string | null
+  accounts: ReadinessAccount[]
 }
 
 export interface Forecast {
@@ -156,6 +167,9 @@ export const escalationsApi = {
 // ─── AI Findings ─────────────────────────────────────────────────────────────
 
 export const findingsApi = {
+  listAll: (params?: { status?: string; risk_status?: string }) =>
+    api.get<{ data: AiFinding[] }>('/close/findings', { params }),
+
   list: (reviewId: string) =>
     api.get<{ data: AiFinding[] }>(`/close/reviews/${reviewId}/findings`),
 
