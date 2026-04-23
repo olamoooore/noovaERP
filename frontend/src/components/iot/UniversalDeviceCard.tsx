@@ -125,7 +125,7 @@ export function UniversalDeviceCard({ device, agentId, onStatusChange }: Univers
     }
     
     const testContent = '================================\n' +
-                        '        NoovaERP TEST PRINT      \n' +
+                        '        NOOVAERP TEST PRINT      \n' +
                         '================================\n' +
                         `Device: ${device.name}\n` +
                         `Time: ${new Date().toLocaleString()}\n` +
