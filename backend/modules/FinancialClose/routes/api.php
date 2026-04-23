@@ -26,6 +26,7 @@ Route::post('/cycles/{cycleId}/close',          [CloseCycleController::class, 'c
 Route::get('/cycles/{cycleId}/tasks',           [TaskController::class, 'index']);
 Route::get('/tasks/my',                         [TaskController::class, 'myTasks']);
 Route::get('/tasks/review-queue',               [TaskController::class, 'reviewQueue']);
+Route::get('/tasks/{taskId}',                   [TaskController::class, 'show']);
 Route::post('/tasks/{taskId}/start',            [TaskController::class, 'start']);
 Route::post('/tasks/{taskId}/submit',           [TaskController::class, 'submit']);
 Route::post('/tasks/{taskId}/complete',         [TaskController::class, 'complete']);

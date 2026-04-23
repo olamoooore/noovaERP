@@ -55,6 +55,26 @@ class TaskController extends Controller
         return response()->json(['data' => TaskResource::collection($tasks)]);
     }
 
+    /** GET /tasks/{taskId} */
+    public function show(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $task = CloseTask::with([
+                'dependencies.dependsOnTask',
+                'escalations',
+            ])
+            ->where('tenant_id', $tenantId)
+            ->where('id', $taskId)
+            ->first();
+
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        return response()->json(['data' => new TaskResource($task)]);
+    }
+
     /** POST /tasks/{taskId}/start */
     public function start(Request $request, string $taskId): JsonResponse
     {

@@ -141,8 +141,8 @@ export function AiFindingsPage() {
             return (
               <Card key={finding.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="pt-4 pb-3">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 min-w-0 space-y-2">
+                  <div className="space-y-3">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <code className="text-xs bg-muted rounded px-1.5 py-0.5 font-mono">{finding.account_code}</code>
                         <Badge variant={risk.variant}>{risk.label} Risk</Badge>
@@ -153,8 +153,33 @@ export function AiFindingsPage() {
                         <span className="text-xs text-muted-foreground">
                           Confidence: <span className="font-medium text-foreground">{Math.round(finding.confidence * 100)}%</span>
                         </span>
+                        <span className="text-xs text-muted-foreground">
+                          Review {finding.review_id.slice(0, 8)}
+                        </span>
                       </div>
-                      <p className="text-sm text-foreground line-clamp-2">{finding.description}</p>
+                      <p className="text-sm text-foreground">{finding.description}</p>
+                      {finding.likely_cause && (
+                        <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Likely cause</p>
+                          <p className="text-sm mt-1 text-foreground">{finding.likely_cause}</p>
+                        </div>
+                      )}
+                      {!!finding.detail_items.length && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {finding.detail_items.map(item => (
+                            <div key={`${finding.id}-${item.label}`} className="rounded-lg border px-3 py-2">
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                              <p className="text-sm font-medium mt-1">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {finding.recommendation && (
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/30">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Recommended action</p>
+                          <p className="text-sm mt-1 text-blue-900 dark:text-blue-100">{finding.recommendation}</p>
+                        </div>
+                      )}
                       {finding.accepted_at && (
                         <p className="text-xs text-muted-foreground">
                           Accepted {new Date(finding.accepted_at).toLocaleDateString()}
@@ -170,33 +195,40 @@ export function AiFindingsPage() {
                     </div>
 
                     {isOpen && (
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600"
-                          onClick={() => acceptMutation.mutate(finding.id)}
-                          disabled={acceptMutation.isPending}
-                        >
-                          Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => dismissMutation.mutate(finding.id)}
-                          disabled={dismissMutation.isPending}
-                        >
-                          Dismiss
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-orange-600"
-                          onClick={() => escalateMutation.mutate(finding.id)}
-                          disabled={escalateMutation.isPending}
-                        >
-                          Escalate
-                        </Button>
+                      <div className="flex items-center justify-between gap-3 border-t pt-3 flex-wrap">
+                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                          <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+                          Reviewer actions
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            onClick={() => acceptMutation.mutate(finding.id)}
+                            disabled={acceptMutation.isPending}
+                          >
+                            <Icon icon="solar:check-circle-bold" className="h-4 w-4" />
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => dismissMutation.mutate(finding.id)}
+                            disabled={dismissMutation.isPending}
+                          >
+                            <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                            Dismiss
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-900 dark:text-orange-300 dark:hover:bg-orange-950/30"
+                            onClick={() => escalateMutation.mutate(finding.id)}
+                            disabled={escalateMutation.isPending}
+                          >
+                            <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
+                            Escalate
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>

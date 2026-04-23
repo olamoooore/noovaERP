@@ -26,7 +26,27 @@ export interface CloseTask {
   assigned_to: string | null
   due_date: string | null
   soft_due_date: string | null
+  completed_at?: string | null
   is_critical: boolean
+  description?: string | null
+  owner_label?: string | null
+  workstream?: string | null
+  deliverable?: string | null
+  business_impact?: string | null
+  next_step?: string | null
+  blocker_reason?: string | null
+  related_accounts?: string[]
+  evidence_items?: string[]
+  checklist_items?: string[]
+  detail_title?: string | null
+  dependencies?: Array<{
+    id: string
+    dependency_type: string
+    depends_on_task_id: string
+    depends_on_task_title: string | null
+    depends_on_task_status: string | null
+  }>
+  escalations?: Escalation[]
   metadata: Record<string, unknown> | null
   created_at: string
 }
@@ -45,12 +65,16 @@ export interface Escalation {
 export interface AiFinding {
   id: string
   review_id: string
+  entity_id: string
   account_code: string
   finding_type: string
   status: 'open' | 'accepted' | 'dismissed' | 'escalated' | 'edited'
   risk_status: 'low' | 'medium' | 'high' | 'critical'
   confidence: number
   description: string
+  likely_cause: string | null
+  recommendation: string | null
+  detail_items: Array<{ label: string; value: string }>
   accepted_by: string | null
   accepted_at: string | null
   dismissed_by: string | null
@@ -126,6 +150,9 @@ export const closeCyclesApi = {
 export const closeTasksApi = {
   byCycle: (cycleId: string) =>
     api.get<{ data: CloseTask[] }>(`/close/cycles/${cycleId}/tasks`),
+
+  get: (taskId: string) =>
+    api.get<{ data: CloseTask }>(`/close/tasks/${taskId}`),
 
   myTasks: () =>
     api.get<{ data: CloseTask[] }>('/close/tasks/my'),

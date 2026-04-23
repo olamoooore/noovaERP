@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -47,6 +47,7 @@ interface BlockerItem {
 }
 
 export function MyTasksPage() {
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const cycleId = params.get('cycleId')
   const initialStatusFilter = params.get('status') ?? 'all'
@@ -116,6 +117,14 @@ export function MyTasksPage() {
     return task.due_date && new Date(task.due_date) < now && task.status !== 'completed' && task.status !== 'cancelled'
   }
 
+  function openTask(taskId: string) {
+    navigate(`/financial-close/tasks/${taskId}`)
+  }
+
+  function stopCardClick(event: React.MouseEvent<HTMLElement>) {
+    event.stopPropagation()
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -157,7 +166,8 @@ export function MyTasksPage() {
             return (
               <Card
                 key={task.id}
-                className={`transition-shadow hover:shadow-md ${overdue ? 'border-red-300 dark:border-red-700' : ''}`}
+                className={`cursor-pointer transition-shadow hover:shadow-md ${overdue ? 'border-red-300 dark:border-red-700' : ''}`}
+                onClick={() => openTask(task.id)}
               >
                 <CardContent className="pt-4 pb-3">
                   <div className="flex items-start gap-4">
@@ -188,25 +198,36 @@ export function MyTasksPage() {
                             Soft due {new Date(task.soft_due_date).toLocaleDateString()}
                           </span>
                         )}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            stopCardClick(event)
+                            openTask(task.id)
+                          }}
+                          className="text-xs text-primary font-medium inline-flex items-center gap-1 hover:underline"
+                        >
+                          View details
+                          <Icon icon="solar:arrow-right-bold" className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {task.status === 'created' && (
-                        <Button size="sm" variant="outline" onClick={() => startMutation.mutate(task.id)} disabled={startMutation.isPending}>
+                        <Button size="sm" variant="outline" onClick={(event) => { stopCardClick(event); startMutation.mutate(task.id) }} disabled={startMutation.isPending}>
                           Start
                         </Button>
                       )}
                       {task.status === 'in_progress' && (
                         <>
-                          <Button size="sm" variant="outline" onClick={() => submitMutation.mutate(task.id)} disabled={submitMutation.isPending}>
+                          <Button size="sm" variant="outline" onClick={(event) => { stopCardClick(event); submitMutation.mutate(task.id) }} disabled={submitMutation.isPending}>
                             Submit
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             className="text-orange-600"
-                            onClick={() => { setBlockDialogTask(task); setBlockReason('') }}
+                            onClick={(event) => { stopCardClick(event); setBlockDialogTask(task); setBlockReason('') }}
                           >
                             Block
                           </Button>
@@ -214,10 +235,10 @@ export function MyTasksPage() {
                       )}
                       {task.status === 'submitted' && (
                         <>
-                          <Button size="sm" onClick={() => completeMutation.mutate(task.id)} disabled={completeMutation.isPending}>
+                          <Button size="sm" onClick={(event) => { stopCardClick(event); completeMutation.mutate(task.id) }} disabled={completeMutation.isPending}>
                             Complete
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => returnMutation.mutate(task.id)} disabled={returnMutation.isPending}>
+                          <Button size="sm" variant="outline" onClick={(event) => { stopCardClick(event); returnMutation.mutate(task.id) }} disabled={returnMutation.isPending}>
                             Return
                           </Button>
                         </>

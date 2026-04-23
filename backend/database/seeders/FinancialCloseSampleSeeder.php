@@ -60,6 +60,23 @@ class FinancialCloseSampleSeeder extends Seeder
                     'priority'    => 'high',
                     'is_critical' => false,
                     'due_date'    => now()->addDays(2),
+                    'metadata'    => [
+                        'detail_title' => 'Cash Reconciliation Workpaper',
+                        'description' => 'Prepare the month-end cash reconciliation package, tie the bank statement to the GL, and clear reconciling items before treasury sign-off.',
+                        'owner_label' => $user->name,
+                        'workstream' => 'Treasury Close',
+                        'deliverable' => 'Signed cash reconciliation workpaper with bank support attached.',
+                        'business_impact' => 'Cash is the anchor balance for liquidity reporting and downstream payroll funding.',
+                        'next_step' => 'Upload the April bank statement and resolve the uncleared ACH item.',
+                        'related_accounts' => ['1010 Cash', '1015 Clearing'],
+                        'evidence_items' => ['April bank statement', 'Cash reconciliation workbook', 'Treasury sign-off'],
+                        'checklist_items' => [
+                            'Tie opening balance to prior month close',
+                            'Match each statement line to the GL',
+                            'Explain and document reconciling items',
+                            'Submit completed workpaper for approval',
+                        ],
+                    ],
                 ],
                 [
                     'title'       => 'Review AR Aging Report',
@@ -67,6 +84,24 @@ class FinancialCloseSampleSeeder extends Seeder
                     'priority'    => 'medium',
                     'is_critical' => false,
                     'due_date'    => now()->addDays(3),
+                    'metadata'    => [
+                        'detail_title' => 'AR Aging Exception Review',
+                        'description' => 'Review aging exceptions, confirm collection actions, and determine whether a reserve adjustment is needed before the controller review.',
+                        'owner_label' => $user->name,
+                        'workstream' => 'Receivables Review',
+                        'deliverable' => 'AR aging commentary memo with reserve recommendation.',
+                        'business_impact' => 'Outstanding AR directly affects net realizable value and cash forecasting.',
+                        'next_step' => 'Obtain collection notes for the three >90 day invoices from the AR team lead.',
+                        'blocker_reason' => 'Collection notes for 3 overdue invoices are still pending from the shared services inbox.',
+                        'related_accounts' => ['1200 Accounts Receivable', '1260 Bad Debt Reserve'],
+                        'evidence_items' => ['Current aging report', 'Collector notes', 'Reserve policy excerpt'],
+                        'checklist_items' => [
+                            'Inspect all invoices over 90 days',
+                            'Confirm collection outreach status',
+                            'Assess reserve adequacy',
+                            'Document final recommendation for the controller',
+                        ],
+                    ],
                 ],
                 [
                     'title'       => 'Approve Payroll Journal Entry',
@@ -74,6 +109,23 @@ class FinancialCloseSampleSeeder extends Seeder
                     'priority'    => 'critical',
                     'is_critical' => true,
                     'due_date'    => now()->addDay(),
+                    'metadata'    => [
+                        'detail_title' => 'Payroll Journal Approval',
+                        'description' => 'Review the payroll accrual journal, confirm wage and tax tie-outs, and approve posting for the April close package.',
+                        'owner_label' => $user->name,
+                        'workstream' => 'Payroll Close',
+                        'deliverable' => 'Approved payroll journal with tax support and variance memo.',
+                        'business_impact' => 'Payroll is a critical close dependency for both expense recognition and cash funding.',
+                        'next_step' => 'Approve once upstream cash reconciliation evidence is attached.',
+                        'related_accounts' => ['2200 Accrued Payroll', '6100 Salaries Expense'],
+                        'evidence_items' => ['Payroll register', 'Tax filing summary', 'GL posting preview'],
+                        'checklist_items' => [
+                            'Verify gross-to-net totals',
+                            'Confirm tax accrual postings',
+                            'Validate approval segregation of duties',
+                            'Approve the journal for posting',
+                        ],
+                    ],
                 ],
                 [
                     'title'       => 'Reconcile AP Subledger',
@@ -81,6 +133,23 @@ class FinancialCloseSampleSeeder extends Seeder
                     'priority'    => 'high',
                     'is_critical' => false,
                     'due_date'    => now()->subDay(),   // overdue — highlighted in red
+                    'metadata'    => [
+                        'detail_title' => 'AP Subledger Reconciliation',
+                        'description' => 'Reconcile the AP subledger to the control account and explain the unmatched supplier credit balances.',
+                        'owner_label' => $user->name,
+                        'workstream' => 'Payables Reconciliation',
+                        'deliverable' => 'AP-to-GL tie-out with reconciling item tracker.',
+                        'business_impact' => 'Unresolved AP variances can misstate liabilities and vendor aging.',
+                        'next_step' => 'Clear three supplier mismatches before controller review.',
+                        'related_accounts' => ['2000 Accounts Payable', '2015 Supplier Credits'],
+                        'evidence_items' => ['AP aging export', 'Supplier statement comparison', 'Tie-out workbook'],
+                        'checklist_items' => [
+                            'Export AP aging and compare to GL',
+                            'Investigate unmatched supplier credits',
+                            'Document reconciling items',
+                            'Submit tie-out to controller',
+                        ],
+                    ],
                 ],
                 [
                     'title'       => 'Review Inventory Valuation',
@@ -88,6 +157,23 @@ class FinancialCloseSampleSeeder extends Seeder
                     'priority'    => 'medium',
                     'is_critical' => false,
                     'due_date'    => now()->subDays(2),
+                    'metadata'    => [
+                        'detail_title' => 'Inventory Valuation Review',
+                        'description' => 'Review inventory costing trends, validate standard cost changes, and document the explanation for margin movement.',
+                        'owner_label' => $user->name,
+                        'workstream' => 'Inventory Accounting',
+                        'deliverable' => 'Inventory valuation memo and signed review checklist.',
+                        'business_impact' => 'Inventory valuation directly affects gross margin and COGS trends.',
+                        'next_step' => 'Archive the signed memo in the close binder.',
+                        'related_accounts' => ['1400 Inventory', '5000 Cost of Goods Sold'],
+                        'evidence_items' => ['Inventory valuation report', 'Standard cost change log', 'Margin bridge'],
+                        'checklist_items' => [
+                            'Validate standard cost adjustments',
+                            'Review margin bridge by category',
+                            'Document unusual movements',
+                            'Sign and archive the review memo',
+                        ],
+                    ],
                 ],
             ];
 
@@ -104,19 +190,30 @@ class FinancialCloseSampleSeeder extends Seeder
                     'assigned_to' => $userId,
                     'due_date'    => $def['due_date'],
                     'is_critical' => $def['is_critical'],
-                    'metadata'    => null,
+                    'metadata'    => json_encode($def['metadata'] ?? null),
                     'created_at'  => now(),
                     'updated_at'  => now(),
                 ]);
-                $taskIds[] = $taskId;
+                $taskIds[$def['title']] = $taskId;
             }
             $this->command->info('  ✓ 5 tasks created (1 blocked, 1 overdue, 1 submitted, 1 completed)');
+
+            DB::table('fco_task_dependencies')->insert([
+                'id'                 => (string) Str::uuid(),
+                'tenant_id'          => $tenantId,
+                'task_id'            => $taskIds['Approve Payroll Journal Entry'],
+                'depends_on_task_id' => $taskIds['Reconcile Cash Account (1010)'],
+                'dependency_type'    => 'hard',
+                'created_at'         => now(),
+                'updated_at'         => now(),
+            ]);
+            $this->command->info('  ✓ 1 task dependency created for payroll approval');
 
             // ── 3. An escalation on the overdue task ──────────────────────────
             DB::table('fco_escalation_events')->insert([
                 'id'               => (string) Str::uuid(),
                 'tenant_id'        => $tenantId,
-                'task_id'          => $taskIds[3], // "Reconcile AP Subledger" (overdue)
+                'task_id'          => $taskIds['Reconcile AP Subledger'],
                 'escalation_level' => 'medium',
                 'status'           => 'open',
                 'escalated_to'     => null,

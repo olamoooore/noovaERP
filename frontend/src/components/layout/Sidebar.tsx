@@ -617,8 +617,11 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col border-r bg-card">
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
-        <Icon icon="solar:buildings-2-bold-duotone" className="h-8 w-8 text-primary" />
-        <span className="ml-2 text-xl font-bold">NoovaERP</span>
+        <img
+          src="/noovaerplogo.png"
+          alt="NoovaERP"
+          className="h-9 w-auto max-w-full object-contain"
+        />
       </div>
 
       {/* Navigation */}

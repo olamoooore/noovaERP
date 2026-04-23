@@ -100,6 +100,7 @@ const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ defau
 const CloseDashboard     = lazy(() => import('@/pages/FinancialClose/CloseDashboard').then(m => ({ default: m.CloseDashboard })))
 const CloseCyclesPage    = lazy(() => import('@/pages/FinancialClose/CloseCyclesPage').then(m => ({ default: m.CloseCyclesPage })))
 const MyTasksPage        = lazy(() => import('@/pages/FinancialClose/MyTasksPage').then(m => ({ default: m.MyTasksPage })))
+const TaskDetailPage     = lazy(() => import('@/pages/FinancialClose/TaskDetailPage').then(m => ({ default: m.TaskDetailPage })))
 const ReviewQueuePage    = lazy(() => import('@/pages/FinancialClose/ReviewQueuePage').then(m => ({ default: m.ReviewQueuePage })))
 const AiFindingsPage     = lazy(() => import('@/pages/FinancialClose/AiFindingsPage').then(m => ({ default: m.AiFindingsPage })))
 const ReadinessCockpitPage = lazy(() => import('@/pages/FinancialClose/ReadinessCockpitPage').then(m => ({ default: m.ReadinessCockpitPage })))
@@ -363,6 +364,7 @@ function App() {
                 <Route path="/financial-close" element={<CloseDashboard />} />
                 <Route path="/financial-close/cycles" element={<CloseCyclesPage />} />
                 <Route path="/financial-close/tasks" element={<MyTasksPage />} />
+                <Route path="/financial-close/tasks/:taskId" element={<TaskDetailPage />} />
                 <Route path="/financial-close/review-queue" element={<ReviewQueuePage />} />
                 <Route path="/financial-close/findings" element={<AiFindingsPage />} />
                 <Route path="/financial-close/readiness" element={<ReadinessCockpitPage />} />
