@@ -618,7 +618,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
         <img
-          src="/noovaerplogo.png"
+          src="/noovaerp/noovaerplogo.png"
           alt="NoovaERP"
           className="h-9 w-auto max-w-full object-contain"
         />
