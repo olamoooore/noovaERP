@@ -337,6 +337,18 @@ class OcrPostingService
                 continue;
             }
 
+            // Validate product matches expected SKU or barcode
+            $resolvedViaBarcode = $product->sku !== $item['sku'];
+            if ($resolvedViaBarcode && $product->barcode !== $item['sku']) {
+                Log::warning("Product resolution mismatch - input does not match resolved product SKU or barcode", [
+                    'sku' => $item['sku'],
+                    'resolved_product_id' => $product->id,
+                    'resolved_sku' => $product->sku,
+                    'resolved_barcode' => $product->barcode,
+                ]);
+                // Continue processing but log for audit - this is a warning, not a block
+            }
+
             // Only track inventory for products with track_inventory enabled
             if (!$product->track_inventory) {
                 Log::info("Product found but inventory tracking disabled", [
@@ -397,7 +409,18 @@ class OcrPostingService
         // Try barcode match as fallback
         $product = \App\Models\Product::where('barcode', $sku)
             ->where('is_active', true)
+            ->orderBy('id')
             ->first();
+
+        // Log barcode fallback usage for audit trail
+        if ($product) {
+            Log::warning("Product resolved via barcode fallback", [
+                'sku_input' => $sku,
+                'product_id' => $product->id,
+                'product_sku' => $product->sku,
+                'product_barcode' => $product->barcode,
+            ]);
+        }
 
         return $product;
     }

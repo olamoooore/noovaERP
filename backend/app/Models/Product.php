@@ -715,6 +715,7 @@ class Product extends Model
                   ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
+            ->orderBy('id')
             ->first();
 
         if ($variant) {
@@ -734,6 +735,7 @@ class Product extends Model
             })
             ->where('is_active', true)
             ->where('status', self::STATUS_ACTIVE)
+            ->orderBy('id')
             ->first();
 
         if (!$product) {

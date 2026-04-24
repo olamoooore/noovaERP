@@ -132,7 +132,7 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'secondary_name' => 'nullable|string|max:255',
             'sku' => 'required|string|unique:products,sku',
-            'barcode' => 'nullable|string|unique:products,barcode',
+            'barcode' => 'nullable|string',
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
@@ -493,7 +493,7 @@ class ProductController extends Controller
             
             $data['name'] = $newName;
             $data['sku'] = $newSku;
-            $data['barcode'] = null; // Must be unique
+            $data['barcode'] = null;
             $data['status'] = Product::STATUS_DRAFT;
             $data['stock_quantity'] = 0;
             $data['approved_by'] = null;
@@ -505,7 +505,7 @@ class ProductController extends Controller
             foreach ($product->uoms as $uom) {
                 $uomData = $uom->toArray();
                 unset($uomData['id'], $uomData['product_id'], $uomData['created_at'], $uomData['updated_at']);
-                $uomData['barcode'] = null; // Must be unique
+                $uomData['barcode'] = null;
                 $newProduct->uoms()->create($uomData);
             }
 
