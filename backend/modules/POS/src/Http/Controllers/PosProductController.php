@@ -11,7 +11,7 @@ class PosProductController extends Controller
     public function lookup(Request $request)
     {
         $validated = $request->validate([
-            'code' => 'required|string',
+            'code' => 'required|string|max:255',
         ]);
 
         $found = Product::findSellableByBarcodeOrSku($validated['code']);

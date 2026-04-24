@@ -4,23 +4,18 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\Invoice;
-use App\Models\StockMovement;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosPayment;
-use Modules\POS\Services\PosPostingService;
-use Modules\Sales\Models\SalesInvoiceLink;
+use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\Sales\Services\SalesOrderService;
 
 class GenerateMissingPosInvoices extends Command
 {
     public function __construct(
-        private readonly PosPostingService $posPostingService,
-        private readonly InventoryService $inventoryService,
+        private readonly PosPaymentCompletionService $posPaymentCompletionService,
     ) {
         parent::__construct();
     }
@@ -149,30 +144,16 @@ class GenerateMissingPosInvoices extends Command
                     $paymentMethod = $order->payments()->latest()->value('method') ?? 'card';
                     $paymentReference = "POS-{$order->order_number}";
 
-                    if (!$order->journal_entry_id) {
-                        $entry = $this->posPostingService->postPaidOrder($order, $order->total, $paymentMethod);
-                        if (!$entry) {
-                            throw new \Exception("GL posting returned null for order {$order->order_number}");
-                        }
-                        $order->update(['journal_entry_id' => $entry->id]);
-                        $order->refresh();
-                    }
+                    // Delegate GL posting, payment record, and stock deduction
+                    // to the canonical service — same invariants as live completion.
+                    $this->posPaymentCompletionService->backfill(
+                        posOrder: $order,
+                        paymentMethod: $paymentMethod,
+                        reference: $paymentReference,
+                        notes: "POS order {$order->order_number} (pre-paid via repair)",
+                    );
 
-                    $existingPosPayment = PosPayment::where('pos_order_id', $order->id)
-                        ->where('reference', $paymentReference)
-                        ->first();
-                    if (!$existingPosPayment) {
-                        PosPayment::create([
-                            'pos_order_id' => $order->id,
-                            'method' => $paymentMethod,
-                            'amount' => (float) $order->total,
-                            'reference' => $paymentReference,
-                            'notes' => "POS order {$order->order_number} (pre-paid via repair)",
-                            'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId($order->created_by),
-                        ]);
-                    }
-
-                    $this->deductStock($order);
+                    $order->refresh();
 
                     if ($salesOrder->isDraft()) {
                         $salesOrder = $salesOrderService->confirmOrder($salesOrder);
@@ -201,7 +182,7 @@ class GenerateMissingPosInvoices extends Command
                         'received_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId($order->created_by),
                     ]);
 
-                    $order->update(['paid_at' => now()]);
+                    $order->update(['paid_at' => $order->paid_at ?? now()]);
                 });
 
                 $created++;
@@ -224,46 +205,4 @@ class GenerateMissingPosInvoices extends Command
         return 0;
     }
 
-    private function deductStock(PosOrder $order): void
-    {
-        $warehouseId = $order->terminal?->warehouse_id;
-
-        if (!$warehouseId) {
-            $this->warn("  No warehouse for order {$order->order_number} — stock deduction skipped");
-            return;
-        }
-
-        foreach ($order->items as $item) {
-            $productId = $item->variant?->product_id ?? $item->product_id;
-            $trackInventory = $item->variant
-                ? (bool) $item->variant->track_inventory
-                : (bool) ($item->product?->track_inventory ?? false);
-
-            if (!$productId || !$trackInventory) {
-                continue;
-            }
-
-            $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                ->where('reference_id', $order->id)
-                ->where('type', 'sale')
-                ->where('product_id', $productId)
-                ->sum('quantity');
-
-            $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-
-            if ($remainingToDeduct <= 0) {
-                continue;
-            }
-
-            $this->inventoryService->adjustStock(
-                productId: $productId,
-                warehouseId: $warehouseId,
-                quantity: $remainingToDeduct,
-                type: 'sale',
-                reference: $order->order_number,
-                referenceType: 'PosOrder',
-                referenceId: $order->id,
-            );
-        }
-    }
 }

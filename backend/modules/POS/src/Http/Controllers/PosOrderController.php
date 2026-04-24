@@ -8,6 +8,7 @@ use App\Models\ProductVariant;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Setting;
@@ -15,6 +16,7 @@ use App\Models\Tax;
 use Modules\Inventory\Services\InventoryService;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
+use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\POS\Services\PosPostingService;
 use Modules\Loyalty\Services\RedemptionService;
@@ -171,14 +173,28 @@ class PosOrderController extends Controller
             'loyalty_points_redeemed' => 'nullable|integer|min:0',
             'loyalty_discount' => 'nullable|numeric|min:0',
             'customer_id' => 'nullable|integer',
-            'session_id' => 'nullable|integer',
-            'terminal_id' => 'nullable|integer',
+            'session_id' => 'required|integer|exists:pos_sessions,id',
+            'terminal_id' => 'required|integer|exists:pos_terminals,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|integer',
             'items.*.product_variant_id' => 'nullable|integer',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'nullable|numeric|min:0',
         ]);
+
+        $session = \Modules\POS\Models\PosSession::findOrFail($validated['session_id']);
+        if ($session->status !== 'open') {
+            return response()->json([
+                'error' => 'Session is not open',
+                'session_status' => $session->status,
+            ], 422);
+        }
+
+        if ($session->terminal_id !== $validated['terminal_id']) {
+            return response()->json([
+                'error' => 'Terminal does not match session',
+            ], 422);
+        }
 
         return DB::transaction(function () use ($validated) {
             $externalId = $validated['external_id'] ?? (string) Str::uuid();
@@ -356,6 +372,16 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order is not payable'], 422);
         }
 
+        if ($posOrder->session_id) {
+            $session = \Modules\POS\Models\PosSession::find($posOrder->session_id);
+            if (!$session || $session->status !== 'open') {
+                return response()->json([
+                    'error' => 'Session is not open',
+                    'message' => 'Cannot process payment on closed session',
+                ], 422);
+            }
+        }
+
         $validated = $request->validate([
             'method' => 'required|string|max:50',
             'amount' => 'required|numeric|min:0.01',
@@ -517,11 +543,51 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order has already been voided'], 422);
         }
 
-        $reason = trim((string) $request->input('reason', 'Voided from POS orders list'));
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:500',
+            'manager_id' => 'required|integer|exists:users,id',
+            'manager_password' => 'required|string',
+        ]);
+
+        $manager = User::findOrFail($validated['manager_id']);
+        if (!Hash::check($validated['manager_password'], $manager->password)) {
+            return response()->json(['error' => 'Invalid manager credentials'], 403);
+        }
+
+        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
+            return response()->json(['error' => 'Manager approval required'], 403);
+        }
+
+        if ($posOrder->total > 500 && !$manager->hasRole('supervisor')) {
+            return response()->json([
+                'error' => 'Supervisor approval required for voids over $500'
+            ], 403);
+        }
+
+        $reason = trim($validated['reason']);
+
+        Log::info('POS order void initiated', [
+            'order_id' => $posOrder->id,
+            'order_number' => $posOrder->order_number,
+            'total' => $posOrder->total,
+            'status' => $posOrder->status,
+            'reason' => $reason,
+            'initiated_by' => auth()->id(),
+            'initiated_by_name' => auth()->user()->name,
+            'approved_by' => $manager->id,
+            'approved_by_name' => $manager->name,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'timestamp' => now()->toIso8601String(),
+        ]);
 
         if ($posOrder->status === 'draft') {
             $posOrder->update([
                 'status' => 'void',
+                'voided_by' => auth()->id(),
+                'voided_at' => now(),
+                'void_approved_by' => $manager->id,
+                'void_reason' => $reason,
                 'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
             ]);
 
@@ -539,16 +605,36 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order already has a return and cannot be voided again'], 422);
         }
 
-        return DB::transaction(function () use ($posOrder, $reason) {
+        return DB::transaction(function () use ($posOrder, $reason, $manager) {
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $this->buildFullReturnItems($posOrder),
                 $this->appendOrderNote(null, 'Void refund: ' . $reason)
             );
 
+            PosPayment::create([
+                'pos_order_id' => $posOrder->id,
+                'method' => 'void_refund',
+                'amount' => -$posOrder->total,
+                'reference' => "VOID-{$posOrder->order_number}",
+                'notes' => $reason,
+                'received_by' => $manager->id,
+            ]);
+
             $posOrder->update([
                 'status' => 'void',
+                'voided_by' => auth()->id(),
+                'voided_at' => now(),
+                'void_approved_by' => $manager->id,
+                'void_reason' => $reason,
                 'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
+            ]);
+
+            Log::info('POS order void completed', [
+                'order_id' => $posOrder->id,
+                'order_number' => $posOrder->order_number,
+                'return_order_id' => $returnOrder->id,
+                'timestamp' => now()->toIso8601String(),
             ]);
 
             return response()->json([
@@ -575,14 +661,58 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order already has a refund return'], 422);
         }
 
-        $notes = trim((string) $request->input('notes', 'Refunded from POS orders list'));
+        $validated = $request->validate([
+            'notes' => 'required|string|min:10|max:500',
+            'refund_method' => 'required|in:cash,card,store_credit',
+            'manager_id' => 'required|integer|exists:users,id',
+            'manager_password' => 'required|string',
+        ]);
 
-        return DB::transaction(function () use ($posOrder, $notes) {
+        $manager = User::findOrFail($validated['manager_id']);
+        if (!Hash::check($validated['manager_password'], $manager->password)) {
+            return response()->json(['error' => 'Invalid manager credentials'], 403);
+        }
+
+        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
+            return response()->json(['error' => 'Manager approval required'], 403);
+        }
+
+        $notes = trim($validated['notes']);
+
+        Log::info('POS order refund initiated', [
+            'order_id' => $posOrder->id,
+            'order_number' => $posOrder->order_number,
+            'total' => $posOrder->total,
+            'refund_method' => $validated['refund_method'],
+            'notes' => $notes,
+            'initiated_by' => auth()->id(),
+            'approved_by' => $manager->id,
+            'ip_address' => $request->ip(),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
+        return DB::transaction(function () use ($posOrder, $notes, $validated, $manager) {
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $this->buildFullReturnItems($posOrder),
                 $notes
             );
+
+            PosPayment::create([
+                'pos_order_id' => $posOrder->id,
+                'method' => $validated['refund_method'],
+                'amount' => -$posOrder->total,
+                'reference' => "REFUND-{$posOrder->order_number}",
+                'notes' => $notes,
+                'received_by' => $manager->id,
+            ]);
+
+            Log::info('POS order refund completed', [
+                'order_id' => $posOrder->id,
+                'order_number' => $posOrder->order_number,
+                'return_order_id' => $returnOrder->id,
+                'timestamp' => now()->toIso8601String(),
+            ]);
 
             return response()->json([
                 'message' => 'Order refunded successfully',
@@ -604,23 +734,75 @@ class PosOrderController extends Controller
         }
 
         $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|exists:pos_order_items,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'notes' => 'nullable|string',
-            'refund_method' => 'nullable|in:cash,card,store_credit',
+            'items'              => 'required|array|min:1',
+            'items.*.item_id'    => 'required|exists:pos_order_items,id',
+            'items.*.quantity'   => 'required|integer|min:1',
+            'notes'              => 'required|string|min:10|max:500',
+            'refund_method'      => 'required|in:cash,card,store_credit',
+            'manager_id'         => 'required|integer|exists:users,id',
+            'manager_password'   => 'required|string',
         ]);
 
-        return DB::transaction(function () use ($validated, $posOrder) {
+        $manager = User::findOrFail($validated['manager_id']);
+        if (!Hash::check($validated['manager_password'], $manager->password)) {
+            return response()->json(['error' => 'Invalid manager credentials'], 403);
+        }
+
+        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
+            return response()->json(['error' => 'Manager approval required'], 403);
+        }
+
+        // Calculate partial return total for the high-value supervisor check
+        $returnTotal = collect($validated['items'])->reduce(function (float $sum, array $line) use ($posOrder) {
+            $item = $posOrder->items->firstWhere('id', $line['item_id']);
+            return $sum + (($item?->unit_price ?? 0) * $line['quantity']);
+        }, 0.0);
+
+        if ($returnTotal > 500 && !$manager->hasRole('supervisor')) {
+            return response()->json([
+                'error' => 'Supervisor approval required for returns over $500',
+            ], 403);
+        }
+
+        Log::info('POS order return initiated', [
+            'order_id'       => $posOrder->id,
+            'order_number'   => $posOrder->order_number,
+            'return_total'   => $returnTotal,
+            'refund_method'  => $validated['refund_method'],
+            'notes'          => $validated['notes'],
+            'initiated_by'   => auth()->id(),
+            'approved_by'    => $manager->id,
+            'ip_address'     => $request->ip(),
+            'timestamp'      => now()->toIso8601String(),
+        ]);
+
+        return DB::transaction(function () use ($validated, $posOrder, $manager, $returnTotal) {
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $validated['items'],
-                $validated['notes'] ?? null,
+                $validated['notes'],
             );
 
+            PosPayment::create([
+                'pos_order_id' => $posOrder->id,
+                'method'       => $validated['refund_method'],
+                'amount'       => -$returnTotal,
+                'reference'    => "RETURN-{$posOrder->order_number}",
+                'notes'        => $validated['notes'],
+                'received_by'  => $manager->id,
+            ]);
+
+            Log::info('POS order return completed', [
+                'order_id'        => $posOrder->id,
+                'order_number'    => $posOrder->order_number,
+                'return_order_id' => $returnOrder->id,
+                'refund_amount'   => -$returnTotal,
+                'timestamp'       => now()->toIso8601String(),
+            ]);
+
             return response()->json([
-                'message' => 'Return created successfully',
-                'return_order' => $returnOrder->load('items'),
+                'message'        => 'Return created successfully',
+                'return_order'   => $returnOrder->load('items'),
                 'original_order' => $posOrder->fresh()->load('items', 'returns'),
             ]);
         });
