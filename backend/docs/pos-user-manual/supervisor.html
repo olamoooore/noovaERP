@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Manual - POS System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: #764ba2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .step-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .step-action {
+            margin: 10px 0 5px 40px;
+            color: #555;
+        }
+        
+        .step-action:before {
+            content: "→ ";
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .button-label {
+            display: inline-block;
+            background: #e8eef7;
+            border: 1px solid #667eea;
+            color: #667eea;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 0 2px;
+        }
+        
+        .warning {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning strong {
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info strong {
+            color: #0c5460;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success strong {
+            color: #155724;
+        }
+        
+        .approval-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .approval-box strong {
+            color: #856404;
+        }
+        
+        .nav-links {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        
+        .nav-links a {
+            display: inline-block;
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👨‍💼 Supervisor Manual</h1>
+            <p>Approval workflows and session management</p>
+        </header>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="cashier.html">← Cashier Manual</a>
+            <a href="manager.html">Manager Manual →</a>
+        </div>
+        
+        <div class="section">
+            <h2>Supervisor Responsibilities</h2>
+            
+            <p>As a supervisor, you have the following responsibilities:</p>
+            <ul style="margin-left: 20px;">
+                <li>Approve discounts exceeding cashier limits</li>
+                <li>Approve void operations</li>
+                <li>Approve refund operations</li>
+                <li>Monitor POS sessions and cashier activity</li>
+                <li>Handle escalations and exceptions</li>
+                <li>Ensure compliance with POS policies</li>
+                <li>Maintain audit trail integrity</li>
+            </ul>
+            
+            <div class="info">
+                <strong>ℹ️ Entitlement:</strong> All supervisor approvals are validated through the entitlement system. You must have the "pos_supervisor" role to approve operations.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Approving Discounts</h2>
+            
+            <h3>When Discount Approval is Needed</h3>
+            <p>Cashiers can approve discounts up to $50 or 10%. Larger discounts require supervisor approval.</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Receive Approval Request</div>
+                <div class="step-action">Cashier requests discount approval at POS</div>
+                <div class="step-action">You receive notification on your supervisor terminal</div>
+                <div class="step-action">Notification shows order number, discount amount, and reason</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Review Request</div>
+                <div class="step-action">Click <span class="button-label">View Request</span></div>
+                <div class="step-action">Review order details:</div>
+                <div class="step-action" style="margin-left: 60px;">• Customer name and ID</div>
+                <div class="step-action" style="margin-left: 60px;">• Items in order</div>
+                <div class="step-action" style="margin-left: 60px;">• Discount amount and percentage</div>
+                <div class="step-action" style="margin-left: 60px;">• Reason provided by cashier</div>
+                <div class="step-action">Verify discount is reasonable</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Approve or Deny</div>
+                <div class="step-action">Click <span class="button-label">Approve</span> or <span class="button-label">Deny</span></div>
+                <div class="step-action">If denying, enter reason</div>
+                <div class="step-action">Enter your supervisor credentials (username/password)</div>
+                <div class="step-action">Click <span class="button-label">Confirm</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Approval Recorded</div>
+                <div class="step-action">Approval is recorded in audit log</div>
+                <div class="step-action">Cashier is notified of approval/denial</div>
+                <div class="step-action">If approved, discount applied to order</div>
+                <div class="step-action">If denied, cashier can request again or proceed without discount</div>
+            </div>
+            
+            <div class="approval-box">
+                <strong>⚠️ Approval Audit Trail:</strong> All approvals are logged with your name, timestamp, and reason. This creates an audit trail for compliance.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Approving Void Operations</h2>
+            
+            <h3>When Void Approval is Needed</h3>
+            <p>Cashiers cannot void orders alone. All void operations require supervisor or manager approval.</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Receive Void Request</div>
+                <div class="step-action">Cashier requests void approval at POS</div>
+                <div class="step-action">You receive notification on your supervisor terminal</div>
+                <div class="step-action">Notification shows order number, amount, and void reason</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Review Void Request</div>
+                <div class="step-action">Click <span class="button-label">View Request</span></div>
+                <div class="step-action">Review order details:</div>
+                <div class="step-action" style="margin-left: 60px;">• Order number and amount</div>
+                <div class="step-action" style="margin-left: 60px;">• Items in order</div>
+                <div class="step-action" style="margin-left: 60px;">• Payment method</div>
+                <div class="step-action" style="margin-left: 60px;">• Void reason provided by cashier</div>
+                <div class="step-action" style="margin-left: 60px;">• Cashier name</div>
+                <div class="step-action">Verify void is justified</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Approve or Deny</div>
+                <div class="step-action">Click <span class="button-label">Approve Void</span> or <span class="button-label">Deny</span></div>
+                <div class="step-action">If denying, enter reason</div>
+                <div class="step-action">Enter your supervisor credentials (username/password)</div>
+                <div class="step-action">Click <span class="button-label">Confirm</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Void Processed</div>
+                <div class="step-action">Upon approval, system processes void through Sales module</div>
+                <div class="step-action">Inventory reversed</div>
+                <div class="step-action">Loyalty points reversed</div>
+                <div class="step-action">GL reversal entry created</div>
+                <div class="step-action">Refund payment recorded</div>
+                <div class="step-action">Audit log recorded with your approval</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Void Complete</strong><br>
+                Order is now voided. All side effects reversed (inventory, loyalty, GL). Refund recorded.
+            </div>
+            
+            <div class="approval-box">
+                <strong>⚠️ Void Audit Trail:</strong> All voids are logged with supervisor name, timestamp, and reason. This creates an audit trail for compliance and reconciliation.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Approving Refund Operations</h2>
+            
+            <h3>When Refund Approval is Needed</h3>
+            <p>Cashiers cannot refund orders alone. All refund operations require supervisor or manager approval.</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Receive Refund Request</div>
+                <div class="step-action">Cashier requests refund approval at POS</div>
+                <div class="step-action">You receive notification on your supervisor terminal</div>
+                <div class="step-action">Notification shows order number, refund amount, and reason</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Review Refund Request</div>
+                <div class="step-action">Click <span class="button-label">View Request</span></div>
+                <div class="step-action">Review order details:</div>
+                <div class="step-action" style="margin-left: 60px;">• Order number and total amount</div>
+                <div class="step-action" style="margin-left: 60px;">• Items in order</div>
+                <div class="step-action" style="margin-left: 60px;">• Items being refunded (partial or full)</div>
+                <div class="step-action" style="margin-left: 60px;">• Refund amount</div>
+                <div class="step-action" style="margin-left: 60px;">• Refund reason provided by cashier</div>
+                <div class="step-action" style="margin-left: 60px;">• Cashier name</div>
+                <div class="step-action">Verify refund is justified</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Approve or Deny</div>
+                <div class="step-action">Click <span class="button-label">Approve Refund</span> or <span class="button-label">Deny</span></div>
+                <div class="step-action">If denying, enter reason</div>
+                <div class="step-action">Enter your supervisor credentials (username/password)</div>
+                <div class="step-action">Click <span class="button-label">Confirm</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Refund Processed</div>
+                <div class="step-action">Upon approval, system processes refund through Sales module</div>
+                <div class="step-action">Inventory reversed for refunded items</div>
+                <div class="step-action">Loyalty points reversed proportionally</div>
+                <div class="step-action">GL reversal entry created</div>
+                <div class="step-action">Return order created</div>
+                <div class="step-action">Refund payment recorded</div>
+                <div class="step-action">Audit log recorded with your approval</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Refund Complete</strong><br>
+                Refund is processed. Return order created. All side effects reversed proportionally.
+            </div>
+            
+            <div class="approval-box">
+                <strong>⚠️ Refund Audit Trail:</strong> All refunds are logged with supervisor name, timestamp, and reason. This creates an audit trail for compliance and reconciliation.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Monitoring Sessions</h2>
+            
+            <h3>Session Overview</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>View Active Sessions</div>
+                <div class="step-action">Click <span class="button-label">Sessions</span> on supervisor dashboard</div>
+                <div class="step-action">System displays all active sessions</div>
+                <div class="step-action">Shows cashier name, terminal, opening balance, and current total</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Monitor Session Activity</div>
+                <div class="step-action">Click on session to view details</div>
+                <div class="step-action">See all orders processed in session</div>
+                <div class="step-action">See all voids and refunds</div>
+                <div class="step-action">See cash movements (if any)</div>
+                <div class="step-action">See current session total</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Review Session Summary</div>
+                <div class="step-action">System shows:</div>
+                <div class="step-action" style="margin-left: 60px;">• Opening balance</div>
+                <div class="step-action" style="margin-left: 60px;">• Total sales</div>
+                <div class="step-action" style="margin-left: 60px;">• Total voids</div>
+                <div class="step-action" style="margin-left: 60px;">• Total refunds</div>
+                <div class="step-action" style="margin-left: 60px;">• Expected closing balance</div>
+                <div class="step-action" style="margin-left: 60px;">• Number of transactions</div>
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Session Monitoring:</strong> Use session monitoring to track cashier activity, identify issues, and ensure compliance with POS policies.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Handling Exceptions</h2>
+            
+            <h3>Common Exceptions</h3>
+            
+            <h3>Duplicate Payment Detection</h3>
+            <p>If a payment is sent twice, the system detects it and prevents duplicate charge.</p>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Duplicate Detected</div>
+                <div class="step-action">System shows "Duplicate Payment Detected" message</div>
+                <div class="step-action">Shows original payment details</div>
+                <div class="step-action">Shows duplicate attempt details</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Action</div>
+                <div class="step-action">Click <span class="button-label">Use Original Payment</span></div>
+                <div class="step-action">Duplicate is rejected</div>
+                <div class="step-action">Original payment is used</div>
+                <div class="step-action">No duplicate charge recorded</div>
+            </div>
+            
+            <h3>Offline Order Sync Issues</h3>
+            <p>If offline orders fail to sync when connection is restored:</p>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Sync Failure Detected</div>
+                <div class="step-action">System shows "Offline Sync Failed" message</div>
+                <div class="step-action">Shows number of orders that failed to sync</div>
+                <div class="step-action">Shows error details</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Action</div>
+                <div class="step-action">Click <span class="button-label">Retry Sync</span></div>
+                <div class="step-action">System attempts to sync again</div>
+                <div class="step-action">If successful, orders are synced</div>
+                <div class="step-action">If failed, contact IT support</div>
+            </div>
+            
+            <h3>Session Reconciliation Variance</h3>
+            <p>If closing balance doesn't match expected balance:</p>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Variance Detected</div>
+                <div class="step-action">System shows variance amount</div>
+                <div class="step-action">Shows expected vs actual balance</div>
+                <div class="step-action">Shows possible causes</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Investigation</div>
+                <div class="step-action">Review session transactions</div>
+                <div class="step-action">Check for missed cash movements</div>
+                <div class="step-action">Verify all voids and refunds are recorded</div>
+                <div class="step-action">Recount cash if needed</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Resolution</div>
+                <div class="step-action">If variance is small (under $5), approve and record</div>
+                <div class="step-action">If variance is large, investigate further</div>
+                <div class="step-action">Document findings in session notes</div>
+                <div class="step-action">Report to manager if needed</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Compliance & Audit Trail</h2>
+            
+            <h3>Audit Trail Requirements</h3>
+            <p>All supervisor actions are logged for compliance:</p>
+            <ul style="margin-left: 20px;">
+                <li>Discount approvals logged with supervisor name, timestamp, and reason</li>
+                <li>Void approvals logged with supervisor name, timestamp, and reason</li>
+                <li>Refund approvals logged with supervisor name, timestamp, and reason</li>
+                <li>Session monitoring logged</li>
+                <li>Exception handling logged</li>
+            </ul>
+            
+            <div class="info">
+                <strong>ℹ️ Audit Trail Access:</strong> Audit logs are available in the manager dashboard for compliance review and reconciliation.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Key Reminders</h2>
+            
+            <div class="warning">
+                <strong>⚠️ Entitlement Required:</strong> You must have the "pos_supervisor" role to approve operations. Your credentials are validated through the entitlement system.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Audit Trail:</strong> All approvals are logged. Do not approve requests without proper review. Approvals are auditable and traceable.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Idempotency:</strong> All operations are idempotent. Duplicate requests produce no duplicate effect. This protects against duplicate charges and side effects.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Side Effects:</strong> When you approve void/refund, all side effects are reversed (inventory, loyalty, GL). This ensures data consistency across all systems.
+            </div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="cashier.html">← Cashier Manual</a>
+            <a href="manager.html">Manager Manual →</a>
+        </div>
+        
+        <footer>
+            <p>Supervisor Manual — POS System Target State Documentation</p>
+            <p>Generated: 2026-04-25 | Authority: Tier 1 Channel Integrity (G4)</p>
+        </footer>
+    </div>
+</body>
+</html>

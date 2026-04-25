@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cashier Manual - POS System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: #764ba2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .step-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .step-action {
+            margin: 10px 0 5px 40px;
+            color: #555;
+        }
+        
+        .step-action:before {
+            content: "→ ";
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .button-label {
+            display: inline-block;
+            background: #e8eef7;
+            border: 1px solid #667eea;
+            color: #667eea;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 0 2px;
+        }
+        
+        .warning {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning strong {
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info strong {
+            color: #0c5460;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success strong {
+            color: #155724;
+        }
+        
+        .workflow-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        .workflow-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .workflow-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .workflow-table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .nav-links {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        
+        .nav-links a {
+            display: inline-block;
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👤 Cashier Manual</h1>
+            <p>Complete guide for daily POS operations</p>
+        </header>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="supervisor.html">Supervisor Manual →</a>
+            <a href="manager.html">Manager Manual →</a>
+        </div>
+        
+        <div class="section">
+            <h2>Getting Started</h2>
+            
+            <h3>Before Your Shift</h3>
+            <p>Make sure you have:</p>
+            <ul style="margin-left: 20px;">
+                <li>Your login credentials</li>
+                <li>Access to the POS terminal</li>
+                <li>Opening cash balance</li>
+                <li>Any special instructions from your supervisor</li>
+            </ul>
+            
+            <h3>Opening Your Session</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Log In</div>
+                <div class="step-action">Enter your username and password on the POS login screen</div>
+                <div class="step-action">Click <span class="button-label">Sign In</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Select Terminal</div>
+                <div class="step-action">System displays available terminals</div>
+                <div class="step-action">Click on your assigned terminal (e.g., "Register 1", "Kiosk A")</div>
+                <div class="step-action">System shows terminal details and warehouse</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Open Session</div>
+                <div class="step-action">Click <span class="button-label">Open Session</span></div>
+                <div class="step-action">Enter your opening cash balance (amount in drawer)</div>
+                <div class="step-action">Optional: Add opening notes (e.g., "Starting with $500")</div>
+                <div class="step-action">Click <span class="button-label">Confirm</span></div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Session Opened</strong><br>
+                Your session is now active. You can see the session number and opening balance on screen. You're ready to process orders.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Important:</strong> You cannot process any orders without an active session. If you see "No Active Session", go back and open a session first.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Processing Orders</h2>
+            
+            <h3>Creating a New Order</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Start New Order</div>
+                <div class="step-action">Click <span class="button-label">New Order</span> button</div>
+                <div class="step-action">System creates blank order and displays order entry screen</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Add Items - Barcode Scan</div>
+                <div class="step-action">Position barcode scanner over product barcode</div>
+                <div class="step-action">Scanner automatically reads barcode and adds item to order</div>
+                <div class="step-action">System displays product name, price, and quantity</div>
+                <div class="step-action">Quantity defaults to 1 (adjust if needed)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Add Items - Manual Search</div>
+                <div class="step-action">If barcode doesn't scan, click <span class="button-label">Search Products</span></div>
+                <div class="step-action">Enter product name or SKU</div>
+                <div class="step-action">System displays matching products</div>
+                <div class="step-action">Click product to add to order</div>
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Barcode Fallback:</strong> If barcode resolves to multiple products, system shows confirmation dialog. Verify you're selecting the correct product before confirming.
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Adjust Quantities</div>
+                <div class="step-action">Click on item quantity in order</div>
+                <div class="step-action">Enter new quantity or use +/- buttons</div>
+                <div class="step-action">Press Enter to confirm</div>
+                <div class="step-action">System updates order total</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">5</span>Remove Items</div>
+                <div class="step-action">Click <span class="button-label">Remove</span> next to item</div>
+                <div class="step-action">Confirm removal</div>
+                <div class="step-action">Item removed from order, total updated</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">6</span>Add Customer (Optional)</div>
+                <div class="step-action">Click <span class="button-label">Add Customer</span></div>
+                <div class="step-action">Search by name, phone, or customer ID</div>
+                <div class="step-action">Select customer from results</div>
+                <div class="step-action">Customer added to order (loyalty points will be earned)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">7</span>Apply Discount (If Authorized)</div>
+                <div class="step-action">Click <span class="button-label">Apply Discount</span></div>
+                <div class="step-action">Enter discount amount or percentage</div>
+                <div class="step-action">If discount exceeds your limit, system requests supervisor approval</div>
+                <div class="step-action">Supervisor enters credentials to approve</div>
+                <div class="step-action">Discount applied to order</div>
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Discount Limits:</strong> Cashiers can approve discounts up to $50 or 10%. Larger discounts require supervisor approval.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Payment Processing</h2>
+            
+            <h3>Processing Payment</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Review Order Total</div>
+                <div class="step-action">Verify order total on screen</div>
+                <div class="step-action">Confirm all items and discounts are correct</div>
+                <div class="step-action">Click <span class="button-label">Proceed to Payment</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Select Payment Method</div>
+                <div class="step-action">Click payment method button:</div>
+                <div class="step-action" style="margin-left: 60px;">• <span class="button-label">Cash</span> - Customer pays with cash</div>
+                <div class="step-action" style="margin-left: 60px;">• <span class="button-label">Card</span> - Customer pays with credit/debit card</div>
+                <div class="step-action" style="margin-left: 60px;">• <span class="button-label">Digital</span> - Mobile payment (Apple Pay, Google Pay)</div>
+                <div class="step-action" style="margin-left: 60px;">• <span class="button-label">Loyalty Points</span> - Redeem customer loyalty points</div>
+                <div class="step-action" style="margin-left: 60px;">• <span class="button-label">Mixed</span> - Combination of methods</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Cash Payment</div>
+                <div class="step-action">Enter amount customer is paying</div>
+                <div class="step-action">System calculates change</div>
+                <div class="step-action">Verify change amount is correct</div>
+                <div class="step-action">Click <span class="button-label">Confirm Payment</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Card Payment</div>
+                <div class="step-action">Insert or tap card in reader</div>
+                <div class="step-action">System processes payment through payment gateway</div>
+                <div class="step-action">Wait for approval message</div>
+                <div class="step-action">If approved, payment is complete</div>
+                <div class="step-action">If declined, ask customer for alternative payment method</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">5</span>Payment Confirmation</div>
+                <div class="step-action">System confirms payment received</div>
+                <div class="step-action">Loyalty points earned (if customer added)</div>
+                <div class="step-action">Inventory automatically deducted</div>
+                <div class="step-action">GL posting created automatically</div>
+                <div class="step-action">Order marked as paid</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Payment Complete</strong><br>
+                The payment is idempotent - if the same payment is sent twice, only one charge is recorded. This protects against duplicate charges.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Receipt & Order Completion</h2>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Print Receipt</div>
+                <div class="step-action">System automatically generates receipt</div>
+                <div class="step-action">Click <span class="button-label">Print Receipt</span></div>
+                <div class="step-action">Receipt prints from receipt printer</div>
+                <div class="step-action">Give receipt to customer</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Email Receipt (Optional)</div>
+                <div class="step-action">If customer provided email, click <span class="button-label">Email Receipt</span></div>
+                <div class="step-action">Receipt sent to customer email</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Order Complete</div>
+                <div class="step-action">Order is now complete and closed</div>
+                <div class="step-action">System ready for next order</div>
+                <div class="step-action">Click <span class="button-label">New Order</span> to start next transaction</div>
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Receipt Information:</strong> Receipt shows order number, items, prices, discounts, payment method, and loyalty points earned.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Void & Refund Operations</h2>
+            
+            <div class="warning">
+                <strong>⚠️ Important:</strong> Void and refund operations require supervisor or manager approval. You cannot perform these alone.
+            </div>
+            
+            <h3>Voiding a Paid Order</h3>
+            <p>Use void when you need to completely cancel a paid order (e.g., customer changed mind, wrong item sold).</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Find Order to Void</div>
+                <div class="step-action">Click <span class="button-label">Find Order</span></div>
+                <div class="step-action">Search by order number or customer name</div>
+                <div class="step-action">Select order from results</div>
+                <div class="step-action">Verify order details are correct</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Request Void</div>
+                <div class="step-action">Click <span class="button-label">Void Order</span></div>
+                <div class="step-action">Enter void reason (required)</div>
+                <div class="step-action">Click <span class="button-label">Request Approval</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Supervisor Approval</div>
+                <div class="step-action">Supervisor is notified of void request</div>
+                <div class="step-action">Supervisor reviews order and reason</div>
+                <div class="step-action">Supervisor enters credentials to approve</div>
+                <div class="step-action">Upon approval:</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Inventory reversed</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Loyalty points reversed</div>
+                <div class="step-action" style="margin-left: 60px;">✓ GL reversal entry created</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Refund payment recorded</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Audit log recorded</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Order Voided</strong><br>
+                Order is now marked as void. All side effects are reversed (inventory, loyalty, GL). Refund is recorded.
+            </div>
+            
+            <h3>Refunding Items</h3>
+            <p>Use refund when customer returns specific items (partial or full refund).</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Find Order to Refund</div>
+                <div class="step-action">Click <span class="button-label">Find Order</span></div>
+                <div class="step-action">Search by order number or customer name</div>
+                <div class="step-action">Select order from results</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Select Items to Refund</div>
+                <div class="step-action">Click <span class="button-label">Refund Items</span></div>
+                <div class="step-action">Check items to refund (or select all for full refund)</div>
+                <div class="step-action">Adjust quantities if partial refund</div>
+                <div class="step-action">System calculates refund amount</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Request Refund</div>
+                <div class="step-action">Enter refund reason (required)</div>
+                <div class="step-action">Click <span class="button-label">Request Approval</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Supervisor Approval</div>
+                <div class="step-action">Supervisor is notified of refund request</div>
+                <div class="step-action">Supervisor reviews items and reason</div>
+                <div class="step-action">Supervisor enters credentials to approve</div>
+                <div class="step-action">Upon approval:</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Inventory reversed for refunded items</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Loyalty points reversed proportionally</div>
+                <div class="step-action" style="margin-left: 60px;">✓ GL reversal entry created</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Refund payment recorded</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Return order created</div>
+                <div class="step-action" style="margin-left: 60px;">✓ Audit log recorded</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Refund Processed</strong><br>
+                Refund is complete. Return order created. All side effects reversed proportionally.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Offline Mode (Target State)</h2>
+            
+            <h3>What Happens During Network Outage?</h3>
+            <p>If the network connection is lost, the POS system can continue operating in offline mode:</p>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Network Lost</div>
+                <div class="step-action">System detects network outage</div>
+                <div class="step-action">Screen shows "Offline Mode" indicator</div>
+                <div class="step-action">You can continue creating orders</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Create Orders Offline</div>
+                <div class="step-action">Orders are created and stored locally</div>
+                <div class="step-action">Payments are queued for processing</div>
+                <div class="step-action">Continue normal order entry</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Network Restored</div>
+                <div class="step-action">System detects network connection</div>
+                <div class="step-action">Offline Mode indicator disappears</div>
+                <div class="step-action">System automatically syncs queued orders</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Sync Complete</div>
+                <div class="step-action">All offline orders are synced to server</div>
+                <div class="step-action">Sync is idempotent (no duplicate orders)</div>
+                <div class="step-action">All side effects applied (inventory, loyalty, GL)</div>
+                <div class="step-action">You receive confirmation</div>
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Offline Sync:</strong> The sync process is idempotent. If the same order is sent twice, only one order is recorded. This prevents duplicate charges.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Closing Your Session</h2>
+            
+            <h3>End of Shift</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Count Cash Drawer</div>
+                <div class="step-action">Count all cash in your drawer</div>
+                <div class="step-action">Record total amount</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Close Session</div>
+                <div class="step-action">Click <span class="button-label">Close Session</span></div>
+                <div class="step-action">Enter closing cash balance (amount counted)</div>
+                <div class="step-action">Optional: Add closing notes</div>
+                <div class="step-action">Click <span class="button-label">Confirm</span></div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Reconciliation</div>
+                <div class="step-action">System calculates expected balance from transactions</div>
+                <div class="step-action">System compares to your closing balance</div>
+                <div class="step-action">Variance calculated and recorded</div>
+                <div class="step-action">Report generated for reconciliation</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Session Closed</strong><br>
+                Your session is now closed. All transactions are recorded. Report is available for review.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Cash Variance:</strong> Small variances (under $5) are normal. Larger variances should be reported to your supervisor.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Troubleshooting</h2>
+            
+            <h3>Common Issues</h3>
+            
+            <table class="workflow-table">
+                <tr>
+                    <th>Issue</th>
+                    <th>Solution</th>
+                </tr>
+                <tr>
+                    <td>Barcode won't scan</td>
+                    <td>Try manual product search. Check barcode for damage. Ask supervisor if issue persists.</td>
+                </tr>
+                <tr>
+                    <td>Card payment declined</td>
+                    <td>Ask customer to try different card or payment method. Check card reader is working.</td>
+                </tr>
+                <tr>
+                    <td>No active session</td>
+                    <td>Open a new session before processing orders. Click "Open Session" and enter opening balance.</td>
+                </tr>
+                <tr>
+                    <td>Cannot void/refund order</td>
+                    <td>Void/refund requires supervisor approval. Call supervisor to approve the request.</td>
+                </tr>
+                <tr>
+                    <td>Offline mode stuck</td>
+                    <td>Check network connection. Restart POS if needed. Contact IT support if issue persists.</td>
+                </tr>
+                <tr>
+                    <td>Receipt won't print</td>
+                    <td>Check receipt printer is on and has paper. Restart printer if needed.</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Key Reminders</h2>
+            
+            <div class="warning">
+                <strong>⚠️ Session Required:</strong> Always open a session before processing orders. You cannot process orders without an active session.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Approval Required:</strong> Void and refund operations require supervisor or manager approval. You cannot perform these alone.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Idempotency:</strong> All payments are idempotent. Duplicate payment requests produce no duplicate effect. This protects against duplicate charges.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Loyalty Points:</strong> Loyalty points are earned on payment and reversed on void/refund. Customer loyalty balance is always accurate.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Audit Trail:</strong> All transactions, voids, refunds, and approvals are logged for compliance and reconciliation.
+            </div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="supervisor.html">Supervisor Manual →</a>
+            <a href="manager.html">Manager Manual →</a>
+        </div>
+        
+        <footer>
+            <p>Cashier Manual — POS System Target State Documentation</p>
+            <p>Generated: 2026-04-25 | Authority: Tier 1 Channel Integrity (G4)</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS System User Manual - Target State</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        .status-banner {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        
+        .status-banner strong {
+            color: #856404;
+        }
+        
+        .manual-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .manual-card {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        
+        .manual-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .manual-card h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+        
+        .manual-card p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .manual-card a {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        .manual-card a:hover {
+            background: #764ba2;
+        }
+        
+        .icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .section {
+            background: white;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: #764ba2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-list li:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .warning {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .warning strong {
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .info strong {
+            color: #0c5460;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            margin-top: 40px;
+        }
+        
+        .toc {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+        }
+        
+        .toc h3 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .toc li {
+            padding: 8px 0;
+        }
+        
+        .toc a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .toc a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏪 POS System User Manual</h1>
+            <p>Target State Documentation — Post-Critical Fixes</p>
+        </header>
+        
+        <div class="status-banner">
+            <strong>⚠️ TARGET STATE DOCUMENTATION</strong><br>
+            This manual documents the POS system as it will function after all critical findings (CRITICAL-001 through CRITICAL-005) are resolved. This is a specification for the desired end state, not the current system state.
+        </div>
+        
+        <div class="toc">
+            <h3>📋 Quick Navigation</h3>
+            <ul>
+                <li><a href="cashier.html">👤 Cashier Manual</a> — Daily operations, order entry, payment processing</li>
+                <li><a href="supervisor.html">👨‍💼 Supervisor Manual</a> — Approvals, discounts, session management</li>
+                <li><a href="manager.html">👔 Manager Manual</a> — Configuration, reporting, user management</li>
+                <li><a href="#overview">System Overview</a> — Architecture and key concepts</li>
+                <li><a href="#workflows">Core Workflows</a> — End-to-end processes</li>
+                <li><a href="#critical-fixes">Critical Fixes</a> — What changes in target state</li>
+            </ul>
+        </div>
+        
+        <div class="manual-grid">
+            <div class="manual-card">
+                <div class="icon">👤</div>
+                <h2>Cashier Manual</h2>
+                <p>Complete guide for daily POS operations including order entry, payment processing, and basic troubleshooting.</p>
+                <a href="cashier.html">View Cashier Manual →</a>
+            </div>
+            
+            <div class="manual-card">
+                <div class="icon">👨‍💼</div>
+                <h2>Supervisor Manual</h2>
+                <p>Supervisor workflows including discount approvals, void/refund authorization, and session oversight.</p>
+                <a href="supervisor.html">View Supervisor Manual →</a>
+            </div>
+            
+            <div class="manual-card">
+                <div class="icon">👔</div>
+                <h2>Manager Manual</h2>
+                <p>Manager responsibilities including POS configuration, reporting, user management, and system administration.</p>
+                <a href="manager.html">View Manager Manual →</a>
+            </div>
+        </div>
+        
+        <div class="section" id="overview">
+            <h2>System Overview</h2>
+            
+            <h3>What is the POS System?</h3>
+            <p>The POS (Point of Sale) system is the retail transaction processing engine for NoovaERP. It handles:</p>
+            <ul class="feature-list">
+                <li>Order creation and item management</li>
+                <li>Payment processing (cash, card, digital)</li>
+                <li>Inventory management and stock tracking</li>
+                <li>Loyalty points earning and redemption</li>
+                <li>Session management and cashier accountability</li>
+                <li>Void/refund processing with proper governance</li>
+                <li>Offline order queuing and sync</li>
+                <li>Comprehensive audit logging</li>
+            </ul>
+            
+            <h3>Key Concepts</h3>
+            <p><strong>Terminal:</strong> A physical POS device (register, kiosk, mobile device) where transactions occur.</p>
+            <p><strong>Session:</strong> A cashier's work period on a terminal. Sessions have opening and closing balances for cash reconciliation.</p>
+            <p><strong>Order:</strong> A customer transaction containing items, discounts, and payment information.</p>
+            <p><strong>Payment:</strong> The method and amount used to settle an order (cash, card, loyalty points, etc.).</p>
+            <p><strong>Loyalty Points:</strong> Customer rewards earned on purchases and reversed on refunds.</p>
+            
+            <div class="info">
+                <strong>ℹ️ Session Requirement:</strong> All orders must be created within an active session. Sessions are opened at the start of a cashier's shift and closed at the end.
+            </div>
+        </div>
+        
+        <div class="section" id="workflows">
+            <h2>Core Workflows</h2>
+            
+            <h3>1. Daily Startup Workflow</h3>
+            <ol>
+                <li>Cashier logs into POS system</li>
+                <li>Selects terminal from available list</li>
+                <li>Opens new session with opening balance (cash in drawer)</li>
+                <li>System confirms session is active</li>
+                <li>Cashier ready to process orders</li>
+            </ol>
+            
+            <h3>2. Order Entry Workflow</h3>
+            <ol>
+                <li>Cashier creates new order</li>
+                <li>Scans barcode or searches for product</li>
+                <li>System validates barcode and confirms product details</li>
+                <li>Item added to order with quantity</li>
+                <li>Repeat for additional items</li>
+                <li>Apply customer (optional)</li>
+                <li>Apply discount (if authorized)</li>
+                <li>Order ready for payment</li>
+            </ol>
+            
+            <h3>3. Payment Processing Workflow</h3>
+            <ol>
+                <li>Cashier initiates payment</li>
+                <li>Selects payment method (cash, card, etc.)</li>
+                <li>Enters amount received</li>
+                <li>System processes payment through canonical completion service</li>
+                <li>Payment is idempotent (duplicate requests produce no duplicate effect)</li>
+                <li>Loyalty points earned (if applicable)</li>
+                <li>Inventory deducted</li>
+                <li>GL posting created</li>
+                <li>Receipt generated</li>
+                <li>Order marked as paid</li>
+            </ol>
+            
+            <h3>4. Void Workflow (Target State)</h3>
+            <ol>
+                <li>Cashier selects paid order to void</li>
+                <li>Enters void reason</li>
+                <li>System routes void through Sales module (canonical owner)</li>
+                <li>Supervisor/Manager approval required</li>
+                <li>Upon approval:</li>
+                <li style="margin-left: 20px;">✓ Inventory reversed</li>
+                <li style="margin-left: 20px;">✓ Loyalty points reversed</li>
+                <li style="margin-left: 20px;">✓ GL reversal entry created</li>
+                <li style="margin-left: 20px;">✓ Audit log recorded</li>
+                <li>Order marked as void</li>
+                <li>Refund payment recorded</li>
+            </ol>
+            
+            <h3>5. Refund Workflow (Target State)</h3>
+            <ol>
+                <li>Cashier selects paid order to refund</li>
+                <li>Selects items to refund (partial or full)</li>
+                <li>Enters refund reason</li>
+                <li>System routes refund through Sales module (canonical owner)</li>
+                <li>Supervisor/Manager approval required</li>
+                <li>Upon approval:</li>
+                <li style="margin-left: 20px;">✓ Inventory reversed for refunded items</li>
+                <li style="margin-left: 20px;">✓ Loyalty points reversed proportionally</li>
+                <li style="margin-left: 20px;">✓ GL reversal entry created</li>
+                <li style="margin-left: 20px;">✓ Audit log recorded</li>
+                <li>Return order created</li>
+                <li>Refund payment recorded</li>
+            </ol>
+            
+            <h3>6. Offline Order Workflow (Target State)</h3>
+            <ol>
+                <li>Network connection lost</li>
+                <li>Cashier continues creating orders (orders queued locally)</li>
+                <li>Payment processing queued for sync</li>
+                <li>Network restored</li>
+                <li>System automatically syncs queued orders</li>
+                <li>Sync is idempotent (duplicate orders prevented)</li>
+                <li>All side effects applied (inventory, loyalty, GL)</li>
+            </ol>
+            
+            <h3>7. Session Close Workflow</h3>
+            <ol>
+                <li>Cashier counts cash in drawer</li>
+                <li>Enters closing balance</li>
+                <li>System calculates expected balance from session transactions</li>
+                <li>Variance calculated and recorded</li>
+                <li>Session closed</li>
+                <li>Report generated for reconciliation</li>
+            </ol>
+        </div>
+        
+        <div class="section" id="critical-fixes">
+            <h2>Critical Fixes in Target State</h2>
+            
+            <h3>CRITICAL-001: Loyalty Points Reversal</h3>
+            <p><strong>Current Issue:</strong> Loyalty points earned on payment are not reversed when order is voided or refunded.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>Event listener added for void/refund events</li>
+                <li>PointsEarningService::reversePoints() called on void</li>
+                <li>RedemptionService::reverseRedemption() called for redeemed points</li>
+                <li>Loyalty balance correctly reflects all transactions</li>
+                <li>Audit trail shows point reversal</li>
+            </ul>
+            
+            <h3>CRITICAL-002: Offline Sync Mechanism</h3>
+            <p><strong>Current Issue:</strong> POS cannot operate offline. No offline order queue infrastructure.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>PosOfflineOrder table created for queuing</li>
+                <li>Orders created during outage stored locally</li>
+                <li>Sync job replays offline orders when connection restored</li>
+                <li>Idempotency key prevents duplicate orders</li>
+                <li>All side effects applied on sync (inventory, loyalty, GL)</li>
+                <li>Cashier can continue working during network outage</li>
+            </ul>
+            
+            <h3>CRITICAL-003: Session Enforcement</h3>
+            <p><strong>Current Issue:</strong> Payment can proceed without active session if session_id is null.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>Session validation enforced on order creation</li>
+                <li>Session validation enforced on payment</li>
+                <li>Payment fails if session_id is null or session not open</li>
+                <li>Cashier identity always enforced</li>
+                <li>Terminal context always maintained</li>
+            </ul>
+            
+            <h3>CRITICAL-004: Barcode Fallback Validation</h3>
+            <p><strong>Current Issue:</strong> Barcode resolution is deterministic but no validation before mutation.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>Barcode resolution uses explicit ordering (deterministic)</li>
+                <li>Confirmation dialog shown for barcode fallback</li>
+                <li>Audit logging records barcode resolution method</li>
+                <li>Validation confirms barcode is correct before inventory mutation</li>
+                <li>Fallback to ambiguous fields prevented</li>
+            </ul>
+            
+            <h3>CRITICAL-005: Entitlement Enforcement</h3>
+            <p><strong>Current Issue:</strong> Manager approval uses password check instead of entitlement system.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>Manager role validated through entitlement system</li>
+                <li>Password-based approval replaced with entitlement check</li>
+                <li>Audit trail recorded through entitlement system</li>
+                <li>Void/refund approval enforced via EnsureEntitlementAccess middleware</li>
+                <li>No bypass paths for approval</li>
+            </ul>
+            
+            <h3>WS-05 Sales Integration</h3>
+            <p><strong>Current Issue:</strong> Void/refund logic missing from Sales module. POS bypasses Sales entirely.</p>
+            <p><strong>Target State Fix:</strong></p>
+            <ul class="feature-list">
+                <li>Sales module implements canonical refund/void/return lifecycle</li>
+                <li>POS void routes through SalesOrderService::void()</li>
+                <li>POS refund routes through SalesOrderService::refund()</li>
+                <li>All side effects cascade through Sales (inventory, loyalty, GL)</li>
+                <li>Unified refund trigger for all channels</li>
+                <li>Inventory reversal triggered on credit note posting</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>Important Notes</h2>
+            
+            <div class="warning">
+                <strong>⚠️ Session Requirement:</strong> All orders must be created within an active session. You cannot process orders without opening a session first.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Approval Requirements:</strong> Void and refund operations require supervisor or manager approval. These cannot be performed by cashiers alone.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Idempotency:</strong> All critical operations are idempotent. If a payment request is sent twice, only one payment is recorded. This prevents duplicate charges.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Offline Mode:</strong> The system can queue orders during network outages. When connection is restored, orders are automatically synced with no duplicate effect.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Audit Trail:</strong> All transactions, voids, refunds, and approvals are logged for compliance and reconciliation.
+            </div>
+        </div>
+        
+        <footer>
+            <p>POS System User Manual — Target State Documentation</p>
+            <p>Generated: 2026-04-25 | Authority: Tier 1 Channel Integrity (G4)</p>
+            <p>This manual documents the system after critical fixes CRITICAL-001 through CRITICAL-005 and WS-05 Sales integration are complete.</p>
+        </footer>
+    </div>
+</body>
+</html>

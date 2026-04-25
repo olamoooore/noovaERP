@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager Manual - POS System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: #764ba2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .step-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .step-action {
+            margin: 10px 0 5px 40px;
+            color: #555;
+        }
+        
+        .step-action:before {
+            content: "→ ";
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .button-label {
+            display: inline-block;
+            background: #e8eef7;
+            border: 1px solid #667eea;
+            color: #667eea;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 0 2px;
+        }
+        
+        .warning {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning strong {
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .info strong {
+            color: #0c5460;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success strong {
+            color: #155724;
+        }
+        
+        .config-box {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .nav-links {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        
+        .nav-links a {
+            display: inline-block;
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👔 Manager Manual</h1>
+            <p>Configuration, reporting, and system administration</p>
+        </header>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="cashier.html">← Cashier Manual</a>
+            <a href="supervisor.html">← Supervisor Manual</a>
+        </div>
+        
+        <div class="section">
+            <h2>Manager Responsibilities</h2>
+            
+            <p>As a manager, you have the following responsibilities:</p>
+            <ul style="margin-left: 20px;">
+                <li>Configure POS terminals and payment methods</li>
+                <li>Manage user accounts and permissions</li>
+                <li>Monitor POS performance and compliance</li>
+                <li>Generate and review reports</li>
+                <li>Manage loyalty program settings</li>
+                <li>Handle escalations and exceptions</li>
+                <li>Ensure audit trail integrity</li>
+                <li>Manage system settings and configurations</li>
+            </ul>
+            
+            <div class="info">
+                <strong>ℹ️ Entitlement:</strong> All manager functions are validated through the entitlement system. You must have the "pos_manager" role to access manager features.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Terminal Management</h2>
+            
+            <h3>Adding a New Terminal</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Access Terminal Settings</div>
+                <div class="step-action">Click <span class="button-label">Settings</span> on manager dashboard</div>
+                <div class="step-action">Click <span class="button-label">Terminals</span></div>
+                <div class="step-action">System displays list of existing terminals</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Create New Terminal</div>
+                <div class="step-action">Click <span class="button-label">Add Terminal</span></div>
+                <div class="step-action">Enter terminal details:</div>
+                <div class="step-action" style="margin-left: 60px;">• Terminal Name (e.g., "Register 1", "Kiosk A")</div>
+                <div class="step-action" style="margin-left: 60px;">• Terminal Code (unique identifier)</div>
+                <div class="step-action" style="margin-left: 60px;">• Warehouse (select from list)</div>
+                <div class="step-action" style="margin-left: 60px;">• Device Type (register, kiosk, mobile)</div>
+                <div class="step-action" style="margin-left: 60px;">• IP Address (if applicable)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Configure Terminal</div>
+                <div class="step-action">Select payment methods available on terminal</div>
+                <div class="step-action">Set discount limits for cashiers</div>
+                <div class="step-action">Configure receipt printer settings</div>
+                <div class="step-action">Set barcode scanner settings</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Save Terminal</div>
+                <div class="step-action">Click <span class="button-label">Save</span></div>
+                <div class="step-action">Terminal is created and ready for use</div>
+                <div class="step-action">Cashiers can now select this terminal when opening sessions</div>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Terminal Created</strong><br>
+                Terminal is now available for cashiers to use.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Payment Method Management</h2>
+            
+            <h3>Configuring Payment Methods</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Access Payment Methods</div>
+                <div class="step-action">Click <span class="button-label">Settings</span> on manager dashboard</div>
+                <div class="step-action">Click <span class="button-label">Payment Methods</span></div>
+                <div class="step-action">System displays list of payment methods</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Add Payment Method</div>
+                <div class="step-action">Click <span class="button-label">Add Payment Method</span></div>
+                <div class="step-action">Enter payment method details:</div>
+                <div class="step-action" style="margin-left: 60px;">• Method Name (e.g., "Visa", "Cash", "Apple Pay")</div>
+                <div class="step-action" style="margin-left: 60px;">• Method Type (cash, card, digital, loyalty)</div>
+                <div class="step-action" style="margin-left: 60px;">• Gateway (if applicable)</div>
+                <div class="step-action" style="margin-left: 60px;">• Fee Percentage (if applicable)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Assign to Terminals</div>
+                <div class="step-action">Select terminals where this payment method is available</div>
+                <div class="step-action">Set payment limits (if applicable)</div>
+                <div class="step-action">Configure payment processing settings</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Save Payment Method</div>
+                <div class="step-action">Click <span class="button-label">Save</span></div>
+                <div class="step-action">Payment method is now available on selected terminals</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>User Management</h2>
+            
+            <h3>Managing User Accounts</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Access User Management</div>
+                <div class="step-action">Click <span class="button-label">Settings</span> on manager dashboard</div>
+                <div class="step-action">Click <span class="button-label">Users</span></div>
+                <div class="step-action">System displays list of POS users</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Add New User</div>
+                <div class="step-action">Click <span class="button-label">Add User</span></div>
+                <div class="step-action">Enter user details:</div>
+                <div class="step-action" style="margin-left: 60px;">• First Name</div>
+                <div class="step-action" style="margin-left: 60px;">• Last Name</div>
+                <div class="step-action" style="margin-left: 60px;">• Email</div>
+                <div class="step-action" style="margin-left: 60px;">• Username</div>
+                <div class="step-action" style="margin-left: 60px;">• Role (cashier, supervisor, manager)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Set Permissions</div>
+                <div class="step-action">Select role:</div>
+                <div class="step-action" style="margin-left: 60px;">• Cashier: Process orders, apply discounts (up to limit)</div>
+                <div class="step-action" style="margin-left: 60px;">• Supervisor: Approve discounts, voids, refunds</div>
+                <div class="step-action" style="margin-left: 60px;">• Manager: Full system access, configuration</div>
+                <div class="step-action">Permissions are validated through entitlement system</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Save User</div>
+                <div class="step-action">Click <span class="button-label">Save</span></div>
+                <div class="step-action">User account is created</div>
+                <div class="step-action">User receives login credentials</div>
+                <div class="step-action">User can now log in to POS system</div>
+            </div>
+            
+            <h3>Deactivating Users</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Find User</div>
+                <div class="step-action">Search for user in user list</div>
+                <div class="step-action">Click on user to view details</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Deactivate</div>
+                <div class="step-action">Click <span class="button-label">Deactivate User</span></div>
+                <div class="step-action">Confirm deactivation</div>
+                <div class="step-action">User can no longer log in to POS system</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Reporting & Analytics</h2>
+            
+            <h3>Accessing Reports</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Open Reports Dashboard</div>
+                <div class="step-action">Click <span class="button-label">Reports</span> on manager dashboard</div>
+                <div class="step-action">System displays available reports</div>
+            </div>
+            
+            <h3>Available Reports</h3>
+            
+            <table>
+                <tr>
+                    <th>Report</th>
+                    <th>Description</th>
+                    <th>Use Case</th>
+                </tr>
+                <tr>
+                    <td>Daily Sales</td>
+                    <td>Total sales by terminal, cashier, and payment method</td>
+                    <td>Daily reconciliation, performance tracking</td>
+                </tr>
+                <tr>
+                    <td>Void/Refund</td>
+                    <td>All voids and refunds with approval details</td>
+                    <td>Compliance, fraud detection</td>
+                </tr>
+                <tr>
+                    <td>Session Summary</td>
+                    <td>Session opening/closing balances and variances</td>
+                    <td>Cash reconciliation, cashier accountability</td>
+                </tr>
+                <tr>
+                    <td>Loyalty Points</td>
+                    <td>Points earned, redeemed, and reversed</td>
+                    <td>Loyalty program management</td>
+                </tr>
+                <tr>
+                    <td>Inventory Impact</td>
+                    <td>Stock deductions and reversals by order</td>
+                    <td>Inventory reconciliation</td>
+                </tr>
+                <tr>
+                    <td>GL Posting</td>
+                    <td>All GL entries created by POS</td>
+                    <td>Accounting reconciliation</td>
+                </tr>
+                <tr>
+                    <td>Audit Trail</td>
+                    <td>All approvals, voids, refunds, and exceptions</td>
+                    <td>Compliance, audit</td>
+                </tr>
+            </table>
+            
+            <h3>Generating a Report</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Select Report Type</div>
+                <div class="step-action">Click on report name</div>
+                <div class="step-action">System displays report parameters</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Set Filters</div>
+                <div class="step-action">Select date range</div>
+                <div class="step-action">Select terminal (optional)</div>
+                <div class="step-action">Select cashier (optional)</div>
+                <div class="step-action">Select payment method (optional)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Generate Report</div>
+                <div class="step-action">Click <span class="button-label">Generate</span></div>
+                <div class="step-action">System generates report with filtered data</div>
+                <div class="step-action">Report displays in table format</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Export Report</div>
+                <div class="step-action">Click <span class="button-label">Export to CSV</span> or <span class="button-label">Export to PDF</span></div>
+                <div class="step-action">Report is downloaded to your computer</div>
+                <div class="step-action">You can share or archive report</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Loyalty Program Management</h2>
+            
+            <h3>Configuring Loyalty Settings</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Access Loyalty Settings</div>
+                <div class="step-action">Click <span class="button-label">Settings</span> on manager dashboard</div>
+                <div class="step-action">Click <span class="button-label">Loyalty Program</span></div>
+                <div class="step-action">System displays loyalty configuration</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Configure Points Earning</div>
+                <div class="step-action">Set points per dollar spent</div>
+                <div class="step-action">Set bonus points for specific products</div>
+                <div class="step-action">Set bonus points for specific days/times</div>
+                <div class="step-action">Configure point expiration (if applicable)</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Configure Points Redemption</div>
+                <div class="step-action">Set redemption rates (e.g., 100 points = $5 discount)</div>
+                <div class="step-action">Set minimum points to redeem</div>
+                <div class="step-action">Set maximum points per transaction</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">4</span>Save Settings</div>
+                <div class="step-action">Click <span class="button-label">Save</span></div>
+                <div class="step-action">Settings are applied to all POS terminals</div>
+                <div class="step-action">Loyalty points are earned/redeemed according to new settings</div>
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Loyalty Reversal:</strong> When orders are voided or refunded, loyalty points are automatically reversed. This ensures customer loyalty balance is always accurate.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>System Monitoring</h2>
+            
+            <h3>Dashboard Overview</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>View Dashboard</div>
+                <div class="step-action">Click <span class="button-label">Dashboard</span> on manager home</div>
+                <div class="step-action">System displays real-time POS metrics</div>
+            </div>
+            
+            <h3>Key Metrics</h3>
+            <ul style="margin-left: 20px;">
+                <li><strong>Active Sessions:</strong> Number of open cashier sessions</li>
+                <li><strong>Today's Sales:</strong> Total sales for current day</li>
+                <li><strong>Pending Approvals:</strong> Number of pending discount/void/refund approvals</li>
+                <li><strong>System Health:</strong> POS system status and connectivity</li>
+                <li><strong>Offline Orders:</strong> Number of orders queued for sync</li>
+                <li><strong>Exceptions:</strong> Number of active exceptions or issues</li>
+            </ul>
+            
+            <h3>Monitoring System Health</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Check System Status</div>
+                <div class="step-action">Look at "System Health" section on dashboard</div>
+                <div class="step-action">Green = All systems operational</div>
+                <div class="step-action">Yellow = Minor issues detected</div>
+                <div class="step-action">Red = Critical issues detected</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Investigate Issues</div>
+                <div class="step-action">Click on system status to view details</div>
+                <div class="step-action">System shows affected terminals and services</div>
+                <div class="step-action">System shows recommended actions</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Take Action</div>
+                <div class="step-action">Follow recommended actions</div>
+                <div class="step-action">If issue persists, contact IT support</div>
+                <div class="step-action">Document issue for troubleshooting</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Compliance & Audit</h2>
+            
+            <h3>Audit Trail Access</h3>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Access Audit Trail</div>
+                <div class="step-action">Click <span class="button-label">Audit Trail</span> on manager dashboard</div>
+                <div class="step-action">System displays all POS activities</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Filter Audit Trail</div>
+                <div class="step-action">Filter by date range</div>
+                <div class="step-action">Filter by user</div>
+                <div class="step-action">Filter by action type (approval, void, refund, etc.)</div>
+                <div class="step-action">Filter by terminal</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">3</span>Review Activities</div>
+                <div class="step-action">System shows:</div>
+                <div class="step-action" style="margin-left: 60px;">• User who performed action</div>
+                <div class="step-action" style="margin-left: 60px;">• Action type</div>
+                <div class="step-action" style="margin-left: 60px;">• Timestamp</div>
+                <div class="step-action" style="margin-left: 60px;">• Details (order number, amount, reason, etc.)</div>
+                <div class="step-action" style="margin-left: 60px;">• Approval status (if applicable)</div>
+            </div>
+            
+            <h3>Compliance Checklist</h3>
+            <ul style="margin-left: 20px;">
+                <li>✓ All voids have supervisor approval</li>
+                <li>✓ All refunds have supervisor approval</li>
+                <li>✓ All discounts over limit have supervisor approval</li>
+                <li>✓ All sessions reconcile correctly</li>
+                <li>✓ All loyalty points are reversed on void/refund</li>
+                <li>✓ All inventory is reversed on void/refund</li>
+                <li>✓ All GL entries are created correctly</li>
+                <li>✓ All offline orders are synced</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>Troubleshooting</h2>
+            
+            <h3>Common Issues</h3>
+            
+            <h3>Terminal Not Responding</h3>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Check Connection</div>
+                <div class="step-action">Verify terminal is powered on</div>
+                <div class="step-action">Check network connection (WiFi or Ethernet)</div>
+                <div class="step-action">Restart terminal if needed</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Check System Status</div>
+                <div class="step-action">Go to dashboard and check system health</div>
+                <div class="step-action">If red, contact IT support</div>
+            </div>
+            
+            <h3>Offline Orders Not Syncing</h3>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Check Network</div>
+                <div class="step-action">Verify network connection is restored</div>
+                <div class="step-action">Wait 5 minutes for automatic sync</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Manual Sync</div>
+                <div class="step-action">Go to dashboard</div>
+                <div class="step-action">Click <span class="button-label">Sync Offline Orders</span></div>
+                <div class="step-action">System attempts to sync queued orders</div>
+            </div>
+            
+            <h3>Loyalty Points Not Reversing</h3>
+            <div class="step">
+                <div class="step-title"><span class="step-number">1</span>Check Configuration</div>
+                <div class="step-action">Go to Loyalty Program settings</div>
+                <div class="step-action">Verify loyalty reversal is enabled</div>
+            </div>
+            
+            <div class="step">
+                <div class="step-title"><span class="step-number">2</span>Check Audit Trail</div>
+                <div class="step-action">Go to Audit Trail</div>
+                <div class="step-action">Search for void/refund event</div>
+                <div class="step-action">Verify loyalty reversal is logged</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Key Reminders</h2>
+            
+            <div class="warning">
+                <strong>⚠️ Entitlement Required:</strong> You must have the "pos_manager" role to access manager features. Your credentials are validated through the entitlement system.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Audit Trail:</strong> All manager actions are logged. Configuration changes are auditable and traceable.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ System Integrity:</strong> All critical operations are idempotent. Duplicate requests produce no duplicate effect. This protects data consistency.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Compliance:</strong> POS system is designed for compliance. All transactions, approvals, and exceptions are logged for audit and reconciliation.
+            </div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="index.html">← Back to Index</a>
+            <a href="cashier.html">← Cashier Manual</a>
+            <a href="supervisor.html">← Supervisor Manual</a>
+        </div>
+        
+        <footer>
+            <p>Manager Manual — POS System Target State Documentation</p>
+            <p>Generated: 2026-04-25 | Authority: Tier 1 Channel Integrity (G4)</p>
+        </footer>
+    </div>
+</body>
+</html>

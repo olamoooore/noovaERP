@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Cashier Manual V2 — Production Ready</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; border-radius: 8px; margin-bottom: 30px; }
+        header h1 { font-size: 2em; margin-bottom: 5px; }
+        .status-banner { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 30px; border-radius: 4px; }
+        .status-banner.verified { background: #d4edda; border-left-color: #28a745; }
+        .status-banner.warning { background: #f8d7da; border-left-color: #dc3545; }
+        .section { background: white; padding: 25px; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .section h2 { color: #667eea; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .section h3 { color: #764ba2; margin-top: 20px; margin-bottom: 10px; }
+        .workflow-step { background: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #667eea; border-radius: 4px; }
+        .step-number { display: inline-block; background: #667eea; color: white; width: 30px; height: 30px; border-radius: 50%; text-align: center; line-height: 30px; margin-right: 10px; font-weight: bold; }
+        .step-title { font-weight: bold; color: #333; margin-bottom: 5px; }
+        .api-endpoint { background: #e8eef7; border: 1px solid #667eea; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }
+        .verification { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 10px; margin: 10px 0; border-radius: 4px; font-size: 0.9em; }
+        .verification strong { color: #0c5460; }
+        .not-verified { background: #f8d7da; border-left: 4px solid #dc3545; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .not-verified strong { color: #721c24; }
+        .coming-soon { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .coming-soon strong { color: #856404; }
+        .screenshot-placeholder { background: #f0f0f0; border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 15px 0; border-radius: 4px; }
+        .screenshot-placeholder p { color: #666; font-style: italic; }
+        .warning { background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .warning strong { color: #721c24; }
+        .info { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .info strong { color: #0c5460; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .success strong { color: #155724; }
+        .nav-links { margin: 20px 0; padding: 15px; background: #f0f0f0; border-radius: 4px; }
+        .nav-links a { display: inline-block; margin-right: 15px; color: #667eea; text-decoration: none; }
+        footer { text-align: center; padding: 20px; color: #666; border-top: 1px solid #ddd; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👤 POS Cashier Manual V2</h1>
+            <p>Production-Ready — Zero Hallucination</p>
+        </header>
+        
+        <div class="status-banner verified">
+            <strong>✅ BACKEND VERIFIED</strong><br>
+            All API endpoints, request parameters, and response structures are verified from actual backend code.
+        </div>
+        
+        <div class="status-banner warning">
+            <strong>⚠️ FRONTEND UI NOT VERIFIED</strong><br>
+            No frontend code found in repository. Button labels, navigation paths, and screen layouts cannot be verified. See <a href="ui-verification-report.md">UI Verification Report</a>.
+        </div>
+        
+        <div class="nav-links">
+            <a href="v2-index.html">← Back to Index</a>
+            <a href="v2-supervisor.html">Supervisor Manual →</a>
+            <a href="v2-manager.html">Manager Manual →</a>
+        </div>
+        
+        <!-- DAY 1 TRAINING FLOW -->
+        <div class="section">
+            <h2>🎓 DAY 1 TRAINING FLOW</h2>
+            <p><strong>Objective:</strong> Complete basic POS operation in 15 minutes.</p>
+            
+            <div class="workflow-step">
+                <div class="step-title"><span class="step-number">1</span>Open Session</div>
+                <p>Learn to start your shift and open a cash drawer session.</p>
+                <p><strong>Time:</strong> 3 minutes</p>
+            </div>
+            
+            <div class="workflow-step">
+                <div class="step-title"><span class="step-number">2</span>Scan 3 Items</div>
+                <p>Practice scanning products using barcode scanner.</p>
+                <p><strong>Time:</strong> 5 minutes</p>
+            </div>
+            
+            <div class="workflow-step">
+                <div class="step-title"><span class="step-number">3</span>Apply Customer</div>
+                <p>Learn to add customer to order for loyalty points.</p>
+                <p><strong>Time:</strong> 2 minutes</p>
+            </div>
+            
+            <div class="workflow-step">
+                <div class="step-title"><span class="step-number">4</span>Process Cash Payment</div>
+                <p>Complete a cash transaction and give change.</p>
+                <p><strong>Time:</strong> 3 minutes</p>
+            </div>
+            
+            <div class="workflow-step">
+                <div class="step-title"><span class="step-number">5</span>Print Receipt</div>
+                <p>Generate and hand receipt to customer.</p>
+                <p><strong>Time:</strong> 2 minutes</p>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Training Complete</strong><br>
+                You can now process basic transactions. Continue to advanced topics below.
+            </div>
+        </div>
+        
+        <!-- OPENING SESSION -->
+        <div class="section">
+            <h2>Opening Your Session</h2>
+            
+            <h3>Step 1: Log In</h3>
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Login screen UI not found in codebase. Cannot verify exact button labels or field names.
+            </div>
+            
+            <div class="screenshot-placeholder">
+                <p>⚠️ SCREENSHOT NOT AVAILABLE</p>
+                <p>Frontend UI not found in repository</p>
+            </div>
+            
+            <h3>Step 2: Select Terminal</h3>
+            <div class="api-endpoint">
+                <strong>GET</strong> /pos/terminals
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosTerminalController::index() (line 15)<br>
+                <strong>Response:</strong> List of terminals with id, name, code, warehouse, has_open_session
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Terminal selection screen UI not found. Cannot verify how terminals are displayed or selected.
+            </div>
+            
+            <h3>Step 3: Open Session</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/sessions/open<br>
+                <strong>Parameters:</strong><br>
+                - terminal_id (required, integer)<br>
+                - opening_balance (required, numeric, min: 0)<br>
+                - notes (optional, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosSessionController::openSession() (line 43)<br>
+                <strong>Validation:</strong> terminal_id required, opening_balance required<br>
+                <strong>Response:</strong> Session object with id, terminal, user, status, opening_balance
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Session opening form UI not found. Cannot verify field labels or button text.
+            </div>
+            
+            <div class="screenshot-placeholder">
+                <p>⚠️ SCREENSHOT NOT AVAILABLE</p>
+                <p>Frontend UI not found in repository</p>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Session Opened</strong><br>
+                Response includes session ID and status "open". You can now process orders.
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ SESSION REQUIRED (CRITICAL-003)</strong><br>
+                <strong>Current State:</strong> Session validation may not be enforced if session_id is null.<br>
+                <strong>Target State:</strong> Session will be required for all operations after CRITICAL-003 fix.
+            </div>
+        </div>
+        
+        <!-- PROCESSING ORDERS -->
+        <div class="section">
+            <h2>Processing Orders</h2>
+            
+            <h3>Step 1: Create New Order</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/orders<br>
+                <strong>Parameters:</strong><br>
+                - session_id (required, exists:pos_sessions,id)<br>
+                - items (required, array)<br>
+                - items.*.product_id (required, exists:products,id)<br>
+                - items.*.quantity (required, numeric, min: 1)<br>
+                - customer_id (optional, exists:customers,id)<br>
+                - discount_amount (optional, numeric)<br>
+                - discount_reason (optional, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosOrderController::store() (line 165)<br>
+                <strong>Response:</strong> Order object with id, order_number, status, items, total
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Order creation screen UI not found. Cannot verify how items are added or displayed.
+            </div>
+            
+            <h3>Step 2: Scan Barcode</h3>
+            <div class="api-endpoint">
+                <strong>GET</strong> /pos/products/lookup<br>
+                <strong>Parameters:</strong><br>
+                - barcode (optional, string)<br>
+                - sku (optional, string)<br>
+                - name (optional, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosProductController::lookup() (line 11)<br>
+                <strong>Response:</strong> Product object with id, name, sku, barcode, price
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Barcode scanning UI not found. Cannot verify:
+                <ul>
+                    <li>Auto-focus behavior on scan field</li>
+                    <li>Duplicate scan handling (quantity increment)</li>
+                    <li>Multiple product match modal</li>
+                    <li>Fallback confirmation dialog</li>
+                </ul>
+            </div>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-004)</strong><br>
+                <strong>Barcode Fallback Validation:</strong><br>
+                - Confirmation dialog for barcode fallback<br>
+                - Audit logging for barcode resolution<br>
+                - Validation before inventory mutation
+            </div>
+            
+            <h3>Barcode Behavior (NOT VERIFIED)</h3>
+            <div class="not-verified">
+                <strong>⚠️ CANNOT VERIFY FROM CODE</strong><br>
+                The following behaviors cannot be verified without frontend code:
+                <ul>
+                    <li><strong>Scan Behavior:</strong> Auto-focus on scan field? Scan without clicking?</li>
+                    <li><strong>Duplicate Scan:</strong> Does scanning same barcode increment quantity?</li>
+                    <li><strong>Multiple Match:</strong> What happens when barcode matches multiple products?</li>
+                    <li><strong>Fallback Dialog:</strong> Is there a confirmation dialog for fallback?</li>
+                    <li><strong>Keyboard vs Scanner:</strong> How does system differentiate?</li>
+                </ul>
+                <strong>Action Required:</strong> Frontend team must provide UI specifications.
+            </div>
+            
+            <h3>Step 3: Add Customer (Optional)</h3>
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Customer search/selection UI not found. Cannot verify how customers are searched or added.
+            </div>
+            
+            <h3>Step 4: Apply Discount (If Authorized)</h3>
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Discount application UI not found. Cannot verify discount limits or approval flow.
+            </div>
+            
+            <div class="info">
+                <strong>ℹ️ Discount Limits (NOT VERIFIED)</strong><br>
+                Discount limits cannot be verified from code. Frontend team must provide:
+                <ul>
+                    <li>Cashier discount limit (amount/percentage)</li>
+                    <li>Supervisor approval threshold</li>
+                    <li>Discount application flow</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- PAYMENT PROCESSING -->
+        <div class="section">
+            <h2>Payment Processing</h2>
+            
+            <h3>Step 1: Initiate Payment</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/orders/{id}/pay<br>
+                <strong>Parameters:</strong><br>
+                - payment_method (required, string)<br>
+                - amount (required, numeric, min: 0)<br>
+                - reference (optional, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosOrderController::pay() (line 367)<br>
+                <strong>Service:</strong> PosPaymentCompletionService::complete()<br>
+                <strong>Response:</strong> Payment object with id, method, amount, status
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Payment screen UI not found. Cannot verify:
+                <ul>
+                    <li>Payment method selection buttons</li>
+                    <li>Amount entry field</li>
+                    <li>Change calculation display</li>
+                    <li>Payment confirmation button</li>
+                </ul>
+            </div>
+            
+            <h3>Payment Methods (VERIFIED)</h3>
+            <div class="verification">
+                <strong>✓ VERIFIED FROM SETTINGS</strong><br>
+                <strong>Source:</strong> PosSettingController.php<br>
+                Available payment methods configured in settings.
+            </div>
+            
+            <h3>Payment Idempotency (VERIFIED)</h3>
+            <div class="success">
+                <strong>✓ VERIFIED</strong><br>
+                Payment processing is idempotent. Duplicate payment requests with same reference will not create duplicate charges.
+            </div>
+            
+            <h3>Real Error Scenarios (NOT VERIFIED)</h3>
+            <div class="not-verified">
+                <strong>⚠️ CANNOT VERIFY FROM CODE</strong><br>
+                The following error scenarios cannot be verified without frontend code:
+                <ul>
+                    <li><strong>Payment Failure:</strong> What happens when payment fails? What does cashier see?</li>
+                    <li><strong>Card Declined:</strong> What message is displayed? What are next steps?</li>
+                    <li><strong>Duplicate Payment:</strong> How is duplicate detected? What message is shown?</li>
+                    <li><strong>Payment Retry:</strong> Can cashier retry? How many times?</li>
+                </ul>
+                <strong>Action Required:</strong> Frontend team must provide error handling specifications.
+            </div>
+            
+            <h3>Step 2: Payment Confirmation</h3>
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-001)</strong><br>
+                <strong>Loyalty Points:</strong> After payment, loyalty points will be earned automatically.<br>
+                <strong>Current State:</strong> Points earned on payment.<br>
+                <strong>Target State:</strong> Points will be reversed on void/refund after CRITICAL-001 fix.
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Side Effects:</strong><br>
+                - Inventory deducted (via InventoryService)<br>
+                - GL posting created (via PostingEngine)<br>
+                - Order status updated to "paid"
+            </div>
+        </div>
+        
+        <!-- RECEIPT -->
+        <div class="section">
+            <h2>Receipt</h2>
+            
+            <h3>Print Receipt</h3>
+            <div class="api-endpoint">
+                <strong>GET</strong> /pos/orders/{id}/receipt
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosOrderController::receipt() (line 814)<br>
+                <strong>Template:</strong> backend/modules/POS/resources/views/receipt.blade.php
+            </div>
+            
+            <h3>Receipt Content (VERIFIED)</h3>
+            <div class="verification">
+                <strong>✓ VERIFIED FROM TEMPLATE</strong><br>
+                <strong>Receipt includes:</strong>
+                <ul>
+                    <li>Store name: {{ $settings['business_name'] ?? 'NoovaERP Store' }}</li>
+                    <li>Receipt #: {{ $order->receipt_number ?? $order->order_number }}</li>
+                    <li>Date: M d, Y, h:i A format</li>
+                    <li>Terminal ID</li>
+                    <li>Customer name (if added)</li>
+                    <li>Items: Item | Qty | Price | Total</li>
+                    <li>Subtotal, Tax, Discount, TOTAL</li>
+                    <li>Payment Method (uppercase)</li>
+                    <li>Amount Tendered</li>
+                    <li>Barcode: *{{ $order->order_number }}*</li>
+                    <li>Footer: "Thank you for your purchase!"</li>
+                </ul>
+            </div>
+            
+            <div class="screenshot-placeholder">
+                <p>⚠️ SCREENSHOT NOT AVAILABLE</p>
+                <p>Receipt template is HTML (receipt.blade.php). Actual printed receipt appearance depends on printer settings.</p>
+            </div>
+        </div>
+        
+        <!-- VOID & REFUND -->
+        <div class="section">
+            <h2>Void & Refund Operations</h2>
+            
+            <div class="warning">
+                <strong>⚠️ APPROVAL REQUIRED</strong><br>
+                Void and refund operations require supervisor or manager approval. You cannot perform these alone.
+            </div>
+            
+            <h3>Void Order</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/orders/{id}/void<br>
+                <strong>Parameters:</strong><br>
+                - reason (required, string)<br>
+                - manager_id (required, exists:users,id)<br>
+                - manager_password (required, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosOrderController::void() (line 534)<br>
+                <strong>Current Implementation:</strong> Password-based approval
+            </div>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-005)</strong><br>
+                <strong>Current:</strong> Manager enters password for approval<br>
+                <strong>Target:</strong> Entitlement-based approval (no password field)<br>
+                <strong>Fix:</strong> Replace password with EnsureEntitlementAccess middleware
+            </div>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-001)</strong><br>
+                <strong>Current:</strong> Loyalty points NOT reversed on void<br>
+                <strong>Target:</strong> Loyalty points will be reversed automatically<br>
+                <strong>Fix:</strong> Add event listener for PosOrderVoided
+            </div>
+            
+            <h3>Refund Items</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/orders/{id}/refund<br>
+                <strong>Parameters:</strong><br>
+                - items (required, array)<br>
+                - reason (required, string)<br>
+                - manager_id (required, exists:users,id)<br>
+                - manager_password (required, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosOrderController::refund() (line 648)<br>
+                <strong>Current Implementation:</strong> Password-based approval
+            </div>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-005)</strong><br>
+                <strong>Current:</strong> Manager enters password for approval<br>
+                <strong>Target:</strong> Entitlement-based approval (no password field)
+            </div>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-001)</strong><br>
+                <strong>Current:</strong> Loyalty points NOT reversed on refund<br>
+                <strong>Target:</strong> Loyalty points will be reversed proportionally
+            </div>
+            
+            <h3>Refund Edge Cases (NOT VERIFIED)</h3>
+            <div class="not-verified">
+                <strong>⚠️ CANNOT VERIFY FROM CODE</strong><br>
+                The following refund scenarios cannot be verified:
+                <ul>
+                    <li><strong>Partial Refund:</strong> How are items selected for partial refund?</li>
+                    <li><strong>Refund to Different Method:</strong> Can refund go to different payment method?</li>
+                    <li><strong>Refund Limit:</strong> Is there a refund amount limit?</li>
+                    <li><strong>Refund Time Limit:</strong> Is there a time limit for refunds?</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- OFFLINE MODE -->
+        <div class="section">
+            <h2>Offline Mode</h2>
+            
+            <div class="coming-soon">
+                <strong>⚠️ COMING AFTER FIX (CRITICAL-002)</strong><br>
+                <strong>Current State:</strong> Offline mode NOT implemented. POS cannot operate during network outage.<br>
+                <strong>Target State:</strong> After CRITICAL-002 fix:
+                <ul>
+                    <li>Orders queued locally during network outage</li>
+                    <li>Automatic sync when connection restored</li>
+                    <li>Idempotency key prevents duplicate orders</li>
+                    <li>All side effects applied on sync</li>
+                </ul>
+            </div>
+            
+            <div class="not-verified">
+                <strong>⚠️ NOT IMPLEMENTED</strong><br>
+                <strong>Missing Components:</strong>
+                <ul>
+                    <li>PosOfflineOrder model/table</li>
+                    <li>Offline sync job</li>
+                    <li>Idempotency key handling</li>
+                    <li>Offline UI indicators</li>
+                </ul>
+            </div>
+            
+            <h3>Offline Mode UX (NOT VERIFIED)</h3>
+            <div class="not-verified">
+                <strong>⚠️ CANNOT VERIFY FROM CODE</strong><br>
+                The following cannot be verified:
+                <ul>
+                    <li><strong>Offline Indicator:</strong> How does cashier know system is offline?</li>
+                    <li><strong>Queue Status:</strong> How many orders are queued?</li>
+                    <li><strong>Sync Status:</strong> When is sync complete?</li>
+                    <li><strong>Conflict Resolution:</strong> What happens if sync fails?</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- CLOSING SESSION -->
+        <div class="section">
+            <h2>Closing Your Session</h2>
+            
+            <h3>Step 1: Count Cash</h3>
+            <div class="not-verified">
+                <strong>⚠️ UI ELEMENT NOT VERIFIED</strong><br>
+                Cash counting UI not found. Cannot verify how cash is counted or recorded.
+            </div>
+            
+            <h3>Step 2: Close Session</h3>
+            <div class="api-endpoint">
+                <strong>POST</strong> /pos/sessions/{id}/close<br>
+                <strong>Parameters:</strong><br>
+                - closing_balance (required, numeric, min: 0)<br>
+                - notes (optional, string)
+            </div>
+            
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Source:</strong> PosSessionController::closeSession() (line 113)<br>
+                <strong>Response:</strong> Session object with summary and variance
+            </div>
+            
+            <h3>Session Summary (VERIFIED)</h3>
+            <div class="verification">
+                <strong>✓ VERIFIED</strong><br>
+                <strong>Summary includes:</strong>
+                <ul>
+                    <li>Opening balance</li>
+                    <li>Total sales</li>
+                    <li>Total voids</li>
+                    <li>Total refunds</li>
+                    <li>Expected closing balance</li>
+                    <li>Variance (actual vs expected)</li>
+                </ul>
+            </div>
+            
+            <div class="success">
+                <strong>✓ Session Closed</strong><br>
+                Session status changes to "closed". Report is generated for reconciliation.
+            </div>
+        </div>
+        
+        <!-- COMMON MISTAKES -->
+        <div class="section">
+            <h2>Common Mistakes</h2>
+            
+            <h3>❌ DON'T</h3>
+            <ul>
+                <li>❌ Don't process orders without opening a session</li>
+                <li>❌ Don't try to void/refund without supervisor approval</li>
+                <li>❌ Don't assume offline mode works (not yet implemented)</li>
+                <li>❌ Don't assume loyalty points are reversed on void/refund (not yet implemented)</li>
+                <li>❌ Don't share your login credentials</li>
+            </ul>
+            
+            <h3>✅ DO</h3>
+            <ul>
+                <li>✅ Always open session before processing orders</li>
+                <li>✅ Count cash at start and end of shift</li>
+                <li>✅ Request supervisor approval for void/refund</li>
+                <li>✅ Verify order total before processing payment</li>
+                <li>✅ Give receipt to customer</li>
+            </ul>
+        </div>
+        
+        <!-- TROUBLESHOOTING -->
+        <div class="section">
+            <h2>Troubleshooting</h2>
+            
+            <h3>Common Issues</h3>
+            
+            <div class="not-verified">
+                <strong>⚠️ UI ERROR MESSAGES NOT VERIFIED</strong><br>
+                Error message displays cannot be verified without frontend code.
+            </div>
+            
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr style="background: #667eea; color: white;">
+                    <th style="padding: 12px; text-align: left;">Issue</th>
+                    <th style="padding: 12px; text-align: left;">What to Do</th>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 12px;">Cannot create order</td>
+                    <td style="padding: 12px;">Check if session is open. Session is required.</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 12px;">Payment fails</td>
+                    <td style="padding: 12px;">Try different payment method. Check card reader.</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 12px;">Cannot void/refund</td>
+                    <td style="padding: 12px;">Requires supervisor approval. Call supervisor.</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 12px;">Network down</td>
+                    <td style="padding: 12px;">Offline mode not yet available. Wait for network.</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px;">Receipt won't print</td>
+                    <td style="padding: 12px;">Check printer connection and paper.</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="nav-links">
+            <a href="v2-index.html">← Back to Index</a>
+            <a href="v2-supervisor.html">Supervisor Manual →</a>
+            <a href="v2-manager.html">Manager Manual →</a>
+        </div>
+        
+        <footer>
+            <p>POS Cashier Manual V2 — Production Ready</p>
+            <p>Generated: 2026-04-25 | Authority: Tier 1 Channel Integrity (G4)</p>
+            <p>Backend Verified | Frontend UI Not Verified</p>
+        </footer>
+    </div>
+</body>
+</html>
