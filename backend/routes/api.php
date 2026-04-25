@@ -11,11 +11,35 @@ use App\Http\Controllers\Api\TenantController;
 */
 
 // Root health check for load balancers and CI/CD
-Route::get('/health', fn() => response()->json([
-    'status' => 'ok',
-    'timestamp' => now()->toIso8601String(),
-    'version' => config('app.version', '1.0.0'),
-]));
+Route::get('/health', function () {
+    $checks = [];
+    $healthy = true;
+
+    // Database
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $checks['database'] = 'ok';
+    } catch (\Exception $e) {
+        $checks['database'] = 'fail';
+        $healthy = false;
+    }
+
+    // Redis
+    try {
+        \Illuminate\Support\Facades\Redis::connection()->ping();
+        $checks['redis'] = 'ok';
+    } catch (\Exception $e) {
+        $checks['redis'] = 'fail';
+        $healthy = false;
+    }
+
+    return response()->json([
+        'status'    => $healthy ? 'ok' : 'degraded',
+        'checks'    => $checks,
+        'timestamp' => now()->toIso8601String(),
+        'version'   => config('app.version', '1.0.0'),
+    ], $healthy ? 200 : 503);
+});
 
 // V1 Auth routes (central, non-tenant)
 Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
