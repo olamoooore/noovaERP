@@ -8,7 +8,6 @@ use App\Models\ProductVariant;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Setting;
@@ -549,26 +548,40 @@ class PosOrderController extends Controller
 
         $validated = $request->validate([
             'reason' => 'required|string|min:10|max:500',
-            'manager_id' => 'required|integer|exists:users,id',
-            'manager_password' => 'required|string',
+            'approval_request_id' => 'nullable|integer|exists:approval_requests,id',
         ]);
 
-        $manager = User::findOrFail($validated['manager_id']);
-        if (!Hash::check($validated['manager_password'], $manager->password)) {
-            return response()->json(['error' => 'Invalid manager credentials'], 403);
-        }
-
-        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
-            return response()->json(['error' => 'Manager approval required'], 403);
-        }
-
-        if ($posOrder->total > 500 && !$manager->hasRole('supervisor')) {
-            return response()->json([
-                'error' => 'Supervisor approval required for voids over $500'
-            ], 403);
-        }
-
         $reason = trim($validated['reason']);
+        
+        // Check for existing approved request or create new one
+        $approvalService = app(\App\Services\ApprovalService::class);
+        
+        if (isset($validated['approval_request_id'])) {
+            // Use existing approval
+            $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+            
+            if (!$approvalRequest->isApproved()) {
+                return response()->json([
+                    'error' => 'Approval request not approved',
+                    'approval_status' => $approvalRequest->status,
+                ], 403);
+            }
+        } else {
+            // Create approval request and return it for frontend to handle
+            $approvalRequest = $approvalService->createApprovalRequest(
+                'void',
+                'PosOrder',
+                $posOrder->id,
+                $posOrder->total,
+                $reason
+            );
+            
+            return response()->json([
+                'message' => 'Approval required',
+                'approval_request' => $approvalRequest,
+                'requires_approval' => true,
+            ], 202); // 202 Accepted - request created, awaiting approval
+        }
 
         Log::info('POS order void initiated', [
             'order_id' => $posOrder->id,
@@ -648,7 +661,7 @@ class PosOrderController extends Controller
                 'status' => 'void',
                 'voided_by' => auth()->id(),
                 'voided_at' => now(),
-                'void_approved_by' => $manager->id,
+                'void_approved_by' => $approvalRequest->reviewed_by,
                 'void_reason' => $reason,
                 'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
             ]);
@@ -687,20 +700,40 @@ class PosOrderController extends Controller
         $validated = $request->validate([
             'notes' => 'required|string|min:10|max:500',
             'refund_method' => 'required|in:cash,card,store_credit',
-            'manager_id' => 'required|integer|exists:users,id',
-            'manager_password' => 'required|string',
+            'approval_request_id' => 'nullable|integer|exists:approval_requests,id',
         ]);
 
-        $manager = User::findOrFail($validated['manager_id']);
-        if (!Hash::check($validated['manager_password'], $manager->password)) {
-            return response()->json(['error' => 'Invalid manager credentials'], 403);
-        }
-
-        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
-            return response()->json(['error' => 'Manager approval required'], 403);
-        }
-
         $notes = trim($validated['notes']);
+        
+        // Check for existing approved request or create new one
+        $approvalService = app(\App\Services\ApprovalService::class);
+        
+        if (isset($validated['approval_request_id'])) {
+            // Use existing approval
+            $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+            
+            if (!$approvalRequest->isApproved()) {
+                return response()->json([
+                    'error' => 'Approval request not approved',
+                    'approval_status' => $approvalRequest->status,
+                ], 403);
+            }
+        } else {
+            // Create approval request
+            $approvalRequest = $approvalService->createApprovalRequest(
+                'refund',
+                'PosOrder',
+                $posOrder->id,
+                $posOrder->total,
+                $notes
+            );
+            
+            return response()->json([
+                'message' => 'Approval required',
+                'approval_request' => $approvalRequest,
+                'requires_approval' => true,
+            ], 202);
+        }
 
         Log::info('POS order refund initiated', [
             'order_id' => $posOrder->id,
@@ -727,7 +760,7 @@ class PosOrderController extends Controller
                 'amount' => -$posOrder->total,
                 'reference' => "REFUND-{$posOrder->order_number}",
                 'notes' => $notes,
-                'received_by' => $manager->id,
+                'received_by' => $approvalRequest->reviewed_by,
             ]);
 
             // Reverse loyalty points for refunded order
@@ -781,29 +814,45 @@ class PosOrderController extends Controller
             'items.*.quantity'   => 'required|integer|min:1',
             'notes'              => 'required|string|min:10|max:500',
             'refund_method'      => 'required|in:cash,card,store_credit',
-            'manager_id'         => 'required|integer|exists:users,id',
-            'manager_password'   => 'required|string',
+            'approval_request_id' => 'nullable|integer|exists:approval_requests,id',
         ]);
 
-        $manager = User::findOrFail($validated['manager_id']);
-        if (!Hash::check($validated['manager_password'], $manager->password)) {
-            return response()->json(['error' => 'Invalid manager credentials'], 403);
-        }
-
-        if (!$manager->hasRole('manager') && !$manager->hasRole('supervisor')) {
-            return response()->json(['error' => 'Manager approval required'], 403);
-        }
-
-        // Calculate partial return total for the high-value supervisor check
+        // Calculate partial return total for approval check
         $returnTotal = collect($validated['items'])->reduce(function (float $sum, array $line) use ($posOrder) {
             $item = $posOrder->items->firstWhere('id', $line['item_id']);
             return $sum + (($item?->unit_price ?? 0) * $line['quantity']);
         }, 0.0);
-
-        if ($returnTotal > 500 && !$manager->hasRole('supervisor')) {
+        
+        // Check for existing approved request or create new one
+        $approvalService = app(\App\Services\ApprovalService::class);
+        
+        if (isset($validated['approval_request_id'])) {
+            // Use existing approval
+            $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+            
+            if (!$approvalRequest->isApproved()) {
+                return response()->json([
+                    'error' => 'Approval request not approved',
+                    'approval_status' => $approvalRequest->status,
+                ], 403);
+            }
+        } else {
+            // Create approval request
+            $approvalRequest = $approvalService->createApprovalRequest(
+                'return',
+                'PosOrder',
+                $posOrder->id,
+                $returnTotal,
+                $validated['notes'],
+                null,
+                ['items' => $validated['items']]
+            );
+            
             return response()->json([
-                'error' => 'Supervisor approval required for returns over $500',
-            ], 403);
+                'message' => 'Approval required',
+                'approval_request' => $approvalRequest,
+                'requires_approval' => true,
+            ], 202);
         }
 
         Log::info('POS order return initiated', [
@@ -831,7 +880,7 @@ class PosOrderController extends Controller
                 'amount'       => -$returnTotal,
                 'reference'    => "RETURN-{$posOrder->order_number}",
                 'notes'        => $validated['notes'],
-                'received_by'  => $manager->id,
+                'received_by'  => $approvalRequest->reviewed_by,
             ]);
 
             // Partial loyalty reversal for returned items
