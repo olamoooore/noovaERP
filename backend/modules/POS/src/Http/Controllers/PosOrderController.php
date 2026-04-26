@@ -182,19 +182,7 @@ class PosOrderController extends Controller
             'items.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
-        $session = \Modules\POS\Models\PosSession::findOrFail($validated['session_id']);
-        if ($session->status !== 'open') {
-            return response()->json([
-                'error' => 'Session is not open',
-                'session_status' => $session->status,
-            ], 422);
-        }
-
-        if ($session->terminal_id !== $validated['terminal_id']) {
-            return response()->json([
-                'error' => 'Terminal does not match session',
-            ], 422);
-        }
+        $session = $this->validateSessionIsOpen($validated['session_id'], $validated['terminal_id']);
 
         return DB::transaction(function () use ($validated) {
             $externalId = $validated['external_id'] ?? (string) Str::uuid();
@@ -351,6 +339,18 @@ class PosOrderController extends Controller
     public function show($posOrder)
     {
         $posOrder = PosOrder::findOrFail($posOrder);
+        
+        // Validate session exists and is accessible
+        if ($posOrder->session_id) {
+            $session = \Modules\POS\Models\PosSession::find($posOrder->session_id);
+            if (!$session) {
+                return response()->json([
+                    'error' => 'Order session not found',
+                    'message' => 'This order is associated with a deleted session',
+                ], 404);
+            }
+        }
+        
         return response()->json($posOrder->load([
             'customer',
             'terminal',
@@ -372,15 +372,15 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order is not payable'], 422);
         }
 
-        if ($posOrder->session_id) {
-            $session = \Modules\POS\Models\PosSession::find($posOrder->session_id);
-            if (!$session || $session->status !== 'open') {
-                return response()->json([
-                    'error' => 'Session is not open',
-                    'message' => 'Cannot process payment on closed session',
-                ], 422);
-            }
+        // Validate session is open
+        if (!$posOrder->session_id || !$posOrder->terminal_id) {
+            return response()->json([
+                'error' => 'Order missing session or terminal',
+                'message' => 'Cannot process payment without valid session',
+            ], 422);
         }
+        
+        $this->validateSessionIsOpen($posOrder->session_id, $posOrder->terminal_id);
 
         $validated = $request->validate([
             'method' => 'required|string|max:50',
@@ -1074,5 +1074,27 @@ class PosOrderController extends Controller
         return collect([$existingNotes, $note])
             ->filter(fn (?string $value) => filled($value))
             ->implode("\n");
+    }
+
+    /**
+     * Validate that a session exists and is open for processing orders
+     */
+    private function validateSessionIsOpen(int $sessionId, int $terminalId): \Modules\POS\Models\PosSession
+    {
+        $session = \Modules\POS\Models\PosSession::find($sessionId);
+        
+        if (!$session) {
+            abort(404, 'Session not found');
+        }
+        
+        if ($session->status !== 'open') {
+            abort(422, "Session is {$session->status}, not open. Cannot process orders.");
+        }
+        
+        if ($session->terminal_id !== $terminalId) {
+            abort(422, 'Terminal does not match session');
+        }
+        
+        return $session;
     }
 }
