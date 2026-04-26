@@ -3,6 +3,7 @@
 namespace Modules\Loyalty\Services;
 
 use Illuminate\Support\Facades\DB;
+use App\Models\Warehouse;
 use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Models\LoyaltyRedemption;
@@ -13,7 +14,8 @@ class RedemptionService
 {
     public function __construct(
         private PointsCalculationService $pointsCalculation,
-        private TierUpgradeService $tierUpgrade
+        private TierUpgradeService $tierUpgrade,
+        private \Modules\Inventory\Services\InventoryService $inventoryService,
     ) {}
 
     /**
@@ -164,8 +166,25 @@ class RedemptionService
                 'redeemed_at' => now(),
             ]);
 
-            // Decrease stock if applicable
+            // Decrease stock if applicable (route through InventoryService if product_id exists)
             if ($reward->stock_quantity !== null) {
+                if ($reward->product_id) {
+                    // Route through canonical InventoryService for product-based rewards
+                    $warehouseId = Warehouse::getDefault()?->id;
+                    if ($warehouseId) {
+                        $this->inventoryService->adjustStock(
+                            productId: $reward->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: 1,
+                            type: 'out',
+                            reference: "Loyalty Reward Redemption #{$redemption->id}",
+                            referenceType: 'LoyaltyRedemption',
+                            referenceId: $redemption->id,
+                            notes: "Loyalty reward redeemed: {$reward->name}"
+                        );
+                    }
+                }
+                // Update reward stock_quantity for tracking (even if product-based)
                 $reward->decrement('stock_quantity');
             }
 
@@ -225,8 +244,25 @@ class RedemptionService
             // Update redemption status
             $redemption->update(['status' => 'cancelled']);
 
-            // Restore stock if reward
+            // Restore stock if reward (route through InventoryService if product_id exists)
             if ($redemption->reward && $redemption->reward->stock_quantity !== null) {
+                if ($redemption->reward->product_id) {
+                    // Route through canonical InventoryService for product-based rewards
+                    $warehouseId = Warehouse::getDefault()?->id;
+                    if ($warehouseId) {
+                        $this->inventoryService->adjustStock(
+                            productId: $redemption->reward->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: 1,
+                            type: 'in',
+                            reference: "Loyalty Reward Cancellation #{$redemption->id}",
+                            referenceType: 'LoyaltyRedemptionCancel',
+                            referenceId: $redemption->id,
+                            notes: "Loyalty reward redemption cancelled: {$redemption->reward->name}"
+                        );
+                    }
+                }
+                // Update reward stock_quantity for tracking (even if product-based)
                 $redemption->reward->increment('stock_quantity');
             }
 

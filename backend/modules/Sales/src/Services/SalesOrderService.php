@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use App\Models\JournalEntryLink;
 use App\Models\Customer;
+use App\Models\Warehouse;
 use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +21,7 @@ class SalesOrderService
     public function __construct(
         private OrderLifecycleService $lifecycleService,
         private InvoiceService $invoiceService,
+        private \Modules\Inventory\Services\InventoryService $inventoryService,
     ) {}
 
     public function createOrder(array $data): SalesOrder
@@ -122,9 +124,28 @@ class SalesOrderService
         return DB::transaction(function () use ($order) {
             $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
 
+            // Deduct stock for each line item
             foreach ($order->lines as $line) {
                 if ($line->product_id) {
+                    // Update fulfillment quantity
                     $line->update(['quantity_fulfilled' => $line->quantity]);
+                    
+                    // Deduct stock through canonical InventoryService
+                    // Use default warehouse if not specified
+                    $warehouseId = $order->warehouse_id ?? Warehouse::getDefault()?->id;
+                    
+                    if ($warehouseId) {
+                        $this->inventoryService->adjustStock(
+                            productId: $line->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: (int) $line->quantity,
+                            type: 'sale',
+                            reference: $order->sales_order_number,
+                            referenceType: 'SalesOrder',
+                            referenceId: $order->id,
+                            notes: "Stock deducted for sales order fulfillment"
+                        );
+                    }
                 }
             }
 
