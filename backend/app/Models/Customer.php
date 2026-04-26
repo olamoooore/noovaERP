@@ -289,70 +289,13 @@ class Customer extends Model
     }
 
     /**
-     * Add loyalty points
+     * @deprecated Legacy loyalty methods removed. Use Modules\Loyalty\Services\PointsEarningService
+     * and Modules\Loyalty\Services\RedemptionService instead.
+     * 
+     * Migration: All loyalty operations must go through canonical Loyalty module services.
+     * - For earning points: app(PointsEarningService::class)->awardPoints(...)
+     * - For redeeming points: app(RedemptionService::class)->redeemForDiscount(...)
      */
-    public function addLoyaltyPoints(int $points, string $referenceType = null, int $referenceId = null, string $notes = null): void
-    {
-        $balance = $this->loyaltyBalances()->first();
-        
-        if (!$balance) {
-            $program = CustomerLoyaltyProgram::where('is_active', true)->first();
-            if (!$program) return;
-            
-            $balance = $this->loyaltyBalances()->create([
-                'program_id' => $program->id,
-                'points_balance' => 0,
-                'points_earned_total' => 0,
-                'points_redeemed_total' => 0,
-            ]);
-        }
-        
-        $balance->points_balance += $points;
-        $balance->points_earned_total += $points;
-        $balance->last_activity_at = now();
-        $balance->save();
-        
-        $this->loyaltyTransactions()->create([
-            'program_id' => $balance->program_id,
-            'type' => 'earn',
-            'points' => $points,
-            'balance_after' => $balance->points_balance,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'notes' => $notes,
-            'created_by' => TenantUserHelper::resolveTenantUserId(),
-        ]);
-    }
-
-    /**
-     * Redeem loyalty points
-     */
-    public function redeemLoyaltyPoints(int $points, string $referenceType = null, int $referenceId = null, string $notes = null): bool
-    {
-        $balance = $this->loyaltyBalances()->first();
-        
-        if (!$balance || $balance->points_balance < $points) {
-            return false;
-        }
-        
-        $balance->points_balance -= $points;
-        $balance->points_redeemed_total += $points;
-        $balance->last_activity_at = now();
-        $balance->save();
-        
-        $this->loyaltyTransactions()->create([
-            'program_id' => $balance->program_id,
-            'type' => 'redeem',
-            'points' => -$points,
-            'balance_after' => $balance->points_balance,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'notes' => $notes,
-            'created_by' => TenantUserHelper::resolveTenantUserId(),
-        ]);
-        
-        return true;
-    }
 
     /**
      * Get customer's special price for a product

@@ -111,32 +111,19 @@ class PosOrder extends Model
     // ==========================================
 
     /**
-     * Process loyalty points for this order
+     * @deprecated Legacy loyalty processing removed. Loyalty points are now processed
+     * by PosOrderController using canonical Loyalty module services.
+     * 
+     * This method is kept as a no-op to prevent breaking existing code that calls it.
+     * All loyalty processing now happens in PosOrderController::processPayment()
+     * using PointsEarningService and RedemptionService.
      */
     public function processLoyaltyPoints(): void
     {
-        if (!$this->customer_id) {
-            return;
-        }
-
-        $customer = $this->customer;
-        
-        // Always update customer purchase stats regardless of loyalty program
-        $customer->updatePurchaseStats();
-        
-        $program = CustomerLoyaltyProgram::where('is_active', true)->first();
-        
-        if (!$program) {
-            return;
-        }
-
-        // Calculate and add earned points
-        $points = $program->calculatePoints($this->total);
-        
-        if ($points > 0) {
-            $customer->addLoyaltyPoints($points, 'pos_order', $this->id);
-            $this->loyalty_points_earned = $points;
-            $this->save();
+        // No-op: Loyalty processing moved to PosOrderController
+        // Update customer stats only
+        if ($this->customer_id) {
+            $this->customer->updatePurchaseStats();
         }
     }
 

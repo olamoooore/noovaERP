@@ -402,7 +402,10 @@ class PosOrderController extends Controller
                     $loyaltyRedemptionResult = $redemptionService->redeemForDiscount(
                         $posOrder->customer_id,
                         $posOrder->loyalty_points_redeemed,
-                        null // No invoice ID for POS orders yet
+                        null, // No invoice ID for POS orders yet
+                        'pos_order',
+                        $posOrder->id,
+                        "pos_redeem_{$posOrder->id}" // Idempotency key
                     );
                 } catch (\Exception $e) {
                     // Log error but don't fail the order
@@ -460,7 +463,8 @@ class PosOrderController extends Controller
                         $posOrder->subtotal, // Award points on subtotal (before discounts)
                         'pos_order',
                         $posOrder->id,
-                        "Points earned from POS purchase #{$posOrder->order_number}"
+                        "Points earned from POS purchase #{$posOrder->order_number}",
+                        "pos_earn_{$posOrder->id}" // Idempotency key
                     );
                 } catch (\Exception $e) {
                     // Log error but don't fail the order
@@ -621,6 +625,25 @@ class PosOrderController extends Controller
                 'received_by' => $manager->id,
             ]);
 
+            // Reverse loyalty points for voided order
+            if ($posOrder->customer_id) {
+                try {
+                    $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
+                    $reversalService->reverseOrder(
+                        $posOrder->customer_id,
+                        'pos_order',
+                        $posOrder->id,
+                        "Loyalty reversal for voided order #{$posOrder->order_number}: {$reason}"
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Loyalty reversal failed for voided POS order', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             $posOrder->update([
                 'status' => 'void',
                 'voided_by' => auth()->id(),
@@ -707,6 +730,25 @@ class PosOrderController extends Controller
                 'received_by' => $manager->id,
             ]);
 
+            // Reverse loyalty points for refunded order
+            if ($posOrder->customer_id) {
+                try {
+                    $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
+                    $reversalService->reverseOrder(
+                        $posOrder->customer_id,
+                        'pos_order',
+                        $posOrder->id,
+                        "Loyalty reversal for refunded order #{$posOrder->order_number}: {$notes}"
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Loyalty reversal failed for refunded POS order', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             Log::info('POS order refund completed', [
                 'order_id' => $posOrder->id,
                 'order_number' => $posOrder->order_number,
@@ -791,6 +833,33 @@ class PosOrderController extends Controller
                 'notes'        => $validated['notes'],
                 'received_by'  => $manager->id,
             ]);
+
+            // Partial loyalty reversal for returned items
+            if ($posOrder->customer_id) {
+                try {
+                    $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
+                    
+                    // Calculate proportional points to reverse based on return amount
+                    $returnRatio = $posOrder->total > 0 ? ($returnTotal / $posOrder->total) : 0;
+                    
+                    // Note: For partial returns, we log but don't automatically reverse points
+                    // This requires business logic decision on partial point reversal
+                    Log::info('Partial return loyalty reversal needed', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'return_ratio' => $returnRatio,
+                        'return_total' => $returnTotal,
+                        'original_total' => $posOrder->total,
+                        'note' => 'Manual review may be required for partial loyalty reversal',
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Loyalty reversal check failed for partial POS return', [
+                        'order_id' => $posOrder->id,
+                        'customer_id' => $posOrder->customer_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             Log::info('POS order return completed', [
                 'order_id'        => $posOrder->id,

@@ -19,19 +19,62 @@ class RedemptionService
     ) {}
 
     /**
-     * Redeem points for discount
+     * Redeem points for discount with idempotency protection
      */
     public function redeemForDiscount(
         int $customerId,
         int $points,
         ?int $invoiceId = null,
         ?string $referenceType = null,
-        ?int $referenceId = null
+        ?int $referenceId = null,
+        ?string $idempotencyKey = null
     ): array {
-        return DB::transaction(function () use ($customerId, $points, $invoiceId, $referenceType, $referenceId) {
+        return DB::transaction(function () use ($customerId, $points, $invoiceId, $referenceType, $referenceId, $idempotencyKey) {
             $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // Idempotency check: prevent duplicate redemptions for same reference
+            if ($referenceType && $referenceId) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('type', 'redeem')
+                    ->where('reference_type', $referenceType)
+                    ->where('reference_id', $referenceId)
+                    ->first();
+
+                if ($existing) {
+                    $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+                    return [
+                        'success' => true,
+                        'points_redeemed' => abs($existing->points),
+                        'discount_amount' => $existingRedemption?->discount_amount ?? 0,
+                        'new_balance' => $existing->balance_after,
+                        'transaction' => $existing,
+                        'redemption' => $existingRedemption,
+                        'idempotent' => true,
+                    ];
+                }
+            }
+
+            // Additional idempotency check using explicit key
+            if ($idempotencyKey) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+                    return [
+                        'success' => true,
+                        'points_redeemed' => abs($existing->points),
+                        'discount_amount' => $existingRedemption?->discount_amount ?? 0,
+                        'new_balance' => $existing->balance_after,
+                        'transaction' => $existing,
+                        'redemption' => $existingRedemption,
+                        'idempotent' => true,
+                    ];
+                }
+            }
 
             // Validate redemption
             $validation = $this->pointsCalculation->canRedeemPoints(
@@ -61,7 +104,7 @@ class RedemptionService
             $finalRefType = $referenceType ?? ($invoiceId ? 'invoice' : 'manual');
             $finalRefId = $referenceId ?? $invoiceId;
 
-            // Create transaction record
+            // Create transaction record with idempotency key
             $transaction = LoyaltyTransaction::create([
                 'customer_loyalty_id' => $customerLoyalty->id,
                 'type' => 'redeem',
@@ -69,6 +112,7 @@ class RedemptionService
                 'balance_after' => $newBalance,
                 'reference_type' => $finalRefType,
                 'reference_id' => $finalRefId,
+                'idempotency_key' => $idempotencyKey,
                 'description' => "Redeemed {$points} points for discount",
                 'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
@@ -97,6 +141,7 @@ class RedemptionService
                 'new_balance' => $newBalance,
                 'transaction' => $transaction,
                 'redemption' => $redemption,
+                'idempotent' => false,
             ];
         });
     }
