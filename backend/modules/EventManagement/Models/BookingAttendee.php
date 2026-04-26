@@ -115,7 +115,12 @@ class BookingAttendee extends Model
     public function validateAgainstEventRequirements(): bool
     {
         $event = $this->booking->event;
-        $eventSettings = EventSettings::forTenant($this->booking->tenant_id ?? 'default');
+        
+        if (!tenancy()->initialized) {
+            throw new \RuntimeException('Tenant context not initialized for BookingAttendee validation');
+        }
+        
+        $eventSettings = EventSettings::forTenant((string) tenant()->id);
 
         // Check if ID is required but not provided
         if ($eventSettings && $eventSettings->requiresAttendeeId() && !$this->hasIdInformation()) {

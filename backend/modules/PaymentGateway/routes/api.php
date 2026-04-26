@@ -9,7 +9,7 @@ use Modules\PaymentGateway\Controllers\PosPaymentController;
 use Modules\PaymentGateway\Controllers\OfflinePaymentMethodController;
 
 // Protected routes - require authentication
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:payment_gateway'])->group(function () {
 
     // Payment Gateway Management
     Route::prefix('payment-gateways')->group(function () {

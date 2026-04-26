@@ -797,15 +797,21 @@ class BookingService
                 return ['points_awarded' => 0, 'message' => 'No customer associated with booking'];
             }
 
+            // Resolve tenant ID from tenancy context (fail closed)
+            if (!tenancy()->initialized) {
+                throw new \RuntimeException('Tenant context not initialized for loyalty processing');
+            }
+            $tenantId = (string) tenant()->id;
+
             // Calculate points for this booking
             $pointsToAward = $this->loyaltyService->calculateBookingPoints(
-                $booking->tenant_id ?? 'default',
+                $tenantId,
                 (float) $booking->total_amount
             );
 
             // Award points
             $pointsResult = $this->loyaltyService->awardPoints(
-                $booking->tenant_id ?? 'default',
+                $tenantId,
                 $booking->customer_id,
                 $pointsToAward,
                 'booking',
@@ -815,7 +821,7 @@ class BookingService
 
             // Update customer stats
             $customerTier = $this->fanTierService->getCustomerTier(
-                $booking->tenant_id ?? 'default',
+                $tenantId,
                 $booking->customer_id
             );
             
@@ -825,7 +831,7 @@ class BookingService
 
             // Check for tier progression
             $this->fanTierService->processAutomaticTierProgression(
-                $booking->tenant_id ?? 'default',
+                $tenantId,
                 $booking->customer_id
             );
 

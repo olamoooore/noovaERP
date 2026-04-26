@@ -15,6 +15,7 @@ class SubscriptionService
     public function __construct(
         private readonly AdminAuditLogger $auditLogger,
         private readonly BillingService $billingService,
+        private readonly EntitlementService $entitlements,
     ) {}
 
     public function createSubscription(
@@ -52,6 +53,9 @@ class SubscriptionService
             if ($status === 'active') {
                 $this->billingService->generateInvoice($subscription, $billingInterval);
             }
+
+            // Rebuild entitlements to reflect new subscription tier
+            $this->entitlements->rebuild($tenantId, null, 'subscription_created');
 
             $this->auditLogger->log(
                 action: 'subscription.created',

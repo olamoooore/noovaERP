@@ -15,7 +15,7 @@ use Modules\Communication\Http\Controllers\TemplateController;
 |
 */
 
-Route::middleware(['api', 'auth:sanctum'])->prefix('api/communication')->group(function () {
+Route::middleware(['api', 'auth:sanctum', 'entitlement:communication'])->prefix('api/communication')->group(function () {
 
     // Messages / Thread (Chatter)
     Route::get('/messages', [CommunicationController::class, 'getMessages']);

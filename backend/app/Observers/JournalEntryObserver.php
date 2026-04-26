@@ -54,26 +54,9 @@ class JournalEntryObserver
                 $tenantId = (string) $journalEntry->tenant->id;
             }
 
-            if (!$tenantId && $journalEntry->getConnection()->getDriverName() === 'pgsql') {
-                $currentSearchPath = optional($journalEntry->getConnection()->selectOne('SHOW search_path'))->search_path;
-
-                if ($currentSearchPath) {
-                    foreach (explode(',', $currentSearchPath) as $schema) {
-                        $schema = trim($schema, " \t\n\r\0\x0B\"");
-                        if ($schema === '' || $schema === 'public') {
-                            continue;
-                        }
-
-                        $tenantId = (string) Tenant::query()
-                            ->where('id', $schema)
-                            ->orWhere('data->schema_name', $schema)
-                            ->value('id');
-
-                        if ($tenantId) {
-                            break;
-                        }
-                    }
-                }
+            // Use tenancy context directly instead of parsing search_path
+            if (!$tenantId && tenancy()->initialized) {
+                $tenantId = (string) tenant()->id;
             }
 
             if (!$tenantId) {

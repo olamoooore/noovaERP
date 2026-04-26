@@ -24,11 +24,15 @@ class AccountingFunctions
 
             Log::info('AI Accounting: getOutstandingInvoices called', ['user_id' => auth()->id(), 'args' => $args]);
 
+            if (!tenancy()->initialized) {
+                throw new \RuntimeException('Tenant context not initialized for AI accounting audit');
+            }
+
             DB::table('ai_accounting_audit_logs')->insert([
                 'user_id' => auth()->id(),
                 'tool_name' => 'getOutstandingInvoices',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -91,7 +95,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getInvoiceDetails',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -162,7 +166,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getOverdueInvoices',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -226,7 +230,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getRecentPayments',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -288,7 +292,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getCustomerBalance',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -361,7 +365,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getRevenueSummary',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -426,7 +430,7 @@ class AccountingFunctions
                 'user_id' => auth()->id(),
                 'tool_name' => 'getJournalEntries',
                 'arguments' => json_encode($args),
-                'tenant_id' => auth()->user()->current_tenant_id ?? null,
+                'tenant_id' => (string) tenant()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

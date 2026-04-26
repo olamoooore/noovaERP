@@ -11,7 +11,7 @@ use Modules\FieldService\Http\Controllers\AnalyticsController;
 use Modules\FieldService\Http\Controllers\WorksheetTemplateController;
 use Modules\FieldService\Http\Controllers\WorksheetResponseController;
 
-Route::middleware('auth:sanctum')->prefix('field-service')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:field_service'])->prefix('field-service')->group(function () {
 
     // ── Work Orders ───────────────────────────────────────────────────────────
     Route::get('/work-orders/calendar',  [WorkOrderController::class, 'calendar']);
