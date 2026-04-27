@@ -29,6 +29,7 @@ import {
 import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } from '@/lib/utils'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { useToast } from '@/hooks/use-toast'
+import { ApprovalRequestModal } from '@/components/pos/ApprovalRequestModal'
 
 interface POSOrderDrawerProps {
   open: boolean
@@ -142,6 +143,13 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
   const [downloadingInvoice, setDownloadingInvoice] = useState(false)
   const [actingOrderId, setActingOrderId] = useState<number | null>(null)
+  
+  // Approval modal state
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{
+    order: PosOrderDetail
+    action: 'void' | 'refund'
+  } | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -168,15 +176,26 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
   })
 
   const orderActionMutation = useMutation({
-    mutationFn: async ({ orderId, action }: { orderId: number; action: 'cancel' | 'void' | 'refund' }) => {
+    mutationFn: async ({ 
+      orderId, 
+      action, 
+      approvalRequestId 
+    }: { 
+      orderId: number
+      action: 'cancel' | 'void' | 'refund'
+      approvalRequestId?: number 
+    }) => {
       if (action === 'refund') {
         return api.post(`/pos/orders/${orderId}/refund`, {
           notes: 'Refunded from POS orders list',
+          refund_method: 'cash',
+          approval_request_id: approvalRequestId,
         })
       }
 
       return api.post(`/pos/orders/${orderId}/${action}`, {
         reason: action === 'cancel' ? 'Cancelled from POS orders list' : 'Voided from POS orders list',
+        approval_request_id: approvalRequestId,
       })
     },
     onSuccess: (_response, variables) => {
@@ -227,12 +246,47 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
     action: 'cancel' | 'void' | 'refund',
     confirmationMessage: string,
   ) => {
+    // For paid orders doing void/refund, require approval
+    if (order.status === 'paid' && (action === 'void' || action === 'refund')) {
+      setPendingAction({ order, action })
+      setApprovalModalOpen(true)
+      return
+    }
+
+    // For draft orders, just confirm and proceed
     if (!window.confirm(confirmationMessage)) {
       return
     }
 
     setActingOrderId(order.id)
     await orderActionMutation.mutateAsync({ orderId: order.id, action })
+  }
+
+  const handleApprovalGranted = async (approvalRequestId: number) => {
+    if (!pendingAction) return
+
+    setApprovalModalOpen(false)
+    setActingOrderId(pendingAction.order.id)
+    
+    try {
+      await orderActionMutation.mutateAsync({
+        orderId: pendingAction.order.id,
+        action: pendingAction.action,
+        approvalRequestId,
+      })
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  const handleApprovalRejected = (reason: string) => {
+    setApprovalModalOpen(false)
+    setPendingAction(null)
+    toast({
+      title: 'Request Rejected',
+      description: reason,
+      variant: 'destructive',
+    })
   }
 
   const handleLoadOrder = async (order: any) => {
@@ -920,6 +974,23 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Approval Request Modal */}
+      {pendingAction && (
+        <ApprovalRequestModal
+          open={approvalModalOpen}
+          onClose={() => {
+            setApprovalModalOpen(false)
+            setPendingAction(null)
+          }}
+          operation={pendingAction.action}
+          amount={pendingAction.order.total}
+          orderId={pendingAction.order.id}
+          orderNumber={pendingAction.order.order_number}
+          onApproved={handleApprovalGranted}
+          onRejected={handleApprovalRejected}
+        />
+      )}
     </SlideOver>
   )
 }

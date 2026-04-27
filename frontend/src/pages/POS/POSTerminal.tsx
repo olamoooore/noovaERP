@@ -57,6 +57,7 @@ import { POSReceipt } from '@/components/pos/POSReceipt'
 import { PaymentMethodSelector } from '@/components/pos/PaymentMethodSelector'
 import { StripePaymentDialog } from '@/components/StripePaymentDialog'
 import { HitPayPaymentDialog } from '@/components/pos/HitPayPaymentDialog'
+import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import loyaltyApi from '@/lib/loyaltyApi'
 
 interface Product {
@@ -835,6 +836,19 @@ export function POSTerminal() {
     try {
       const response = await api.get('/pos/products/lookup', { params: { code: barcode } })
       if (response.data) {
+        // Check if multiple matches
+        if (response.data.multiple_matches) {
+          // TODO: Show selection modal for multiple matches
+          toast({
+            title: 'Multiple Products Found',
+            description: `${response.data.count} products match barcode ${barcode}. Please select manually.`,
+            variant: 'default',
+          })
+          setBarcodeInput('')
+          return
+        }
+
+        // Single match - add to cart
         const item: Product = response.data.type === 'variant'
           ? {
               ...response.data.variant,
@@ -1364,7 +1378,9 @@ export function POSTerminal() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
+    <>
+      <OfflineBanner isOnline={isOnline} />
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
       <div className="flex min-h-0 flex-1 flex-row-reverse gap-3 overflow-hidden p-3 xl:gap-4 xl:p-4">
         <section className="flex min-h-0 min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
           <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 xl:px-5">
@@ -2582,6 +2598,7 @@ export function POSTerminal() {
       />
     </div>
       </div>
+    </>
   )
 }
 
