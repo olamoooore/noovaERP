@@ -37,11 +37,18 @@ class PosPaymentCompletionService
                 return $posOrder;
             }
 
+            // TASK POS-012: Fix cash payment idempotency
+            // For cash payments (null reference), use pos_order_id as the idempotency key
+            // For reference-based payments, use the reference as the idempotency key
             $existingPayment = PosPayment::where('pos_order_id', $posOrder->id)
-                ->where(function ($q) use ($reference) {
+                ->where(function ($q) use ($reference, $paymentMethod) {
                     if ($reference === null) {
-                        $q->whereNull('reference');
+                        // For cash/null-reference payments, match by order_id + method
+                        // This ensures one cash payment per order (idempotent on order level)
+                        $q->whereNull('reference')
+                          ->where('method', $paymentMethod);
                     } else {
+                        // For reference-based payments, match by reference (existing behavior)
                         $q->where('reference', $reference);
                     }
                 })

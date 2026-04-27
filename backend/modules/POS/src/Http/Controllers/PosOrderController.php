@@ -393,37 +393,63 @@ class PosOrderController extends Controller
                 abort(422, 'Payment amount must equal order total for now.');
             }
 
-            // Process loyalty points redemption if applicable
-            $loyaltyRedemptionResult = null;
-            if ($posOrder->loyalty_points_redeemed > 0 && $posOrder->customer_id) {
-                try {
-                    $redemptionService = app(RedemptionService::class);
-                    $loyaltyRedemptionResult = $redemptionService->redeemForDiscount(
-                        $posOrder->customer_id,
-                        $posOrder->loyalty_points_redeemed,
-                        null, // No invoice ID for POS orders yet
-                        'pos_order',
-                        $posOrder->id,
-                        "pos_redeem_{$posOrder->id}" // Idempotency key
-                    );
-                } catch (\Exception $e) {
-                    // Log error but don't fail the order
-                    Log::warning('Loyalty redemption failed for POS order', [
-                        'order_id' => $posOrder->id,
-                        'customer_id' => $posOrder->customer_id,
-                        'points' => $posOrder->loyalty_points_redeemed,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+            // Set payment state to processing for customer display
+            $posOrder->update([
+                'payment_state' => 'processing',
+                'payment_method' => $validated['method'],
+                'amount_tendered' => $amount,
+            ]);
 
-            $posOrder = $paymentCompletionService->complete(
-                $posOrder,
-                $amount,
-                $validated['method'],
-                $validated['reference'] ?? null,
-                TenantUserHelper::resolveTenantUserId(),
-            );
+            try {
+                // Process loyalty points redemption if applicable
+                $loyaltyRedemptionResult = null;
+                if ($posOrder->loyalty_points_redeemed > 0 && $posOrder->customer_id) {
+                    try {
+                        $redemptionService = app(RedemptionService::class);
+                        $loyaltyRedemptionResult = $redemptionService->redeemForDiscount(
+                            $posOrder->customer_id,
+                            $posOrder->loyalty_points_redeemed,
+                            null, // No invoice ID for POS orders yet
+                            'pos_order',
+                            $posOrder->id,
+                            "pos_redeem_{$posOrder->id}" // Idempotency key
+                        );
+                    } catch (\Exception $e) {
+                        // Log error but don't fail the order
+                        Log::warning('Loyalty redemption failed for POS order', [
+                            'order_id' => $posOrder->id,
+                            'customer_id' => $posOrder->customer_id,
+                            'points' => $posOrder->loyalty_points_redeemed,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $posOrder = $paymentCompletionService->complete(
+                    $posOrder,
+                    $amount,
+                    $validated['method'],
+                    $validated['reference'] ?? null,
+                    TenantUserHelper::resolveTenantUserId(),
+                );
+
+                // Calculate change due for cash payments
+                $changeDue = 0;
+                if (strtolower($validated['method']) === 'cash') {
+                    $changeDue = max(0, $amount - (float) $posOrder->total);
+                }
+
+                // Set payment state to completed
+                $posOrder->update([
+                    'payment_state' => 'completed',
+                    'change_due' => $changeDue,
+                ]);
+
+            } catch (\Exception $e) {
+                // Set payment state to failed
+                $posOrder->update(['payment_state' => 'failed']);
+                throw $e;
+            }
 
             // Notifications
             try {
@@ -814,6 +840,29 @@ class PosOrderController extends Controller
                 'received_by' => $approvalRequest->reviewed_by,
             ]);
 
+            // CRITICAL: Post GL entry for refund payment
+            // This ensures cash drawer reconciliation works correctly
+            $postingService = app(\Modules\POS\Services\PosPostingService::class);
+            try {
+                $refundJournalEntry = $postingService->postRefundPayment(
+                    $posOrder,
+                    $validated['refund_method'],
+                    $posOrder->total,
+                    "Refund payment for order #{$posOrder->order_number}"
+                );
+                
+                // Link journal entry to refund transaction
+                if ($refundTransaction && $refundJournalEntry) {
+                    $refundTransaction->update(['journal_entry_id' => $refundJournalEntry->id]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to post refund payment GL entry', [
+                    'order_id' => $posOrder->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Don't fail the refund, but log the error
+            }
+
             // Reverse loyalty points for refunded order
             if ($posOrder->customer_id) {
                 try {
@@ -964,26 +1013,33 @@ class PosOrderController extends Controller
                 'received_by'  => $approvalRequest->reviewed_by,
             ]);
 
-            // Partial loyalty reversal for returned items
+            // TASK POS-010: Proportional loyalty reversal for partial returns
             if ($posOrder->customer_id) {
                 try {
                     $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
                     
-                    // Calculate proportional points to reverse based on return amount
-                    $returnRatio = $posOrder->total > 0 ? ($returnTotal / $posOrder->total) : 0;
+                    // Execute proportional loyalty reversal
+                    $loyaltyResult = $reversalService->reverseProportional(
+                        $posOrder->customer_id,
+                        'pos_order',
+                        $posOrder->id,
+                        $returnTotal,
+                        $posOrder->total,
+                        "Proportional loyalty reversal for partial return of order #{$posOrder->order_number}: {$validated['notes']}",
+                        "pos_partial_return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+                    );
                     
-                    // Note: For partial returns, we log but don't automatically reverse points
-                    // This requires business logic decision on partial point reversal
-                    Log::info('Partial return loyalty reversal needed', [
+                    Log::info('Partial return loyalty reversal completed', [
                         'order_id' => $posOrder->id,
                         'customer_id' => $posOrder->customer_id,
-                        'return_ratio' => $returnRatio,
+                        'return_ratio' => $loyaltyResult['return_ratio'] ?? 0,
                         'return_total' => $returnTotal,
                         'original_total' => $posOrder->total,
-                        'note' => 'Manual review may be required for partial loyalty reversal',
+                        'earn_reversal' => $loyaltyResult['earn_reversal'] ?? null,
+                        'redeem_restoration' => $loyaltyResult['redeem_restoration'] ?? null,
                     ]);
                 } catch (\Exception $e) {
-                    Log::error('Loyalty reversal check failed for partial POS return', [
+                    Log::error('Loyalty reversal failed for partial POS return', [
                         'order_id' => $posOrder->id,
                         'customer_id' => $posOrder->customer_id,
                         'error' => $e->getMessage(),
