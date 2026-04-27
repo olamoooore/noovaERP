@@ -40,6 +40,78 @@ class PosOfflineQueue extends Model
         'last_sync_attempt' => 'datetime',
     ];
 
+    // ==========================================
+    // STATE MACHINE
+    // ==========================================
+
+    /**
+     * Allowed state transitions
+     */
+    protected static array $allowedTransitions = [
+        'pending' => ['syncing', 'failed', 'conflict'],
+        'syncing' => ['synced', 'failed', 'conflict'],
+        'synced' => [],
+        'failed' => ['pending', 'syncing'],
+        'conflict' => ['pending', 'syncing'],
+    ];
+
+    /**
+     * Validate state transition
+     * 
+     * @throws \InvalidArgumentException
+     */
+    public function validateTransition(string $newStatus): void
+    {
+        $currentStatus = $this->status;
+        
+        if (!isset(self::$allowedTransitions[$currentStatus])) {
+            throw new \InvalidArgumentException("Invalid current status: {$currentStatus}");
+        }
+
+        if (!in_array($newStatus, self::$allowedTransitions[$currentStatus])) {
+            throw new \InvalidArgumentException(
+                "Invalid state transition from '{$currentStatus}' to '{$newStatus}'. " .
+                "Allowed transitions: " . implode(', ', self::$allowedTransitions[$currentStatus])
+            );
+        }
+    }
+
+    /**
+     * Transition to new status with validation
+     * 
+     * @throws \InvalidArgumentException
+     */
+    public function transitionTo(string $newStatus): void
+    {
+        $this->validateTransition($newStatus);
+        $this->status = $newStatus;
+        
+        // Update timestamps based on status
+        if ($newStatus === 'syncing') {
+            $this->last_sync_attempt = now();
+            $this->sync_attempts = ($this->sync_attempts ?? 0) + 1;
+        } elseif ($newStatus === 'synced') {
+            $this->synced_at = now();
+        }
+    }
+
+    /**
+     * Check if transition is allowed
+     */
+    public function canTransitionTo(string $newStatus): bool
+    {
+        try {
+            $this->validateTransition($newStatus);
+            return true;
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+    }
+
+    // ==========================================
+    // RELATIONSHIPS
+    // ==========================================
+
     public function terminal(): BelongsTo
     {
         return $this->belongsTo(PosTerminal::class, 'terminal_id');
