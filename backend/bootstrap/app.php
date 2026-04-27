@@ -43,7 +43,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.agent_or_user'       => \App\Http\Middleware\AuthenticateAgentOrUser::class,
             'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
             'inventory.access'         => \App\Http\Middleware\EnsureInventoryAccess::class,
+            'correlation.id'           => \App\Http\Middleware\CorrelationIdMiddleware::class,
         ]);
+
+        // Attach correlation ID middleware to all API requests
+        $middleware->appendToGroup('api', \App\Http\Middleware\CorrelationIdMiddleware::class);
 
         // Remove SubstituteBindings from the 'api' group so tenant routes can
         // add it AFTER the search_path middleware — otherwise route-model
