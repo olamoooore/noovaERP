@@ -33,13 +33,16 @@ class EventOperationsService
     }
 
     /**
-     * Resolve the current tenant ID.
-     * Prefers TenantSchemaManager; falls back to the authenticated user's
-     * tenant_id attribute (set by ERP's SetTenantFromUserPreference middleware).
+     * Resolve the current tenant ID from tenancy context.
+     * Fails closed if tenant context is not initialized.
      */
     private function resolveTenantId(): string
     {
-        return (string) (auth()->user()?->tenant_id ?? '');
+        if (!tenancy()->initialized) {
+            throw new \RuntimeException('Tenant context not initialized for EventOperationsService');
+        }
+        
+        return (string) tenant()->id;
     }
 
     /**

@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('loyalty_transactions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('customer_loyalty_id')->constrained('customer_loyalty')->onDelete('cascade');
-            $table->enum('type', ['earn', 'redeem', 'expire', 'adjust']);
+            $table->enum('type', ['earn', 'redeem', 'expire', 'adjust', 'reverse_earn', 'restore_redeem']);
             $table->integer('points')->comment('Positive for earn, negative for redeem/expire');
             $table->integer('balance_after');
             $table->string('reference_type')->nullable()->comment('invoice, payment, manual, expiry');

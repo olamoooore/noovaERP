@@ -3,6 +3,7 @@
 namespace Modules\Loyalty\Services;
 
 use Illuminate\Support\Facades\DB;
+use App\Models\Warehouse;
 use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Models\LoyaltyRedemption;
@@ -13,23 +14,67 @@ class RedemptionService
 {
     public function __construct(
         private PointsCalculationService $pointsCalculation,
-        private TierUpgradeService $tierUpgrade
+        private TierUpgradeService $tierUpgrade,
+        private \Modules\Inventory\Services\InventoryService $inventoryService,
     ) {}
 
     /**
-     * Redeem points for discount
+     * Redeem points for discount with idempotency protection
      */
     public function redeemForDiscount(
         int $customerId,
         int $points,
         ?int $invoiceId = null,
         ?string $referenceType = null,
-        ?int $referenceId = null
+        ?int $referenceId = null,
+        ?string $idempotencyKey = null
     ): array {
-        return DB::transaction(function () use ($customerId, $points, $invoiceId, $referenceType, $referenceId) {
+        return DB::transaction(function () use ($customerId, $points, $invoiceId, $referenceType, $referenceId, $idempotencyKey) {
             $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // Idempotency check: prevent duplicate redemptions for same reference
+            if ($referenceType && $referenceId) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('type', 'redeem')
+                    ->where('reference_type', $referenceType)
+                    ->where('reference_id', $referenceId)
+                    ->first();
+
+                if ($existing) {
+                    $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+                    return [
+                        'success' => true,
+                        'points_redeemed' => abs($existing->points),
+                        'discount_amount' => $existingRedemption?->discount_amount ?? 0,
+                        'new_balance' => $existing->balance_after,
+                        'transaction' => $existing,
+                        'redemption' => $existingRedemption,
+                        'idempotent' => true,
+                    ];
+                }
+            }
+
+            // Additional idempotency check using explicit key
+            if ($idempotencyKey) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+                    return [
+                        'success' => true,
+                        'points_redeemed' => abs($existing->points),
+                        'discount_amount' => $existingRedemption?->discount_amount ?? 0,
+                        'new_balance' => $existing->balance_after,
+                        'transaction' => $existing,
+                        'redemption' => $existingRedemption,
+                        'idempotent' => true,
+                    ];
+                }
+            }
 
             // Validate redemption
             $validation = $this->pointsCalculation->canRedeemPoints(
@@ -59,7 +104,7 @@ class RedemptionService
             $finalRefType = $referenceType ?? ($invoiceId ? 'invoice' : 'manual');
             $finalRefId = $referenceId ?? $invoiceId;
 
-            // Create transaction record
+            // Create transaction record with idempotency key
             $transaction = LoyaltyTransaction::create([
                 'customer_loyalty_id' => $customerLoyalty->id,
                 'type' => 'redeem',
@@ -67,6 +112,7 @@ class RedemptionService
                 'balance_after' => $newBalance,
                 'reference_type' => $finalRefType,
                 'reference_id' => $finalRefId,
+                'idempotency_key' => $idempotencyKey,
                 'description' => "Redeemed {$points} points for discount",
                 'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
@@ -95,6 +141,7 @@ class RedemptionService
                 'new_balance' => $newBalance,
                 'transaction' => $transaction,
                 'redemption' => $redemption,
+                'idempotent' => false,
             ];
         });
     }
@@ -164,8 +211,25 @@ class RedemptionService
                 'redeemed_at' => now(),
             ]);
 
-            // Decrease stock if applicable
+            // Decrease stock if applicable (route through InventoryService if product_id exists)
             if ($reward->stock_quantity !== null) {
+                if ($reward->product_id) {
+                    // Route through canonical InventoryService for product-based rewards
+                    $warehouseId = Warehouse::getDefault()?->id;
+                    if ($warehouseId) {
+                        $this->inventoryService->adjustStock(
+                            productId: $reward->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: 1,
+                            type: 'out',
+                            reference: "Loyalty Reward Redemption #{$redemption->id}",
+                            referenceType: 'LoyaltyRedemption',
+                            referenceId: $redemption->id,
+                            notes: "Loyalty reward redeemed: {$reward->name}"
+                        );
+                    }
+                }
+                // Update reward stock_quantity for tracking (even if product-based)
                 $reward->decrement('stock_quantity');
             }
 
@@ -225,8 +289,25 @@ class RedemptionService
             // Update redemption status
             $redemption->update(['status' => 'cancelled']);
 
-            // Restore stock if reward
+            // Restore stock if reward (route through InventoryService if product_id exists)
             if ($redemption->reward && $redemption->reward->stock_quantity !== null) {
+                if ($redemption->reward->product_id) {
+                    // Route through canonical InventoryService for product-based rewards
+                    $warehouseId = Warehouse::getDefault()?->id;
+                    if ($warehouseId) {
+                        $this->inventoryService->adjustStock(
+                            productId: $redemption->reward->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: 1,
+                            type: 'in',
+                            reference: "Loyalty Reward Cancellation #{$redemption->id}",
+                            referenceType: 'LoyaltyRedemptionCancel',
+                            referenceId: $redemption->id,
+                            notes: "Loyalty reward redemption cancelled: {$redemption->reward->name}"
+                        );
+                    }
+                }
+                // Update reward stock_quantity for tracking (even if product-based)
                 $redemption->reward->increment('stock_quantity');
             }
 

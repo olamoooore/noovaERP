@@ -14,31 +14,30 @@ class DocumentVersionLinkService
     {
         $documentType = $this->getDocumentType($original);
         $relatedDocumentType = $this->getDocumentType($replacement);
+        $groupId = $original->correction_group_id ?? $replacement->correction_group_id;
 
         DocumentCorrectionLink::create([
-            'tenant_id' => $original->tenant_id ?? $this->getTenantId($original),
-            'document_type' => $documentType,
-            'document_id' => $original->id,
+            'document_type'         => $documentType,
+            'document_id'           => $original->id,
             'related_document_type' => $relatedDocumentType,
-            'related_document_id' => $replacement->id,
-            'relation_type' => 'replacement_for',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $original->correction_group_id ?? $replacement->correction_group_id,
+            'related_document_id'   => $replacement->id,
+            'relation_type'         => 'replacement_for',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $groupId,
         ]);
 
         DocumentCorrectionLink::create([
-            'tenant_id' => $original->tenant_id ?? $this->getTenantId($original),
-            'document_type' => $relatedDocumentType,
-            'document_id' => $replacement->id,
+            'document_type'         => $relatedDocumentType,
+            'document_id'           => $replacement->id,
             'related_document_type' => $documentType,
-            'related_document_id' => $original->id,
-            'relation_type' => 'replaced_by',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $original->correction_group_id ?? $replacement->correction_group_id,
+            'related_document_id'   => $original->id,
+            'relation_type'         => 'replaced_by',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $groupId,
         ]);
     }
 
@@ -47,45 +46,42 @@ class DocumentVersionLinkService
         $documentType = $this->getDocumentType($original);
 
         DocumentCorrectionLink::create([
-            'tenant_id' => $original->tenant_id ?? $this->getTenantId($original),
-            'document_type' => $documentType,
-            'document_id' => $original->id,
+            'document_type'         => $documentType,
+            'document_id'           => $original->id,
             'related_document_type' => 'journal_entry',
-            'related_document_id' => $reversalEntry->id,
-            'relation_type' => 'reversal_of',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $original->correction_group_id,
+            'related_document_id'   => $reversalEntry->id,
+            'relation_type'         => 'reversal_of',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $original->correction_group_id,
         ]);
     }
 
     public function linkCreditNote($original, $creditNote, CorrectionRequest $request): void
     {
         DocumentCorrectionLink::create([
-            'tenant_id' => $original->tenant_id ?? $this->getTenantId($original),
-            'document_type' => 'invoice',
-            'document_id' => $original->id,
+            'document_type'         => 'invoice',
+            'document_id'           => $original->id,
             'related_document_type' => 'invoice',
-            'related_document_id' => $creditNote->id,
-            'relation_type' => 'credit_note_for',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $original->correction_group_id,
+            'related_document_id'   => $creditNote->id,
+            'relation_type'         => 'credit_note_for',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $original->correction_group_id,
         ]);
 
         DocumentCorrectionLink::create([
-            'tenant_id' => $original->tenant_id ?? $this->getTenantId($original),
-            'document_type' => 'invoice',
-            'document_id' => $creditNote->id,
+            'document_type'         => 'invoice',
+            'document_id'           => $creditNote->id,
             'related_document_type' => 'invoice',
-            'related_document_id' => $original->id,
-            'relation_type' => 'credited_by',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $original->correction_group_id,
+            'related_document_id'   => $original->id,
+            'relation_type'         => 'credited_by',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $original->correction_group_id,
         ]);
     }
 
@@ -94,36 +90,34 @@ class DocumentVersionLinkService
         $documentType = $this->getDocumentType($document);
 
         DocumentCorrectionLink::create([
-            'tenant_id' => $document->tenant_id ?? $this->getTenantId($document),
-            'document_type' => $documentType,
-            'document_id' => $document->id,
+            'document_type'         => $documentType,
+            'document_id'           => $document->id,
             'related_document_type' => 'payment',
-            'related_document_id' => $refundPayment->id,
-            'relation_type' => 'refund_for',
-            'created_by' => $request->userId,
-            'reason_code' => $request->reasonCode,
-            'reason_text' => $request->reasonText,
-            'correction_group_id' => $document->correction_group_id,
+            'related_document_id'   => $refundPayment->id,
+            'relation_type'         => 'refund_for',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $document->correction_group_id,
         ]);
     }
 
     public function getCorrectionChain($document): \Illuminate\Database\Eloquent\Collection
     {
         $documentType = $this->getDocumentType($document);
-        $tenantId = $document->tenant_id ?? $this->getTenantId($document);
 
-        return DocumentCorrectionLink::where('tenant_id', $tenantId)
-            ->where(function ($query) use ($documentType, $document) {
-                $query->where(function ($q) use ($documentType, $document) {
-                    $q->where('document_type', $documentType)
-                        ->where('document_id', $document->id);
-                })->orWhere(function ($q) use ($documentType, $document) {
-                    $q->where('related_document_type', $documentType)
-                        ->where('related_document_id', $document->id);
-                });
-            })
-            ->orderBy('created_at', 'asc')
-            ->get();
+        // No tenant_id filter needed — search_path already scopes to this tenant's schema.
+        return DocumentCorrectionLink::where(function ($query) use ($documentType, $document) {
+            $query->where(function ($q) use ($documentType, $document) {
+                $q->where('document_type', $documentType)
+                  ->where('document_id', $document->id);
+            })->orWhere(function ($q) use ($documentType, $document) {
+                $q->where('related_document_type', $documentType)
+                  ->where('related_document_id', $document->id);
+            });
+        })
+        ->orderBy('created_at', 'asc')
+        ->get();
     }
 
     public function getActiveVersion($document)
@@ -137,16 +131,10 @@ class DocumentVersionLinkService
         $documentType = $this->getDocumentType($document);
 
         return match ($documentType) {
-            'invoice' => Invoice::where('correction_group_id', $correctionGroupId)
-                ->where('is_active_version', true)
-                ->first(),
-            'bill' => Bill::where('correction_group_id', $correctionGroupId)
-                ->where('is_active_version', true)
-                ->first(),
-            'journal_entry' => JournalEntry::where('correction_group_id', $correctionGroupId)
-                ->where('is_active_version', true)
-                ->first(),
-            default => null,
+            'invoice'       => Invoice::where('correction_group_id', $correctionGroupId)->where('is_active_version', true)->first(),
+            'bill'          => Bill::where('correction_group_id', $correctionGroupId)->where('is_active_version', true)->first(),
+            'journal_entry' => JournalEntry::where('correction_group_id', $correctionGroupId)->where('is_active_version', true)->first(),
+            default         => null,
         };
     }
 
@@ -159,56 +147,37 @@ class DocumentVersionLinkService
         $documentType = $this->getDocumentType($document);
 
         return match ($documentType) {
-            'invoice' => Invoice::find($document->original_document_id),
-            'bill' => Bill::find($document->original_document_id),
+            'invoice'       => Invoice::find($document->original_document_id),
+            'bill'          => Bill::find($document->original_document_id),
             'journal_entry' => JournalEntry::find($document->original_document_id),
-            default => null,
+            default         => null,
         };
     }
 
     public function getVersionHistory($document): \Illuminate\Database\Eloquent\Collection
     {
         $documentType = $this->getDocumentType($document);
-        $tenantId = $document->tenant_id ?? $this->getTenantId($document);
 
-        return DocumentCorrectionLink::where('tenant_id', $tenantId)
-            ->where(function ($query) use ($documentType, $document) {
-                $query->where(function ($q) use ($documentType, $document) {
-                    $q->where('document_type', $documentType)
-                        ->where('document_id', $document->id);
-                })->orWhere(function ($q) use ($documentType, $document) {
-                    $q->where('related_document_type', $documentType)
-                        ->where('related_document_id', $document->id);
-                });
-            })
-            ->orderBy('created_at', 'asc')
-            ->get();
+        return DocumentCorrectionLink::where(function ($query) use ($documentType, $document) {
+            $query->where(function ($q) use ($documentType, $document) {
+                $q->where('document_type', $documentType)
+                  ->where('document_id', $document->id);
+            })->orWhere(function ($q) use ($documentType, $document) {
+                $q->where('related_document_type', $documentType)
+                  ->where('related_document_id', $document->id);
+            });
+        })
+        ->orderBy('created_at', 'asc')
+        ->get();
     }
 
     private function getDocumentType($document): string
     {
         return match (true) {
-            $document instanceof Invoice => 'invoice',
-            $document instanceof Bill => 'bill',
-            $document instanceof JournalEntry => 'journal_entry',
+            $document instanceof Invoice       => 'invoice',
+            $document instanceof Bill          => 'bill',
+            $document instanceof JournalEntry  => 'journal_entry',
             default => throw new \InvalidArgumentException('Unknown document type'),
         };
-    }
-
-    private function getTenantId($document): ?string
-    {
-        if (isset($document->tenant_id)) {
-            return $document->tenant_id;
-        }
-
-        if ($document instanceof Invoice && $document->customer) {
-            return $document->customer->tenant_id;
-        }
-
-        if ($document instanceof Bill && $document->vendor) {
-            return $document->vendor->tenant_id;
-        }
-
-        return null;
     }
 }

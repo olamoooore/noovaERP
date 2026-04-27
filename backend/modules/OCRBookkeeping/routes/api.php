@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum'])->prefix('ocr')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:ocr_bookkeeping'])->prefix('ocr')->group(function () {
     // Document upload routes
     Route::post('/documents/upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'upload']);
     Route::post('/documents/batch-upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'batchUpload']);

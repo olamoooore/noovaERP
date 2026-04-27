@@ -15,7 +15,7 @@ use Modules\WhatsApp\Controllers\WhatsAppApiKeyController;
 */
 
 // Protected Management Routes
-Route::middleware(['auth:sanctum'])->prefix('whatsapp')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:whatsapp'])->prefix('whatsapp')->group(function () {
     // API Key Management
     Route::get('/api-keys', [WhatsAppApiKeyController::class, 'index']);
     Route::post('/api-keys', [WhatsAppApiKeyController::class, 'store']);

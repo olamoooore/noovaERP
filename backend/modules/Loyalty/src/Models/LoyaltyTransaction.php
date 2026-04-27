@@ -16,6 +16,7 @@ class LoyaltyTransaction extends Model
         'balance_after',
         'reference_type',
         'reference_id',
+        'idempotency_key',
         'description',
         'expires_at',
         'created_by',

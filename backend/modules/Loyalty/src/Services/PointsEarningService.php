@@ -16,18 +16,61 @@ class PointsEarningService
     ) {}
 
     /**
-     * Award points to a customer
+     * Award points to a customer with idempotency protection
      */
     public function awardPoints(
         int $customerId,
         float $amount,
         ?string $referenceType = null,
         ?int $referenceId = null,
-        ?string $description = null
+        ?string $description = null,
+        ?string $idempotencyKey = null
     ): array {
-        return DB::transaction(function () use ($customerId, $amount, $referenceType, $referenceId, $description) {
+        return DB::transaction(function () use ($customerId, $amount, $referenceType, $referenceId, $description, $idempotencyKey) {
             // Get or create customer loyalty account
             $customerLoyalty = $this->getOrCreateCustomerLoyalty($customerId);
+
+            // Idempotency check: prevent duplicate awards for same reference
+            if ($referenceType && $referenceId) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('type', 'earn')
+                    ->where('reference_type', $referenceType)
+                    ->where('reference_id', $referenceId)
+                    ->first();
+
+                if ($existing) {
+                    return [
+                        'success' => true,
+                        'points_earned' => $existing->points,
+                        'new_balance' => $existing->balance_after,
+                        'tier_upgraded' => false,
+                        'new_tier' => null,
+                        'transaction' => $existing,
+                        'expires_at' => $existing->expires_at,
+                        'idempotent' => true,
+                    ];
+                }
+            }
+
+            // Additional idempotency check using explicit key
+            if ($idempotencyKey) {
+                $existing = LoyaltyTransaction::where('customer_loyalty_id', $customerLoyalty->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    return [
+                        'success' => true,
+                        'points_earned' => $existing->points,
+                        'new_balance' => $existing->balance_after,
+                        'tier_upgraded' => false,
+                        'new_tier' => null,
+                        'transaction' => $existing,
+                        'expires_at' => $existing->expires_at,
+                        'idempotent' => true,
+                    ];
+                }
+            }
 
             // Calculate points with tier multiplier
             $points = $this->pointsCalculation->calculatePointsWithMultiplier(
@@ -56,7 +99,7 @@ class PointsEarningService
                 'points_earned' => $customerLoyalty->points_earned + $points,
             ]);
 
-            // Create transaction record
+            // Create transaction record with idempotency key
             $transaction = LoyaltyTransaction::create([
                 'customer_loyalty_id' => $customerLoyalty->id,
                 'type' => 'earn',
@@ -64,6 +107,7 @@ class PointsEarningService
                 'balance_after' => $newBalance,
                 'reference_type' => $referenceType ?? 'manual',
                 'reference_id' => $referenceId,
+                'idempotency_key' => $idempotencyKey,
                 'description' => $description ?? "Earned {$points} points from purchase",
                 'expires_at' => $expiresAt,
                 'created_by' => TenantUserHelper::resolveTenantUserId(),
@@ -81,6 +125,7 @@ class PointsEarningService
                 'new_tier' => $upgradedTier,
                 'transaction' => $transaction,
                 'expires_at' => $expiresAt,
+                'idempotent' => false,
             ];
         });
     }

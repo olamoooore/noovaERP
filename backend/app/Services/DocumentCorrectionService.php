@@ -184,7 +184,6 @@ class DocumentCorrectionService
             'subtotal' => $invoice->subtotal,
             'tax_amount' => $invoice->tax_amount,
             'total' => $invoice->total,
-            'tenant_id' => $invoice->customer->tenant_id ?? null,
             'created_by' => $request->userId ?? Auth::id(),
         ]);
 
@@ -222,7 +221,6 @@ class DocumentCorrectionService
             'subtotal' => $bill->subtotal,
             'tax_amount' => $bill->tax_amount,
             'total' => $bill->total,
-            'tenant_id' => $bill->vendor->tenant_id ?? null,
             'created_by' => $request->userId ?? Auth::id(),
         ]);
 

@@ -14,7 +14,7 @@ use Modules\HRM\Http\Controllers\AttendanceEventController;
 use Modules\HRM\Http\Controllers\AttendanceSummaryController;
 use Modules\HRM\Http\Controllers\EmployeeBiometricSubjectController;
 
-Route::middleware(['auth:sanctum'])->prefix('hrm')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:hrm'])->prefix('hrm')->group(function () {
 
     // Health check
     Route::get('/health', [HRMHealthController::class, 'check']);

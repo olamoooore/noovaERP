@@ -52,7 +52,7 @@ trait HasCommunication
                     model: $model->getCommunicationModelName(),
                     recordId: $model->getKey(),
                     userId: $creatorId,
-                    tenantId: $model->tenant_id ?? null,
+                    tenantId: tenant()->id,
                 );
             }
         });
@@ -106,7 +106,7 @@ trait HasCommunication
             email: $email,
             channels: $channels,
             subtypes: $subtypes,
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
         );
     }
 
@@ -120,7 +120,7 @@ trait HasCommunication
             recordId: $this->getKey(),
             userId: $userId,
             customerId: $customerId,
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
         );
     }
 
@@ -143,7 +143,7 @@ trait HasCommunication
             subject: $subject,
             body: $body,
             authorId: $authorId,
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
             templateKey: $templateKey,
             templateVariables: $templateVariables,
             metadata: $metadata,
@@ -161,7 +161,7 @@ trait HasCommunication
             body: $body,
             authorId: $authorId,
             isInternalNote: $isInternalNote,
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
             parentId: $parentId,
         );
     }
@@ -176,7 +176,7 @@ trait HasCommunication
             recordId: $this->getKey(),
             body: $body,
             subtype: $subtype,
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
             metadata: $metadata,
         );
     }
@@ -189,7 +189,7 @@ trait HasCommunication
         return app(CommunicationEngine::class)->getThread(
             model: $this->getCommunicationModelName(),
             recordId: $this->getKey(),
-            tenantId: $this->tenant_id ?? null,
+            tenantId: tenant()->id,
             limit: $limit,
             messageType: $messageType,
         );

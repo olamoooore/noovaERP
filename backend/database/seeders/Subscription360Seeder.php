@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\SuperAdmin\Domain\PlanVersion;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\SubscriptionInvoice;
+use App\SuperAdmin\Application\EntitlementService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -152,5 +153,16 @@ class Subscription360Seeder extends Seeder
         }
 
         $this->command->info('Subscription360Seeder: 6 subscriptions seeded with real plan pricing.');
+
+        // Rebuild entitlements for all seeded tenants
+        $entitlementService = app(EntitlementService::class);
+        foreach ($seeds as $seed) {
+            $tenantId = $tenants[$seed['name']] ?? null;
+            if ($tenantId) {
+                $entitlementService->rebuild($tenantId, null, 'subscription_seeded');
+            }
+        }
+
+        $this->command->info('Subscription360Seeder: Entitlements rebuilt for all seeded tenants.');
     }
 }

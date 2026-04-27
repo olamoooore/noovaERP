@@ -82,7 +82,8 @@ class Product extends Model
         // Inventory
         'track_inventory',
         'tracking_method',
-        'stock_quantity',
+        // NOTE: 'stock_quantity' removed from fillable - it is computed from stock_levels
+        // All stock mutations MUST go through InventoryService::adjustStock()
         'reorder_level',
         'safety_stock',
         'max_stock',
@@ -573,8 +574,10 @@ class Product extends Model
      *
      * Migration path: replace $product->adjustStock($qty, $type, $ref) with
      *   app(InventoryService::class)->adjustStock($productId, $warehouseId, $qty, $type, $ref)
+     *
+     * @internal This method is now private to prevent new usage. Existing callers must migrate.
      */
-    public function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
+    private function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
         // Resolve warehouse: use provided ID, else fall back to the default warehouse.
         // Without a warehouse all stock changes are untrackable at the location level.

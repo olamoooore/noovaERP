@@ -5,6 +5,7 @@ use Modules\Sales\Http\Controllers\SalesOrderController;
 
 Route::middleware([
     'auth:sanctum',
+    'entitlement:sales',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
