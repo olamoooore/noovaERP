@@ -67,6 +67,67 @@ class PosOrder extends Model
     ];
 
     // ==========================================
+    // STATE MACHINE
+    // ==========================================
+
+    /**
+     * Allowed state transitions
+     */
+    protected static array $allowedTransitions = [
+        'draft' => ['paid', 'void', 'cancelled'],
+        'paid' => ['void', 'refunded', 'returned'],
+        'void' => [],
+        'refunded' => [],
+        'returned' => [],
+        'cancelled' => [],
+    ];
+
+    /**
+     * Validate state transition
+     * 
+     * @throws \InvalidArgumentException
+     */
+    public function validateTransition(string $newStatus): void
+    {
+        $currentStatus = $this->status;
+        
+        if (!isset(self::$allowedTransitions[$currentStatus])) {
+            throw new \InvalidArgumentException("Invalid current status: {$currentStatus}");
+        }
+
+        if (!in_array($newStatus, self::$allowedTransitions[$currentStatus])) {
+            throw new \InvalidArgumentException(
+                "Invalid state transition from '{$currentStatus}' to '{$newStatus}'. " .
+                "Allowed transitions: " . implode(', ', self::$allowedTransitions[$currentStatus])
+            );
+        }
+    }
+
+    /**
+     * Transition to new status with validation
+     * 
+     * @throws \InvalidArgumentException
+     */
+    public function transitionTo(string $newStatus): void
+    {
+        $this->validateTransition($newStatus);
+        $this->status = $newStatus;
+    }
+
+    /**
+     * Check if transition is allowed
+     */
+    public function canTransitionTo(string $newStatus): bool
+    {
+        try {
+            $this->validateTransition($newStatus);
+            return true;
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+    }
+
+    // ==========================================
     // RELATIONSHIPS
     // ==========================================
 
