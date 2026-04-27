@@ -602,7 +602,7 @@ class PosOrderController extends Controller
                 'status' => 'void',
                 'voided_by' => auth()->id(),
                 'voided_at' => now(),
-                'void_approved_by' => $manager->id,
+                'void_approved_by' => $approvalRequest->reviewed_by,
                 'void_reason' => $reason,
                 'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
             ]);

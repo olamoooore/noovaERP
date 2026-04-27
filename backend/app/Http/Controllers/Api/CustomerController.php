@@ -437,15 +437,19 @@ class CustomerController extends Controller
     {
         $customer = Customer::findOrFail($customer);
         $validated = $request->validate([
-            'points' => 'required|integer',
+            'points' => 'required|integer|not_in:0',
             'notes' => 'nullable|string',
         ]);
 
-        if ($validated['points'] > 0) {
-            $customer->addLoyaltyPoints($validated['points'], 'manual', null, $validated['notes']);
-        } else {
-            $customer->redeemLoyaltyPoints(abs($validated['points']), 'manual', null, $validated['notes']);
-        }
+        // Use canonical PointsEarningService — no legacy Customer::addLoyaltyPoints() bypass
+        $earningService = app(\Modules\Loyalty\Services\PointsEarningService::class);
+        $reason = $validated['notes'] ?? 'Manual adjustment';
+
+        $earningService->adjustPoints(
+            $customer->id,
+            $validated['points'],
+            $reason
+        );
 
         return response()->json([
             'message' => 'Loyalty points adjusted',
