@@ -133,4 +133,16 @@ Route::middleware([
     foreach ($modules->tenantApiRouteFiles() as $routesFile) {
         require $routesFile;
     }
+
+    // ─── Approval Workflow ────────────────────────────────────────────────────
+    // Tenant-scoped approval requests for POS void/refund/return/discount.
+    // Requires auth:sanctum (inherited from outer middleware group).
+    Route::prefix('approvals')->group(function () {
+        Route::post('/',                [\App\Http\Controllers\ApprovalController::class, 'store']);
+        Route::get('/',                 [\App\Http\Controllers\ApprovalController::class, 'index']);
+        Route::get('/my-requests',      [\App\Http\Controllers\ApprovalController::class, 'myRequests']);
+        Route::get('/{id}',             [\App\Http\Controllers\ApprovalController::class, 'show']);
+        Route::post('/{id}/approve',    [\App\Http\Controllers\ApprovalController::class, 'approve']);
+        Route::post('/{id}/reject',     [\App\Http\Controllers\ApprovalController::class, 'reject']);
+    });
 });

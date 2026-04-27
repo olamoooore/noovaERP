@@ -196,16 +196,47 @@ export function POSLayout() {
                   variant="secondary"
                   size="sm"
                   className="mr-2 rounded-xl border-0 bg-white/92 px-4 text-slate-700 shadow-sm hover:bg-white"
-                  onClick={() => {
-                    const width = 1920
-                    const height = 1080
-                    const left = window.screen.width - width
-                    const top = 0
-                    window.open(
-                      `${import.meta.env.BASE_URL}pos/customer-display?session=${activeSessionId}`,
-                      'CustomerDisplay',
-                      `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-                    )
+                  onClick={async () => {
+                    try {
+                      // Check if customer display is enabled
+                      const settingsResponse = await api.get('/pos/settings')
+                      const enableCustomerDisplay = settingsResponse.data?.settings?.enable_customer_display ?? false
+                      
+                      if (!enableCustomerDisplay) {
+                        toast({
+                          title: 'Customer Display Disabled',
+                          description: 'Customer display is disabled in POS settings',
+                          variant: 'destructive',
+                        })
+                        return
+                      }
+
+                      // Issue display token
+                      const tokenResponse = await api.post(`/pos/display/${activeTerminalId}/token`)
+                      const displayToken = tokenResponse.data?.token
+                      
+                      if (!displayToken) {
+                        throw new Error('Failed to issue display token')
+                      }
+
+                      // Open customer display with terminal ID and token
+                      const width = 1920
+                      const height = 1080
+                      const left = window.screen.width - width
+                      const top = 0
+                      window.open(
+                        `${import.meta.env.BASE_URL}pos/customer-display/${activeTerminalId}?token=${displayToken}`,
+                        'CustomerDisplay',
+                        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+                      )
+                    } catch (error) {
+                      console.error('Failed to open customer display:', error)
+                      toast({
+                        title: 'Error',
+                        description: 'Failed to open customer display',
+                        variant: 'destructive',
+                      })
+                    }
                   }}
                 >
                   <Icon icon="solar:monitor-bold-duotone" className="mr-2 h-4 w-4" />

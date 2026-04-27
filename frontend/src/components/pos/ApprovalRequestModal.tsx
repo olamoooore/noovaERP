@@ -116,9 +116,9 @@ export function ApprovalRequestModal({
 
     try {
       const response = await api.post('/approvals', {
-        type: operation,
-        source_type: 'PosOrder',
-        source_id: orderId,
+        request_type: operation,
+        subject_type: 'PosOrder',
+        subject_id: orderId,
         amount,
         reason: reason.trim(),
       })

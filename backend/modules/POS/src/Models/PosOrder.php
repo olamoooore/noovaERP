@@ -42,6 +42,13 @@ class PosOrder extends Model
         'loyalty_discount',
         'receipt_number',
         'cashier_name',
+        'payment_state',
+        'payment_method',
+        'amount_tendered',
+        'change_due',
+        'voided_by',
+        'void_approved_by',
+        'void_reason',
     ];
 
     protected $casts = [
@@ -51,6 +58,8 @@ class PosOrder extends Model
         'discount_value' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'loyalty_discount' => 'decimal:2',
+        'amount_tendered' => 'decimal:2',
+        'change_due' => 'decimal:2',
         'paid_at' => 'datetime',
         'is_return' => 'boolean',
         'loyalty_points_earned' => 'integer',
@@ -160,12 +169,15 @@ class PosOrder extends Model
             $itemTax = $originalItem->tax_amount / $originalItem->quantity * $qty;
 
             $returnOrder->items()->create([
-                'product_id' => $originalItem->product_id,
-                'product_name' => $originalItem->product_name,
-                'quantity' => -$qty, // Negative for returns
-                'unit_price' => $originalItem->unit_price,
-                'total_price' => -$itemTotal,
-                'tax_amount' => -$itemTax,
+                'product_id'   => $originalItem->product_id,
+                'name'         => $originalItem->name,
+                'sku'          => $originalItem->sku,
+                'quantity'     => -$qty,
+                'unit_price'   => $originalItem->unit_price,
+                'tax_rate'     => $originalItem->tax_rate,
+                'tax_amount'   => -$itemTax,
+                'line_subtotal'=> -round($originalItem->unit_price * $qty, 2),
+                'line_total'   => -round($itemTotal + $itemTax, 2),
             ]);
 
             $subtotal += $itemTotal;

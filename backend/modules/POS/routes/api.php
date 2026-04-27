@@ -109,4 +109,23 @@ Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path
     Route::get('/pos/settings', [PosSettingController::class, 'index']);
     Route::put('/pos/settings', [PosSettingController::class, 'update']);
     Route::post('/pos/settings/reset', [PosSettingController::class, 'reset']);
+
+    // =====================================================
+    // OFFLINE SYNC
+    // =====================================================
+
+    Route::post('/pos/sync/queue',              [\Modules\POS\Http\Controllers\PosSyncController::class, 'queue']);
+    Route::get('/pos/sync/pending',             [\Modules\POS\Http\Controllers\PosSyncController::class, 'pending']);
+    Route::get('/pos/sync/stats',               [\Modules\POS\Http\Controllers\PosSyncController::class, 'stats']);
+    Route::post('/pos/sync/all',                [\Modules\POS\Http\Controllers\PosSyncController::class, 'syncAll']);
+    Route::post('/pos/sync/{id}',               [\Modules\POS\Http\Controllers\PosSyncController::class, 'sync']);
+    Route::post('/pos/sync/{id}/retry',         [\Modules\POS\Http\Controllers\PosSyncController::class, 'retry']);
+    Route::post('/pos/sync/{id}/resolve',       [\Modules\POS\Http\Controllers\PosSyncController::class, 'resolveConflict']);
+
+    // =====================================================
+    // CUSTOMER DISPLAY
+    // =====================================================
+
+    Route::get('/pos/display/{terminal_id}',    [\Modules\POS\Http\Controllers\CustomerDisplayController::class, 'show']);
+    Route::post('/pos/display/{terminal_id}/token', [\Modules\POS\Http\Controllers\CustomerDisplayController::class, 'issueToken']);
 });

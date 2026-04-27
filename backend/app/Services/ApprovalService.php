@@ -103,6 +103,11 @@ class ApprovalService
                 throw new \Exception("Request has expired");
             }
 
+            // Segregation of duties — requester cannot approve own request
+            if ($request->requested_by === $userId) {
+                throw new \Exception("Self-approval is not permitted");
+            }
+
             $user = User::findOrFail($userId);
 
             // Check entitlement

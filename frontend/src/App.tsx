@@ -30,6 +30,7 @@ const POSCustomerDisplay = lazy(() => import('@/pages/POS/POSCustomerDisplay').t
 const POSCustomerDisplayV2 = lazy(() => import('@/pages/POS/POSCustomerDisplayV2').then(m => ({ default: m.POSCustomerDisplayV2 })))
 const POSOrdersPage = lazy(() => import('@/pages/POS/POSOrdersPage').then(m => ({ default: m.POSOrdersPage })))
 const POSApprovalQueuePage = lazy(() => import('@/pages/POS/POSApprovalQueuePage').then(m => ({ default: m.POSApprovalQueuePage })))
+const POSOfflineQueuePage = lazy(() => import('@/pages/POS/POSOfflineQueuePage').then(m => ({ default: m.POSOfflineQueuePage })))
 const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m => ({ default: m.POSBarcodePage })))
 const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
 const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m => ({ default: m.POSSettingsPage })))
@@ -326,6 +327,7 @@ function App() {
                 <Route path="/pos" element={<POSPage />} />
                 <Route path="/pos/orders" element={<POSOrdersPage />} />
                 <Route path="/pos/approvals" element={<POSApprovalQueuePage />} />
+                <Route path="/pos/offline-queue" element={<POSOfflineQueuePage />} />
                 <Route path="/pos/barcodes" element={<POSBarcodePage />} />
                 <Route path="/pos/reports" element={<POSReportsPage />} />
                 <Route path="/pos/settings" element={<POSSettingsPage />} />

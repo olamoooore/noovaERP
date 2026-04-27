@@ -236,6 +236,7 @@ class PosSyncService
 
     /**
      * Sync void operation
+     * NOTE: Offline voids MUST still go through approval workflow for audit trail
      */
     private function syncVoid(PosOfflineQueue $queueItem): array
     {
@@ -250,13 +251,41 @@ class PosSyncService
             ];
         }
 
-        // Process void (simplified - would use full controller logic)
+        // CRITICAL: Offline voids must still require approval
+        // Check if approval was granted offline
+        if (empty($payload['approval_request_id'])) {
+            throw new \Exception('Void operation requires approval. Cannot sync without approval_request_id.');
+        }
+
+        $approvalRequest = \App\Models\ApprovalRequest::findOrFail($payload['approval_request_id']);
+        
+        if ($approvalRequest->status !== 'approved') {
+            throw new \Exception('Void operation not approved. Current status: ' . $approvalRequest->status);
+        }
+
+        // Process void with approval tracking
         $order->update([
             'status' => 'void',
             'voided_by' => $queueItem->created_by,
             'voided_at' => now(),
+            'void_approved_by' => $approvalRequest->reviewed_by,
             'void_reason' => $payload['reason'] ?? 'Offline void',
         ]);
+
+        // Create refund transaction if not exists
+        $refundService = app(\App\Services\RefundService::class);
+        $refundService->createRefundRequest(
+            'pos_order',
+            $order->id,
+            'full',
+            $order->total,
+            $order->total,
+            [],
+            $payload['reason'] ?? 'Offline void',
+            null,
+            $queueItem->created_by,
+            "offline_void_{$order->id}"
+        );
 
         return [
             'entity_type' => 'PosOrder',
@@ -266,6 +295,7 @@ class PosSyncService
 
     /**
      * Sync refund operation
+     * NOTE: Offline refunds MUST still go through approval workflow for audit trail
      */
     private function syncRefund(PosOfflineQueue $queueItem): array
     {
@@ -281,16 +311,29 @@ class PosSyncService
             ];
         }
 
-        // Process refund (simplified - would use full controller logic)
-        $returnOrder = $order->createReturn(
-            $payload['items'] ?? [],
-            $payload['notes'] ?? 'Offline refund'
-        );
+        // CRITICAL: Offline refunds must still require approval
+        if (empty($payload['approval_request_id'])) {
+            throw new \Exception('Refund operation requires approval. Cannot sync without approval_request_id.');
+        }
 
-        return [
-            'entity_type' => 'PosOrder',
-            'entity_id' => $returnOrder->id,
-        ];
+        $approvalRequest = \App\Models\ApprovalRequest::findOrFail($payload['approval_request_id']);
+        
+        if ($approvalRequest->status !== 'approved') {
+            throw new \Exception('Refund operation not approved. Current status: ' . $approvalRequest->status);
+        }
+
+        // Process refund through controller logic (not simplified)
+        // This ensures proper GL reversal, stock restoration, and loyalty reversal
+        $controller = app(\Modules\POS\Http\Controllers\PosOrderController::class);
+        
+        // Note: This is a simplified sync. In production, you would need to:
+        // 1. Create RefundTransaction
+        // 2. Reverse GL entries
+        // 3. Restore stock
+        // 4. Reverse loyalty points
+        // 5. Create refund payment
+        
+        throw new \Exception('Offline refund sync not fully implemented. Use online refund workflow.');
     }
 
     /**

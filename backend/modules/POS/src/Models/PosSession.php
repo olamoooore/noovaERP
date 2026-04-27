@@ -76,9 +76,9 @@ class PosSession extends Model
         // Start with opening balance
         $balance = $this->opening_balance;
         
-        // Add cash sales
+        // Add cash sales — POS paid orders use status 'paid', not 'completed'
         $cashSales = $this->orders()
-            ->where('status', 'completed')
+            ->where('status', 'paid')
             ->whereHas('payments', function ($q) {
                 $q->where('method', 'cash');
             })
@@ -116,7 +116,7 @@ class PosSession extends Model
      */
     public function getSummary(): array
     {
-        $orders = $this->orders()->where('status', 'completed')->get();
+        $orders = $this->orders()->where('status', 'paid')->get();
         
         return [
             'total_orders' => $orders->count(),
