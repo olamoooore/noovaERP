@@ -21,6 +21,9 @@ class PosPostingService
 
     public function postPaidOrder(PosOrder $order, float $totalPaid, string $paymentMethod): JournalEntry
     {
+        // TASK TAX-001: Resolve tax information for tax audit trail
+        $taxResolutionService = app(\App\Services\TaxResolutionService::class);
+        
         $lines = [];
 
         // DR Cash
@@ -45,8 +48,24 @@ class PosPostingService
             );
         }
 
-        // CR Sales Tax
+        // CR Sales Tax - TASK TAX-001: Pass tax_code for audit trail
         if ((float) $order->tax_amount > 0) {
+            // Resolve tax code from first item (simplified - assumes single tax rate per order)
+            $taxCode = 'SALES-TAX';
+            $taxId = null;
+            
+            if ($order->items->isNotEmpty()) {
+                $firstItem = $order->items->first();
+                if ($firstItem->product) {
+                    $taxInfo = $taxResolutionService->resolveTaxForProduct(
+                        $firstItem->product,
+                        $firstItem->variant
+                    );
+                    $taxCode = $taxInfo['tax_code'];
+                    $taxId = $taxInfo['tax_id'];
+                }
+            }
+            
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'sales_tax_payable',
                 accountId: null,
@@ -54,6 +73,8 @@ class PosPostingService
                 credit: (float) $order->tax_amount,
                 description: 'POS sales tax',
                 reference: $order->order_number,
+                taxCode: $taxCode,
+                taxId: $taxId,
             );
         }
 
@@ -154,6 +175,73 @@ class PosPostingService
             'original_order_id' => $originalOrder->id,
             'return_order_id'   => $returnOrder->id,
             'reversal_entry_id' => $result->journalEntry?->id,
+        ]);
+
+        return $result->journalEntry;
+    }
+
+    /**
+     * Post GL entry for refund payment (cash out)
+     * 
+     * This creates a journal entry for the refund payment itself,
+     * separate from the sales reversal. This ensures cash drawer
+     * reconciliation works correctly.
+     *
+     * @param  PosOrder  $order          The order being refunded
+     * @param  string    $refundMethod   Payment method (cash, card, store_credit)
+     * @param  float     $refundAmount   Amount being refunded
+     * @param  string    $description    Description for the entry
+     * @return JournalEntry              The refund payment journal entry
+     */
+    public function postRefundPayment(
+        PosOrder $order,
+        string $refundMethod,
+        float $refundAmount,
+        string $description
+    ): JournalEntry {
+        $lines = [];
+
+        // CR Cash (money going out)
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'cash',
+            accountId: null,
+            debit: 0,
+            credit: $refundAmount,
+            description: 'Refund payment',
+            reference: $order->order_number,
+        );
+
+        // DR Refunds Payable or Sales Returns
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'refunds_payable',
+            accountId: null,
+            debit: $refundAmount,
+            credit: 0,
+            description: 'Refund liability',
+            reference: $order->order_number,
+        );
+
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'pos_refund_payment',
+            documentId: $order->id,
+            postingDate: now()->toDateString(),
+            description: $description,
+            lines: $lines,
+            reference: "REFUND-{$order->order_number}",
+            userId: TenantUserHelper::resolveTenantUserId(),
+            legalEntityId: request()->attributes->get('legal_entity_id'),
+            entityBookId: request()->attributes->get('entity_book_id'),
+        ));
+
+        if (!$result->success) {
+            throw new \RuntimeException("Refund payment posting failed: {$result->error}");
+        }
+
+        Log::info('POS refund payment posted', [
+            'order_id' => $order->id,
+            'refund_amount' => $refundAmount,
+            'refund_method' => $refundMethod,
+            'journal_entry_id' => $result->journalEntry->id,
         ]);
 
         return $result->journalEntry;

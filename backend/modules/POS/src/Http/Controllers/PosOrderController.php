@@ -239,6 +239,9 @@ class PosOrderController extends Controller
                  $order->items()->delete();
             }
 
+            // TASK TAX-003: Use TaxResolutionService for canonical tax calculation
+            $taxResolutionService = app(\App\Services\TaxResolutionService::class);
+
             $subtotal = 0.0; // net
             $taxAmount = 0.0;
             $totalAmount = 0.0; // gross
@@ -263,30 +266,13 @@ class PosOrderController extends Controller
 
                 $lineSubtotal = $qty * $unitPrice;
                 
-                // Use effective_tax_rate which includes fallback to default system tax
-                $lineTaxRate = (float) ($variant 
-                    ? ($variant->tax_rate > 0 ? $variant->tax_rate : $product->effective_tax_rate)
-                    : $product->effective_tax_rate);
-                    
-                if (!$taxEnabled) {
-                    $lineTaxRate = 0.0;
-                }
+                // TASK TAX-003: Use canonical TaxResolutionService instead of inline logic
+                $taxInfo = $taxResolutionService->resolveTaxForProduct($product, $variant);
+                $lineTaxRate = $taxEnabled ? $taxInfo['rate'] : 0.0;
+                $isInclusive = $taxInfo['is_inclusive'];
 
-                // Use product's effective_tax_is_inclusive to determine calculation mode
-                $isInclusive = $product->effective_tax_is_inclusive;
-
-                if ($isInclusive && $lineTaxRate > 0) {
-                    $gross = round($lineSubtotal, 2);
-                    $div = 1 + ($lineTaxRate / 100);
-                    $net = $div > 0 ? round($gross / $div, 2) : $gross;
-                    $lineTax = round($gross - $net, 2);
-                    $lineSubtotalNet = $net;
-                    $lineTotal = $gross;
-                } else {
-                    $lineSubtotalNet = round($lineSubtotal, 2);
-                    $lineTax = round($lineSubtotalNet * ($lineTaxRate / 100), 2);
-                    $lineTotal = round($lineSubtotalNet + $lineTax, 2);
-                }
+                // Calculate tax using canonical service
+                $taxCalc = $taxResolutionService->calculateTax($lineSubtotal, $lineTaxRate, $isInclusive);
 
                 PosOrderItem::create([
                     'pos_order_id' => $order->id,
@@ -297,13 +283,13 @@ class PosOrderController extends Controller
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
                     'tax_rate' => $lineTaxRate,
-                    'tax_amount' => $lineTax,
-                    'line_total' => $lineTotal,
+                    'tax_amount' => $taxCalc['tax'],
+                    'line_total' => $taxCalc['gross'],
                 ]);
 
-                $subtotal += $lineSubtotalNet;
-                $taxAmount += $lineTax;
-                $totalAmount += $lineTotal;
+                $subtotal += $taxCalc['net'];
+                $taxAmount += $taxCalc['tax'];
+                $totalAmount += $taxCalc['gross'];
             }
 
             // Calculate Discount

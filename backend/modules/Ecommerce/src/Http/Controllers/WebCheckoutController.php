@@ -209,6 +209,9 @@ class WebCheckoutController extends Controller
 
             $customerId = $systemCustomer->id;
 
+            // TASK TAX-003: Use TaxResolutionService for canonical tax calculation
+            $taxResolutionService = app(\App\Services\TaxResolutionService::class);
+
             // ── Calculate totals first (needed for loyalty validation) ───────────
             $subtotal = 0;
             $taxAmount = 0;
@@ -217,23 +220,25 @@ class WebCheckoutController extends Controller
             foreach ($validated['items'] as $item) {
                 $product = Product::find($item['product_id']);
 
-                // Use product's tax rate if available, default to 0
-                $taxRate = $product->tax_rate ?? 0;
+                // TASK TAX-003: Use canonical TaxResolutionService instead of inline logic
+                $taxInfo = $taxResolutionService->resolveTaxForProduct($product);
+                $taxRate = $taxInfo['rate'];
 
                 $lineSubtotal = $product->price * $item['quantity'];
-                $lineTax = $lineSubtotal * ($taxRate / 100);
-                $lineTotal = $lineSubtotal + $lineTax;
+                
+                // Calculate tax using canonical service
+                $taxCalc = $taxResolutionService->calculateTax($lineSubtotal, $taxRate, $taxInfo['is_inclusive']);
 
-                $subtotal += $lineSubtotal;
-                $taxAmount += $lineTax;
+                $subtotal += $taxCalc['net'];
+                $taxAmount += $taxCalc['tax'];
 
                 $items[] = [
                     'product' => $product,
                     'quantity' => $item['quantity'],
                     'unit_price' => $product->price,
                     'tax_rate' => $taxRate,
-                    'tax_amount' => $lineTax,
-                    'line_total' => $lineTotal,
+                    'tax_amount' => $taxCalc['tax'],
+                    'line_total' => $taxCalc['gross'],
                 ];
             }
 

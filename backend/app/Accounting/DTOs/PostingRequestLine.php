@@ -17,5 +17,8 @@ class PostingRequestLine
         public readonly ?string $currencyCode = null,
         public readonly ?float $originalAmount = null,
         public readonly ?float $exchangeRate = null,
+        // TASK TAX-001: Add tax_code for tax audit trail
+        public readonly ?string $taxCode = null,
+        public readonly ?int $taxId = null,
     ) {}
 }

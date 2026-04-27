@@ -457,11 +457,14 @@ class PostingEngine implements PostingEngineInterface
                     ? $this->roleResolver->resolveId($line->accountMappingKey, $documentType)
                     : $this->accountMapper->resolveId($line->accountMappingKey, $documentType));
 
+            // TASK ACC-002: Store tax identity on GL lines
             $resolved[] = [
                 'account_id'      => $accountId,
                 'debit'           => round($line->debit, 2),
                 'credit'          => round($line->credit, 2),
                 'description'     => $line->description,
+                'tax_code'        => $line->taxCode,
+                'tax_id'          => $line->taxId,
                 'reference'       => $line->reference,
                 'department_id'   => $line->departmentId,
                 'project_id'     => $line->projectId,
