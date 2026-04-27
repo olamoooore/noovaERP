@@ -14,11 +14,22 @@ class PosProductController extends Controller
             'code' => 'required|string|max:255',
         ]);
 
-        $found = Product::findSellableByBarcodeOrSku($validated['code']);
-        if (!$found) {
+        $results = Product::findAllSellableByBarcodeOrSku($validated['code']);
+        
+        if (empty($results)) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
-        return response()->json($found);
+        // If single match, return it directly for backward compatibility
+        if (count($results) === 1) {
+            return response()->json($results[0]);
+        }
+
+        // Multiple matches - return array for frontend selection
+        return response()->json([
+            'multiple_matches' => true,
+            'count' => count($results),
+            'results' => $results,
+        ]);
     }
 }

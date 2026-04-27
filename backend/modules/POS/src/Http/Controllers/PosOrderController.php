@@ -591,8 +591,7 @@ class PosOrderController extends Controller
             'reason' => $reason,
             'initiated_by' => auth()->id(),
             'initiated_by_name' => auth()->user()->name,
-            'approved_by' => $manager->id,
-            'approved_by_name' => $manager->name,
+            'approved_by' => $approvalRequest->reviewed_by,
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'timestamp' => now()->toIso8601String(),
@@ -622,7 +621,32 @@ class PosOrderController extends Controller
             return response()->json(['message' => 'Order already has a return and cannot be voided again'], 422);
         }
 
-        return DB::transaction(function () use ($posOrder, $reason, $manager) {
+        return DB::transaction(function () use ($posOrder, $reason, $approvalRequest) {
+            // Create RefundTransaction via RefundService
+            $refundService = app(\App\Services\RefundService::class);
+            $refundLines = $posOrder->items->map(fn($item) => [
+                'line_id' => $item->id,
+                'product_id' => $item->product_id,
+                'variant_id' => $item->product_variant_id,
+                'quantity' => $item->quantity,
+                'amount' => $item->line_total,
+            ])->toArray();
+
+            $refundTransaction = $refundService->createRefundRequest(
+                sourceType: 'PosOrder',
+                sourceId: $posOrder->id,
+                refundAmount: $posOrder->total,
+                originalAmount: $posOrder->total,
+                refundLines: $refundLines,
+                reason: $reason,
+                notes: "Void refund for order #{$posOrder->order_number}",
+                idempotencyKey: "void_{$posOrder->id}"
+            );
+
+            // Auto-approve and complete the refund
+            $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
+            $refundTransaction = $refundService->completeRefund($refundTransaction->id);
+
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $this->buildFullReturnItems($posOrder),
@@ -635,7 +659,7 @@ class PosOrderController extends Controller
                 'amount' => -$posOrder->total,
                 'reference' => "VOID-{$posOrder->order_number}",
                 'notes' => $reason,
-                'received_by' => $manager->id,
+                'received_by' => $approvalRequest->reviewed_by,
             ]);
 
             // Reverse loyalty points for voided order
@@ -670,6 +694,7 @@ class PosOrderController extends Controller
                 'order_id' => $posOrder->id,
                 'order_number' => $posOrder->order_number,
                 'return_order_id' => $returnOrder->id,
+                'refund_transaction_id' => $refundTransaction->id,
                 'timestamp' => now()->toIso8601String(),
             ]);
 
@@ -677,6 +702,7 @@ class PosOrderController extends Controller
                 'message' => 'Order voided successfully',
                 'data' => $posOrder->fresh()->load('items', 'payments', 'returns'),
                 'return_order' => $returnOrder->load('items'),
+                'refund_transaction' => $refundTransaction,
             ]);
         });
     }
@@ -742,12 +768,37 @@ class PosOrderController extends Controller
             'refund_method' => $validated['refund_method'],
             'notes' => $notes,
             'initiated_by' => auth()->id(),
-            'approved_by' => $manager->id,
+            'approved_by' => $approvalRequest->reviewed_by,
             'ip_address' => $request->ip(),
             'timestamp' => now()->toIso8601String(),
         ]);
 
-        return DB::transaction(function () use ($posOrder, $notes, $validated, $manager) {
+        return DB::transaction(function () use ($posOrder, $notes, $validated, $approvalRequest) {
+            // Create RefundTransaction via RefundService
+            $refundService = app(\App\Services\RefundService::class);
+            $refundLines = $posOrder->items->map(fn($item) => [
+                'line_id' => $item->id,
+                'product_id' => $item->product_id,
+                'variant_id' => $item->product_variant_id,
+                'quantity' => $item->quantity,
+                'amount' => $item->line_total,
+            ])->toArray();
+
+            $refundTransaction = $refundService->createRefundRequest(
+                sourceType: 'PosOrder',
+                sourceId: $posOrder->id,
+                refundAmount: $posOrder->total,
+                originalAmount: $posOrder->total,
+                refundLines: $refundLines,
+                reason: $notes,
+                notes: "Full refund for order #{$posOrder->order_number}",
+                idempotencyKey: "refund_{$posOrder->id}"
+            );
+
+            // Auto-approve and complete the refund
+            $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
+            $refundTransaction = $refundService->completeRefund($refundTransaction->id);
+
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $this->buildFullReturnItems($posOrder),
@@ -786,6 +837,7 @@ class PosOrderController extends Controller
                 'order_id' => $posOrder->id,
                 'order_number' => $posOrder->order_number,
                 'return_order_id' => $returnOrder->id,
+                'refund_transaction_id' => $refundTransaction->id,
                 'timestamp' => now()->toIso8601String(),
             ]);
 
@@ -793,6 +845,7 @@ class PosOrderController extends Controller
                 'message' => 'Order refunded successfully',
                 'return_order' => $returnOrder->load('items'),
                 'original_order' => $posOrder->fresh()->load('items', 'returns'),
+                'refund_transaction' => $refundTransaction,
             ]);
         });
     }
@@ -862,12 +915,40 @@ class PosOrderController extends Controller
             'refund_method'  => $validated['refund_method'],
             'notes'          => $validated['notes'],
             'initiated_by'   => auth()->id(),
-            'approved_by'    => $manager->id,
+            'approved_by'    => $approvalRequest->reviewed_by,
             'ip_address'     => $request->ip(),
             'timestamp'      => now()->toIso8601String(),
         ]);
 
-        return DB::transaction(function () use ($validated, $posOrder, $manager, $returnTotal) {
+        return DB::transaction(function () use ($validated, $posOrder, $approvalRequest, $returnTotal) {
+            // Create RefundTransaction via RefundService
+            $refundService = app(\App\Services\RefundService::class);
+            $refundLines = collect($validated['items'])->map(function($line) use ($posOrder) {
+                $item = $posOrder->items->firstWhere('id', $line['item_id']);
+                return [
+                    'line_id' => $line['item_id'],
+                    'product_id' => $item->product_id,
+                    'variant_id' => $item->product_variant_id,
+                    'quantity' => $line['quantity'],
+                    'amount' => ($item->unit_price * $line['quantity']),
+                ];
+            })->toArray();
+
+            $refundTransaction = $refundService->createRefundRequest(
+                sourceType: 'PosOrder',
+                sourceId: $posOrder->id,
+                refundAmount: $returnTotal,
+                originalAmount: $posOrder->total,
+                refundLines: $refundLines,
+                reason: $validated['notes'],
+                notes: "Partial return for order #{$posOrder->order_number}",
+                idempotencyKey: "return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+            );
+
+            // Auto-approve and complete the refund
+            $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
+            $refundTransaction = $refundService->completeRefund($refundTransaction->id);
+
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $validated['items'],
@@ -915,6 +996,7 @@ class PosOrderController extends Controller
                 'order_number'    => $posOrder->order_number,
                 'return_order_id' => $returnOrder->id,
                 'refund_amount'   => -$returnTotal,
+                'refund_transaction_id' => $refundTransaction->id,
                 'timestamp'       => now()->toIso8601String(),
             ]);
 
@@ -922,6 +1004,7 @@ class PosOrderController extends Controller
                 'message'        => 'Return created successfully',
                 'return_order'   => $returnOrder->load('items'),
                 'original_order' => $posOrder->fresh()->load('items', 'returns'),
+                'refund_transaction' => $refundTransaction,
             ]);
         });
     }

@@ -751,6 +751,67 @@ class Product extends Model
         ];
     }
 
+    /**
+     * Find ALL sellable products/variants by barcode or SKU
+     * Used when multiple matches exist and user needs to select
+     */
+    public static function findAllSellableByBarcodeOrSku(string $code): array
+    {
+        $code = trim($code);
+        if ($code === '') {
+            return [];
+        }
+
+        $results = [];
+
+        // Check variants
+        $variants = ProductVariant::query()
+            ->with('product')
+            ->where(function ($q) use ($code) {
+                $q->where('barcode', $code)
+                  ->orWhere('sku', $code)
+                  ->orWhereJsonContains('barcodes', $code);
+            })
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($variants as $variant) {
+            $results[] = [
+                'type' => 'variant',
+                'variant' => $variant,
+                'product' => $variant->product,
+                'display_name' => $variant->product->name . ' - ' . $variant->name,
+                'sku' => $variant->sku,
+                'price' => $variant->price,
+            ];
+        }
+
+        // Check products
+        $products = Product::query()
+            ->where(function ($q) use ($code) {
+                $q->where('barcode', $code)
+                  ->orWhere('sku', $code)
+                  ->orWhereJsonContains('barcodes', $code);
+            })
+            ->where('is_active', true)
+            ->where('status', self::STATUS_ACTIVE)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($products as $product) {
+            $results[] = [
+                'type' => 'product',
+                'product' => $product,
+                'display_name' => $product->name,
+                'sku' => $product->sku,
+                'price' => $product->price,
+            ];
+        }
+
+        return $results;
+    }
+
     public static function statuses(): array
     {
         return [
