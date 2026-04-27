@@ -9,6 +9,7 @@ use Modules\FinancialClose\Services\FinancialCloseTaskService;
 use Modules\FinancialClose\Http\Requests\BlockTaskRequest;
 use Modules\FinancialClose\Http\Resources\TaskResource;
 use Modules\FinancialClose\Models\CloseTask;
+use Modules\FinancialClose\Models\CloseCycle;
 
 class TaskController extends Controller
 {
@@ -20,6 +21,14 @@ class TaskController extends Controller
     public function index(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
+
+        $cycleExists = CloseCycle::where('tenant_id', $tenantId)
+            ->where('id', $cycleId)
+            ->exists();
+
+        if (!$cycleExists) {
+            return response()->json(['message' => 'Cycle not found.'], 404);
+        }
 
         $tasks = CloseTask::where('tenant_id', $tenantId)
             ->where('cycle_id', $cycleId)
