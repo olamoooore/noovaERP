@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
 use App\Models\Invoice;
 use App\Models\Bill;
 use App\Models\JournalEntry;
 use App\Models\InvoiceLine;
 use App\Models\BillLine;
-use App\Models\JournalEntryLine;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 
@@ -16,6 +16,7 @@ class ReplacementDraftService
     public function __construct(
         private DocumentVersionLinkService $linkService,
         private DocumentLifecycleService $lifecycleService,
+        private PostingEngineInterface $postingEngine,
     ) {}
 
     public function createInvoiceReplacementDraft(Invoice $original, CorrectionRequest $request): Invoice
@@ -171,56 +172,14 @@ class ReplacementDraftService
 
     public function createJournalReplacementDraft(JournalEntry $original, CorrectionRequest $request): JournalEntry
     {
-        $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
+        $result = $this->postingEngine->createReplacementDraft($original, $request);
 
-        $original->update([
-            'is_active_version' => false,
-            'lifecycle_status' => 'superseded',
-            'superseded_at' => now(),
-        ]);
-
-        $nextVersion = ($original->version_number ?? 1) + 1;
-
-        $replacement = JournalEntry::create([
-            'entry_number' => $original->entry_number . '-R' . str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
-            'entry_date' => $original->entry_date,
-            'type' => $original->type,
-            'reference' => $original->reference,
-            'description' => $original->description,
-            'status' => 'draft',
-            'created_by' => $request->userId ?? Auth::id(),
-            'legal_entity_id' => $original->legal_entity_id,
-            'entity_book_id' => $original->entity_book_id,
-            'origin_type' => $original->origin_type,
-            'origin_reference_type' => 'journal_entry',
-            'origin_reference_id' => $original->id,
-            'lifecycle_status' => 'draft',
-            'correction_group_id' => $correctionGroupId,
-            'original_document_id' => $original->id,
-            'correction_type' => 'replacement',
-            'correction_reason_code' => $request->reasonCode,
-            'correction_reason_text' => $request->reasonText,
-            'version_number' => $nextVersion,
-            'is_active_version' => true,
-        ]);
-
-        foreach ($original->lines as $originalLine) {
-            JournalEntryLine::create([
-                'journal_entry_id' => $replacement->id,
-                'account_id' => $originalLine->account_id,
-                'debit' => $originalLine->debit,
-                'credit' => $originalLine->credit,
-                'description' => $originalLine->description,
-                'reference' => $originalLine->reference,
-            ]);
+        if (!$result->success || !$result->journalEntry) {
+            throw new \RuntimeException('Failed to create journal replacement draft: ' . ($result->error ?? 'Unknown error'));
         }
 
-        $original->update([
-            'replacement_document_id' => $replacement->id,
-        ]);
+        $this->linkService->linkReplacement($original, $result->journalEntry, $request);
 
-        $this->linkService->linkReplacement($original, $replacement, $request);
-
-        return $replacement;
+        return $result->journalEntry;
     }
 }

@@ -20,6 +20,42 @@ class DraftJournalLine
 
     public static function fromArray(array $data): self
     {
+        $lines = array_map(
+            fn($line) => DraftJournalLine::fromArray($line),
+            $data['lines'] ?? []
+        );
+
+        return new self(
+            journalId: $data['journal_id'] ?? null,
+            entryDate: $data['entry_date'],
+            description: $data['description'],
+            lines: $lines,
+            reference: $data['reference'] ?? null,
+            userId: $data['user_id'] ?? null,
+            legalEntityId: $data['legal_entity_id'] ?? null,
+            entityBookId: $data['entity_book_id'] ?? null,
+        );
+    }
+}
+
+class DraftJournalLine
+{
+    public function __construct(
+        public readonly ?int $accountId,
+        public readonly float $debit,
+        public readonly float $credit,
+        public readonly ?string $description = null,
+        public readonly ?string $reference = null,
+        public readonly ?string $currencyCode = null,
+        public readonly ?float $originalAmount = null,
+        public readonly ?float $exchangeRate = null,
+        public readonly ?int $departmentId = null,
+        public readonly ?int $projectId = null,
+        public readonly ?int $locationId = null,
+    ) {}
+
+    public static function fromArray(array $data): self
+    {
         return new self(
             accountId: $data['account_id'] ?? null,
             debit: (float) ($data['debit'] ?? 0),

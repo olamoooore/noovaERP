@@ -9,6 +9,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\DTOs\ReversalRequest;
+use App\Services\CorrectionRequest;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
 use App\Models\Journal;
@@ -21,6 +22,7 @@ use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PostingEngine implements PostingEngineInterface
@@ -615,6 +617,79 @@ class PostingEngine implements PostingEngineInterface
             ]);
             return DraftJournalResult::failure('Failed to create draft: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Create a replacement draft journal entry for correction workflows.
+     *
+     * This method supersedes the JournalEntry::create() call in ReplacementDraftService,
+     * ensuring all draft creation goes through PostingEngine for audit continuity.
+     */
+    public function createReplacementDraft(JournalEntry $original, CorrectionRequest $request): DraftJournalResult
+    {
+        $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
+        $nextVersion = ($original->version_number ?? 1) + 1;
+
+        $lines = array_map(function ($originalLine) {
+            return DraftJournalLine::fromArray([
+                'account_id' => $originalLine->account_id,
+                'debit' => $originalLine->debit,
+                'credit' => $originalLine->credit,
+                'description' => $originalLine->description,
+                'reference' => $originalLine->reference,
+                'currency_code' => $originalLine->currency_code,
+                'original_amount' => $originalLine->original_amount,
+                'exchange_rate' => $originalLine->exchange_rate,
+                'department_id' => $originalLine->department_id,
+                'project_id' => $originalLine->project_id,
+                'location_id' => $originalLine->location_id,
+            ]);
+        }, $original->lines->all());
+
+        $draftRequest = DraftJournalRequest::fromArray([
+            'entry_date' => $original->entry_date->toDateString(),
+            'description' => $original->description,
+            'lines' => array_map(fn($line) => [
+                'account_id' => $line->accountId,
+                'debit' => $line->debit,
+                'credit' => $line->credit,
+                'description' => $line->description,
+                'reference' => $line->reference,
+            ], $lines),
+            'reference' => $original->reference,
+            'user_id' => $request->userId,
+            'legal_entity_id' => $original->legal_entity_id,
+            'entity_book_id' => $original->entity_book_id,
+        ]);
+
+        $result = $this->createDraft($draftRequest);
+
+        if ($result->success && $result->journalEntry) {
+            $result->journalEntry->update([
+                'entry_number' => $original->entry_number . '-R' . str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
+                'type' => $original->type,
+                'origin_type' => $original->origin_type,
+                'origin_reference_type' => 'journal_entry',
+                'origin_reference_id' => $original->id,
+                'lifecycle_status' => 'draft',
+                'correction_group_id' => $correctionGroupId,
+                'original_document_id' => $original->id,
+                'correction_type' => 'replacement',
+                'correction_reason_code' => $request->reasonCode,
+                'correction_reason_text' => $request->reasonText,
+                'version_number' => $nextVersion,
+                'is_active_version' => true,
+            ]);
+
+            $original->update([
+                'is_active_version' => false,
+                'lifecycle_status' => 'superseded',
+                'superseded_at' => now(),
+                'replacement_document_id' => $result->journalEntry->id,
+            ]);
+        }
+
+        return $result;
     }
 
     /**

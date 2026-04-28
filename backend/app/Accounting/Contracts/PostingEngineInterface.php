@@ -34,4 +34,10 @@ interface PostingEngineInterface
      * All creation MUST go through PostingEngine to maintain audit trail.
      */
     public function createDraft(\App\Accounting\DTOs\DraftJournalRequest $request): \App\Accounting\DTOs\DraftJournalResult;
+
+    /**
+     * Create a replacement draft journal entry based on an original entry.
+     * Used for correction workflows that create replacement documents.
+     */
+    public function createReplacementDraft(\App\Models\JournalEntry $original, \App\Services\CorrectionRequest $request): \App\Accounting\DTOs\DraftJournalResult;
 }
