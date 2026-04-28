@@ -302,7 +302,13 @@ class PosSyncService
         $payload = $queueItem->payload;
         $order = PosOrder::findOrFail($payload['pos_order_id']);
 
-        // Check if refund already processed
+        if ($order->status === 'void' || $order->status === 'refunded') {
+            return [
+                'entity_type' => 'PosOrder',
+                'entity_id' => $order->id,
+            ];
+        }
+
         $existingRefund = $order->returns()->first();
         if ($existingRefund) {
             return [
@@ -311,7 +317,6 @@ class PosSyncService
             ];
         }
 
-        // CRITICAL: Offline refunds must still require approval
         if (empty($payload['approval_request_id'])) {
             throw new \Exception('Refund operation requires approval. Cannot sync without approval_request_id.');
         }
@@ -322,18 +327,173 @@ class PosSyncService
             throw new \Exception('Refund operation not approved. Current status: ' . $approvalRequest->status);
         }
 
-        // Process refund through controller logic (not simplified)
-        // This ensures proper GL reversal, stock restoration, and loyalty reversal
-        $controller = app(\Modules\POS\Http\Controllers\PosOrderController::class);
+        if ($approvalRequest->requested_by === $approvalRequest->reviewed_by) {
+            throw new \Exception('Self-approval of refunds is not permitted. Approver must differ from requester.');
+        }
+
+        $refundMethod = $payload['refund_method'] ?? 'cash';
+        $reason = $payload['reason'] ?? 'Offline refund';
+        $idempotencyKey = "offline_refund_{$order->id}";
+
+        $refundService = app(\App\Services\RefundService::class);
+        $refundLines = $order->items->map(fn($item) => [
+            'line_id' => $item->id,
+            'product_id' => $item->product_id,
+            'variant_id' => $item->product_variant_id,
+            'quantity' => $item->quantity,
+            'amount' => $item->line_total,
+        ])->toArray();
+
+        $refundTransaction = $refundService->createRefundRequest(
+            sourceType: 'PosOrder',
+            sourceId: $order->id,
+            refundAmount: $order->total,
+            originalAmount: $order->total,
+            refundLines: $refundLines,
+            reason: $reason,
+            notes: "Offline refund for order #{$order->order_number}",
+            idempotencyKey: $idempotencyKey
+        );
+
+        $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
+        $refundTransaction = $refundService->completeRefund($refundTransaction->id);
+
+        $returnOrder = $this->createAndRestockReturnForSync($order, $queueItem, $reason);
+
+        $this->createRefundPaymentForSync($order, $returnOrder, $refundMethod, $reason, $approvalRequest->reviewed_by);
+
+        $postingService = app(\Modules\POS\Services\PosPostingService::class);
         
-        // Note: This is a simplified sync. In production, you would need to:
-        // 1. Create RefundTransaction
-        // 2. Reverse GL entries
-        // 3. Restore stock
-        // 4. Reverse loyalty points
-        // 5. Create refund payment
-        
-        throw new \Exception('Offline refund sync not fully implemented. Use online refund workflow.');
+        try {
+            $postingService->reverseOrder($order, $returnOrder, 'POS offline refund reversal');
+        } catch (\Exception $e) {
+            Log::warning('GL reversal failed for offline refund', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $refundJournalEntry = $postingService->postRefundPayment(
+                $order,
+                $refundMethod,
+                $order->total,
+                "Offline refund payment for order #{$order->order_number}"
+            );
+            
+            if ($refundTransaction && $refundJournalEntry) {
+                $refundTransaction->update(['journal_entry_id' => $refundJournalEntry->id]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Refund payment GL posting failed for offline refund', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($order->customer_id) {
+            try {
+                $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
+                $reversalService->reverseOrder(
+                    $order->customer_id,
+                    'pos_order',
+                    $order->id,
+                    "Loyalty reversal for offline refunded order #{$order->order_number}: {$reason}"
+                );
+            } catch (\Exception $e) {
+                Log::warning('Loyalty reversal failed for offline refund', [
+                    'order_id' => $order->id,
+                    'customer_id' => $order->customer_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $order->update([
+            'status' => 'refunded',
+            'refunded_at' => now(),
+        ]);
+
+        Log::info('Offline refund synced successfully', [
+            'queue_id' => $queueItem->id,
+            'order_id' => $order->id,
+            'return_order_id' => $returnOrder->id,
+            'refund_transaction_id' => $refundTransaction->id,
+        ]);
+
+        return [
+            'entity_type' => 'PosOrder',
+            'entity_id' => $order->id,
+        ];
+    }
+
+    private function createAndRestockReturnForSync(PosOrder $order, PosOfflineQueue $queueItem, ?string $notes): PosOrder
+    {
+        $items = $order->items()
+            ->where('quantity', '>', 0)
+            ->get()
+            ->map(fn ($item) => [
+                'item_id' => $item->id,
+                'quantity' => (int) $item->quantity,
+            ])
+            ->values()
+            ->all();
+
+        $returnOrder = $order->createReturn($items, $notes ?? 'Offline refund');
+
+        $terminal = $order->terminal()->with('warehouse')->first();
+        $warehouseId = $terminal?->warehouse_id;
+
+        if (!$warehouseId) {
+            Log::warning('POS return has no terminal warehouse — stock restock skipped', [
+                'pos_order_id' => $order->id,
+            ]);
+        }
+
+        if ($warehouseId) {
+            $inventoryService = app(\Modules\Inventory\Services\InventoryService::class);
+            foreach ($returnOrder->items()->with(['product', 'variant'])->get() as $item) {
+                $qty = abs($item->quantity);
+                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
+                $trackInventory = $item->variant
+                    ? (bool) $item->variant->track_inventory
+                    : (bool) ($item->product?->track_inventory ?? false);
+
+                if ($productId && $trackInventory && $qty > 0) {
+                    try {
+                        $inventoryService->adjustStock(
+                            productId: $productId,
+                            warehouseId: $warehouseId,
+                            quantity: $qty,
+                            type: 'return',
+                            reference: 'Return: ' . $returnOrder->order_number,
+                            referenceType: 'PosOrder',
+                            referenceId: $returnOrder->id,
+                        );
+                    } catch (\Exception $e) {
+                        Log::error('POS stock return failed', [
+                            'return_order' => $returnOrder->order_number,
+                            'product_id' => $productId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+        }
+
+        return $returnOrder;
+    }
+
+    private function createRefundPaymentForSync(
+        PosOrder $order,
+        PosOrder $returnOrder,
+        string $refundMethod,
+        string $reason,
+        int $receivedBy
+    ): \Modules\POS\Models\PosPayment {
+        $reversalService = app(\Modules\POS\Services\PosReversalService::class);
+
+        return $reversalService->createRefundPayment($order, $refundMethod, $receivedBy, $reason);
     }
 
     /**

@@ -18,6 +18,7 @@ use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\POS\Services\PosPostingService;
+use Modules\POS\Services\PosReversalService;
 use Modules\Loyalty\Services\RedemptionService;
 use Modules\Loyalty\Services\PointsEarningService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -634,7 +635,6 @@ class PosOrderController extends Controller
         }
 
         return DB::transaction(function () use ($posOrder, $reason, $approvalRequest) {
-            // Create RefundTransaction via RefundService
             $refundService = app(\App\Services\RefundService::class);
             $refundLines = $posOrder->items->map(fn($item) => [
                 'line_id' => $item->id,
@@ -655,7 +655,6 @@ class PosOrderController extends Controller
                 idempotencyKey: "void_{$posOrder->id}"
             );
 
-            // Auto-approve and complete the refund
             $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
             $refundTransaction = $refundService->completeRefund($refundTransaction->id);
 
@@ -665,14 +664,8 @@ class PosOrderController extends Controller
                 $this->appendOrderNote(null, 'Void refund: ' . $reason)
             );
 
-            PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method' => 'void_refund',
-                'amount' => -$posOrder->total,
-                'reference' => "VOID-{$posOrder->order_number}",
-                'notes' => $reason,
-                'received_by' => $approvalRequest->reviewed_by,
-            ]);
+            $reversalService = app(PosReversalService::class);
+            $reversalService->createVoidRefundPayment($posOrder, $approvalRequest->reviewed_by, $reason);
 
             // Reverse loyalty points for voided order
             if ($posOrder->customer_id) {
@@ -786,7 +779,6 @@ class PosOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($posOrder, $notes, $validated, $approvalRequest) {
-            // Create RefundTransaction via RefundService
             $refundService = app(\App\Services\RefundService::class);
             $refundLines = $posOrder->items->map(fn($item) => [
                 'line_id' => $item->id,
@@ -807,7 +799,6 @@ class PosOrderController extends Controller
                 idempotencyKey: "refund_{$posOrder->id}"
             );
 
-            // Auto-approve and complete the refund
             $refundTransaction = $refundService->approveRefund($refundTransaction->id, $approvalRequest->reviewed_by);
             $refundTransaction = $refundService->completeRefund($refundTransaction->id);
 
@@ -817,36 +808,16 @@ class PosOrderController extends Controller
                 $notes
             );
 
-            PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method' => $validated['refund_method'],
-                'amount' => -$posOrder->total,
-                'reference' => "REFUND-{$posOrder->order_number}",
-                'notes' => $notes,
-                'received_by' => $approvalRequest->reviewed_by,
-            ]);
+            $reversalService = app(PosReversalService::class);
+            $refundPayment = $reversalService->createRefundPayment(
+                $posOrder,
+                $validated['refund_method'],
+                $approvalRequest->reviewed_by,
+                $notes
+            );
 
-            // CRITICAL: Post GL entry for refund payment
-            // This ensures cash drawer reconciliation works correctly
-            $postingService = app(\Modules\POS\Services\PosPostingService::class);
-            try {
-                $refundJournalEntry = $postingService->postRefundPayment(
-                    $posOrder,
-                    $validated['refund_method'],
-                    $posOrder->total,
-                    "Refund payment for order #{$posOrder->order_number}"
-                );
-                
-                // Link journal entry to refund transaction
-                if ($refundTransaction && $refundJournalEntry) {
-                    $refundTransaction->update(['journal_entry_id' => $refundJournalEntry->id]);
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to post refund payment GL entry', [
-                    'order_id' => $posOrder->id,
-                    'error' => $e->getMessage(),
-                ]);
-                // Don't fail the refund, but log the error
+            if ($refundTransaction && $refundPayment->journal_entry_id) {
+                $refundTransaction->update(['journal_entry_id' => $refundPayment->journal_entry_id]);
             }
 
             // Reverse loyalty points for refunded order
@@ -990,14 +961,15 @@ class PosOrderController extends Controller
                 $validated['notes'],
             );
 
-            PosPayment::create([
-                'pos_order_id' => $posOrder->id,
-                'method'       => $validated['refund_method'],
-                'amount'       => -$returnTotal,
-                'reference'    => "RETURN-{$posOrder->order_number}",
-                'notes'        => $validated['notes'],
-                'received_by'  => $approvalRequest->reviewed_by,
-            ]);
+            $reversalService = app(PosReversalService::class);
+            $reversalService->createReturnPayment(
+                $posOrder,
+                $validated['refund_method'],
+                $returnTotal,
+                $approvalRequest->reviewed_by,
+                $validated['notes'],
+                "return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+            );
 
             // TASK POS-010: Proportional loyalty reversal for partial returns
             if ($posOrder->customer_id) {

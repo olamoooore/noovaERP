@@ -19,12 +19,18 @@ class PosPayment extends Model
         'surcharge',
         'received_by',
         'notes',
+        'journal_entry_id',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'surcharge' => 'decimal:2',
     ];
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\JournalEntry::class, 'journal_entry_id');
+    }
 
     public function order(): BelongsTo
     {
