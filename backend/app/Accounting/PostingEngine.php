@@ -3,6 +3,8 @@
 namespace App\Accounting;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\DraftJournalRequest;
+use App\Accounting\DTOs\DraftJournalResult;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
@@ -524,6 +526,95 @@ class PostingEngine implements PostingEngineInterface
             'journal_entry',
             'adjustment',
         ]);
+    }
+
+    /**
+     * Create a draft journal entry via PostingEngine.
+     *
+     * All draft creation MUST go through PostingEngine to maintain audit continuity.
+     * Draft entries can be posted later via ManualJournalPostingService::post().
+     */
+    public function createDraft(DraftJournalRequest $request): DraftJournalResult
+    {
+        // ── 1. Validate entry date ─────────────────────────────
+        $lockResult = $this->lockDateValidator->validateTransactionDate(
+            'journal_entries',
+            $request->entryDate,
+        );
+
+        if ($lockResult['is_locked']) {
+            return DraftJournalResult::failure($lockResult['message']);
+        }
+
+        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate);
+        if (!$fiscalResult['allowed']) {
+            return DraftJournalResult::failure($fiscalResult['reason']);
+        }
+
+        // ── 2. Validate balance ────────────────────────────────
+        $totalDebit  = array_sum(array_column($request->lines, 'debit'));
+        $totalCredit = array_sum(array_column($request->lines, 'credit'));
+
+        if (abs($totalDebit - $totalCredit) > 0.01) {
+            return DraftJournalResult::failure(
+                "Journal entry is unbalanced. Debit: {$totalDebit}, Credit: {$totalCredit}"
+            );
+        }
+
+        // ── 3. Create draft entry ─────────────────────────────
+        try {
+            return DB::transaction(function () use ($request, $totalDebit) {
+                $userId = TenantUserHelper::resolveTenantUserId($request->userId);
+
+                // Generate entry number
+                $journal = $request->journalId ? Journal::find($request->journalId) : null;
+                $entryNumber = $journal
+                    ? $journal->getNextEntryNumber()
+                    : JournalEntry::generateEntryNumber();
+
+                $entry = JournalEntry::create([
+                    'journal_id' => $request->journalId,
+                    'entry_number' => $entryNumber,
+                    'entry_date' => $request->entryDate,
+                    'type' => 'manual',
+                    'reference' => $request->reference,
+                    'description' => $request->description,
+                    'status' => 'draft',
+                    'created_by' => $userId,
+                    'legal_entity_id' => $request->legalEntityId,
+                    'entity_book_id' => $request->entityBookId,
+                ]);
+
+                foreach ($request->lines as $line) {
+                    $entry->lines()->create([
+                        'account_id' => $line->accountId,
+                        'debit' => $line->debit,
+                        'credit' => $line->credit,
+                        'description' => $line->description,
+                        'reference' => $line->reference,
+                        'currency_code' => $line->currencyCode,
+                        'original_amount' => $line->originalAmount,
+                        'exchange_rate' => $line->exchangeRate,
+                        'department_id' => $line->departmentId,
+                        'project_id' => $line->projectId,
+                        'location_id' => $line->locationId,
+                    ]);
+                }
+
+                Log::info('Draft journal entry created via PostingEngine', [
+                    'entry_id' => $entry->id,
+                    'entry_number' => $entryNumber,
+                    'created_by' => $userId,
+                ]);
+
+                return DraftJournalResult::success($entry->load('lines'));
+            });
+        } catch (\Exception $e) {
+            Log::error('PostingEngine::createDraft failed', [
+                'error' => $e->getMessage(),
+            ]);
+            return DraftJournalResult::failure('Failed to create draft: ' . $e->getMessage());
+        }
     }
 
     /**

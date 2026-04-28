@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
@@ -28,6 +29,28 @@ class JournalEntriesController extends Controller
         private PostingEngineInterface $postingEngine,
         private ManualJournalPostingService $manualJournalService,
     ) {}
+
+    private function getDraftJournalRequest(Request $request): DraftJournalRequest
+    {
+        return DraftJournalRequest::fromArray($request->validate([
+            'journal_id' => 'nullable|exists:journals,id',
+            'entry_date' => 'required|date',
+            'reference' => 'nullable|string|max:100',
+            'description' => 'required|string',
+            'lines' => 'required|array|min:2',
+            'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
+            'lines.*.debit' => 'required|numeric|min:0',
+            'lines.*.credit' => 'required|numeric|min:0',
+            'lines.*.description' => 'nullable|string',
+            'lines.*.reference' => 'nullable|string',
+            'lines.*.currency_code' => 'nullable|exists:currencies,code',
+            'lines.*.original_amount' => 'nullable|numeric',
+            'lines.*.exchange_rate' => 'nullable|numeric',
+            'lines.*.department_id' => 'nullable|exists:analytic_accounts,id',
+            'lines.*.project_id' => 'nullable|exists:analytic_accounts,id',
+            'lines.*.location_id' => 'nullable|exists:analytic_accounts,id',
+        ]));
+    }
 
     /**
      * Get all journal entries with filters
@@ -126,85 +149,23 @@ class JournalEntriesController extends Controller
         }
 
         try {
-            // ── FIX-01 (WS-08): Apply lock-date and fiscal-period validation at draft creation ──
-            // Draft entries must not bypass period controls. If the entry_date falls in a
-            // locked period, the accountant must obtain an override before creating the draft.
-            // This mirrors the protection applied by ManualJournalPostingService::post().
-            $lockResult = $this->lockDateService->validateTransactionDate(
-                'journal_entries',
-                $validated['entry_date'],
-            );
+            $draftRequest = $this->getDraftJournalRequest($request);
 
-            if ($lockResult['is_locked']) {
+            $result = $this->postingEngine->createDraft($draftRequest);
+
+            if (!$result->success) {
                 return response()->json([
-                    'message'           => $lockResult['message'],
-                    'requires_override' => true,
-                    'lock_date'         => $lockResult['lock_date'],
+                    'message' => 'Error creating journal entry',
+                    'error' => $result->error,
                 ], 422);
             }
-
-            $fiscalResult = $this->fiscalValidator->validateDate($validated['entry_date']);
-            if (!$fiscalResult['allowed']) {
-                return response()->json(['message' => $fiscalResult['reason']], 422);
-            }
-            // ── end FIX-01 ──
-
-            DB::beginTransaction();
-
-            // Validate balance
-            $totalDebit = collect($validated['lines'])->sum('debit');
-            $totalCredit = collect($validated['lines'])->sum('credit');
-
-            if (abs($totalDebit - $totalCredit) > 0.01) {
-                return response()->json([
-                    'message' => "Journal entry must balance. Debit: {$totalDebit}, Credit: {$totalCredit}",
-                ], 422);
-            }
-
-            // Generate entry number — Journal sequence when available, else canonical fallback.
-            $journal = $validated['journal_id'] ? Journal::find($validated['journal_id']) : null;
-            $entryNumber = $journal
-                ? $journal->getNextEntryNumber()
-                : JournalEntry::generateEntryNumber();
-
-            $entry = JournalEntry::create([
-                'journal_id' => $validated['journal_id'] ?? null,
-                'entry_number' => $entryNumber,
-                'entry_date' => $validated['entry_date'],
-                'type' => 'manual',
-                'reference' => $validated['reference'] ?? null,
-                'description' => $validated['description'],
-                'status' => 'draft',
-                'created_by' => TenantUserHelper::resolveTenantUserId(),
-                'legal_entity_id' => $request->attributes->get('legal_entity_id'),
-                'entity_book_id' => $request->attributes->get('entity_book_id'),
-            ]);
-
-            foreach ($validated['lines'] as $line) {
-                $entry->lines()->create([
-                    'account_id' => $line['account_id'],
-                    'debit' => $line['debit'] ?? 0,
-                    'credit' => $line['credit'] ?? 0,
-                    'description' => $line['description'] ?? null,
-                    'reference' => $line['reference'] ?? null,
-                    'currency_code' => $line['currency_code'] ?? null,
-                    'original_amount' => $line['original_amount'] ?? null,
-                    'exchange_rate' => $line['exchange_rate'] ?? null,
-                    'department_id' => $line['department_id'] ?? null,
-                    'project_id' => $line['project_id'] ?? null,
-                    'location_id' => $line['location_id'] ?? null,
-                ]);
-            }
-
-            DB::commit();
 
             return response()->json([
                 'message' => 'Journal entry created successfully',
-                'entry' => $entry->load('lines.account'),
+                'entry' => $result->journalEntry->load('lines.account'),
             ], 201);
 
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'message' => 'Error creating journal entry',
                 'error' => $e->getMessage(),

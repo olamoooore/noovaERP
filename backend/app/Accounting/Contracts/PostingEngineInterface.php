@@ -27,4 +27,11 @@ interface PostingEngineInterface
      * Preview the journal effect without committing.
      */
     public function preview(PostingRequest $request): array;
+
+    /**
+     * Create a draft journal entry for manual journals.
+     * Draft entries are saved with status='draft' and can be posted later.
+     * All creation MUST go through PostingEngine to maintain audit trail.
+     */
+    public function createDraft(\App\Accounting\DTOs\DraftJournalRequest $request): \App\Accounting\DTOs\DraftJournalResult;
 }
