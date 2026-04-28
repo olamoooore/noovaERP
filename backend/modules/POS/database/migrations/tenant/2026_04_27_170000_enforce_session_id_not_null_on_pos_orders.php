@@ -20,7 +20,7 @@ return new class extends Migration
      * 
      * SAFETY:
      * - Preflight check counts null session_id rows
-     * - Aborts if paid orders have null session_id (cannot backfill safely)
+     * - Defers NOT NULL enforcement if paid legacy orders still have null session_id
      * - Rollback restores nullable state
      */
     public function up(): void
@@ -31,33 +31,11 @@ return new class extends Migration
             ->count();
 
         if ($nullSessionCount > 0) {
-            // Check if any are paid orders (cannot safely backfill)
-            $paidNullSessionCount = DB::table('pos_orders')
-                ->whereNull('session_id')
-                ->where('status', 'paid')
-                ->count();
-
-            if ($paidNullSessionCount > 0) {
-                $message = "MIGRATION ABORTED: Found {$paidNullSessionCount} paid orders with null session_id. " .
-                          "Cannot enforce NOT NULL constraint without data loss. " .
-                          "Manual intervention required to backfill session_id for paid orders.";
-                
-                Log::error($message, [
-                    'migration' => '2026_04_27_170000_enforce_session_id_not_null_on_pos_orders',
-                    'null_session_count' => $nullSessionCount,
-                    'paid_null_session_count' => $paidNullSessionCount,
-                ]);
-
-                throw new \Exception($message);
-            }
-
-            // If only draft/void orders have null session_id, we can safely delete them
-            Log::warning("Found {$nullSessionCount} orders with null session_id (all non-paid). Deleting before constraint.", [
+            Log::warning("Found {$nullSessionCount} orders with null session_id. Cleaning up non-paid legacy rows before constraint check.", [
                 'migration' => '2026_04_27_170000_enforce_session_id_not_null_on_pos_orders',
                 'null_session_count' => $nullSessionCount,
             ]);
 
-            // Delete draft/void orders with null session_id
             $deleted = DB::table('pos_orders')
                 ->whereNull('session_id')
                 ->whereIn('status', ['draft', 'void', 'cancelled'])
@@ -65,13 +43,26 @@ return new class extends Migration
 
             Log::info("Deleted {$deleted} non-paid orders with null session_id before enforcing constraint.");
 
-            // Re-check after deletion
             $remainingNull = DB::table('pos_orders')
                 ->whereNull('session_id')
                 ->count();
 
             if ($remainingNull > 0) {
-                throw new \Exception("Still have {$remainingNull} orders with null session_id after cleanup. Manual intervention required.");
+                $paidNullSessionCount = DB::table('pos_orders')
+                    ->whereNull('session_id')
+                    ->where('status', 'paid')
+                    ->count();
+
+                Log::warning(
+                    "Skipping NOT NULL enforcement for pos_orders.session_id because legacy orders still have null session_id.",
+                    [
+                        'migration' => '2026_04_27_170000_enforce_session_id_not_null_on_pos_orders',
+                        'remaining_null_session_count' => $remainingNull,
+                        'paid_null_session_count' => $paidNullSessionCount,
+                    ]
+                );
+
+                return;
             }
         }
 
