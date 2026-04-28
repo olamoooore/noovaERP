@@ -491,24 +491,9 @@ class PosSyncService
         string $reason,
         int $receivedBy
     ): \Modules\POS\Models\PosPayment {
-        $existingRefundPayment = \Modules\POS\Models\PosPayment::where('pos_order_id', $order->id)
-            ->where('method', $refundMethod)
-            ->where('amount', -$order->total)
-            ->where('reference', 'like', '%REFUND-%')
-            ->first();
+        $reversalService = app(\Modules\POS\Services\PosReversalService::class);
 
-        if ($existingRefundPayment) {
-            return $existingRefundPayment;
-        }
-
-        return \Modules\POS\Models\PosPayment::create([
-            'pos_order_id' => $order->id,
-            'method' => $refundMethod,
-            'amount' => -$order->total,
-            'reference' => "REFUND-{$order->order_number}",
-            'notes' => $reason,
-            'received_by' => $receivedBy,
-        ]);
+        return $reversalService->createRefundPayment($order, $refundMethod, $receivedBy, $reason);
     }
 
     /**
