@@ -144,25 +144,46 @@ jobs:
             set -e
             
             PROJECT_PATH="${{ env.PROJECT_PATH }}"
-            BACKUP_PATH="/var/www/backups/noovaerp-$(date +%Y%m%d_%H%M%S)"
+            DEPLOY_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+            BACKUP_PATH="/var/www/backups/noovaerp-$DEPLOY_TIMESTAMP"
+            DB_BACKUP_DIR="/var/www/backups/database"
+            RELEASE_PATH="/tmp/noovaerp-release-$DEPLOY_TIMESTAMP"
+            AUTO_ROLLBACK_MARKER="$BACKUP_PATH/.auto_rollback_allowed"
+            MIGRATIONS_STARTED_MARKER="$BACKUP_PATH/.migrations_started"
             
-            # Create backup of current deployment
+            mkdir -p /var/www/backups "$DB_BACKUP_DIR"
+
+            # Create backup of current deployment and allow automatic rollback
+            # only until migrations begin.
             if [ -d "$PROJECT_PATH" ]; then
-              mkdir -p /var/www/backups
               cp -r "$PROJECT_PATH" "$BACKUP_PATH"
               echo "Backup created at $BACKUP_PATH"
+              touch "$AUTO_ROLLBACK_MARKER"
             fi
             
-            # Create project directory if not exists
-            mkdir -p "$PROJECT_PATH"
-            
-            # Extract new deployment
-            cd "$PROJECT_PATH"
-            tar -xzf /tmp/noovaerp-deploy.tar.gz
+            # Stage a clean release so removed files don't linger on the server.
+            rm -rf "$RELEASE_PATH"
+            mkdir -p "$RELEASE_PATH"
+            tar -xzf /tmp/noovaerp-deploy.tar.gz -C "$RELEASE_PATH"
             rm /tmp/noovaerp-deploy.tar.gz
+
+            # Preserve runtime state from the current deployment.
+            if [ -f "$PROJECT_PATH/backend/.env" ] && [ ! -f "$RELEASE_PATH/backend/.env" ]; then
+              cp "$PROJECT_PATH/backend/.env" "$RELEASE_PATH/backend/.env"
+            fi
+            if [ -d "$PROJECT_PATH/backend/storage" ]; then
+              rm -rf "$RELEASE_PATH/backend/storage"
+              mkdir -p "$RELEASE_PATH/backend"
+              cp -a "$PROJECT_PATH/backend/storage" "$RELEASE_PATH/backend/storage"
+            fi
+            if [ -d "$PROJECT_PATH/backend/bootstrap/cache" ]; then
+              mkdir -p "$RELEASE_PATH/backend/bootstrap"
+              rm -rf "$RELEASE_PATH/backend/bootstrap/cache"
+              cp -a "$PROJECT_PATH/backend/bootstrap/cache" "$RELEASE_PATH/backend/bootstrap/cache"
+            fi
             
             # Setup backend
-            cd "$PROJECT_PATH/backend"
+            cd "$RELEASE_PATH/backend"
             
             # Install/update composer dependencies
             composer install --no-dev --optimize-autoloader --no-interaction
@@ -172,12 +193,34 @@ jobs:
               cp .env.production .env
               php artisan key:generate
             fi
+
+            echo "Creating pre-migration database backup..."
+            set -a
+            . ./.env
+            set +a
+            TIMESTAMP="$DEPLOY_TIMESTAMP" bash "$RELEASE_PATH/deployment/scripts/backup-database.sh"
+            echo "Database backup created at $DB_BACKUP_DIR for deployment $DEPLOY_TIMESTAMP"
+
+            # Replace the deployed tree cleanly so deleted files do not survive.
+            which rsync > /dev/null 2>&1 || apt-get install -y rsync
+            mkdir -p "$PROJECT_PATH"
+            rsync -a --delete "$RELEASE_PATH/" "$PROJECT_PATH/"
+
+            cd "$PROJECT_PATH/backend"
+
+            # Once migrations begin, automatic rollback is no longer safe unless
+            # a human verifies code/database compatibility.
+            mkdir -p "$BACKUP_PATH"
+            rm -f "$AUTO_ROLLBACK_MARKER"
+            touch "$MIGRATIONS_STARTED_MARKER"
             
             # Run central migrations
             php artisan migrate --force
 
             # Run tenant migrations (failures must fail the deployment)
             php artisan tenants:migrate --force
+
+            touch "$BACKUP_PATH/.migrations_completed" || true
             
             # Clear all caches to ensure fresh config from .env
             php artisan config:clear
@@ -234,6 +277,8 @@ jobs:
             
             # Reload Nginx
             nginx -t && systemctl reload nginx
+
+            rm -rf "$RELEASE_PATH"
             
             echo "Deployment completed successfully!"
           ENDSSH
@@ -269,11 +314,23 @@ jobs:
           echo "Deployment failed. Rolling back..."
           ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} '
             LATEST=$(ls -dt /var/www/backups/noovaerp-* 2>/dev/null | head -1)
+            if [ -z "$LATEST" ]; then
+              echo "No backup found to roll back to"
+              exit 0
+            fi
+
+            if [ ! -f "$LATEST/.auto_rollback_allowed" ]; then
+              if [ -f "$LATEST/.migrations_started" ]; then
+                echo "Migrations already started for this deployment; skipping automatic rollback to avoid code/database mismatch."
+                exit 0
+              fi
+
+              echo "Automatic rollback is not allowed for the latest deployment state."
+              exit 0
+            fi
+
             if [ -n "$LATEST" ]; then
               echo "Rolling back to: $LATEST"
               bash /var/www/noovaerp/deployment/scripts/rollback.sh "$LATEST"
-            else
-              echo "No backup found to roll back to"
-              exit 1
             fi
           '
