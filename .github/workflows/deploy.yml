@@ -249,7 +249,8 @@ jobs:
           sleep 10
           
           echo "Running health check..."
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.DOMAIN }}/api/health)
+          # Run curl from the server itself (avoids DNS dependency on external domain)
+          HEALTH_STATUS=$(ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/noovaerp/api/health")
           
           if [ "$HEALTH_STATUS" != "200" ]; then
             echo "❌ Health check failed with HTTP $HEALTH_STATUS"
@@ -264,4 +265,13 @@ jobs:
         if: failure()
         run: |
           echo "Deployment failed. Rolling back..."
-          ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "bash /var/www/noovaerp/deployment/scripts/rollback.sh /var/www/backups/$(ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "ls -t /var/www/backups | head -1")"
+          ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} '
+            LATEST=$(ls -t /var/www/backups/noovaerp-* 2>/dev/null | head -1)
+            if [ -n "$LATEST" ]; then
+              echo "Rolling back to: $LATEST"
+              bash /var/www/noovaerp/deployment/scripts/rollback.sh "$LATEST"
+            else
+              echo "No backup found to roll back to"
+              exit 1
+            fi
+          '
