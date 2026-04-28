@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tantml:parameter>
+import { useQuery } from '@tanstack/react-query'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
@@ -94,9 +94,10 @@ export function POSCustomerDisplayV2() {
       const response = await api.get(`/pos/display/${terminalId}`, { headers })
       return response.data
     },
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Poll every 1 second during active cart or payment
-      if (data?.state === 'cart-active' || data?.state === 'payment-pending') {
+      const state = query.state.data?.state
+      if (state === 'cart-active' || state === 'payment-pending') {
         return 1000
       }
       // Poll every 3 seconds during idle
