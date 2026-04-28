@@ -10,8 +10,7 @@ return new class extends Migration
     {
         Schema::create('document_correction_links', function (Blueprint $table) {
             $table->id();
-            $table->uuid('tenant_id');
-            $table->foreign('tenant_id')->references('id')->on('tenants')->restrictOnDelete();
+            $table->uuid('tenant_id'); // tenant context — no FK to central tenants table
             $table->string('document_type');
             $table->unsignedBigInteger('document_id');
             $table->string('related_document_type');

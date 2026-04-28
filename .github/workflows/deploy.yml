@@ -268,7 +268,7 @@ jobs:
         run: |
           echo "Deployment failed. Rolling back..."
           ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} '
-            LATEST=$(ls -t /var/www/backups/noovaerp-* 2>/dev/null | head -1)
+            LATEST=$(ls -dt /var/www/backups/noovaerp-* 2>/dev/null | head -1)
             if [ -n "$LATEST" ]; then
               echo "Rolling back to: $LATEST"
               bash /var/www/noovaerp/deployment/scripts/rollback.sh "$LATEST"
