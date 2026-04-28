@@ -95,7 +95,14 @@ Route::get('/health', function () {
 
     // 6. Tenant databases (sample check)
     try {
-        $tenantCount = \Illuminate\Support\Facades\DB::table('tenants')->where('status', 'active')->count();
+        $tenantQuery = \Illuminate\Support\Facades\DB::table('tenants');
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('tenants', 'status')) {
+            $tenantCount = $tenantQuery->where('status', 'active')->count();
+        } else {
+            $tenantCount = $tenantQuery->count();
+        }
+
         $checks['tenants'] = [
             'status' => 'ok',
             'active_count' => $tenantCount
