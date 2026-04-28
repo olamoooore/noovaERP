@@ -10,7 +10,6 @@ env:
   SERVER_HOST: 72.61.126.166
   SERVER_USER: root
   PROJECT_PATH: /var/www/noovaerp
-  DOMAIN: noovaerp.example.com
 
 jobs:
   build-frontend:
@@ -35,7 +34,7 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: https://${{ env.DOMAIN }}/api
+          VITE_API_URL: https://${{ env.SERVER_HOST }}/noovaerp/api
 
       - name: Upload frontend build artifacts
         uses: actions/upload-artifact@v4
@@ -66,7 +65,7 @@ jobs:
         working-directory: superadmin
         run: npm run build
         env:
-          VITE_API_URL: https://${{ env.DOMAIN }}/api
+          VITE_API_URL: https://${{ env.SERVER_HOST }}/noovaerp/api
 
       - name: Upload superadmin build artifacts
         uses: actions/upload-artifact@v4
@@ -100,7 +99,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ env.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -T 10 -H ${{ env.SERVER_HOST }} >> ~/.ssh/known_hosts
+          echo "Host ${{ env.SERVER_HOST }}" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  ConnectTimeout 30" >> ~/.ssh/config
 
       - name: Create deployment package
         run: |
