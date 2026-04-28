@@ -4,7 +4,7 @@ import axios from 'axios'
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 // Main API (tenant routes)
-const api = axios.create({
+export const api = axios.create({
   baseURL,
   headers: {
     'Content-Type': 'application/json',
