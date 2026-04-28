@@ -11,6 +11,7 @@ use App\SuperAdmin\Domain\PlanItemDefault;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use App\SuperAdmin\Domain\TenantSelectedItem;
+use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -274,14 +275,14 @@ class EntitlementService
 
         if ($inTenantContext) {
             $previousPath = DB::connection()->getPdo()->query('SHOW search_path')->fetchColumn();
-            DB::statement('SET search_path TO public');
+            SearchPathGuard::setSearchPath('public', 'Accessing central entitlement data');
         }
 
         try {
             return $callback();
         } finally {
             if ($inTenantContext && isset($previousPath)) {
-                DB::statement("SET search_path TO {$previousPath}");
+                SearchPathGuard::resetSearchPath();
             }
         }
     }

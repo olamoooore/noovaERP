@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\SuperAdmin\Application;
 
 use App\SuperAdmin\Domain\TenantEntitlement;
+use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -148,7 +149,7 @@ class FeatureGateService
         $row = DB::selectOne('SHOW search_path');
         $previous = $row->search_path ?? null;
 
-        DB::statement("SET search_path TO public");
+        SearchPathGuard::setSearchPath('public', 'Accessing central feature gate data');
         return $previous;
     }
 
@@ -158,6 +159,6 @@ class FeatureGateService
             return;
         }
 
-        DB::statement("SET search_path TO {$previous}");
+        SearchPathGuard::resetSearchPath();
     }
 }

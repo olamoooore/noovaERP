@@ -56,3 +56,6 @@ test-sample/
 # Kiro steering documents
 .kiro/steering/
 STEERING-PACK-ADDENDUM-REVIEW.md
+
+# Test/validation scripts
+*validation*.php

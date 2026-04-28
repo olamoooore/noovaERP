@@ -4,8 +4,8 @@ namespace Modules\IoT\Services;
 
 use Modules\IoT\Contracts\DeviceClientInterface;
 use Modules\IoT\Models\DeviceConfiguration;
+use App\Services\TenantCache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * MQTT Device Client
@@ -190,15 +190,15 @@ class MqttDeviceClient implements DeviceClientInterface
 
         // Subscribe to response topic
         $mqtt->subscribe($responseTopic, function (string $topic, string $message) use ($cacheKey) {
-            Cache::put($cacheKey, $message, 60);
+            TenantCache::put($cacheKey, $message, 60);
         }, 1);
 
         // Wait for response
         while (time() - $startTime < $timeout) {
             $mqtt->loop(true, true);
             
-            if ($response = Cache::get($cacheKey)) {
-                Cache::forget($cacheKey);
+            if ($response = TenantCache::get($cacheKey)) {
+                TenantCache::forget($cacheKey);
                 return json_decode($response, true) ?? ['success' => false, 'error' => 'Invalid response'];
             }
 

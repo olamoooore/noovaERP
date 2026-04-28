@@ -14,30 +14,108 @@ use App\Http\Controllers\Api\TenantController;
 Route::get('/health', function () {
     $checks = [];
     $healthy = true;
+    $warnings = [];
 
-    // Database
+    // 1. Database (central)
     try {
         \Illuminate\Support\Facades\DB::connection()->getPdo();
+        \Illuminate\Support\Facades\DB::table('tenants')->count(); // Verify can query
         $checks['database'] = 'ok';
     } catch (\Exception $e) {
         $checks['database'] = 'fail';
         $healthy = false;
     }
 
-    // Redis
+    // 2. Redis
     try {
         \Illuminate\Support\Facades\Redis::connection()->ping();
+        \Illuminate\Support\Facades\Redis::set('health_check_test', 'ok', 'EX', 10);
         $checks['redis'] = 'ok';
     } catch (\Exception $e) {
         $checks['redis'] = 'fail';
         $healthy = false;
     }
 
+    // 3. Queue workers
+    try {
+        $queueSize = \Illuminate\Support\Facades\DB::table('jobs')->count();
+        $failedJobs = \Illuminate\Support\Facades\DB::table('failed_jobs')->where('failed_at', '>', now()->subHour())->count();
+        
+        if ($queueSize > 1000) {
+            $warnings[] = "Queue backlog: {$queueSize} jobs";
+        }
+        if ($failedJobs > 10) {
+            $warnings[] = "Failed jobs: {$failedJobs} in last hour";
+        }
+        
+        $checks['queue'] = [
+            'status' => 'ok',
+            'pending' => $queueSize,
+            'failed_1h' => $failedJobs
+        ];
+    } catch (\Exception $e) {
+        $checks['queue'] = 'fail';
+        $healthy = false;
+    }
+
+    // 4. Storage
+    try {
+        $testFile = 'health_check_' . time() . '.txt';
+        \Illuminate\Support\Facades\Storage::put($testFile, 'health check');
+        $content = \Illuminate\Support\Facades\Storage::get($testFile);
+        \Illuminate\Support\Facades\Storage::delete($testFile);
+        
+        if ($content !== 'health check') {
+            throw new \Exception('Storage read/write mismatch');
+        }
+        
+        $checks['storage'] = 'ok';
+    } catch (\Exception $e) {
+        $checks['storage'] = 'fail';
+        $healthy = false;
+    }
+
+    // 5. Disk space
+    try {
+        $diskFree = disk_free_space('/');
+        $diskTotal = disk_total_space('/');
+        $diskPercent = round(($diskFree / $diskTotal) * 100, 2);
+        
+        if ($diskPercent < 10) {
+            $warnings[] = "Low disk space: {$diskPercent}% free";
+        }
+        
+        $checks['disk'] = [
+            'status' => 'ok',
+            'free_percent' => $diskPercent
+        ];
+    } catch (\Exception $e) {
+        $checks['disk'] = 'unknown';
+    }
+
+    // 6. Tenant databases (sample check)
+    try {
+        $tenantCount = \Illuminate\Support\Facades\DB::table('tenants')->where('status', 'active')->count();
+        $checks['tenants'] = [
+            'status' => 'ok',
+            'active_count' => $tenantCount
+        ];
+    } catch (\Exception $e) {
+        $checks['tenants'] = 'fail';
+        $healthy = false;
+    }
+
+    $status = $healthy ? 'ok' : 'degraded';
+    if (!empty($warnings)) {
+        $status = 'warning';
+    }
+
     return response()->json([
-        'status'    => $healthy ? 'ok' : 'degraded',
-        'checks'    => $checks,
+        'status' => $status,
+        'checks' => $checks,
+        'warnings' => $warnings,
         'timestamp' => now()->toIso8601String(),
-        'version'   => config('app.version', '1.0.0'),
+        'version' => config('app.version', '1.0.0'),
     ], $healthy ? 200 : 503);
 });
 

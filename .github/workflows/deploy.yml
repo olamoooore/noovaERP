@@ -245,5 +245,23 @@ jobs:
 
       - name: Health check
         run: |
+          echo "Waiting for services to start..."
           sleep 10
-          curl -f https://${{ env.DOMAIN }}/api/health || echo "Health check endpoint not available yet"
+          
+          echo "Running health check..."
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.DOMAIN }}/api/health)
+          
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "❌ Health check failed with HTTP $HEALTH_STATUS"
+            echo "Deployment may have issues. Check logs:"
+            ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "tail -100 /var/www/noovaerp/backend/storage/logs/laravel.log"
+            exit 1
+          fi
+          
+          echo "✅ Health check passed"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed. Rolling back..."
+          ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "bash /var/www/noovaerp/deployment/scripts/rollback.sh /var/www/backups/$(ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} "ls -t /var/www/backups | head -1")"

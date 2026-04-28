@@ -8,6 +8,7 @@ use App\SuperAdmin\Domain\PlanVersion;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantHealthSnapshot;
 use App\SuperAdmin\Domain\TenantOperation;
+use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -87,7 +88,7 @@ class TenantOperationService
         $lastLoginAt    = null;
 
         try {
-            DB::statement("SET search_path TO \"{$schemaName}\"");
+            SearchPathGuard::setSearchPath($schemaName, "Tenant health check for tenant {$tenantId}");
             $dbConnected = true;
 
             $sizeRow = DB::selectOne(
@@ -114,7 +115,7 @@ class TenantOperationService
         } catch (\Throwable) {
             $dbConnected = false;
         } finally {
-            DB::statement('SET search_path TO public');
+            SearchPathGuard::setSearchPath('public', "Tenant health check complete for tenant {$tenantId}");
         }
 
         $snapshot = TenantHealthSnapshot::create([

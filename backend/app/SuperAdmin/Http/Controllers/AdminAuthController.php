@@ -6,9 +6,9 @@ namespace App\SuperAdmin\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SearchPathGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -30,7 +30,7 @@ class AdminAuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        DB::statement('SET search_path TO public');
+        SearchPathGuard::setSearchPath('public', 'Admin login authentication');
 
         $user = User::where('email', $request->email)->first();
 

@@ -2,7 +2,7 @@
 
 namespace Modules\OCRBookkeeping\Services;
 
-use Illuminate\Support\Facades\Cache;
+use App\Services\TenantCache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
@@ -25,7 +25,7 @@ class BatchNotificationService
     {
         $cacheKey = "batch:{$batchId}";
         
-        Cache::put($cacheKey, [
+        TenantCache::put($cacheKey, [
             'total' => $totalItems,
             'completed' => 0,
             'failed' => 0,
@@ -50,7 +50,7 @@ class BatchNotificationService
     public function markItemComplete(string $batchId, bool $success = true): void
     {
         $cacheKey = "batch:{$batchId}";
-        $batch = Cache::get($cacheKey);
+        $batch = TenantCache::get($cacheKey);
         
         if (!$batch) {
             Log::warning("Batch not found", ['batch_id' => $batchId]);
@@ -66,12 +66,12 @@ class BatchNotificationService
         $totalProcessed = $batch['completed'] + $batch['failed'];
         
         // Update cache
-        Cache::put($cacheKey, $batch, now()->addHours(24));
+        TenantCache::put($cacheKey, $batch, now()->addHours(24));
         
         // Check if batch is complete
         if ($totalProcessed >= $batch['total']) {
             $this->sendBatchCompleteNotification($batchId, $batch);
-            Cache::forget($cacheKey);
+            TenantCache::forget($cacheKey);
         }
     }
 
@@ -125,7 +125,7 @@ class BatchNotificationService
     public function getBatchStatus(string $batchId): ?array
     {
         $cacheKey = "batch:{$batchId}";
-        $batch = Cache::get($cacheKey);
+        $batch = TenantCache::get($cacheKey);
         
         if (!$batch) {
             return null;
