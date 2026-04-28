@@ -20,8 +20,7 @@ return new class extends Migration
             $table->dropIndex(['tenant_id', 'related_document_type', 'related_document_id']);
             $table->dropIndex(['tenant_id', 'relation_type']);
 
-            // Drop the cross-schema FK then the column
-            $table->dropForeign(['tenant_id']);
+            // Drop the column (no FK existed — was removed from create migration)
             $table->dropColumn('tenant_id');
         });
 
