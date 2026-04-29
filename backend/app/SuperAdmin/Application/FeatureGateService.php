@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
-use App\SuperAdmin\Domain\TenantEntitlement;
-use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -104,8 +102,11 @@ class FeatureGateService
             return;
         }
 
-        // Fallback: iterate known tenant IDs from DB (use central connection)
-        $tenantIds = TenantEntitlement::on('public')->distinct()->pluck('tenant_id');
+        // Fallback: iterate known tenant IDs from the central schema.
+        $tenantIds = DB::table('public.tenant_entitlements')
+            ->distinct()
+            ->pluck('tenant_id');
+
         foreach ($tenantIds as $tenantId) {
             $this->invalidate($tenantId);
         }
@@ -120,45 +121,21 @@ class FeatureGateService
 
     private function resolveFromDb(string $tenantId): array
     {
-        $previousSchema = $this->ensureCentralSchema();
-
-        try {
-            return TenantEntitlement::where('tenant_id', $tenantId)
-                ->where('is_entitled', true)
-                ->with('catalogItem:id,key,name')
-                ->get()
-                ->map(fn ($e) => [
-                    'key'    => $e->catalogItem?->key ?? '',
-                    'name'   => $e->catalogItem?->name ?? '',
-                    'source' => $e->source,
-                ])
-                ->filter(fn ($e) => $e['key'] !== '')
-                ->values()
-                ->all();
-        } finally {
-            $this->restoreSchema($previousSchema);
-        }
-    }
-
-    private function ensureCentralSchema(): ?string
-    {
-        if (!function_exists('tenant') || !tenant()) {
-            return null;
-        }
-
-        $row = DB::selectOne('SHOW search_path');
-        $previous = $row->search_path ?? null;
-
-        SearchPathGuard::setSearchPath('public', 'Accessing central feature gate data');
-        return $previous;
-    }
-
-    private function restoreSchema(?string $previous): void
-    {
-        if ($previous === null) {
-            return;
-        }
-
-        SearchPathGuard::resetSearchPath();
+        return DB::table('public.tenant_entitlements as tenant_entitlements')
+            ->join('public.catalog_items as catalog_items', 'catalog_items.id', '=', 'tenant_entitlements.catalog_item_id')
+            ->where('tenant_entitlements.tenant_id', $tenantId)
+            ->where('tenant_entitlements.is_entitled', true)
+            ->whereNotNull('catalog_items.key')
+            ->get([
+                'catalog_items.key as key',
+                'catalog_items.name as name',
+                'tenant_entitlements.source as source',
+            ])
+            ->map(fn ($row) => [
+                'key' => (string) $row->key,
+                'name' => (string) $row->name,
+                'source' => (string) $row->source,
+            ])
+            ->all();
     }
 }

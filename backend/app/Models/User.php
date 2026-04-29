@@ -32,4 +32,10 @@ class User extends Authenticatable
         'is_active'         => 'boolean',
         'password'          => 'hashed',
     ];
+
+    public function isSuperAdmin(): bool
+    {
+        return (bool) ($this->is_super_admin ?? false)
+            || $this->role === 'platform_super_admin';
+    }
 }
