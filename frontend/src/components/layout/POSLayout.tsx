@@ -13,6 +13,7 @@ import api from '@/lib/api'
 
 export function POSLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [drawerStatusFilter, setDrawerStatusFilter] = useState<'all' | 'draft' | 'paid'>('all')
   const location = useLocation()
@@ -47,6 +48,19 @@ export function POSLayout() {
 
   const isTerminalScreen = location.pathname === '/pos/terminal'
   const isCustomerDisplayScreen = location.pathname === '/pos/customer-display'
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Close Session Mutation
   const closeSessionMutation = useMutation({
@@ -156,7 +170,7 @@ export function POSLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      {!isCustomerDisplayScreen && <OfflineBanner />}
+      {!isCustomerDisplayScreen && <OfflineBanner isOnline={isOnline} />}
       {!isCustomerDisplayScreen && (
         <header className="flex h-16 items-center justify-between border-b border-black/5 bg-[linear-gradient(90deg,#27889a_0%,#2fa3b5_100%)] px-4 text-primary-foreground shadow-[0_10px_30px_rgba(15,23,42,0.10)]">
           <div className="flex min-w-0 items-center gap-4">
