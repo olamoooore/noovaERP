@@ -4,6 +4,7 @@ namespace App\Modules;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 
 final class ModuleManager
 {
@@ -27,19 +28,33 @@ final class ModuleManager
         }
 
         $basePath = base_path('modules');
+        Log::debug('[ModuleManager] Scanning for modules', ['base_path' => $basePath]);
+        
         if (!is_dir($basePath)) {
+            Log::warning('[ModuleManager] Modules directory does not exist', ['base_path' => $basePath]);
             return $this->modulesCache = [];
         }
 
+        $directories = File::directories($basePath);
+        Log::debug('[ModuleManager] Found directories', ['count' => count($directories), 'directories' => $directories]);
+
         $modules = [];
-        foreach (File::directories($basePath) as $dir) {
+        $skippedDirs = [];
+        
+        foreach ($directories as $dir) {
+            $dirName = basename($dir);
             $manifestPath = $dir . '/module.json';
+            
             if (!is_file($manifestPath)) {
+                $skippedDirs[] = ['dir' => $dirName, 'reason' => 'module.json not found'];
+                Log::debug('[ModuleManager] Skipping directory - no module.json', ['dir' => $dirName]);
                 continue;
             }
 
             $raw = json_decode(file_get_contents($manifestPath) ?: '', true);
             if (!is_array($raw)) {
+                $skippedDirs[] = ['dir' => $dirName, 'reason' => 'invalid JSON in module.json'];
+                Log::warning('[ModuleManager] Skipping directory - invalid JSON', ['dir' => $dirName, 'manifest_path' => $manifestPath]);
                 continue;
             }
 
@@ -49,22 +64,45 @@ final class ModuleManager
             $providers = $raw['providers'] ?? [];
 
             if ($key === '' || $name === '') {
+                $skippedDirs[] = ['dir' => $dirName, 'reason' => 'missing key or name in module.json'];
+                Log::warning('[ModuleManager] Skipping directory - missing key or name', [
+                    'dir' => $dirName,
+                    'key' => $key,
+                    'name' => $name,
+                ]);
                 continue;
             }
 
-            $modules[] = new Module(
+            $module = new Module(
                 key: $key,
                 name: $name,
                 type: $type,
                 basePath: $dir,
                 providers: is_array($providers) ? $providers : [],
             );
+            
+            $modules[] = $module;
+            Log::debug('[ModuleManager] Successfully discovered module', [
+                'key' => $key,
+                'name' => $name,
+                'type' => $type,
+                'dir' => $dirName,
+            ]);
         }
 
+        if (!empty($skippedDirs)) {
+            Log::info('[ModuleManager] Skipped directories summary', ['skipped' => $skippedDirs]);
+        }
 
         usort($modules, function (Module $a, Module $b): int {
             return [$a->isCore() ? 0 : 1, $a->key] <=> [$b->isCore() ? 0 : 1, $b->key];
         });
+
+        Log::info('[ModuleManager] Module discovery complete', [
+            'total_discovered' => count($modules),
+            'total_skipped' => count($skippedDirs),
+            'module_keys' => array_map(fn($m) => $m->key, $modules),
+        ]);
 
         return $this->modulesCache = $modules;
     }

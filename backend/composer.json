@@ -31,27 +31,31 @@
         "psr-4": {
             "App\\": "app/",
             "Modules\\AI\\": "modules/AI/src/",
-            "Modules\\Inventory\\": "modules/Inventory/src/",
-            "Modules\\Core\\": "modules/Core/src/",
-            "Modules\\POS\\": "modules/POS/src/",
-            "Modules\\FinancialReporting\\": "modules/FinancialReporting/src/",
-            "Modules\\FinancialClose\\": "modules/FinancialClose/src/",
-            "Modules\\OCRBookkeeping\\": "modules/OCRBookkeeping/src/",
-            "Modules\\Loyalty\\": "modules/Loyalty/src/",
-            "Modules\\Ecommerce\\": "modules/Ecommerce/src/",
             "Modules\\Communication\\": "modules/Communication/src/",
+            "Modules\\Core\\": "modules/Core/src/",
+            "Modules\\Ecommerce\\": "modules/Ecommerce/src/",
+            "Modules\\EventManagement\\": "modules/EventManagement/",
             "Modules\\FieldService\\": "modules/FieldService/src/",
+            "Modules\\FinancialClose\\": "modules/FinancialClose/src/",
+            "Modules\\FinancialReporting\\": "modules/FinancialReporting/src/",
             "Modules\\HRM\\": "modules/HRM/src/",
             "Modules\\HRM\\Database\\Factories\\": "modules/HRM/database/factories/",
             "Modules\\HRM\\Database\\Seeders\\": "modules/HRM/database/seeders/",
+            "Modules\\Inventory\\": "modules/Inventory/src/",
+            "Modules\\IoT\\": "modules/IoT/src/",
+            "Modules\\Loyalty\\": "modules/Loyalty/src/",
+            "Modules\\OCRBookkeeping\\": "modules/OCRBookkeeping/src/",
+            "Modules\\PaymentGateway\\": "modules/PaymentGateway/src/",
+            "Modules\\POS\\": "modules/POS/src/",
+            "Modules\\Sales\\": "modules/Sales/src/",
+            "Modules\\WebsiteBuilder\\": "modules/WebsiteBuilder/",
+            "Modules\\WhatsApp\\": "modules/WhatsApp/src/",
             "Modules\\": "modules/",
             "Modules\\Fulfillment\\": "modules/Fulfillment/src/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         },
-        "classmap": [
-            "modules/"
-        ]
+        "classmap": []
     },
     "autoload-dev": {
         "psr-4": {

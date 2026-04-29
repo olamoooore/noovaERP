@@ -1,0 +1,9 @@
+{
+  "key": "crm",
+  "name": "NoovaERP CRM",
+  "description": "Customer Relationship Management — leads, accounts, opportunities, activities, sales handoff",
+  "type": "addon",
+  "providers": [
+    "Modules\\CRM\\Providers\\CRMServiceProvider"
+  ]
+}

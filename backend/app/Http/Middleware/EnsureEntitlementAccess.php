@@ -5,6 +5,9 @@ namespace App\Http\Middleware;
 use App\SuperAdmin\Application\FeatureGateService;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Stancl\Tenancy\Tenancy;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -31,6 +34,7 @@ class EnsureEntitlementAccess
 {
     public function __construct(
         private readonly FeatureGateService $featureGate,
+        private readonly Tenancy $tenancy,
     ) {}
 
     public function handle(Request $request, Closure $next, string $featureKey): Response
@@ -62,10 +66,66 @@ class EnsureEntitlementAccess
             ], 403);
         }
 
-        // ── 4. No tenant context — fail closed ────────────────────────────────
+        // ── 4. No tenant context — try Host-header domain resolution (agent requests) ──
+        $resolved = $this->resolveTenantFromHost($request);
+
+        if ($resolved !== null) {
+            $result = $this->featureGate->check((string) $resolved->id, $featureKey);
+
+            if ($result['is_entitled']) {
+                return $next($request);
+            }
+
+            return response()->json([
+                'message' => "Feature '{$featureKey}' is not enabled for this account.",
+            ], 403);
+        }
+
+        // ── 6. Nothing worked — fail closed ───────────────────────────────────
         return response()->json([
             'message' => 'No tenant context available to verify feature access.',
         ], 403);
+    }
+
+    /**
+     * Attempt to resolve and initialize a tenant from the request Host header.
+     * Used as a fallback for agent requests that bypass Sanctum authentication.
+     *
+     * @return \App\Models\Tenant|null
+     */
+    private function resolveTenantFromHost(Request $request): ?\App\Models\Tenant
+    {
+        $host = $request->getHost();
+
+        if (!$host) {
+            return null;
+        }
+
+        try {
+            $domain = DB::table('domains')->where('domain', $host)->first();
+
+            if ($domain) {
+                $tenant = \App\Models\Tenant::find($domain->tenant_id);
+
+                if ($tenant) {
+                    Log::info('EnsureEntitlementAccess: Initializing tenant from Host header', [
+                        'host'      => $host,
+                        'tenant_id' => $tenant->id,
+                    ]);
+
+                    $this->tenancy->initialize($tenant);
+
+                    return $tenant;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('EnsureEntitlementAccess: Domain-based tenant resolution failed', [
+                'host'  => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     private function currentTenantId(): ?string

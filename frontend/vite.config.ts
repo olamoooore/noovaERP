@@ -99,6 +99,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Proxy IoT API calls to UMP Backend (port 3100)
+      // Must be before the general /api proxy to take precedence
+      '/api/v1/iot': {
+        target: 'http://localhost:3100',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/v1\/iot/, '/api/v1/iot'),
+      },
       '/api': {
         target: backendTarget,
         changeOrigin: true,

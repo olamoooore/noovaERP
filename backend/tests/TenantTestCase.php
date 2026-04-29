@@ -123,6 +123,7 @@ abstract class TenantTestCase extends TestCase
             'modules/EventManagement/Database/Migrations/tenant',
             'modules/FinancialReporting/database/migrations/tenant',
             'modules/HRM/database/migrations/tenant',
+            'modules/CRM/database/migrations/tenant',
             'modules/OCRBookkeeping/database/migrations/tenant',
             'modules/POS/database/migrations/tenant',
             'modules/Ecommerce/database/migrations/tenant',

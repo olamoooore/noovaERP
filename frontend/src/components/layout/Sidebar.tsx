@@ -569,14 +569,35 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 
-  const enabledFeatures = new Set(
-    (features || []).filter((f: any) => f.enabled).map((f: any) => f.key)
+  const normalizeFeatureKey = (key: string) => key.toLowerCase().replace(/[\s_]+/g, '-')
+
+  const featureStatusByKey = new Map(
+    (features || []).map((f: any) => [normalizeFeatureKey(String(f.key || '')), Boolean(f.enabled)])
   )
+
+  const featureKeyAliases: Record<string, string[]> = {
+    hrm: ['human-resources', 'human_resources'],
+    'field-service': ['field_service'],
+    'event-management': ['event_management'],
+    'financial-reporting': ['financial_reporting'],
+  }
 
   const isFeatureEnabled = (featureKey?: string) => {
     if (!featureKey) return true
     if (!features) return true
-    return enabledFeatures.has(featureKey)
+
+    const normalizedKey = normalizeFeatureKey(featureKey)
+    const keysToCheck = [
+      normalizedKey,
+      ...(featureKeyAliases[normalizedKey] || []).map((key) => normalizeFeatureKey(key)),
+    ]
+    const matchedKey = keysToCheck.find((key) => featureStatusByKey.has(key))
+
+    if (!matchedKey) {
+      return true
+    }
+
+    return featureStatusByKey.get(matchedKey) === true
   }
 
   const navItems = baseNavItems.reduce<NavItem[]>((items, item) => {

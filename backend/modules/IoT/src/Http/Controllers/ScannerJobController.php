@@ -5,20 +5,64 @@ namespace Modules\IoT\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Models\ScanResult;
 use Modules\IoT\Events\BarcodeScanned;
 use Modules\IoT\Services\DeviceCommandRouter;
 use Modules\IoT\Services\QRCodeParserService;
 use Modules\IoT\Services\PalmVeinParserService;
+use Modules\IoT\Services\PalmVeinAttendanceService;
 
 class ScannerJobController extends Controller
 {
     public function __construct(
         private DeviceCommandRouter $deviceRouter,
         private QRCodeParserService $qrParser,
-        private PalmVeinParserService $palmVeinParser
+        private PalmVeinParserService $palmVeinParser,
+        private PalmVeinAttendanceService $palmVeinAttendance
     ) {}
+
+    /**
+     * Resolve and initialize the tenant from the request Host header.
+     * Used for agent requests that bypass Sanctum authentication (no user context).
+     * Safe to call when tenancy is already initialized — it skips in that case.
+     */
+    private function ensureTenantContext(Request $request): void
+    {
+        if (function_exists('tenancy') && tenancy()->initialized) {
+            return;  // already initialized (user-authenticated request)
+        }
+
+        $host = $request->getHost();
+        if (!$host) {
+            return;
+        }
+
+        try {
+            // Always query domains from the central (public) schema.
+            // Temporarily set search_path to public to avoid tenant schema pollution.
+            DB::statement("SET search_path TO public");
+            $domain = DB::table('domains')->where('domain', $host)->first();
+
+            if ($domain) {
+                $tenant = \App\Models\Tenant::find($domain->tenant_id);
+                if ($tenant) {
+                    Log::info('ScannerJobController: Initializing tenant from Host header', [
+                        'host'      => $host,
+                        'tenant_id' => $tenant->id,
+                    ]);
+                    tenancy()->initialize($tenant);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ScannerJobController: Tenant resolution from Host header failed', [
+                'host'  => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 
     /**
      * Start scanner listening mode.
@@ -166,15 +210,24 @@ class ScannerJobController extends Controller
      */
     public function reportScanResult(Request $request, string $agentId): JsonResponse
     {
+        // Resolve tenant from Host header so all subsequent DB queries go to the
+        // correct tenant schema (important for HRM attendance event creation).
+        $this->ensureTenantContext($request);
+
         $request->validate([
-            'device_id' => 'required|string',
+            'device_id' => 'nullable|string',
             'barcode' => 'required|string|max:5000', // Increased for QR codes
             'format' => 'nullable|string',
             'timestamp' => 'nullable|string',
             'parsed' => 'nullable|array', // Agent may send pre-parsed data
         ]);
 
-        $deviceId = $request->input('device_id');
+        // Guard: device_id column in scan_results is UUID type; non-UUID strings
+        // (e.g. UMP device identifiers like "palm-vein-1") must be treated as null
+        // to avoid a PostgreSQL type error.
+        $rawDeviceId = $request->input('device_id') ?? $request->input('deviceId');
+        $deviceId = $this->safeUuid($rawDeviceId);
+
         $barcode = $request->input('barcode');
         $format = $request->input('format');
         $timestamp = $request->input('timestamp');
@@ -183,7 +236,10 @@ class ScannerJobController extends Controller
         $device = DeviceConfiguration::find($deviceId);
         $deviceName = $device?->name ?? 'Unknown Scanner';
         $isQrScanner = $device?->driver_type === 'qr-scanner-hid';
-        $isPalmVeinScanner = $device?->driver_type === 'palm-vein-winusb';
+        // Detect palm vein either by device type or by the format sent by the agent
+        $isPalmVeinScanner = $device?->driver_type === 'palm-vein-winusb'
+            || ($format !== null && str_starts_with(strtoupper($format), 'PALM_VEIN'))
+            || ($format !== null && strtoupper($format) === 'PALM');
 
         // Parse data based on device type
         $parsedData = $request->input('parsed');
@@ -221,9 +277,10 @@ class ScannerJobController extends Controller
             ] : null,
         ]);
 
-        // Broadcast to frontend with parsed data
+        // Broadcast to frontend with parsed data.
+        // Use the raw device ID string here (not the UUID-coerced $deviceId which may be null).
         broadcast(new BarcodeScanned(
-            deviceId: $deviceId,
+            deviceId: $rawDeviceId ?? '',
             barcode: $barcode,
             format: $format,
             deviceName: $deviceName,
@@ -231,7 +288,7 @@ class ScannerJobController extends Controller
             parsedData: $parsedData,
         ))->toOthers();
 
-        \Log::info('Scan result recorded', [
+        Log::info('Scan result recorded', [
             'agent_id' => $agentId,
             'device_id' => $deviceId,
             'barcode' => substr($barcode, 0, 100), // Truncate for log
@@ -239,14 +296,45 @@ class ScannerJobController extends Controller
             'parsed_type' => $parsedData['type'] ?? null,
         ]);
 
+        // ── Palm vein → HRM attendance ────────────────────────────────────────
+        // Extract subject_code: use explicitly-parsed subjectCode, or fall back
+        // to the raw barcode value (the palm scanner's userId is the subject_code).
+        $attendanceResult = null;
+        if ($isPalmVeinScanner) {
+            $subjectCode = $parsedData['data']['subjectCode']
+                ?? $parsedData['subjectCode']
+                ?? $barcode;   // barcode == userId from the Python palm API
+
+            $attendanceResult = $this->palmVeinAttendance->processScan(
+                subjectCode: (string) $subjectCode,
+                deviceId:    $deviceId,
+                agentId:     $agentId,
+                capturedAt:  $timestamp,
+            );
+
+            if ($attendanceResult['success']) {
+                Log::info('Palm vein attendance recorded via scan-result', [
+                    'subject_code' => $subjectCode,
+                    'event_type'   => $attendanceResult['event_type'] ?? null,
+                    'employee_id'  => $attendanceResult['event']?->employee_id ?? null,
+                ]);
+            } else {
+                Log::warning('Palm vein attendance failed', [
+                    'subject_code' => $subjectCode,
+                    'message'      => $attendanceResult['message'],
+                ]);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Scan result recorded',
             'data' => [
-                'id' => $scanResult->id,
-                'barcode' => $barcode,
-                'format' => $format,
-                'parsed' => $parsedData,
+                'id'         => $scanResult->id,
+                'barcode'    => $barcode,
+                'format'     => $format,
+                'parsed'     => $parsedData,
+                'attendance' => $attendanceResult,
             ],
         ]);
     }
@@ -279,8 +367,24 @@ class ScannerJobController extends Controller
     }
 
     /**
+     * Return the string only if it is a valid UUID; otherwise null.
+     * Protects the UUID-typed device_id column in scan_results from bad input.
+     */
+    private function safeUuid(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return preg_match(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+            $value
+        ) ? $value : null;
+    }
+
+    /**
      * Get scan history for a device.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/scanner/history
      */
     public function getHistory(Request $request, string $agentId): JsonResponse

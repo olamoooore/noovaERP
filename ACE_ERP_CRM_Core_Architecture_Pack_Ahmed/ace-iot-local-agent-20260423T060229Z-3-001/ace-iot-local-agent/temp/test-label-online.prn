@@ -1,0 +1,8 @@
+SIZE 80 mm, 50 mm
+GAP 3 mm, 0 mm
+DIRECTION 1
+CLS
+TEXT 100,100,"4",0,1,1,"TEST PRINT"
+TEXT 100,200,"3",0,1,1,"Gprinter Online"
+TEXT 100,300,"2",0,1,1,"10:52:57"
+PRINT 1

@@ -23,7 +23,28 @@ class FeatureGateController extends Controller
         $tenantId = $request->attributes->get('tenant_id');
         $fresh    = $request->header('X-Feature-Gate-Fresh') === '1';
 
+        // Logging: Track tenant ID
+        \Log::info('[FeatureGateController] Fetching features', [
+            'tenant_id' => $tenantId,
+            'fresh' => $fresh,
+        ]);
+
         $features = $this->gate->all($tenantId, $fresh);
+
+        // Logging: Track entitled keys
+        $entitledKeys = array_column($features, 'key');
+        \Log::info('[FeatureGateController] Entitled keys', [
+            'tenant_id' => $tenantId,
+            'entitled_keys' => $entitledKeys,
+            'hrm_included' => in_array('hrm', $entitledKeys),
+        ]);
+
+        // Logging: Track final features array
+        \Log::info('[FeatureGateController] Final features array', [
+            'tenant_id' => $tenantId,
+            'count' => count($features),
+            'features' => $features,
+        ]);
 
         return response()->json([
             'tenant_id' => $tenantId,
