@@ -27,6 +27,7 @@ class WebOrder extends Model
         'first_name',
         'last_name',
         'shipping_address',
+        'shipping_method',
         'status',
         'payment_status',
         'subtotal',
@@ -53,6 +54,7 @@ class WebOrder extends Model
 
     protected $casts = [
         'shipping_address' => 'array',
+        'shipping_method' => 'array',
         'subtotal' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
         'tax_amount' => 'decimal:2',
@@ -281,6 +283,8 @@ class WebOrder extends Model
             'subtotal'        => $this->subtotal,
             'tax_amount'      => $this->tax_amount,
             'discount_amount' => $this->discount_amount + $this->loyalty_discount,
+            'shipping_cost'   => $this->shipping_cost,
+            'shipping_method' => $this->shipping_method ? (is_array($this->shipping_method) ? ($this->shipping_method['name'] ?? null) : $this->shipping_method) : null,
             'total'           => $this->total,
             'web_order_id'    => $this->id,
         ]);

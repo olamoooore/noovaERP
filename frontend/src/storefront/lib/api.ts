@@ -90,6 +90,18 @@ export async function fetchTags(): Promise<ApiTag[]> {
 
 // ---- Checkout API ----
 
+export interface ShippingRate {
+  id: string;
+  provider_code: string;
+  provider_name: string;
+  service_code: string;
+  service_name: string;
+  price: number;
+  currency: string;
+  transit_days: number | null;
+  estimated_delivery: string | null;
+}
+
 export interface CheckoutPayload {
   email: string;
   phone?: string;
@@ -101,6 +113,12 @@ export interface CheckoutPayload {
     state?: string;
     postal_code: string;
     country: string;
+  };
+  shipping_method?: {
+    id: string;
+    provider_code: string;
+    service_code: string;
+    price: number;
   };
   items: {
     product_id: number;
@@ -178,6 +196,23 @@ export interface CheckoutResponse {
   customer_id?: number;
   message?: string;
   error?: string;
+}
+
+export async function getShippingRates(params: {
+  destination_country: string;
+  destination_postal_code: string;
+  weight: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  items_count?: number;
+}): Promise<{ success: boolean; rates: ShippingRate[]; has_rates: boolean }> {
+  const { data } = await storefrontApi.get('/web-shop/shipping-rates', { params });
+  return {
+    success: data.success ?? true,
+    rates: data.rates ?? [],
+    has_rates: data.has_rates ?? false,
+  };
 }
 
 export async function guestCheckout(payload: CheckoutPayload): Promise<CheckoutResponse> {

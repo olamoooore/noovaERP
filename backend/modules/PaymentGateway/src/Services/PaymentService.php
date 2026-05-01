@@ -111,7 +111,7 @@ class PaymentService
 
         if ($status['success'] ?? false) {
             $localStatus = ($status['status'] ?? null) === 'completed'
-                ? 'pending'
+                ? 'completed'
                 : ($status['status'] ?? $transaction->status);
 
             $transactionUpdate = [

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalesOrderStatusHistory extends Model
 {
+    protected $table = 'sales_order_status_history';
+
     public $timestamps = true;
 
     protected $fillable = [

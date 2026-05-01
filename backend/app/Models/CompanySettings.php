@@ -25,6 +25,7 @@ class CompanySettings extends Model
         'default_receivable_account_id',
         'default_payable_account_id',
         'default_revenue_account_id',
+        'shipping_revenue_account_id',
         'default_expense_account_id',
         'default_tax_account_id',
     ];
@@ -64,6 +65,14 @@ class CompanySettings extends Model
     public function defaultRevenueAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'default_revenue_account_id');
+    }
+
+    /**
+     * Get the shipping revenue account
+     */
+    public function shippingRevenueAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'shipping_revenue_account_id');
     }
 
     /**

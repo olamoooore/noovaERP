@@ -23,6 +23,7 @@ Route::middleware(['auth:sanctum', 'entitlement:pos', 'ensure.tenant.search_path
     // =====================================================
     
     Route::get('/sales/orders', [SalesOrderController::class, 'index']);
+    Route::get('/pos/sales/orders', [SalesOrderController::class, 'index']);
 
     // =====================================================
     // TERMINALS & SESSIONS (Enterprise POS)

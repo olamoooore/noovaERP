@@ -46,6 +46,9 @@ Route::middleware([
     // Payment confirmation (called after Stripe success)
     Route::post('/web-shop/checkout/confirm-payment', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'confirmPayment']);
 
+    // Shipping rates for checkout
+    Route::get('/web-shop/shipping-rates', [\Modules\Ecommerce\Http\Controllers\ShippingRatesController::class, 'getRates']);
+
     // Available payment gateways
     Route::get('/web-shop/payment-gateways', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'getPaymentGateways']);
 

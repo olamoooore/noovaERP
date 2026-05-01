@@ -1,5 +1,6 @@
 import { GeneralSettings } from './Settings/GeneralSettings'
 import { PaymentGatewaySettings } from './Settings/PaymentGatewaySettings'
+import { FulfillmentSettings } from './Settings/FulfillmentSettings'
 import { MailSettings } from './Settings/MailSettings'
 import { WhatsAppSettings } from './Settings/WhatsAppSettings'
 
@@ -219,6 +220,7 @@ export function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
           <TabsTrigger value="payment-gateways">Payment Gateways</TabsTrigger>
+          <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
         </TabsList>
@@ -237,6 +239,10 @@ export function SettingsPage() {
 
         <TabsContent value="payment-gateways">
           <PaymentGatewaySettings />
+        </TabsContent>
+
+        <TabsContent value="fulfillment">
+          <FulfillmentSettings />
         </TabsContent>
 
         <TabsContent value="tax">

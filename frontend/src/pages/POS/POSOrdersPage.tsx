@@ -79,14 +79,14 @@ interface SalesOrderDetail extends SalesOrder {
     phone?: string
   } | null
   customer?: {
-    id?: number
+    id: number
     code?: string
     name: string
-    email?: string
+    email: string
     phone?: string
     total_orders?: number
     total_purchases?: number
-  } | null
+  }
   terminal?: {
     name?: string
   } | null
@@ -154,7 +154,7 @@ export function POSOrdersPage() {
       if (statusFilter !== 'all') params.status = statusFilter
       if (sourceFilter !== 'all') params.source = sourceFilter
       if (dateFilter) params.date = dateFilter
-      const response = await api.get('/sales/orders', { params })
+      const response = await api.get('/pos/sales/orders', { params })
       return response.data
     },
   })

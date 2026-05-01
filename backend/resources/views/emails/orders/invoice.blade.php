@@ -292,6 +292,12 @@
                     <span class="totals-value">-{{ $currency }}{{ number_format($invoice->discount_amount, 2) }}</span>
                 </div>
                 @endif
+                @if (isset($invoice->shipping_cost) && $invoice->shipping_cost > 0)
+                <div class="totals-row">
+                    <span class="totals-label">Shipping {{ $invoice->shipping_method ? '(' . $invoice->shipping_method . ')' : '' }}</span>
+                    <span class="totals-value">{{ $currency }}{{ number_format($invoice->shipping_cost, 2) }}</span>
+                </div>
+                @endif
                 @if ($invoice->tax_amount > 0)
                 <div class="totals-row">
                     <span class="totals-label">Tax</span>

@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { cn } from '@/lib/utils'
+import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useState } from 'react'
@@ -618,7 +619,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
         <img
-          src="/noovaerplogo.png"
+          src={NOOVAERP_LOGO_URL}
           alt="NoovaERP"
           className="h-9 w-auto max-w-full object-contain"
         />

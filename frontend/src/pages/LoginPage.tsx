@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -45,10 +46,13 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Icon icon="solar:buildings-2-bold" className="h-7 w-7 text-primary-foreground" />
+          <div className="mx-auto mb-2 flex items-center justify-center">
+            <img
+              src={NOOVAERP_LOGO_URL}
+              alt="Noovaerp"
+              className="h-14 w-auto object-contain"
+            />
           </div>
-          <CardTitle className="text-2xl font-bold">NoovaERP</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>

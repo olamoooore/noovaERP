@@ -53,6 +53,11 @@ class WebCheckoutController extends Controller
                 'shipping_address.state' => 'nullable|string|max:100',
                 'shipping_address.postal_code' => 'required|string|max:20',
                 'shipping_address.country' => 'required|string|max:100',
+                'shipping_method' => 'nullable|array',
+                'shipping_method.id' => 'nullable|string',
+                'shipping_method.provider_code' => 'nullable|string',
+                'shipping_method.service_code' => 'nullable|string',
+                'shipping_method.price' => 'nullable|numeric|min:0',
                 'phone' => 'nullable|string|max:50',
                 'notes' => 'nullable|string|max:1000',
             ];
@@ -244,6 +249,58 @@ class WebCheckoutController extends Controller
 
             $shippingCost = 0;
 
+            // Re-quote shipping server-side using selected provider/service when possible.
+            $selectedProviderCode = strtolower((string) ($validated['shipping_method']['provider_code'] ?? ''));
+            $selectedServiceCode = strtoupper((string) ($validated['shipping_method']['service_code'] ?? ''));
+
+            if ($selectedProviderCode !== '' && $selectedServiceCode !== '') {
+                try {
+                    $estimatedWeightKg = max(
+                        0.1,
+                        collect($validated['items'])->sum(fn (array $item) => ((int) $item['quantity']) * 0.5)
+                    );
+
+                    $countryRaw = strtoupper(trim((string) ($validated['shipping_address']['country'] ?? 'MY')));
+                    $countryCode = match ($countryRaw) {
+                        'SINGAPORE', 'SG' => 'SG',
+                        'MALAYSIA', 'MY' => 'MY',
+                        default => strlen($countryRaw) === 2 ? $countryRaw : 'MY',
+                    };
+
+                    $rateShopper = app(\Modules\Fulfillment\Services\RateShopperService::class);
+                    $rateRequest = new \Modules\Fulfillment\Contracts\RateRequest(
+                        weight: $estimatedWeightKg,
+                        originCountry: 'MY',
+                        destinationCountry: $countryCode,
+                        destinationPostalCode: (string) ($validated['shipping_address']['postal_code'] ?? ''),
+                    );
+
+                    $rates = $rateShopper->shopRates($rateRequest);
+                    $matchedRate = $rates->first(function ($rate) use ($selectedProviderCode, $selectedServiceCode) {
+                        return strtolower((string) ($rate->provider_code ?? '')) === $selectedProviderCode
+                            && strtoupper((string) ($rate->service_code ?? '')) === $selectedServiceCode;
+                    });
+
+                    if ($matchedRate) {
+                        $shippingCost = (float) $matchedRate->price;
+                    } elseif (!empty($validated['shipping_method']['price'])) {
+                        $shippingCost = (float) $validated['shipping_method']['price'];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to re-quote shipping during checkout', [
+                        'provider' => $selectedProviderCode,
+                        'service' => $selectedServiceCode,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    if (!empty($validated['shipping_method']['price'])) {
+                        $shippingCost = (float) $validated['shipping_method']['price'];
+                    }
+                }
+            } elseif (!empty($validated['shipping_method']['price'])) {
+                $shippingCost = (float) $validated['shipping_method']['price'];
+            }
+
             // ── Generate guest token ─────────────────────────────────────
             $guestToken = Str::uuid()->toString();
 
@@ -256,6 +313,7 @@ class WebCheckoutController extends Controller
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'shipping_address' => $validated['shipping_address'],
+                'shipping_method' => $validated['shipping_method'] ?? null,
                 'status' => 'pending',
                 'payment_status' => 'pending',
                 'subtotal' => $subtotal,

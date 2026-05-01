@@ -200,6 +200,9 @@ const PaymentSuccess = lazy(() => import('@/pages/PaymentSuccess').then(m => ({ 
 const PaymentGatewaySettings = lazy(() => import('@/pages/Settings/PaymentGatewaySettings').then(m => ({ default: m.PaymentGatewaySettings })))
 const OfflinePaymentMethods = lazy(() => import('@/pages/Settings/OfflinePaymentMethods').then(m => ({ default: m.OfflinePaymentMethodsPage })))
 
+// Fulfillment Pages
+const FulfillmentSettings = lazy(() => import('@/pages/Settings/FulfillmentSettings').then(m => ({ default: m.FulfillmentSettings })))
+
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen">

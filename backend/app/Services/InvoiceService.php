@@ -123,6 +123,17 @@ class InvoiceService
                 description: "Sales - Invoice {$invoice->invoice_number}",
             );
 
+            // CR Shipping Revenue (if shipping cost > 0)
+            if ((float) $invoice->shipping_cost > 0) {
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'shipping_revenue',
+                    accountId: null,
+                    debit: 0,
+                    credit: (float) $invoice->shipping_cost,
+                    description: "Shipping - Invoice {$invoice->invoice_number}",
+                );
+            }
+
             // CR Sales Tax Payable
             if ((float) $invoice->tax_amount > 0) {
                 $lines[] = new PostingRequestLine(

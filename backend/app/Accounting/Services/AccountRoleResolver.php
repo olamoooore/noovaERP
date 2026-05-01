@@ -33,6 +33,7 @@ class AccountRoleResolver
         'retained_earnings'        => 'RETAINED_EARNINGS',
         'general_expense'          => 'SUSPENSE',
         'sales_revenue'            => null, // no direct role — use AccountMappingService
+        'shipping_revenue'         => null, // no direct role — use AccountMappingService
         'depreciation_expense'     => null,
         'accumulated_depreciation' => null,
         'gain_loss_disposal'       => null,

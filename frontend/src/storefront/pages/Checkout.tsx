@@ -11,11 +11,20 @@ import {
   ShieldCheck,
   Star,
   Gift,
+  Truck,
+  ChevronRight,
 } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { Button } from '@/storefront/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useCart } from '@/storefront/context/CartContext';
 import { useCustomerAuth } from '@/storefront/context/CustomerAuthContext';
 import { toast } from 'sonner';
@@ -25,9 +34,11 @@ import {
   CheckoutPayload,
   CheckoutResponse,
   getPaymentGateways,
+  getShippingRates,
   confirmPayment,
   getCustomerAddresses,
   CustomerAddress,
+  ShippingRate,
   getLoyaltyBalance,
   LoyaltyBalance,
   calculateLoyaltyDiscount,
@@ -168,7 +179,15 @@ const Checkout = () => {
   // Saved addresses
   const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<number | 'new' | null>(null);
+  const [showShippingModal, setShowShippingModal] = useState(false);
   const [addressesLoaded, setAddressesLoaded] = useState(false);
+
+  // Shipping
+  const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
+  const [selectedShippingRateId, setSelectedShippingRateId] = useState<string | null>(null);
+  const [selectedShippingProviderCode, setSelectedShippingProviderCode] = useState<string | null>(null);
+  const [isLoadingShippingRates, setIsLoadingShippingRates] = useState(false);
+  const [shippingRatesMessage, setShippingRatesMessage] = useState<string>('');
 
   // Loyalty
   const [loyaltyBalance, setLoyaltyBalance] = useState<LoyaltyBalance | null>(null);
@@ -187,6 +206,60 @@ const Checkout = () => {
     postalCode: '',
     unit: '',
   });
+
+  const selectedShippingRate = shippingRates.find((rate) => rate.id === selectedShippingRateId);
+  const shippingCost =
+    selectedShippingRate?.price ?? 0;
+
+  const sortedShippingRates = [...shippingRates].sort((a, b) => a.price - b.price);
+  const shippingProviders = sortedShippingRates.reduce(
+    (providers, rate) => {
+      if (!providers.some((provider) => provider.code === rate.provider_code)) {
+        providers.push({ code: rate.provider_code, name: rate.provider_name });
+      }
+      return providers;
+    },
+    [] as Array<{ code: string; name: string }>,
+  );
+  const activeShippingProviderCode =
+    selectedShippingProviderCode && shippingProviders.some((provider) => provider.code === selectedShippingProviderCode)
+      ? selectedShippingProviderCode
+      : shippingProviders[0]?.code ?? null;
+  const activeShippingProviderName =
+    shippingProviders.find((provider) => provider.code === activeShippingProviderCode)?.name ?? null;
+  const ratesForActiveProvider = activeShippingProviderCode
+    ? sortedShippingRates.filter((rate) => rate.provider_code === activeShippingProviderCode)
+    : sortedShippingRates;
+  const cheapestShippingRateId = sortedShippingRates[0]?.id ?? null;
+  const fastestTransitDays = sortedShippingRates.reduce((minDays, rate) => {
+    if (typeof rate.transit_days !== 'number' || rate.transit_days <= 0) {
+      return minDays;
+    }
+    return Math.min(minDays, rate.transit_days);
+  }, Number.POSITIVE_INFINITY);
+  const fastestShippingRateId = Number.isFinite(fastestTransitDays)
+    ? sortedShippingRates.find((rate) => rate.transit_days === fastestTransitDays)?.id ?? null
+    : null;
+
+  useEffect(() => {
+    if (shippingProviders.length === 0) {
+      setSelectedShippingProviderCode(null);
+      return;
+    }
+
+    if (
+      selectedShippingProviderCode
+      && shippingProviders.some((provider) => provider.code === selectedShippingProviderCode)
+    ) {
+      return;
+    }
+
+    const providerFromSelectedRate = selectedShippingRateId
+      ? sortedShippingRates.find((rate) => rate.id === selectedShippingRateId)?.provider_code
+      : null;
+
+    setSelectedShippingProviderCode(providerFromSelectedRate ?? shippingProviders[0].code);
+  }, [shippingProviders, selectedShippingProviderCode, selectedShippingRateId, sortedShippingRates]);
 
   // Keep ref in sync for event listener closures
   useEffect(() => {
@@ -343,6 +416,76 @@ const Checkout = () => {
       .catch(() => {});
   }, []);
 
+  // Fetch shipping rates whenever destination details change
+  useEffect(() => {
+    const postalCode = formData.postalCode.trim();
+    if (!postalCode) {
+      setShippingRates([]);
+      setSelectedShippingRateId(null);
+      setSelectedShippingProviderCode(null);
+      setShippingRatesMessage('Enter postal code to load shipping options.');
+      return;
+    }
+
+    let cancelled = false;
+    const loadShippingRates = async () => {
+      setIsLoadingShippingRates(true);
+      setShippingRatesMessage('');
+
+      try {
+        // Fallback weight estimate until per-product package data is modeled.
+        const estimatedWeightKg = Math.max(
+          0.1,
+          items.reduce((sum, item) => sum + item.quantity * 0.5, 0),
+        );
+
+        const response = await getShippingRates({
+          destination_country: 'SG',
+          destination_postal_code: postalCode,
+          weight: estimatedWeightKg,
+          items_count: items.reduce((sum, item) => sum + item.quantity, 0),
+        });
+
+        if (cancelled) return;
+
+        const rates = response.rates || [];
+        setShippingRates(rates);
+
+        if (rates.length === 0) {
+          setSelectedShippingRateId(null);
+          setSelectedShippingProviderCode(null);
+          setShippingRatesMessage('No shipping options returned for this address yet.');
+          return;
+        }
+
+        setSelectedShippingRateId((prev) => {
+          if (prev && rates.some((rate) => rate.id === prev)) {
+            return prev;
+          }
+
+          const cheapest = [...rates].sort((a, b) => a.price - b.price)[0];
+          return cheapest?.id ?? rates[0].id;
+        });
+      } catch {
+        if (cancelled) return;
+        setShippingRates([]);
+        setSelectedShippingRateId(null);
+        setSelectedShippingProviderCode(null);
+        setShippingRatesMessage('Unable to load shipping options right now.');
+      } finally {
+        if (!cancelled) {
+          setIsLoadingShippingRates(false);
+        }
+      }
+    };
+
+    loadShippingRates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.postalCode, items]);
+
   // Listen for external payment-window messages (HitPay / PayPal callback)
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -362,22 +505,31 @@ const Checkout = () => {
   }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────
-  const doConfirmPayment = async () => {
+  const doConfirmPayment = async (): Promise<boolean> => {
     const od = orderDataRef.current;
-    if (!od || !od.payment_intent?.transaction_id) return;
+    if (!od || !od.payment_intent?.transaction_id) return false;
+
     try {
-      await confirmPayment({
+      const result = await confirmPayment({
         order_id: od.order_id,
         payment_intent_id: od.payment_intent.transaction_id,
         guest_token: od.guest_token,
       });
+
+      return Boolean(result?.success);
     } catch {
-      // Backend webhook may have already confirmed
+      return false;
     }
   };
 
   const handlePaymentComplete = async () => {
-    await doConfirmPayment();
+    const confirmed = await doConfirmPayment();
+
+    if (!confirmed) {
+      toast.error('Payment was captured, but confirmation is still pending. Please wait a moment and try again.');
+      return;
+    }
+
     clearCart();
     setStep('success');
     toast.success('Payment completed successfully!');
@@ -400,6 +552,13 @@ const Checkout = () => {
   // ── Submit shipping details + place order ────────────────────────
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedRateForSubmit = shippingRates.find((rate) => rate.id === selectedShippingRateId);
+
+    if (shippingRates.length > 0 && !selectedRateForSubmit) {
+      toast.error('Please select a shipping method');
+      return;
+    }
+
     if (gateways.length > 0 && !selectedGatewayId) {
       toast.error('Please select a payment method');
       return;
@@ -418,6 +577,14 @@ const Checkout = () => {
           postal_code: formData.postalCode,
           country: 'Singapore',
         },
+        shipping_method: selectedRateForSubmit
+          ? {
+              id: selectedRateForSubmit.id,
+              provider_code: selectedRateForSubmit.provider_code,
+              service_code: selectedRateForSubmit.service_code,
+              price: selectedRateForSubmit.price,
+            }
+          : undefined,
         items: items.map((item) => ({
           product_id: parseInt(item.product.id),
           quantity: item.quantity,
@@ -497,7 +664,7 @@ const Checkout = () => {
   };
 
   // ── Order Summary Sidebar ───────────────────────────────────────
-  const finalTotal = Math.max(0, totalPrice - loyaltyDiscount);
+  const finalTotal = Math.max(0, totalPrice + shippingCost - loyaltyDiscount);
   
   const orderSummary = (
     <div className="lg:col-span-1">
@@ -530,6 +697,12 @@ const Checkout = () => {
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span>SGD {totalPrice.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Shipping</span>
+            <span>
+              {isLoadingShippingRates ? 'Calculating…' : `SGD ${shippingCost.toFixed(2)}`}
+            </span>
           </div>
           {loyaltyDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-500">
@@ -744,6 +917,61 @@ const Checkout = () => {
                             </div>
                           </div>
                         </div>
+                        )}
+                      </div>
+
+                      {/* Shipping Method Selection */}
+                      <div>
+                        <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
+                          <Truck className="h-5 w-5 text-primary" />
+                          Shipping Method
+                        </h2>
+
+                        {isLoadingShippingRates && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 rounded-xl border border-dashed">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Calculating shipping options...
+                          </div>
+                        )}
+
+                        {!isLoadingShippingRates && shippingRates.length === 0 && (
+                          <div className="p-4 rounded-xl border border-dashed text-sm text-muted-foreground">
+                            {shippingRatesMessage || 'Enter postal code to see shipping options'}
+                          </div>
+                        )}
+
+                        {!isLoadingShippingRates && shippingRates.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowShippingModal(true)}
+                            className="w-full p-4 rounded-xl border border-border hover:border-primary/50 transition-colors text-left group"
+                          >
+                            {selectedShippingRateId ? (
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm">
+                                    {selectedShippingRate?.provider_name} - {selectedShippingRate?.service_name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {selectedShippingRate?.transit_days
+                                      ? `${selectedShippingRate.transit_days} day${selectedShippingRate.transit_days > 1 ? 's' : ''} transit`
+                                      : 'Transit time varies'}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-semibold">
+                                    SGD {shippingCost.toFixed(2)}
+                                  </span>
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">Select a shipping method</span>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                              </div>
+                            )}
+                          </button>
                         )}
                       </div>
 
@@ -1011,6 +1239,114 @@ const Checkout = () => {
           </div>
         )}
       </div>
+
+      {/* ── Shipping Method Modal ─────────────────────────── */}
+      <Dialog open={showShippingModal} onOpenChange={setShowShippingModal}>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[92vh] p-0 gap-0 overflow-hidden border-border shadow-2xl flex flex-col">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-primary" />
+              Select Shipping Method
+            </DialogTitle>
+            <DialogDescription>
+              Choose a provider first, then select a shipping rate
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-5 pt-4 pb-3 border-b bg-muted/20">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Active Provider</p>
+            <div className="flex flex-wrap gap-2">
+              {shippingProviders.map((provider) => (
+                <button
+                  key={provider.code}
+                  type="button"
+                  onClick={() => setSelectedShippingProviderCode(provider.code)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
+                    activeShippingProviderCode === provider.code
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background text-foreground hover:border-primary/50',
+                  )}
+                >
+                  {provider.name}
+                </button>
+              ))}
+            </div>
+            {activeShippingProviderName && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Showing {ratesForActiveProvider.length} rate{ratesForActiveProvider.length !== 1 ? 's' : ''} for {activeShippingProviderName}
+              </p>
+            )}
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-2">
+            {ratesForActiveProvider.map((rate) => (
+              <button
+                key={rate.id}
+                type="button"
+                onClick={() => {
+                  setSelectedShippingRateId(rate.id);
+                  setShowShippingModal(false);
+                }}
+                className={cn(
+                  'w-full flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors text-left',
+                  selectedShippingRateId === rate.id
+                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-sm'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/40',
+                )}
+              >
+                <div className={cn(
+                  'w-4 h-4 rounded-full border-2 mt-1 flex items-center justify-center',
+                  selectedShippingRateId === rate.id
+                    ? 'border-primary bg-primary'
+                    : 'border-muted-foreground',
+                )}>
+                  {selectedShippingRateId === rate.id && (
+                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <p className="font-semibold text-sm text-foreground">{rate.service_name}</p>
+                    <p className="text-xs text-muted-foreground">by {rate.provider_name}</p>
+                    {rate.id === cheapestShippingRateId && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        Lowest price
+                      </span>
+                    )}
+                    {rate.id === fastestShippingRateId && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                        Fastest
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Carrier: {rate.provider_name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {rate.transit_days
+                      ? `${rate.transit_days} business day${rate.transit_days > 1 ? 's' : ''}`
+                      : 'Transit time varies'}
+                  </p>
+                </div>
+                <div className="text-base font-bold whitespace-nowrap text-foreground">
+                  SGD {rate.price.toFixed(2)}
+                </div>
+              </button>
+            ))}
+
+            {ratesForActiveProvider.length === 0 && (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                No rates available for this provider yet.
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <p className="text-xs text-muted-foreground">
+              {selectedShippingRate ? `Selected: ${selectedShippingRate.service_name}` : 'No shipping method selected'}
+            </p>
+            <Button variant="outline" onClick={() => setShowShippingModal(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };

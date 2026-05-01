@@ -1,0 +1,7 @@
+backend/app/SuperAdmin/Http/Controllers/AdminAuthController.php:        DB::statement('SET search_path TO public');
+backend/app/SuperAdmin/Application/TenantOperationService.php:            DB::statement("SET search_path TO \"{$schemaName}\"");
+backend/app/SuperAdmin/Application/TenantOperationService.php:            DB::statement('SET search_path TO public');
+backend/app/SuperAdmin/Application/FeatureGateService.php:        DB::statement("SET search_path TO public");
+backend/app/SuperAdmin/Application/FeatureGateService.php:        DB::statement("SET search_path TO {$previous}");
+backend/app/SuperAdmin/Application/EntitlementService.php:            DB::statement('SET search_path TO public');
+backend/app/SuperAdmin/Application/EntitlementService.php:                DB::statement("SET search_path TO {$previousPath}");

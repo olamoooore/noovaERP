@@ -3,17 +3,20 @@
 namespace Modules\PaymentGateway\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
+use Modules\PaymentGateway\Services\PaymentService;
 use App\Models\Tenant;
 
 class FixStuckWebOrders extends Command
 {
     public function __construct(
         private readonly PaymentTransactionCompletionService $completionService,
+        private readonly PaymentService $paymentService,
     ) {
         parent::__construct();
     }
@@ -75,9 +78,10 @@ class FixStuckWebOrders extends Command
             return;
         }
         
-        // Find web orders that are paid but still pending
-        $query = WebOrder::where('payment_status', 'paid')
-            ->where('status', 'pending');
+        // Find web orders still pending but with a transaction reference (candidate for missed completion)
+        $query = WebOrder::query()
+            ->where('status', 'pending')
+            ->whereNotNull('payment_transaction_id');
             
         if ($orderId) {
             $query->where('id', $orderId);
@@ -87,7 +91,7 @@ class FixStuckWebOrders extends Command
         
         if ($stuckOrders->isEmpty()) {
             // Also check for orders with completed payment transactions but pending status
-            $this->info('  No orders with payment_status=paid and status=pending found.');
+            $this->info('  No pending orders with transaction reference found.');
             $this->info('  Checking for orders with completed payment transactions...');
             
             $completedTransactions = PaymentTransaction::where('status', 'completed')
@@ -139,10 +143,20 @@ class FixStuckWebOrders extends Command
             return;
         }
         
-        // Check if transaction is completed
+        // Re-verify gateway status for non-completed transactions.
         if ($transaction->status !== 'completed') {
-            $this->warn("  Transaction {$transaction->transaction_id} status is: {$transaction->status}");
-            return;
+            try {
+                $gatewayStatus = $this->paymentService->confirmPayment($transaction->transaction_id);
+                if (($gatewayStatus['status'] ?? null) !== 'completed') {
+                    $this->warn("  Transaction {$transaction->transaction_id} status is: {$gatewayStatus['status']}");
+                    return;
+                }
+
+                $transaction->refresh();
+            } catch (\Throwable $e) {
+                $this->warn("  Could not verify gateway status for {$transaction->transaction_id}: {$e->getMessage()}");
+                return;
+            }
         }
         
         try {
@@ -161,11 +175,54 @@ class FixStuckWebOrders extends Command
             $this->info("  Order processed successfully!");
             
         } catch (\Exception $e) {
+            if (str_contains($e->getMessage(), 'Journal entry is unbalanced')) {
+                $this->warn('  Canonical completion blocked by unbalanced GL posting. Applying operational payment recovery.');
+
+                $this->recoverOperationalPaymentState($order, $transaction);
+                return;
+            }
+
             $this->error("  Failed to process order: {$e->getMessage()}");
             Log::error('Failed to fix stuck web order', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function recoverOperationalPaymentState(WebOrder $order, PaymentTransaction $transaction): void
+    {
+        DB::transaction(function () use ($order, $transaction) {
+            $order->refresh();
+
+            if ($order->status === WebOrder::STATUS_PENDING) {
+                $order->confirm();
+            }
+
+            if ($order->payment_status === WebOrder::PAYMENT_STATUS_PENDING) {
+                $order->markPaid();
+            }
+
+            if (!$order->invoice_id) {
+                $invoice = $order->convertToInvoice();
+                if ($invoice) {
+                    $order->refresh();
+                }
+            }
+
+            $transaction->update([
+                'status' => 'completed',
+                'processed_at' => $transaction->processed_at ?? now(),
+                'error_message' => 'Operationally completed by recovery command; accounting posting requires follow-up.',
+            ]);
+        });
+
+        $order->refresh();
+
+        $this->info('  Operational payment recovery completed.');
+        $this->info("  Order status: {$order->status}, payment_status: {$order->payment_status}");
+        if ($order->invoice_id) {
+            $this->info("  Order invoice_id: {$order->invoice_id}");
         }
     }
     

@@ -28,6 +28,7 @@ class AccountMappingService
         'sales_tax_payable'         => '2200',
         'input_tax'                 => '2200',
         'sales_revenue'             => '4100',
+        'shipping_revenue'          => '4101',
         'cogs'                      => '5100',
         'general_expense'           => '5000',
         'depreciation_expense'      => '6100',

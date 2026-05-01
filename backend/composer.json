@@ -45,6 +45,7 @@
             "Modules\\HRM\\Database\\Factories\\": "modules/HRM/database/factories/",
             "Modules\\HRM\\Database\\Seeders\\": "modules/HRM/database/seeders/",
             "Modules\\": "modules/",
+            "Modules\\Fulfillment\\": "modules/Fulfillment/src/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         },

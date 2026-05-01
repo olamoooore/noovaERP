@@ -10,9 +10,7 @@ return [
 
     'domain_model' => Domain::class,
 
-    'central_domains' => [
-        env('CENTRAL_DOMAINS', 'localhost'),
-    ],
+    'central_domains' => array_values(array_filter(array_map('trim', explode(',', (string) env('CENTRAL_DOMAINS', 'localhost'))))),
 
     // ── Dedicated storefront tenant ─────────────────────────────────────────
     // When public ecommerce / website-public routes are hit without a domain

@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { guestCheckout, getPaymentGateways, confirmPayment, CheckoutPayload } from '@/storefront/lib/api';
+import { guestCheckout, getPaymentGateways, confirmPayment, getShippingRates, CheckoutPayload, ShippingRate } from '@/storefront/lib/api';
 
 /**
  * Hook to submit guest checkout
@@ -28,4 +28,13 @@ export function useConfirmPayment() {
   });
 }
 
-export type { CheckoutPayload };
+/**
+ * Hook to fetch shipping rates
+ */
+export function useShippingRates() {
+  return useMutation({
+    mutationFn: getShippingRates,
+  });
+}
+
+export type { CheckoutPayload, ShippingRate };
