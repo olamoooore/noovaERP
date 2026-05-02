@@ -117,7 +117,9 @@ export interface CheckoutPayload {
   shipping_method?: {
     id: string;
     provider_code: string;
+    provider_name?: string;
     service_code: string;
+    service_name?: string;
     price: number;
   };
   items: {
@@ -296,6 +298,15 @@ export interface CustomerOrder {
   };
   subtotal?: number;
   shipping_cost?: number;
+  shipping_method?: {
+    id?: string | null;
+    provider_code?: string | null;
+    provider_name?: string | null;
+    service_code?: string | null;
+    service_name?: string | null;
+    label?: string | null;
+    price?: number;
+  } | null;
   tax_amount?: number;
   discount_amount?: number;
   loyalty_discount?: number;

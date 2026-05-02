@@ -211,6 +211,18 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-sm text-muted-foreground mb-1">Tax Amount</p>
               <p className="font-medium">{formatCurrency(invoice.tax_amount)}</p>
             </div>
+            {(invoice.shipping_cost || invoice.shipping_method) && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Shipping</p>
+                <p className="font-medium">{formatCurrency(invoice.shipping_cost || 0)}</p>
+              </div>
+            )}
+            {invoice.shipping_method && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Shipping Method</p>
+                <p className="font-medium">{invoice.shipping_method}</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
               <p className="text-xl font-bold text-primary">{formatCurrency(invoice.total)}</p>

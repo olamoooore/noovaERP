@@ -426,6 +426,7 @@ class WebOrderController extends Controller
             'first_name' => $order->first_name,
             'last_name' => $order->last_name,
             'shipping_address' => $order->shipping_address,
+            'shipping_method' => $this->normalizeShippingMethod($order->shipping_method, (float) $order->shipping_cost),
             'subtotal' => (float) $order->subtotal,
             'shipping_cost' => (float) $order->shipping_cost,
             'tax_amount' => (float) $order->tax_amount,
@@ -451,6 +452,58 @@ class WebOrderController extends Controller
             'paid_at' => $order->paid_at?->toISOString(),
             'shipped_at' => $order->shipped_at?->toISOString(),
             'delivered_at' => $order->delivered_at?->toISOString(),
+        ];
+    }
+
+    private function normalizeShippingMethod(mixed $shippingMethod, float $shippingCost): ?array
+    {
+        if (empty($shippingMethod)) {
+            return null;
+        }
+
+        if (is_string($shippingMethod)) {
+            $label = trim($shippingMethod);
+
+            return [
+                'id' => null,
+                'provider_code' => null,
+                'provider_name' => null,
+                'service_code' => null,
+                'service_name' => $label !== '' ? $label : null,
+                'label' => $label !== '' ? $label : null,
+                'price' => $shippingCost,
+            ];
+        }
+
+        if (!is_array($shippingMethod)) {
+            return null;
+        }
+
+        $providerCode = trim((string) ($shippingMethod['provider_code'] ?? ''));
+        $providerName = trim((string) ($shippingMethod['provider_name'] ?? ''));
+        $serviceCode = trim((string) ($shippingMethod['service_code'] ?? ''));
+        $serviceName = trim((string) ($shippingMethod['service_name'] ?? ($shippingMethod['name'] ?? '')));
+
+        if ($providerName === '' && $providerCode !== '') {
+            $providerName = strtoupper($providerCode);
+        }
+
+        if ($serviceName === '' && $serviceCode !== '') {
+            $serviceName = strtoupper(str_replace('_', ' ', $serviceCode));
+        }
+
+        $label = trim(implode(' - ', array_filter([$providerName, $serviceName])));
+
+        return [
+            'id' => $shippingMethod['id'] ?? null,
+            'provider_code' => $providerCode !== '' ? $providerCode : null,
+            'provider_name' => $providerName !== '' ? $providerName : null,
+            'service_code' => $serviceCode !== '' ? $serviceCode : null,
+            'service_name' => $serviceName !== '' ? $serviceName : null,
+            'label' => $label !== '' ? $label : null,
+            'price' => array_key_exists('price', $shippingMethod)
+                ? (float) ($shippingMethod['price'] ?? 0)
+                : $shippingCost,
         ];
     }
 

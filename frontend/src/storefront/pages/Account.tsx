@@ -760,6 +760,12 @@ const Account = () => {
                           <span>SGD {selectedOrder.shipping_cost!.toFixed(2)}</span>
                         </div>
                       )}
+                      {selectedOrder.shipping_method?.label && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Shipping Method</span>
+                          <span className="text-right">{selectedOrder.shipping_method.label}</span>
+                        </div>
+                      )}
                       {(selectedOrder.tax_amount ?? 0) > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Tax</span>

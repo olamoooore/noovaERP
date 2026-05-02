@@ -94,7 +94,6 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    PreventAccessFromCentralDomains::class,
 ])->prefix('api/v1')->group(function () {
     // Document correction endpoints
     Route::prefix('corrections')->group(function () {

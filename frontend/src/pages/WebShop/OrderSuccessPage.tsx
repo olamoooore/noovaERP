@@ -31,6 +31,12 @@ interface ShippingAddress {
   country: string
 }
 
+interface ShippingMethod {
+  provider_name?: string | null
+  service_name?: string | null
+  label?: string | null
+}
+
 interface OrderData {
   order_number: string
   status: string
@@ -39,6 +45,7 @@ interface OrderData {
   tax_amount: number
   subtotal: number
   shipping_cost: number
+  shipping_method?: ShippingMethod | null
   discount_amount: number
   loyalty_discount: number
   currency: string
@@ -370,6 +377,12 @@ export function OrderSuccessPage() {
                   <span className="text-muted-foreground">Shipping</span>
                   <span className="text-green-600">{(order.shipping_cost || 0) === 0 ? 'Free' : `$${Number(order.shipping_cost).toFixed(2)}`}</span>
                 </div>
+                {order.shipping_method?.label && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Shipping Method</span>
+                    <span>{order.shipping_method.label}</span>
+                  </div>
+                )}
                 {order.loyalty_discount && order.loyalty_discount > 0 ? (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Loyalty Discount</span>

@@ -31,6 +31,12 @@ interface ShippingAddress {
   country: string
 }
 
+interface ShippingMethod {
+  provider_name?: string | null
+  service_name?: string | null
+  label?: string | null
+}
+
 interface Order {
   id: number
   order_number: string
@@ -41,6 +47,7 @@ interface Order {
   first_name: string
   last_name: string
   shipping_address: ShippingAddress
+  shipping_method?: ShippingMethod | null
   subtotal: number
   shipping_cost: number
   tax_amount: number
@@ -275,6 +282,12 @@ export function OrderDetailPage() {
                   <span className="text-muted-foreground">Shipping</span>
                   <span>${Number(order.shipping_cost).toFixed(2)}</span>
                 </div>
+                {order.shipping_method?.label && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Shipping Method</span>
+                    <span>{order.shipping_method.label}</span>
+                  </div>
+                )}
                 {order.discount_amount > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Discount</span>

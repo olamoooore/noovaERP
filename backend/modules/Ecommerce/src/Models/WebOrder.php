@@ -279,12 +279,27 @@ class WebOrder extends Model
 
         // Create invoice via canonical SalesOrderService → InvoiceService path,
         // passing web order totals as overrides so synchronizeInvoiceBookkeeping runs on final amounts.
+        $shippingMethodLabel = null;
+        if ($this->shipping_method) {
+            if (is_array($this->shipping_method)) {
+                $providerName = trim((string) ($this->shipping_method['provider_name'] ?? ($this->shipping_method['provider_code'] ?? '')));
+                $serviceName = trim((string) ($this->shipping_method['service_name'] ?? ($this->shipping_method['name'] ?? ($this->shipping_method['service_code'] ?? ''))));
+                $shippingMethodLabel = trim(implode(' - ', array_filter([$providerName, $serviceName])));
+
+                if ($shippingMethodLabel === '') {
+                    $shippingMethodLabel = trim((string) ($this->shipping_method['name'] ?? ''));
+                }
+            } else {
+                $shippingMethodLabel = trim((string) $this->shipping_method);
+            }
+        }
+
         $invoice = $salesOrderService->createInvoice($salesOrder, [
             'subtotal'        => $this->subtotal,
             'tax_amount'      => $this->tax_amount,
             'discount_amount' => $this->discount_amount + $this->loyalty_discount,
             'shipping_cost'   => $this->shipping_cost,
-            'shipping_method' => $this->shipping_method ? (is_array($this->shipping_method) ? ($this->shipping_method['name'] ?? null) : $this->shipping_method) : null,
+            'shipping_method' => $shippingMethodLabel ?: null,
             'total'           => $this->total,
             'web_order_id'    => $this->id,
         ]);

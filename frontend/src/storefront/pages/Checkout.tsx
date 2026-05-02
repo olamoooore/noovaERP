@@ -581,7 +581,9 @@ const Checkout = () => {
           ? {
               id: selectedRateForSubmit.id,
               provider_code: selectedRateForSubmit.provider_code,
+              provider_name: selectedRateForSubmit.provider_name,
               service_code: selectedRateForSubmit.service_code,
+              service_name: selectedRateForSubmit.service_name,
               price: selectedRateForSubmit.price,
             }
           : undefined,

@@ -78,6 +78,15 @@ interface SalesOrderDetail extends SalesOrder {
     country?: string
     phone?: string
   } | null
+  shipping_method?: {
+    id?: string | null
+    provider_code?: string | null
+    provider_name?: string | null
+    service_code?: string | null
+    service_name?: string | null
+    label?: string | null
+    price?: number
+  } | null
   customer?: {
     id: number
     code?: string
@@ -235,6 +244,21 @@ export function POSOrdersPage() {
   }
 
   const getOrderItems = (order: SalesOrderDetail) => order.items || []
+
+  const getShippingMethodLabel = (order: SalesOrderDetail) => {
+    const method = order.shipping_method
+    if (!method) return null
+
+    if (method.label && method.label.trim() !== '') {
+      return method.label
+    }
+
+    const provider = (method.provider_name || method.provider_code || '').trim()
+    const service = (method.service_name || method.service_code || '').trim()
+    const label = [provider, service].filter(Boolean).join(' - ').trim()
+
+    return label || null
+  }
 
   const handleViewOrder = async (order: SalesOrder) => {
     setLoadingOrderDetail(true)
@@ -575,6 +599,11 @@ export function POSOrdersPage() {
                         {selectedOrder.shipping_address.country && <p>{selectedOrder.shipping_address.country}</p>}
                         {selectedOrder.shipping_address.phone && <p>{selectedOrder.shipping_address.phone}</p>}
                       </div>
+                      {getShippingMethodLabel(selectedOrder) && (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Shipping Method: <span className="font-medium text-foreground">{getShippingMethodLabel(selectedOrder)}</span>
+                        </p>
+                      )}
                     </div>
                   </>
                 )}
@@ -659,6 +688,12 @@ export function POSOrdersPage() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Shipping</span>
                       <span>{formatCurrency(Number(selectedOrder.shipping_cost))}</span>
+                    </div>
+                  )}
+                  {getShippingMethodLabel(selectedOrder) && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Shipping Method</span>
+                      <span className="text-right">{getShippingMethodLabel(selectedOrder)}</span>
                     </div>
                   )}
                   {selectedOrder.discount_amount && selectedOrder.discount_amount > 0 && (

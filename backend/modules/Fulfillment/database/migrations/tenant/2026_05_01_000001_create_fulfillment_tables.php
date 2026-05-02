@@ -123,10 +123,10 @@ return new class extends Migration
         });
 
         Schema::create('shipping_rates', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->uuid('tenant_id')->index();
-            $table->foreignId('provider_id')->constrained('fulfillment_providers')->onDelete('cascade');
-            $table->foreignId('shipping_method_id')->nullable()->constrained('shipping_methods')->onDelete('set null');
+            $table->uuid('provider_id');
+            $table->uuid('shipping_method_id')->nullable();
             $table->string('service_code', 100);
             $table->decimal('base_rate', 10, 2)->default(0);
             $table->decimal('rate_per_kg', 10, 2)->default(0);
@@ -139,6 +139,8 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['provider_id', 'service_code']);
+            $table->foreign('provider_id')->references('id')->on('fulfillment_providers')->onDelete('cascade');
+            $table->foreign('shipping_method_id')->references('id')->on('shipping_methods')->onDelete('set null');
         });
     }
 

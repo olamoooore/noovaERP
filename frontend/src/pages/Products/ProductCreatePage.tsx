@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -124,6 +124,7 @@ interface ProductSupplierData {
 
 type ProductStatus = 'draft' | 'pending_approval' | 'active' | 'discontinued' | 'archived'
 type TrackingMethod = 'none' | 'quantity' | 'batch' | 'serial'
+type TopTabKey = 'product' | 'commercial' | 'inventory' | 'operations' | 'channels' | 'control' | 'media'
 
 function slugSkuBase(name: string): string {
   const raw = (name || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '')
@@ -210,6 +211,16 @@ export function ProductCreatePage() {
 
   const [unitPopoverOpen, setUnitPopoverOpen] = useState(false)
   const [unitSearch, setUnitSearch] = useState('')
+  const [detailsTab, setDetailsTab] = useState('inventory')
+  const [activeTopTab, setActiveTopTab] = useState<TopTabKey>('product')
+
+  const productSectionRef = useRef<HTMLDivElement | null>(null)
+  const channelsSectionRef = useRef<HTMLDivElement | null>(null)
+  const commercialSectionRef = useRef<HTMLDivElement | null>(null)
+  const detailTabsRef = useRef<HTMLDivElement | null>(null)
+  const controlSectionRef = useRef<HTMLDivElement | null>(null)
+  const operationsSectionRef = useRef<HTMLDivElement | null>(null)
+  const mediaSectionRef = useRef<HTMLDivElement | null>(null)
 
   // Default to the same pricing mode as Settings
   useEffect(() => {
@@ -266,6 +277,7 @@ export function ProductCreatePage() {
             price: formData.price,
             cost: formData.cost,
             stock_quantity: 0,
+        barcode: '',
             attributes: validAttrs.reduce((acc, curr, idx) => {
                 const attrName = typeof curr.attributeId === 'number' 
                     ? (attributes?.find(a => a.id === curr.attributeId)?.name || `Attr${curr.attributeId}`)
@@ -653,8 +665,59 @@ export function ProductCreatePage() {
     return formData.tax_mode
   }, [formData.tax_mode, formData.tax_id])
 
+  const scrollToSection = (ref: { current: HTMLDivElement | null }) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const handleTopTabClick = (tab: TopTabKey) => {
+    setActiveTopTab(tab)
+
+    if (tab === 'product') {
+      scrollToSection(productSectionRef)
+      return
+    }
+
+    if (tab === 'commercial') {
+      setTimeout(() => {
+        if (!hasVariants && commercialSectionRef.current) {
+          scrollToSection(commercialSectionRef)
+          return
+        }
+        scrollToSection(detailTabsRef)
+      }, 50)
+      return
+    }
+
+    if (tab === 'inventory') {
+      setDetailsTab('inventory')
+      setTimeout(() => scrollToSection(detailTabsRef), 50)
+      return
+    }
+
+    if (tab === 'operations') {
+      setDetailsTab('inventory')
+      setTimeout(() => scrollToSection(operationsSectionRef), 50)
+      return
+    }
+
+    if (tab === 'channels') {
+      scrollToSection(channelsSectionRef)
+      return
+    }
+
+    if (tab === 'control') {
+      setDetailsTab('features')
+      setTimeout(() => scrollToSection(controlSectionRef), 50)
+      return
+    }
+
+    if (tab === 'media') {
+      scrollToSection(mediaSectionRef)
+    }
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1500px] space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -678,35 +741,115 @@ export function ProductCreatePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <Card className="border-2 border-primary/25 bg-gradient-to-b from-white to-blue-50/40 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base text-green-700">Quick Create Mode</CardTitle>
+          <div className="text-sm text-muted-foreground">
+            Default SME-friendly entry. Create the product quickly, then complete more details later.
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="quick-name">Product Name</Label>
+              <Input
+                id="quick-name"
+                placeholder="e.g. Mineral Water 500ml"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quick-unit">Unit</Label>
+              <Input
+                id="quick-unit"
+                placeholder="e.g. pcs"
+                value={formData.unit}
+                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quick-price">Selling Price</Label>
+              <Input
+                id="quick-price"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" form="product-form" disabled={createMutation.isPending}>Save Product</Button>
+            <Button type="button" variant="secondary" onClick={() => handleTopTabClick('product')}>Save & Add Details</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="sticky top-0 z-40 max-w-[calc(100%-364px)] border-b border-[#dfe6f2] bg-[#f6f8fc] py-3 shadow-sm max-lg:max-w-none">
+        <div className="rounded-xl bg-[#eef3fb] p-2">
+          <div className="grid grid-cols-2 gap-2 text-sm font-medium md:grid-cols-4 xl:grid-cols-7">
+          {([
+            { key: 'product', label: 'Product' },
+            { key: 'commercial', label: 'Commercial' },
+            { key: 'inventory', label: 'Inventory' },
+            { key: 'operations', label: 'Operations' },
+            { key: 'channels', label: 'Channels' },
+            { key: 'control', label: 'Control' },
+            { key: 'media', label: 'Media' },
+          ] as Array<{ key: TopTabKey; label: string }>).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleTopTabClick(tab.key)}
+              className={cn(
+                'rounded-md px-3 py-2 text-center transition-colors',
+                activeTopTab === tab.key
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      </div>
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
+          <div ref={productSectionRef}>
           <Card>
             <CardHeader>
-              <CardTitle>Basic info</CardTitle>
+              <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 1</div>
+              <CardTitle>Product</CardTitle>
             </CardHeader>
             <CardContent>
               <form id="product-form" onSubmit={handleSubmit} className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Product Name</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Basic Info</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Product Name *</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="secondary_name">Secondary Name (optional)</Label>
-                  <Input
-                    id="secondary_name"
-                    value={formData.secondary_name}
-                    onChange={(e) => setFormData({ ...formData, secondary_name: e.target.value })}
-                    placeholder="e.g. 500ml / Small / Variant label"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondary_name">Secondary Name</Label>
+                      <Input
+                        id="secondary_name"
+                        value={formData.secondary_name}
+                        onChange={(e) => setFormData({ ...formData, secondary_name: e.target.value })}
+                        placeholder="e.g. 500ml / Small / Variant label"
+                      />
+                    </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="sku">SKU</Label>
@@ -741,9 +884,7 @@ export function ProductCreatePage() {
                       onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Type</Label>
                     <Select
@@ -825,9 +966,7 @@ export function ProductCreatePage() {
                     </Popover>
                     <div className="text-xs text-muted-foreground">Shows full hierarchy (e.g. Men / Shoes / Lifestyle Shoes)</div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Unit</Label>
                     <Popover open={unitPopoverOpen} onOpenChange={setUnitPopoverOpen}>
@@ -922,7 +1061,12 @@ export function ProductCreatePage() {
                     <div className="text-xs text-muted-foreground">Pulled from Product Settings → Units</div>
                   </div>
                 </div>
+                </div>
 
+                <Separator />
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Description</h3>
                 <div className="space-y-2">
                   <Label htmlFor="short_description">Short Description</Label>
                   <p className="text-xs text-muted-foreground">Displayed beside the product image in the storefront. Keep it concise (1–3 lines).</p>
@@ -944,76 +1088,6 @@ export function ProductCreatePage() {
                     minHeight="260px"
                   />
                 </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={formData.is_preorder}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, is_preorder: checked === true })
-                      }
-                    />
-                    <div className="space-y-2">
-                      <Label
-                        className="cursor-pointer"
-                        onClick={() => setFormData({ ...formData, is_preorder: !formData.is_preorder })}
-                      >
-                        Enable pre-order
-                      </Label>
-                      <div className="text-xs text-muted-foreground">
-                        Allows customers to buy even when stock is low/out.
-                      </div>
-                      {formData.is_preorder ? (
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Expected availability date (optional)</Label>
-                          <Input
-                            type="date"
-                            value={formData.preorder_available_at}
-                            onChange={(e) =>
-                              setFormData({ ...formData, preorder_available_at: e.target.value })
-                            }
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 h-fit">
-                    <Checkbox
-                      checked={formData.is_new_arrival}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, is_new_arrival: checked === true })
-                      }
-                    />
-                    <Label
-                      className="cursor-pointer"
-                      onClick={() => setFormData({ ...formData, is_new_arrival: !formData.is_new_arrival })}
-                    >
-                      Mark as New Arrival
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center gap-2 h-fit">
-                    <Checkbox
-                      checked={formData.show_on_website}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, show_on_website: checked === true })
-                      }
-                    />
-                    <div className="space-y-1">
-                      <Label
-                        className="cursor-pointer"
-                        onClick={() => setFormData({ ...formData, show_on_website: !formData.show_on_website })}
-                      >
-                        Show on Website
-                      </Label>
-                      <div className="text-xs text-muted-foreground">
-                        Display this product on your e-commerce website.
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 <Separator />
@@ -1033,9 +1107,8 @@ export function ProductCreatePage() {
 
                 {!hasVariants ? (
                   <div className="space-y-4">
-                    {/* Pricing Section */}
                     <div className="space-y-4">
-                      <h3 className="text-sm font-medium text-muted-foreground">Pricing</h3>
+                      <h3 className="text-lg font-semibold">Pricing</h3>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-2">
                           <Label htmlFor="cost">Cost Price</Label>
@@ -1377,6 +1450,7 @@ export function ProductCreatePage() {
                                             <TableHead>SKU</TableHead>
                                             <TableHead>Price</TableHead>
                                             <TableHead>Stock</TableHead>
+                                        <TableHead>Barcode</TableHead>
                                             <TableHead></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1420,6 +1494,18 @@ export function ProductCreatePage() {
                                                     />
                                                 </TableCell>
                                                 <TableCell>
+                                                  <Input
+                                                    value={variant.barcode ?? ''}
+                                                    onChange={(e) => {
+                                                      const newVars = [...generatedVariants]
+                                                      newVars[idx].barcode = e.target.value
+                                                      setGeneratedVariants(newVars)
+                                                    }}
+                                                    placeholder="Barcode"
+                                                    className="h-8 w-32"
+                                                  />
+                                                </TableCell>
+                                                <TableCell>
                                                     <Button type="button" variant="ghost" size="icon" onClick={() => {
                                                         const newVars = [...generatedVariants]
                                                         newVars.splice(idx, 1)
@@ -1441,18 +1527,266 @@ export function ProductCreatePage() {
 
                 <Separator />
 
-                <Tabs defaultValue="inventory" className="w-full">
-                  <TabsList className="grid w-full grid-cols-6">
+                <div ref={commercialSectionRef} className="space-y-5 rounded-lg border p-4">
+                  <div>
+                    <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 2</div>
+                    <h2 className="text-2xl font-semibold">Commercial</h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Selling Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cost Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.cost}
+                        onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 border-t pt-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold">Suppliers</h3>
+                        <p className="text-xs text-muted-foreground">Link suppliers who can provide this product.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setProductSuppliers([...productSuppliers, {
+                          supplier_id: 0,
+                          supplier_sku: '',
+                          cost: '',
+                          is_preferred: productSuppliers.length === 0,
+                          min_order_quantity: '1',
+                          lead_time_days: '',
+                        }])}
+                      >
+                        <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+                        Add Supplier
+                      </Button>
+                    </div>
+
+                    {productSuppliers.length === 0 ? (
+                      <div className="rounded-lg border border-dashed py-8 text-center text-muted-foreground">
+                        <Icon icon="solar:box-bold" className="mx-auto mb-2 h-12 w-12 opacity-50" />
+                        <p>No suppliers linked yet.</p>
+                        <p className="text-xs">Add suppliers to track costs and lead times.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {productSuppliers.map((ps, idx) => (
+                          <div key={idx} className="grid grid-cols-1 gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-6">
+                            <div className="space-y-1 md:col-span-2">
+                              <Label className="text-xs">Supplier</Label>
+                              <Select
+                                value={ps.supplier_id ? String(ps.supplier_id) : ''}
+                                onValueChange={(v) => {
+                                  const next = [...productSuppliers]
+                                  next[idx].supplier_id = parseInt(v) || 0
+                                  setProductSuppliers(next)
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select supplier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(suppliers || []).map((s) => (
+                                    <SelectItem key={s.id} value={String(s.id)}>
+                                      {s.name} {s.code ? `(${s.code})` : ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs">Supplier SKU</Label>
+                              <Input
+                                value={ps.supplier_sku}
+                                onChange={(e) => {
+                                  const next = [...productSuppliers]
+                                  next[idx].supplier_sku = e.target.value
+                                  setProductSuppliers(next)
+                                }}
+                                placeholder="SKU"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs">Cost</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={ps.cost}
+                                onChange={(e) => {
+                                  const next = [...productSuppliers]
+                                  next[idx].cost = e.target.value
+                                  setProductSuppliers(next)
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs">Lead Time</Label>
+                              <Input
+                                type="number"
+                                value={ps.lead_time_days}
+                                onChange={(e) => {
+                                  const next = [...productSuppliers]
+                                  next[idx].lead_time_days = e.target.value
+                                  setProductSuppliers(next)
+                                }}
+                                placeholder="7"
+                              />
+                            </div>
+
+                            <div className="flex items-end gap-2">
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={ps.is_preferred}
+                                  onCheckedChange={(checked) => {
+                                    const next = productSuppliers.map((p, i) => ({
+                                      ...p,
+                                      is_preferred: i === idx ? checked === true : false,
+                                    }))
+                                    setProductSuppliers(next)
+                                  }}
+                                />
+                                <Label className="text-xs">Preferred</Label>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  const next = [...productSuppliers]
+                                  next.splice(idx, 1)
+                                  setProductSuppliers(next)
+                                }}
+                              >
+                                <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 border-t pt-5">
+                    <h3 className="text-lg font-semibold">Tax</h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Tax Option</Label>
+                        <Select
+                          value={taxSelectValue}
+                          onValueChange={(v) => {
+                            if (v.startsWith('tax:')) {
+                              const id = v.split(':')[1] || ''
+                              setFormData({ ...formData, tax_mode: 'tax', tax_id: id, tax_rate_override: '' })
+                              return
+                            }
+                            const mode = v as TaxMode
+                            setFormData({
+                              ...formData,
+                              tax_mode: mode,
+                              tax_id: '',
+                              tax_rate_override: mode === 'custom' ? formData.tax_rate_override : '',
+                            })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">
+                              Default tax{typeof taxConfig.default_tax_rate === 'number' ? ` — ${taxConfig.default_tax_rate}%` : ''}
+                            </SelectItem>
+                            <SelectItem value="none">No tax</SelectItem>
+                            <SelectItem value="custom">Custom tax rate</SelectItem>
+                            {(taxes || []).filter((t) => t.is_active).map((t) => (
+                              <SelectItem key={t.id} value={`tax:${t.id}`}>
+                                {t.name} — {t.rate}%
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">Default tax comes from Settings and applies to products.</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Effective Tax Rate</Label>
+                        <Input readOnly value={`${selectedTaxRate}% (${selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})`} />
+                      </div>
+                    </div>
+
+                    {formData.tax_mode === 'custom' ? (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Tax Method</Label>
+                          <Select
+                            value={formData.tax_included ? 'inclusive' : 'exclusive'}
+                            onValueChange={(v) => setFormData({ ...formData, tax_included: v === 'inclusive' })}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="exclusive">Tax exclusive</SelectItem>
+                              <SelectItem value="inclusive">Tax inclusive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Custom Tax Rate (%)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.tax_rate_override}
+                            onChange={(e) => setFormData({ ...formData, tax_rate_override: e.target.value })}
+                            placeholder="e.g. 9"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2"><Label>Net</Label><Input readOnly value={formatCurrency(pricingPreview.net)} /></div>
+                      <div className="space-y-2"><Label>Tax</Label><Input readOnly value={formatCurrency(pricingPreview.tax)} /></div>
+                      <div className="space-y-2"><Label>Gross</Label><Input readOnly value={formatCurrency(pricingPreview.gross)} /></div>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div ref={detailTabsRef}>
+                <Tabs value={detailsTab} onValueChange={setDetailsTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="inventory">Inventory</TabsTrigger>
-                    <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-                    <TabsTrigger value="tax">Tax</TabsTrigger>
                     <TabsTrigger value="attributes" disabled={hasVariants}>Attributes</TabsTrigger>
                     <TabsTrigger value="features">Features</TabsTrigger>
                     <TabsTrigger value="custom">Custom</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="inventory" className="pt-4">
-                    <div className="rounded-lg border p-3 space-y-4">
+                    <div className="space-y-5 rounded-lg border p-4">
+                      <div>
+                        <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 3</div>
+                        <h2 className="text-2xl font-semibold">Inventory</h2>
+                      </div>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Product Status</Label>
@@ -1532,7 +1866,7 @@ export function ProductCreatePage() {
 
                       <Separator />
 
-                      <div>
+                      <div ref={operationsSectionRef}>
                         <Label className="text-sm font-medium">Physical Attributes</Label>
                         <div className="grid grid-cols-2 gap-4 mt-2 md:grid-cols-4">
                           <div className="space-y-2">
@@ -1616,246 +1950,6 @@ export function ProductCreatePage() {
                               </Select>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="suppliers" className="pt-4">
-                    <div className="rounded-lg border p-3 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium">Product Suppliers</h4>
-                          <p className="text-xs text-muted-foreground">Link suppliers who can provide this product.</p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setProductSuppliers([...productSuppliers, {
-                            supplier_id: 0,
-                            supplier_sku: '',
-                            cost: '',
-                            is_preferred: productSuppliers.length === 0,
-                            min_order_quantity: '1',
-                            lead_time_days: '',
-                          }])}
-                        >
-                          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-                          Add Supplier
-                        </Button>
-                      </div>
-
-                      {productSuppliers.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <Icon icon="solar:box-bold" className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p>No suppliers linked yet.</p>
-                          <p className="text-xs">Add suppliers to track costs and lead times.</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {productSuppliers.map((ps, idx) => (
-                            <div key={idx} className="grid grid-cols-1 gap-3 p-3 border rounded-md bg-muted/20 md:grid-cols-6">
-                              <div className="space-y-1 md:col-span-2">
-                                <Label className="text-xs">Supplier</Label>
-                                <Select
-                                  value={ps.supplier_id ? String(ps.supplier_id) : ''}
-                                  onValueChange={(v) => {
-                                    const next = [...productSuppliers]
-                                    next[idx].supplier_id = parseInt(v) || 0
-                                    setProductSuppliers(next)
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select supplier" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {(suppliers || []).map((s) => (
-                                      <SelectItem key={s.id} value={String(s.id)}>
-                                        {s.name} {s.code ? `(${s.code})` : ''}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="space-y-1">
-                                <Label className="text-xs">Supplier SKU</Label>
-                                <Input
-                                  value={ps.supplier_sku}
-                                  onChange={(e) => {
-                                    const next = [...productSuppliers]
-                                    next[idx].supplier_sku = e.target.value
-                                    setProductSuppliers(next)
-                                  }}
-                                  placeholder="SKU"
-                                />
-                              </div>
-
-                              <div className="space-y-1">
-                                <Label className="text-xs">Cost</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={ps.cost}
-                                  onChange={(e) => {
-                                    const next = [...productSuppliers]
-                                    next[idx].cost = e.target.value
-                                    setProductSuppliers(next)
-                                  }}
-                                  placeholder="0.00"
-                                />
-                              </div>
-
-                              <div className="space-y-1">
-                                <Label className="text-xs">Lead Time (days)</Label>
-                                <Input
-                                  type="number"
-                                  value={ps.lead_time_days}
-                                  onChange={(e) => {
-                                    const next = [...productSuppliers]
-                                    next[idx].lead_time_days = e.target.value
-                                    setProductSuppliers(next)
-                                  }}
-                                  placeholder="7"
-                                />
-                              </div>
-
-                              <div className="flex items-end gap-2">
-                                <div className="flex items-center gap-2">
-                                  <Checkbox
-                                    checked={ps.is_preferred}
-                                    onCheckedChange={(checked) => {
-                                      const next = productSuppliers.map((p, i) => ({
-                                        ...p,
-                                        is_preferred: i === idx ? checked === true : false,
-                                      }))
-                                      setProductSuppliers(next)
-                                    }}
-                                  />
-                                  <Label className="text-xs">Preferred</Label>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    const next = [...productSuppliers]
-                                    next.splice(idx, 1)
-                                    setProductSuppliers(next)
-                                  }}
-                                >
-                                  <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="tax" className="pt-4">
-                    <div className="rounded-lg border p-3 space-y-3">
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>Tax Option</Label>
-                          <Select
-                            value={taxSelectValue}
-                            onValueChange={(v) => {
-                              if (v.startsWith('tax:')) {
-                                const id = v.split(':')[1] || ''
-                                setFormData({
-                                  ...formData,
-                                  tax_mode: 'tax',
-                                  tax_id: id,
-                                  tax_rate_override: '',
-                                })
-                                return
-                              }
-
-                              const mode = v as TaxMode
-                              setFormData({
-                                ...formData,
-                                tax_mode: mode,
-                                tax_id: '',
-                                tax_rate_override: mode === 'custom' ? formData.tax_rate_override : '',
-                              })
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="default">
-                                Default tax{typeof taxConfig.default_tax_rate === 'number' ? ` — ${taxConfig.default_tax_rate}%` : ''}
-                              </SelectItem>
-                              <SelectItem value="none">No tax</SelectItem>
-                              <SelectItem value="custom">Custom tax rate</SelectItem>
-                              {(taxes || [])
-                                .filter((t) => t.is_active)
-                                .map((t) => (
-                                  <SelectItem key={t.id} value={`tax:${t.id}`}>
-                                    {t.name} — {t.rate}%
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {formData.tax_mode === 'custom' && (
-                        <>
-                          <div className="space-y-2">
-                            <Label>Tax Method</Label>
-                            <Select
-                              value={formData.tax_included ? 'inclusive' : 'exclusive'}
-                              onValueChange={(v) => setFormData({ ...formData, tax_included: v === 'inclusive' })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="exclusive">Tax exclusive (tax added on top)</SelectItem>
-                                <SelectItem value="inclusive">Tax inclusive (price includes tax)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="tax_rate_override">Custom Tax Rate (%)</Label>
-                            <Input
-                              id="tax_rate_override"
-                              type="number"
-                              step="0.01"
-                              value={formData.tax_rate_override}
-                              onChange={(e) => setFormData({ ...formData, tax_rate_override: e.target.value })}
-                              placeholder="e.g. 9"
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      <div className="rounded-md border p-3 text-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="text-muted-foreground">Effective tax rate</div>
-                          <div className="font-medium">{selectedTaxRate}% ({selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})</div>
-                        </div>
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          <div>
-                            <div className="text-xs text-muted-foreground">Net</div>
-                            <div className="font-medium">{formatCurrency(pricingPreview.net)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Tax</div>
-                            <div className="font-medium">{formatCurrency(pricingPreview.tax)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Gross</div>
-                            <div className="font-medium">{formatCurrency(pricingPreview.gross)}</div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Default tax comes from Settings and applies to products.
                         </div>
                       </div>
                     </div>
@@ -2124,7 +2218,36 @@ export function ProductCreatePage() {
                   </TabsContent>
 
                   <TabsContent value="features" className="pt-4">
-                    <div className="rounded-lg border p-3 space-y-3">
+                    <div ref={controlSectionRef} className="space-y-4 rounded-lg border p-4">
+                      <div>
+                        <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 6</div>
+                        <h2 className="text-2xl font-semibold">Control</h2>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Product Status</Label>
+                          <Select
+                            value={formData.status}
+                            onValueChange={(v) => setFormData({ ...formData, status: v as ProductStatus })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Draft</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">Draft products are not visible in POS or sales.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Warranty Period</Label>
+                          <Input placeholder="Enter value" />
+                        </div>
+                      </div>
+
+                      <Separator />
+
                       <div className="text-sm text-muted-foreground">Pulled from Product Settings → Features.</div>
                       {activeFeatures.length ? (
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2278,12 +2401,131 @@ export function ProductCreatePage() {
                     </div>
                   </TabsContent>
                 </Tabs>
+                </div>
+
+                <Separator />
+
+                <div ref={channelsSectionRef} className="space-y-5 rounded-lg border p-4">
+                  <div>
+                    <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 5</div>
+                    <h2 className="text-2xl font-semibold">Channels</h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="flex items-center gap-2 rounded-lg border p-3">
+                      <Checkbox checked disabled />
+                      <Label>Available in POS</Label>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border p-3">
+                      <Checkbox
+                        checked={formData.show_on_website}
+                        onCheckedChange={(checked) =>
+                          setFormData({ ...formData, show_on_website: checked === true })
+                        }
+                      />
+                      <Label
+                        className="cursor-pointer"
+                        onClick={() => setFormData({ ...formData, show_on_website: !formData.show_on_website })}
+                      >
+                        Show on Website
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border p-3">
+                      <Checkbox checked={!!formData.wholesale_price} disabled />
+                      <Label>Wholesale</Label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 border-t pt-5">
+                    <h3 className="text-lg font-semibold">E-commerce Controls</h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          checked={formData.is_preorder}
+                          onCheckedChange={(checked) =>
+                            setFormData({ ...formData, is_preorder: checked === true })
+                          }
+                        />
+                        <div className="space-y-1">
+                          <Label
+                            className="cursor-pointer"
+                            onClick={() => setFormData({ ...formData, is_preorder: !formData.is_preorder })}
+                          >
+                            Enable Pre-order
+                          </Label>
+                          <div className="text-xs text-muted-foreground">Allows customers to buy even when stock is low/out.</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={formData.is_new_arrival}
+                          onCheckedChange={(checked) =>
+                            setFormData({ ...formData, is_new_arrival: checked === true })
+                          }
+                        />
+                        <Label
+                          className="cursor-pointer"
+                          onClick={() => setFormData({ ...formData, is_new_arrival: !formData.is_new_arrival })}
+                        >
+                          Mark as New Arrival
+                        </Label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Expected Availability Date</Label>
+                        <Input
+                          type="date"
+                          value={formData.preorder_available_at}
+                          onChange={(e) => setFormData({ ...formData, preorder_available_at: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-dashed bg-muted/20 p-4">
+                    <div className="mb-3 font-semibold text-primary">Channel Pricing</div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>POS Price</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.price}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Online Price</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.msrp}
+                          onChange={(e) => setFormData({ ...formData, msrp: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Wholesale Price</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.wholesale_price}
+                          onChange={(e) => setFormData({ ...formData, wholesale_price: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </form>
             </CardContent>
           </Card>
+          </div>
         </div>
 
-        <div className="space-y-6">
+        <div ref={mediaSectionRef} className="space-y-6 self-start">
           <Card>
             <CardHeader>
               <CardTitle>Media</CardTitle>

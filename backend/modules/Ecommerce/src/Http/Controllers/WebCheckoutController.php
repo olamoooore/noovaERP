@@ -56,7 +56,9 @@ class WebCheckoutController extends Controller
                 'shipping_method' => 'nullable|array',
                 'shipping_method.id' => 'nullable|string',
                 'shipping_method.provider_code' => 'nullable|string',
+                'shipping_method.provider_name' => 'nullable|string',
                 'shipping_method.service_code' => 'nullable|string',
+                'shipping_method.service_name' => 'nullable|string',
                 'shipping_method.price' => 'nullable|numeric|min:0',
                 'phone' => 'nullable|string|max:50',
                 'notes' => 'nullable|string|max:1000',
@@ -248,6 +250,7 @@ class WebCheckoutController extends Controller
             }
 
             $shippingCost = 0;
+            $shippingMethod = $validated['shipping_method'] ?? null;
 
             // Re-quote shipping server-side using selected provider/service when possible.
             $selectedProviderCode = strtolower((string) ($validated['shipping_method']['provider_code'] ?? ''));
@@ -283,6 +286,15 @@ class WebCheckoutController extends Controller
 
                     if ($matchedRate) {
                         $shippingCost = (float) $matchedRate->price;
+                        $shippingMethod = [
+                            'id' => (string) ($matchedRate->provider_code . '_' . $matchedRate->service_code),
+                            'provider_code' => (string) ($matchedRate->provider_code ?? ''),
+                            'provider_name' => (string) ($matchedRate->provider_name ?? ''),
+                            'service_code' => (string) ($matchedRate->service_code ?? ''),
+                            'service_name' => (string) ($matchedRate->service_name ?? ''),
+                            'price' => (float) $matchedRate->price,
+                            'currency' => (string) ($matchedRate->currency ?? 'USD'),
+                        ];
                     } elseif (!empty($validated['shipping_method']['price'])) {
                         $shippingCost = (float) $validated['shipping_method']['price'];
                     }
@@ -301,6 +313,8 @@ class WebCheckoutController extends Controller
                 $shippingCost = (float) $validated['shipping_method']['price'];
             }
 
+            $shippingMethod = $this->normalizeShippingMethod($shippingMethod, $shippingCost);
+
             // ── Generate guest token ─────────────────────────────────────
             $guestToken = Str::uuid()->toString();
 
@@ -313,7 +327,7 @@ class WebCheckoutController extends Controller
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'shipping_address' => $validated['shipping_address'],
-                'shipping_method' => $validated['shipping_method'] ?? null,
+                'shipping_method' => $shippingMethod,
                 'status' => 'pending',
                 'payment_status' => 'pending',
                 'subtotal' => $subtotal,
@@ -534,16 +548,35 @@ class WebCheckoutController extends Controller
                         throw new \RuntimeException('Payment transaction not found for confirmed web order payment.');
                     }
 
-                    $this->completionService->complete(
-                        $transaction,
-                        (string) ($paymentStatus['payment_method'] ?? 'card')
-                    );
+                    $recoveryApplied = false;
+                    $transactionErrorMessage = null;
+
+                    try {
+                        $this->completionService->complete(
+                            $transaction,
+                            (string) ($paymentStatus['payment_method'] ?? 'card')
+                        );
+                    } catch (\Throwable $e) {
+                        if (!$this->shouldOperationallyRecoverCapturedPayment($e)) {
+                            throw $e;
+                        }
+
+                        $recoveryApplied = true;
+                        $transactionErrorMessage = $this->recoverOperationalPaymentState($order, $transaction);
+
+                        Log::warning('Web checkout payment completed with operational recovery after GL posting failure', [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'transaction_id' => $transaction->transaction_id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
 
                     $transaction->refresh();
                     $transaction->update([
                         'status' => 'completed',
                         'processed_at' => $transaction->processed_at ?? now(),
-                        'error_message' => null,
+                        'error_message' => $transactionErrorMessage,
                     ]);
 
                     $workingOrder = $order->fresh(['invoice', 'items']);
@@ -587,7 +620,10 @@ class WebCheckoutController extends Controller
 
                     return response()->json([
                         'success' => true,
-                        'message' => 'Payment confirmed',
+                        'message' => $recoveryApplied
+                            ? 'Payment confirmed; accounting follow-up required'
+                            : 'Payment confirmed',
+                        'recovery_applied' => $recoveryApplied,
                         'order' => $this->formatOrderResponse($workingOrder->fresh()),
                     ]);
                 });
@@ -616,6 +652,39 @@ class WebCheckoutController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function shouldOperationallyRecoverCapturedPayment(\Throwable $exception): bool
+    {
+        return str_contains($exception->getMessage(), 'Journal entry is unbalanced');
+    }
+
+    private function recoverOperationalPaymentState(WebOrder $order, PaymentTransaction $transaction): string
+    {
+        $order->refresh();
+
+        if ($order->status === WebOrder::STATUS_PENDING) {
+            $order->confirm();
+        }
+
+        if ($order->payment_status === WebOrder::PAYMENT_STATUS_PENDING) {
+            $order->markPaid();
+        }
+
+        if (!$order->invoice_id) {
+            $order->convertToInvoice();
+            $order->refresh();
+        }
+
+        $message = 'Operationally completed during checkout confirmation; accounting posting requires follow-up.';
+
+        $transaction->update([
+            'status' => 'completed',
+            'processed_at' => $transaction->processed_at ?? now(),
+            'error_message' => $message,
+        ]);
+
+        return $message;
     }
 
     /**
@@ -647,6 +716,7 @@ class WebCheckoutController extends Controller
             'first_name' => $order->first_name,
             'last_name' => $order->last_name,
             'shipping_address' => $order->shipping_address,
+            'shipping_method' => $this->normalizeShippingMethod($order->shipping_method, (float) $order->shipping_cost),
             'subtotal' => (float) $order->subtotal,
             'tax_amount' => (float) $order->tax_amount,
             'shipping_cost' => (float) $order->shipping_cost,
@@ -667,6 +737,58 @@ class WebCheckoutController extends Controller
             ]),
             'created_at' => $order->created_at?->toISOString(),
             'paid_at' => $order->paid_at?->toISOString(),
+        ];
+    }
+
+    private function normalizeShippingMethod(mixed $shippingMethod, float $shippingCost): ?array
+    {
+        if (empty($shippingMethod)) {
+            return null;
+        }
+
+        if (is_string($shippingMethod)) {
+            $label = trim($shippingMethod);
+
+            return [
+                'id' => null,
+                'provider_code' => null,
+                'provider_name' => null,
+                'service_code' => null,
+                'service_name' => $label !== '' ? $label : null,
+                'label' => $label !== '' ? $label : null,
+                'price' => $shippingCost,
+            ];
+        }
+
+        if (!is_array($shippingMethod)) {
+            return null;
+        }
+
+        $providerCode = trim((string) ($shippingMethod['provider_code'] ?? ''));
+        $providerName = trim((string) ($shippingMethod['provider_name'] ?? ''));
+        $serviceCode = trim((string) ($shippingMethod['service_code'] ?? ''));
+        $serviceName = trim((string) ($shippingMethod['service_name'] ?? ($shippingMethod['name'] ?? '')));
+
+        if ($providerName === '' && $providerCode !== '') {
+            $providerName = strtoupper($providerCode);
+        }
+
+        if ($serviceName === '' && $serviceCode !== '') {
+            $serviceName = strtoupper(str_replace('_', ' ', $serviceCode));
+        }
+
+        $label = trim(implode(' - ', array_filter([$providerName, $serviceName])));
+
+        return [
+            'id' => $shippingMethod['id'] ?? null,
+            'provider_code' => $providerCode !== '' ? $providerCode : null,
+            'provider_name' => $providerName !== '' ? $providerName : null,
+            'service_code' => $serviceCode !== '' ? $serviceCode : null,
+            'service_name' => $serviceName !== '' ? $serviceName : null,
+            'label' => $label !== '' ? $label : null,
+            'price' => array_key_exists('price', $shippingMethod)
+                ? (float) ($shippingMethod['price'] ?? 0)
+                : $shippingCost,
         ];
     }
 }
