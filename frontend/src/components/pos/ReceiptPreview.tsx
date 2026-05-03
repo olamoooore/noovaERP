@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { QRCodeGenerator } from './QRCodeGenerator'
 
 interface ReceiptItem {
   name: string
@@ -24,6 +25,23 @@ interface ReceiptData {
   payment_amount: number
   change: number
   footer_message: string
+  // Layout settings
+  paper_width?: '58mm' | '80mm'
+  font_size?: 'small' | 'medium' | 'large'
+  line_spacing?: 'compact' | 'normal' | 'relaxed'
+  header_alignment?: 'left' | 'center' | 'right'
+  footer_alignment?: 'left' | 'center' | 'right'
+  // Display settings
+  show_receipt_number?: boolean
+  show_date?: boolean
+  show_cashier?: boolean
+  show_tax_breakdown?: boolean
+  show_qr_code?: boolean
+  qr_code_content?: 'receipt_url' | 'store_website' | 'custom'
+  qr_code_custom_url?: string
+  // Additional data for QR code
+  receipt_id?: string
+  store_website?: string
 }
 
 interface ReceiptPreviewProps {
@@ -52,66 +70,152 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
     )
   }
 
+  // Apply layout settings
+  const paperWidth = data.paper_width || '80mm'
+  const fontSize = data.font_size || 'medium'
+  const lineSpacing = data.line_spacing || 'normal'
+  const headerAlign = data.header_alignment || 'center'
+  const footerAlign = data.footer_alignment || 'center'
+  
+  // Display settings
+  const showReceiptNumber = data.show_receipt_number ?? true
+  const showDate = data.show_date ?? true
+  const showCashier = data.show_cashier ?? true
+  const showTaxBreakdown = data.show_tax_breakdown ?? true
+  const showQrCode = data.show_qr_code ?? false
+
+  // Font size classes
+  const fontSizeClasses = {
+    small: 'text-[9px]',
+    medium: 'text-xs',
+    large: 'text-sm',
+  }
+  
+  const fontSizeHeaderClasses = {
+    small: 'text-xs',
+    medium: 'text-sm',
+    large: 'text-base',
+  }
+  
+  const fontSizeDetailClasses = {
+    small: 'text-[8px]',
+    medium: 'text-[10px]',
+    large: 'text-xs',
+  }
+
+  // Line spacing classes
+  const lineSpacingClasses = {
+    compact: 'space-y-0.5',
+    normal: 'space-y-1',
+    relaxed: 'space-y-2',
+  }
+
+  // Alignment classes
+  const alignmentClasses = {
+    left: 'text-left',
+    center: 'text-center',
+    right: 'text-right',
+  }
+
+  // Paper width
+  const maxWidth = paperWidth === '58mm' ? 'max-w-[220px]' : 'max-w-[300px]'
+
+  // Generate QR code value based on settings
+  const getQRCodeValue = (): string => {
+    const qrContent = data.qr_code_content || 'receipt_url'
+    
+    switch (qrContent) {
+      case 'receipt_url':
+        // Generate receipt URL - in production this would be the actual receipt view URL
+        const receiptId = data.receipt_id || data.receipt_number
+        return `${window.location.origin}/receipts/${receiptId}`
+      
+      case 'store_website':
+        // Use store website URL
+        return data.store_website || data.qr_code_custom_url || window.location.origin
+      
+      case 'custom':
+        // Use custom URL
+        return data.qr_code_custom_url || window.location.origin
+      
+      default:
+        return window.location.origin
+    }
+  }
+
   return (
     <Card className="w-full h-full overflow-auto bg-white">
       {/* Receipt Paper Style */}
-      <div className="p-6 font-mono text-xs max-w-[300px] mx-auto">
+      <div className={`p-6 font-mono ${fontSizeClasses[fontSize]} ${maxWidth} mx-auto`}>
         {/* Header */}
-        <div className="text-center space-y-1 mb-4">
-          <div className="font-bold text-sm">{data.store_name}</div>
-          {data.store_address && <div className="text-[10px]">{data.store_address}</div>}
-          {data.store_phone && <div className="text-[10px]">{data.store_phone}</div>}
+        <div className={`${alignmentClasses[headerAlign]} ${lineSpacingClasses[lineSpacing]} mb-4`}>
+          <div className={`font-bold ${fontSizeHeaderClasses[fontSize]}`}>{data.store_name}</div>
+          {data.store_address && <div className={fontSizeDetailClasses[fontSize]}>{data.store_address}</div>}
+          {data.store_phone && <div className={fontSizeDetailClasses[fontSize]}>{data.store_phone}</div>}
         </div>
 
         <Separator className="my-2" />
 
         {/* Receipt Info */}
-        <div className="space-y-1 mb-3 text-[10px]">
-          <div className="flex justify-between">
-            <span>Receipt:</span>
-            <span>{data.receipt_number}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Date:</span>
-            <span>{new Date(data.date).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Cashier:</span>
-            <span>{data.cashier}</span>
-          </div>
+        <div className={`${lineSpacingClasses[lineSpacing]} mb-3 ${fontSizeDetailClasses[fontSize]}`}>
+          {showReceiptNumber && (
+            <div className="flex justify-between">
+              <span>Receipt:</span>
+              <span>{data.receipt_number}</span>
+            </div>
+          )}
+          {showDate && (
+            <div className="flex justify-between">
+              <span>Date:</span>
+              <span>{new Date(data.date).toLocaleString()}</span>
+            </div>
+          )}
+          {showCashier && (
+            <div className="flex justify-between">
+              <span>Cashier:</span>
+              <span>{data.cashier}</span>
+            </div>
+          )}
         </div>
 
         <Separator className="my-2" />
 
         {/* Items */}
-        <div className="space-y-2 mb-3">
-          {data.items.map((item, index) => (
-            <div key={index} className="space-y-0.5">
-              <div className="flex justify-between">
-                <span className="flex-1">{item.name}</span>
+        <div className={`${lineSpacingClasses[lineSpacing === 'compact' ? 'normal' : lineSpacing]} mb-3`}>
+          {data.items.map((item, index) => {
+            const price = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0
+            const total = typeof item.total === 'number' ? item.total : parseFloat(item.total) || 0
+            
+            return (
+              <div key={index} className="space-y-0.5">
+                <div className="flex justify-between">
+                  <span className="flex-1">{item.name}</span>
+                </div>
+                <div className={`flex justify-between ${fontSizeDetailClasses[fontSize]}`}>
+                  <span>
+                    {item.quantity} x ${price.toFixed(2)}
+                  </span>
+                  <span>${total.toFixed(2)}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-[10px]">
-                <span>
-                  {item.quantity} x ${item.price.toFixed(2)}
-                </span>
-                <span>${item.total.toFixed(2)}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <Separator className="my-2" />
 
         {/* Totals */}
-        <div className="space-y-1 text-[10px]">
+        <div className={`${lineSpacingClasses[lineSpacing]} ${fontSizeDetailClasses[fontSize]}`}>
           <div className="flex justify-between">
             <span>Subtotal:</span>
             <span>${data.subtotal.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Tax:</span>
-            <span>${data.tax.toFixed(2)}</span>
-          </div>
+          {showTaxBreakdown && (
+            <div className="flex justify-between">
+              <span>Tax:</span>
+              <span>${data.tax.toFixed(2)}</span>
+            </div>
+          )}
           {data.discount > 0 && (
             <div className="flex justify-between text-destructive">
               <span>Discount:</span>
@@ -119,7 +223,7 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
             </div>
           )}
           <Separator className="my-1" />
-          <div className="flex justify-between font-bold text-xs">
+          <div className={`flex justify-between font-bold ${fontSizeClasses[fontSize]}`}>
             <span>TOTAL:</span>
             <span>${data.total.toFixed(2)}</span>
           </div>
@@ -128,7 +232,7 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
         <Separator className="my-2" />
 
         {/* Payment */}
-        <div className="space-y-1 text-[10px]">
+        <div className={`${lineSpacingClasses[lineSpacing]} ${fontSizeDetailClasses[fontSize]}`}>
           <div className="flex justify-between">
             <span>Payment:</span>
             <span>{data.payment_method}</span>
@@ -145,11 +249,30 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
           )}
         </div>
 
+        {/* QR Code */}
+        {showQrCode && (
+          <>
+            <Separator className="my-3" />
+            <div className="flex flex-col items-center space-y-2">
+              <QRCodeGenerator
+                value={getQRCodeValue()}
+                size={96}
+                className="rounded"
+              />
+              <div className={`text-center ${fontSizeDetailClasses[fontSize]}`}>
+                Scan for digital receipt
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Footer */}
         {data.footer_message && (
           <>
             <Separator className="my-3" />
-            <div className="text-center text-[10px]">{data.footer_message}</div>
+            <div className={`${alignmentClasses[footerAlign]} ${fontSizeDetailClasses[fontSize]}`}>
+              {data.footer_message}
+            </div>
           </>
         )}
       </div>

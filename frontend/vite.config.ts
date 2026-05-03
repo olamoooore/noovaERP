@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+const backendTarget = process.env.VITE_BACKEND_URL || 'http://localhost:8001'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -98,7 +100,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req, _res) => {
@@ -108,12 +110,12 @@ export default defineConfig({
         },
       },
       '/storage': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
       },
       // Proxy published website routes to backend (serves complete HTML)
       '/w': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req, _res) => {

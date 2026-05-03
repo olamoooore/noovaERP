@@ -38,6 +38,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'entitlement'              => \App\Http\Middleware\EnsureEntitlementAccess::class,
+            // Legacy alias kept for backwards-compatible route middleware strings like feature:pos
+            'feature'                  => \App\Http\Middleware\EnsureEntitlementAccess::class,
             'auth.tenant_key'          => \App\Http\Middleware\AuthenticateTenantApiKey::class,
             'auth.agent'               => \App\Http\Middleware\AuthenticateAgent::class,
             'auth.agent_or_user'       => \App\Http\Middleware\AuthenticateAgentOrUser::class,

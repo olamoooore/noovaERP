@@ -17,6 +17,7 @@ class CompanySettingsController extends Controller
             if (!$settings) {
                 $settings = $this->getDefaultSettings();
             }
+            $settings = $this->hydrateStructuredFields($settings);
             return response()->json(['success' => true, 'data' => $settings]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch company settings', ['error' => $e->getMessage()]);
@@ -28,33 +29,90 @@ class CompanySettingsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'company_name' => 'nullable|string|max:255',
+            'company_logo_url' => 'nullable|url|max:500',
             'tax_id' => 'nullable|string|max:50',
+            'gst_registration_number' => 'nullable|string|max:100',
             'address' => 'nullable|string|max:1000',
+            'addresses' => 'nullable|array',
+            'addresses.*' => 'nullable|string|max:1000',
             'phone' => 'nullable|string|max:30',
+            'phone_numbers' => 'nullable|array',
+            'phone_numbers.*' => 'nullable|string|max:30',
             'email' => 'nullable|email|max:255',
-            'website' => 'nullable|url|max:500',
+            'website' => 'nullable|string|max:500',
+            'social_links' => 'nullable|array',
+            'social_links.facebook' => 'nullable|string|max:500',
+            'social_links.instagram' => 'nullable|string|max:500',
+            'social_links.x' => 'nullable|string|max:500',
+            'social_links.linkedin' => 'nullable|string|max:500',
+            'social_links.tiktok' => 'nullable|string|max:500',
+            'social_links.youtube' => 'nullable|string|max:500',
+            'social_links.whatsapp' => 'nullable|string|max:500',
+            'social_links.snapchat' => 'nullable|string|max:500',
+            'social_links.telegram' => 'nullable|string|max:500',
         ]);
         if ($validator->fails()) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
         try {
             $settings = DB::table('company_settings')->first();
-            $data = [
-                'company_name' => $request->company_name,
-                'tax_id' => $request->tax_id,
-                'address' => $request->address,
-                'phone' => $request->phone,
-                'email' => $request->email,
-                'website' => $request->website,
-                'updated_at' => now(),
-            ];
+            $data = ['updated_at' => now()];
+
+            foreach (['company_name', 'company_logo_url', 'tax_id', 'gst_registration_number', 'address', 'phone', 'email', 'website'] as $field) {
+                if ($request->has($field)) {
+                    $data[$field] = $request->input($field);
+                }
+            }
+
+            if ($request->has('phone_numbers')) {
+                $phones = collect($request->input('phone_numbers', []))
+                    ->map(fn ($item) => trim((string) $item))
+                    ->filter(fn ($item) => $item !== '')
+                    ->values()
+                    ->all();
+
+                $data['phone_numbers'] = empty($phones) ? null : json_encode($phones);
+                if (!isset($data['phone']) && !empty($phones)) {
+                    $data['phone'] = $phones[0];
+                }
+            }
+
+            if ($request->has('addresses')) {
+                $addresses = collect($request->input('addresses', []))
+                    ->map(fn ($item) => trim((string) $item))
+                    ->filter(fn ($item) => $item !== '')
+                    ->values()
+                    ->all();
+
+                $data['addresses'] = empty($addresses) ? null : json_encode($addresses);
+                if (!isset($data['address']) && !empty($addresses)) {
+                    $data['address'] = $addresses[0];
+                }
+            }
+
+            if ($request->has('social_links')) {
+                $socialLinks = collect((array) $request->input('social_links', []))
+                    ->mapWithKeys(fn ($value, $key) => [$key => trim((string) $value)])
+                    ->filter(fn ($value) => $value !== '')
+                    ->all();
+
+                $data['social_links'] = empty($socialLinks) ? null : json_encode($socialLinks);
+            }
+
+            if (!isset($data['gst_registration_number']) && $request->has('tax_id')) {
+                $data['gst_registration_number'] = $request->input('tax_id');
+            }
+            if (!isset($data['tax_id']) && $request->has('gst_registration_number')) {
+                $data['tax_id'] = $request->input('gst_registration_number');
+            }
+
             if ($settings) {
                 DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
                 DB::table('company_settings')->insert($data);
             }
-            $updated = DB::table('company_settings')->first();
+            $updated = $this->hydrateStructuredFields(DB::table('company_settings')->first());
             return response()->json(['success' => true, 'message' => 'Settings updated successfully', 'data' => $updated]);
         } catch (\Exception $e) {
             \Log::error('Failed to update company settings', ['error' => $e->getMessage()]);
@@ -245,10 +303,14 @@ class CompanySettingsController extends Controller
             'company_name' => null,
             'company_logo_url' => null,
             'tax_id' => null,
+            'gst_registration_number' => null,
             'address' => null,
+            'addresses' => [],
             'phone' => null,
+            'phone_numbers' => [],
             'email' => null,
             'website' => null,
+            'social_links' => [],
             'fiscal_year_start_month' => 1,
             'fiscal_year_start_day' => 1,
             'fiscal_year_end' => null,
@@ -272,5 +334,59 @@ class CompanySettingsController extends Controller
             'default_retained_earnings_account_id' => null,
             'default_bank_charges_account_id' => null,
         ];
+    }
+
+    private function hydrateStructuredFields(object $settings): object
+    {
+        $settings->phone_numbers = $this->decodeJsonArray(
+            $settings->phone_numbers ?? null,
+            !empty($settings->phone) ? [$settings->phone] : []
+        );
+
+        $settings->addresses = $this->decodeJsonArray(
+            $settings->addresses ?? null,
+            !empty($settings->address) ? [$settings->address] : []
+        );
+
+        $settings->social_links = $this->decodeJsonObject($settings->social_links ?? null, []);
+        $settings->gst_registration_number = $settings->gst_registration_number ?? $settings->tax_id ?? null;
+
+        return $settings;
+    }
+
+    private function decodeJsonArray(mixed $value, array $fallback = []): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return array_values($decoded);
+            }
+        }
+
+        return $fallback;
+    }
+
+    private function decodeJsonObject(mixed $value, array $fallback = []): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_object($value)) {
+            return (array) $value;
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return $fallback;
     }
 }

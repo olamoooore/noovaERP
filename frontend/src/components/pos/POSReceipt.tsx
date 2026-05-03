@@ -1,8 +1,8 @@
 import { forwardRef } from 'react'
-import { formatCurrency } from '@/lib/utils'
 
 interface ReceiptItem {
   name: string
+  variant?: string
   quantity: number
   price: number
   line_total: number
@@ -45,331 +45,154 @@ interface ReceiptData {
 interface POSReceiptProps {
   data: ReceiptData
   businessName?: string
+  businessAddresses?: string[]
   businessAddress?: string
   businessPhone?: string
   businessEmail?: string
+  instagram?: string
+  facebook?: string
+  whatsapp?: string
+  businessWebsite?: string
+  gstRegNo?: string
   footerMessage?: string
-  poweredByLabel?: string
   showBarcode?: boolean
 }
 
 export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
-  ({ data, businessName = 'Point of Sale', businessAddress, businessPhone, businessEmail, footerMessage, poweredByLabel, showBarcode = true }, ref) => {
+  ({ data, businessName = 'Point of Sale', businessAddresses, businessAddress, businessPhone, whatsapp, instagram, facebook, businessWebsite, gstRegNo, footerMessage }, ref) => {
+
+    const fmt = (n: number) =>
+      n.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
     const formatDate = (date: Date) => {
-      return new Intl.DateTimeFormat('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(date)
+      const m = date.toLocaleString('en-US', { month: 'short' })
+      const d = String(date.getDate()).padStart(2, '0')
+      const y = date.getFullYear()
+      const time = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+      return `${m}-${d}-${y} ${time}`
     }
 
-    // Common styles for print compatibility
-    const styles = {
-      container: {
-        backgroundColor: '#ffffff',
-        color: '#000000',
-        padding: '20px',
-        fontFamily: "'Courier New', Courier, monospace",
-        fontSize: '12px',
-        width: '320px',
-        margin: '0 auto',
-      },
-      header: {
-        textAlign: 'center' as const,
-        marginBottom: '16px',
-      },
-      title: {
-        fontSize: '20px',
-        fontWeight: 'bold',
-        letterSpacing: '2px',
-        margin: 0,
-      },
-      subtext: {
-        fontSize: '11px',
-        marginTop: '4px',
-        color: '#333',
-      },
-      divider: {
-        borderBottom: '2px dashed #999',
-        margin: '12px 0',
-      },
-      dividerThin: {
-        borderBottom: '1px dashed #999',
-        margin: '8px 0',
-      },
-      infoRow: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '11px',
-        marginBottom: '4px',
-      },
-      label: {
-        color: '#333',
-      },
-      value: {
-        fontWeight: 'bold',
-      },
-      customerBox: {
-        border: '1px solid #ccc',
-        borderRadius: '4px',
-        padding: '10px',
-        marginBottom: '12px',
-        fontSize: '11px',
-      },
-      customerLabel: {
-        fontWeight: 'bold',
-        marginBottom: '4px',
-      },
-      itemsHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '11px',
-        fontWeight: 'bold',
-        borderBottom: '1px solid #ccc',
-        paddingBottom: '6px',
-        marginBottom: '10px',
-      },
-      itemRow: {
-        marginBottom: '10px',
-      },
-      itemName: {
-        fontSize: '11px',
-        fontWeight: '500',
-        marginBottom: '2px',
-      },
-      itemDetails: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '11px',
-      },
-      totalRow: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '11px',
-        marginBottom: '4px',
-      },
-      grandTotal: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '16px',
-        fontWeight: 'bold',
-        borderTop: '1px solid #000',
-        paddingTop: '8px',
-        marginTop: '8px',
-      },
-      barcode: {
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '1px',
-        margin: '16px 0',
-      },
-      barcodeBar: {
-        backgroundColor: '#000',
-        height: '40px',
-      },
-      barcodeText: {
-        textAlign: 'center' as const,
-        fontSize: '10px',
-        marginTop: '6px',
-      },
-      footer: {
-        textAlign: 'center' as const,
-        marginTop: '16px',
-        paddingTop: '12px',
-        borderTop: '1px dashed #999',
-      },
-      thankYou: {
-        fontWeight: 'bold',
-        marginBottom: '6px',
-      },
-      powered: {
-        fontSize: '9px',
-        color: '#666',
-        marginTop: '10px',
-      },
-      loyaltyBox: {
-        backgroundColor: '#f3f4f6',
-        borderRadius: '4px',
-        padding: '10px',
-        textAlign: 'center' as const,
-        marginBottom: '12px',
-      },
+    const addresses: string[] = businessAddresses?.length
+      ? businessAddresses
+      : businessAddress
+      ? [businessAddress]
+      : []
+
+    const whatsappDigits = (whatsapp || businessPhone || '').replace(/\D/g, '')
+    const qrPayload = whatsappDigits
+      ? `https://wa.me/${whatsappDigits}`
+      : data.receiptNumber || data.orderNumber
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrPayload)}`
+
+    const paymentLabel = `${(data.paymentMethod || 'CASH').toUpperCase()} SG$`
+    const itemQty = data.items.reduce((s, i) => s + i.quantity, 0)
+    const taxRate = data.taxAmount > 0 && data.subtotal > 0
+      ? Math.round(data.taxAmount / (data.total - data.taxAmount) * 100)
+      : 9
+    const taxable = Math.max(data.total - data.taxAmount, 0)
+    const cashier = data.cashier ? data.cashier.substring(0, 2).toUpperCase() : 'ST'
+
+    const s: Record<string, React.CSSProperties> = {
+      root: { fontFamily: "'Courier New', Courier, monospace", fontSize: 13, lineHeight: 1.4, padding: '12px 14px', width: '100%', color: '#000', backgroundColor: '#fff' },
+      center: { textAlign: 'center' },
+      storeName: { fontSize: 16, fontWeight: 'bold', marginBottom: 3 },
+      headerLine: { fontSize: 12, marginBottom: 2 },
+      bold: { fontWeight: 'bold' },
+      dash: { borderBottom: '1px dashed #000', margin: '8px 0' },
+      row: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 },
+      right: { minWidth: 64, textAlign: 'right', flexShrink: 0 },
+      // item layout: qty col | name col | amount col (matches physical receipt)
+      itemRow: { display: 'flex', alignItems: 'flex-start', marginBottom: 4 },
+      itemQtyCol: { width: 18, flexShrink: 0 },
+      itemNameCol: { flex: 1, wordBreak: 'break-word' as const, paddingRight: 6 },
+      itemAmtCol: { minWidth: 52, textAlign: 'right' as const, flexShrink: 0 },
+      variantRow: { display: 'flex', marginBottom: 4, paddingLeft: 18 },
     }
 
     return (
-      <div ref={ref} style={styles.container}>
+      <div ref={ref} style={s.root}>
         {/* Header */}
-        <div style={styles.header}>
-          <h1 style={styles.title}>{businessName}</h1>
-          {businessAddress && <p style={styles.subtext}>{businessAddress}</p>}
-          {businessPhone && <p style={styles.subtext}>Tel: {businessPhone}</p>}
-          {businessEmail && <p style={styles.subtext}>{businessEmail}</p>}
-        </div>
-        
-        <div style={styles.divider} />
-
-        {/* Order Info */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={styles.infoRow}>
-            <span style={styles.label}>Receipt #:</span>
-            <span style={styles.value}>{data.receiptNumber || data.orderNumber}</span>
-          </div>
-          <div style={styles.infoRow}>
-            <span style={styles.label}>Date:</span>
-            <span>{formatDate(data.date)}</span>
-          </div>
-          {data.cashier && (
-            <div style={styles.infoRow}>
-              <span style={styles.label}>Cashier:</span>
-              <span>{data.cashier}</span>
-            </div>
-          )}
-          {data.terminal && (
-            <div style={styles.infoRow}>
-              <span style={styles.label}>Terminal:</span>
-              <span>{data.terminal}</span>
-            </div>
-          )}
+        <div style={s.center}>
+          <div style={s.storeName}>{businessName}</div>
+          {addresses.map((a, i) => <div key={i} style={s.headerLine}>{a}</div>)}
+          {(whatsapp || businessPhone) && <div style={s.headerLine}>WhatsApp: {whatsapp || businessPhone}</div>}
+          {instagram && <div style={s.headerLine}>Instagram: {instagram}</div>}
+          {businessWebsite && <div style={s.headerLine}>Online Shop: {businessWebsite}</div>}
+          {facebook && <div style={s.headerLine}>Facebook: {facebook}</div>}
+          {gstRegNo && <div style={s.headerLine}>GST REG NO: {gstRegNo}</div>}
+          <div style={{ ...s.bold, marginTop: 4, fontSize: 13 }}>** Duplicate Copy-1 **</div>
         </div>
 
-        {/* Customer Info */}
-        {data.customer && data.customer.name !== 'Walk-in Customer' && (
-          <div style={styles.customerBox}>
-            <div style={styles.customerLabel}>Customer:</div>
-            <div>{data.customer.name}</div>
-            {data.customer.phone && <div>Phone: {data.customer.phone}</div>}
-            {data.customer.loyaltyPoints !== undefined && (
-              <div style={{ marginTop: '4px' }}>
-                ★ Points Balance: {data.customer.loyaltyPoints}
+        <div style={s.dash} />
+
+        {/* Receipt number */}
+        <div style={{ ...s.bold, marginBottom: 6, fontSize: 13 }}>Receipt: {data.receiptNumber || data.orderNumber}</div>
+
+        {/* Items — qty | name | amount, variant indented below */}
+        {data.items.map((item, i) => (
+          <div key={i}>
+            <div style={s.itemRow}>
+              <span style={s.itemQtyCol}>{item.quantity}</span>
+              <span style={s.itemNameCol}>{item.name}</span>
+              <span style={s.itemAmtCol}>{fmt(item.line_total)}</span>
+            </div>
+            {item.variant && (
+              <div style={s.variantRow}>
+                <span style={{ flex: 1, color: '#222' }}>{item.variant}</span>
               </div>
             )}
           </div>
+        ))}
+
+        <div style={s.dash} />
+
+        {/* Subtotal / Discount / Total / Payment */}
+        <div style={s.row}><span>SUBTOTAL</span><span style={s.right}>{fmt(data.subtotal)}</span></div>
+        {data.discountAmount > 0 && (
+          <div style={s.row}><span>DISCOUNT</span><span style={s.right}>-{fmt(data.discountAmount)}</span></div>
+        )}
+        <div style={{ ...s.row, ...s.bold }}><span>TOTAL</span><span style={s.right}>{fmt(data.total)}</span></div>
+        <div style={s.row}><span>{paymentLabel}</span><span style={s.right}>{fmt(data.amountPaid ?? data.total)}</span></div>
+
+        <div style={s.dash} />
+
+        {/* Terminal / Cashier / Date */}
+        <div style={{ ...s.row, marginBottom: 2 }}>
+          <span>Item Qty: {itemQty}</span>
+          <span>Svc Qty: 0</span>
+        </div>
+        <div style={{ marginBottom: 2 }}>Term: {data.terminal ?? '-'} Cashier: {cashier}</div>
+        <div>Date: {formatDate(data.date)}</div>
+
+        {/* GST section */}
+        {data.taxAmount > 0 && (
+          <>
+            <div style={s.dash} />
+            <div style={s.row}><span>GST {taxRate}%</span><span style={s.right}>{fmt(data.taxAmount)}</span></div>
+            <div style={s.row}><span>Taxable</span><span style={s.right}>{fmt(taxable)}</span></div>
+          </>
         )}
 
-        <div style={styles.dividerThin} />
+        <div style={s.dash} />
 
-        {/* Items Header */}
-        <div style={styles.itemsHeader}>
-          <span style={{ flex: 1 }}>Item</span>
-          <span style={{ width: '40px', textAlign: 'center' }}>Qty</span>
-          <span style={{ width: '60px', textAlign: 'right' }}>Price</span>
-          <span style={{ width: '70px', textAlign: 'right' }}>Total</span>
-        </div>
-
-        {/* Items */}
-        <div style={{ marginBottom: '12px' }}>
-          {data.items.map((item, index) => (
-            <div key={index} style={styles.itemRow}>
-              <div style={styles.itemName}>{item.name}</div>
-              <div style={styles.itemDetails}>
-                <span style={{ flex: 1 }} />
-                <span style={{ width: '40px', textAlign: 'center' }}>{item.quantity}</span>
-                <span style={{ width: '60px', textAlign: 'right' }}>{formatCurrency(item.price)}</span>
-                <span style={{ width: '70px', textAlign: 'right' }}>{formatCurrency(item.line_total)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={styles.dividerThin} />
-
-        {/* Totals */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={styles.totalRow}>
-            <span>Subtotal ({data.items.reduce((s, i) => s + i.quantity, 0)} items)</span>
-            <span>{formatCurrency(data.subtotal)}</span>
-          </div>
-          <div style={styles.totalRow}>
-            <span>Tax</span>
-            <span>{formatCurrency(data.taxAmount)}</span>
-          </div>
-          {data.discountAmount > 0 && (
-            <div style={styles.totalRow}>
-              <span>
-                Discount 
-                {data.discountType === 'percent' && data.discountValue ? ` (${data.discountValue}%)` : ''}
-              </span>
-              <span>-{formatCurrency(data.discountAmount)}</span>
+        {/* Footer — centered */}
+        <div style={{ textAlign: 'center' }}>
+          <div>Items sold are non</div>
+          <div>refundable/exchangeable</div>
+          <div>/returnable</div>
+          {footerMessage && <div style={{ marginTop: 3 }}>{footerMessage}</div>}
+          <div>Thank you!</div>
+          <div>Please come again!</div>
+          {qrPayload && (
+            <div style={{ marginTop: 12, marginBottom: 6, textAlign: 'center' }}>
+              <img
+                src={qrUrl}
+                alt="WhatsApp QR"
+                style={{ width: 90, height: 90, display: 'block', margin: '0 auto' }}
+              />
+              <div style={{ fontSize: 10, marginTop: 4 }}>Scan to contact us on WhatsApp</div>
             </div>
           )}
-          {data.coupon && data.coupon.discountAmount > 0 && (
-            <div style={styles.totalRow}>
-              <span>
-                Coupon: {data.coupon.code}
-                {data.coupon.discountType === 'percent' ? ` (${data.coupon.discountValue}%)` : ''}
-              </span>
-              <span>-{formatCurrency(data.coupon.discountAmount)}</span>
-            </div>
-          )}
-          {data.loyaltyDiscountAmount && data.loyaltyDiscountAmount > 0 && (
-            <div style={styles.totalRow}>
-              <span>
-                Loyalty Points {data.loyaltyPointsUsed ? `(${data.loyaltyPointsUsed} pts)` : ''}
-              </span>
-              <span>-{formatCurrency(data.loyaltyDiscountAmount)}</span>
-            </div>
-          )}
-          <div style={styles.grandTotal}>
-            <span>TOTAL</span>
-            <span>{formatCurrency(data.total)}</span>
-          </div>
-        </div>
-
-        <div style={styles.dividerThin} />
-
-        {/* Payment Info */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={styles.totalRow}>
-            <span>Payment Method:</span>
-            <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{data.paymentMethod}</span>
-          </div>
-          {data.amountPaid !== undefined && (
-            <div style={styles.totalRow}>
-              <span>Amount Tendered:</span>
-              <span>{formatCurrency(data.amountPaid)}</span>
-            </div>
-          )}
-          {data.change !== undefined && data.change > 0 && (
-            <div style={{ ...styles.totalRow, fontWeight: 'bold' }}>
-              <span>Change:</span>
-              <span>{formatCurrency(data.change)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Loyalty Points */}
-        {data.loyaltyPointsEarned !== undefined && data.loyaltyPointsEarned > 0 && (
-          <div style={styles.loyaltyBox}>
-            <div style={{ fontSize: '11px' }}>★ LOYALTY POINTS EARNED ★</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>+{data.loyaltyPointsEarned} pts</div>
-          </div>
-        )}
-
-        {/* Barcode */}
-        {showBarcode && (
-          <div style={{ textAlign: 'center', margin: '16px 0' }}>
-            <div style={styles.barcode}>
-              {(data.receiptNumber || data.orderNumber).split('').map((char, i) => {
-                const width = (char.charCodeAt(0) % 3) + 1
-                return (
-                  <div 
-                    key={i} 
-                    style={{ ...styles.barcodeBar, width: `${width}px` }}
-                  />
-                )
-              })}
-            </div>
-            <div style={styles.barcodeText}>{data.receiptNumber || data.orderNumber}</div>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div style={styles.footer}>
-          <p style={styles.thankYou}>Thank you for your purchase!</p>
-          {footerMessage && <p style={{ color: '#666', fontSize: '11px' }}>{footerMessage}</p>}
-          {poweredByLabel && <p style={styles.powered}>{poweredByLabel}</p>}
         </div>
       </div>
     )

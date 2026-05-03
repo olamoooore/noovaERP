@@ -118,6 +118,15 @@ interface CompanySettings {
   phone?: string | null
   email?: string | null
   website?: string | null
+  addresses?: string[] | null
+  phone_numbers?: string[] | null
+  social_links?: {
+    whatsapp?: string | null
+    instagram?: string | null
+    facebook?: string | null
+    [key: string]: string | null | undefined
+  } | null
+  gst_registration_number?: string | null
 }
 
 interface PosTerminalSummary {
@@ -544,11 +553,21 @@ export function POSTerminal() {
     const businessPhone = companySettings?.phone?.trim()
     const businessEmail = companySettings?.email?.trim()
 
+    const addresses = companySettings?.addresses?.filter(Boolean) ?? []
+    const phones = companySettings?.phone_numbers?.filter(Boolean) ?? []
+    const socialLinks = companySettings?.social_links ?? {}
+
     return {
       businessName: companyName || terminalHeader || activeTerminal?.warehouse?.name || activeTerminal?.name || 'Point of Sale',
       businessAddress: businessAddress || undefined,
-      businessPhone: businessPhone || undefined,
+      businessAddresses: addresses.length ? addresses : undefined,
+      businessPhone: (phones[0] || businessPhone) || undefined,
       businessEmail: businessEmail || undefined,
+      whatsapp: socialLinks.whatsapp || phones[0] || businessPhone || undefined,
+      instagram: socialLinks.instagram || undefined,
+      facebook: socialLinks.facebook || undefined,
+      businessWebsite: companySettings?.website?.trim() || undefined,
+      gstRegNo: companySettings?.gst_registration_number?.trim() || undefined,
       footerMessage: terminalFooter || undefined,
     }
   }, [activeTerminal, companySettings])
@@ -2480,9 +2499,15 @@ export function POSTerminal() {
                 ref={receiptRef}
                 data={lastOrder}
                 businessName={receiptBranding.businessName}
+                businessAddresses={receiptBranding.businessAddresses}
                 businessAddress={receiptBranding.businessAddress}
                 businessPhone={receiptBranding.businessPhone}
                 businessEmail={receiptBranding.businessEmail}
+                whatsapp={receiptBranding.whatsapp}
+                instagram={receiptBranding.instagram}
+                facebook={receiptBranding.facebook}
+                businessWebsite={receiptBranding.businessWebsite}
+                gstRegNo={receiptBranding.gstRegNo}
                 footerMessage={receiptBranding.footerMessage}
               />
             </div>

@@ -1031,11 +1031,65 @@ class PosOrderController extends Controller
         $posOrder = PosOrder::findOrFail($posOrder);
         $posOrder->load(['items.product', 'items.variant', 'payments', 'customer']);
 
+        $companySettings = DB::table('company_settings')->first();
+
+        $decodeJsonArray = function (mixed $value, array $fallback = []): array {
+            if (is_array($value)) {
+                return $value;
+            }
+
+            if (is_string($value) && trim($value) !== '') {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    return array_values($decoded);
+                }
+            }
+
+            return $fallback;
+        };
+
+        $decodeJsonObject = function (mixed $value, array $fallback = []): array {
+            if (is_array($value)) {
+                return $value;
+            }
+
+            if (is_object($value)) {
+                return (array) $value;
+            }
+
+            if (is_string($value) && trim($value) !== '') {
+                $decoded = json_decode($value, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    return $decoded;
+                }
+            }
+
+            return $fallback;
+        };
+
+        $businessAddresses = $decodeJsonArray(
+            $companySettings->addresses ?? null,
+            !empty($companySettings?->address) ? [$companySettings->address] : []
+        );
+
+        $businessPhones = $decodeJsonArray(
+            $companySettings->phone_numbers ?? null,
+            !empty($companySettings?->phone) ? [$companySettings->phone] : []
+        );
+
+        $socialLinks = $decodeJsonObject($companySettings->social_links ?? null, []);
+
         // Get business settings
         $businessSettings = [
-            'business_name' => Setting::getValue('business_name', 'NoovaERP Store'),
-            'business_address' => Setting::getValue('business_address', ''),
-            'business_phone' => Setting::getValue('business_phone', ''),
+            'business_name' => $companySettings->company_name ?? Setting::getValue('business_name', 'NoovaERP Store'),
+            'business_logo_url' => $companySettings->company_logo_url ?? null,
+            'business_address' => $businessAddresses[0] ?? Setting::getValue('business_address', ''),
+            'business_addresses' => $businessAddresses,
+            'business_phone' => $businessPhones[0] ?? Setting::getValue('business_phone', ''),
+            'business_phones' => $businessPhones,
+            'business_website' => $companySettings->website ?? null,
+            'social_links' => $socialLinks,
+            'gst_registration_number' => $companySettings->gst_registration_number ?? $companySettings->tax_id ?? null,
         ];
 
         $pdf = Pdf::loadView('pos::receipt', [
@@ -1043,8 +1097,8 @@ class PosOrderController extends Controller
             'settings' => $businessSettings,
         ]);
 
-        // Set paper size to receipt size (80mm thermal paper)
-        $pdf->setPaper([0, 0, 226.77, 600], 'portrait'); // 80mm = 226.77 points
+        // Set paper size to receipt size (80mm thermal paper) with taller height for longer receipts.
+        $pdf->setPaper([0, 0, 226.77, 1100], 'portrait'); // 80mm = 226.77 points
 
         $filename = 'receipt-' . $posOrder->order_number . '.pdf';
 

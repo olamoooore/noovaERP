@@ -35,6 +35,7 @@ const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m =>
 const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
 const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m => ({ default: m.POSSettingsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
 const OCRDocumentsPage = lazy(() => import('@/pages/OCRDocumentsPage').then(m => ({ default: m.OCRDocumentsPage })))
@@ -234,6 +235,9 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             
             <Route element={<ProtectedRoute />}>
+              {/* Receipt Builder - fullscreen without sidebar */}
+              <Route path="/receipt-builder" element={<ReceiptBuilderPage />} />
+
               {/* Main Layout Routes - with sidebar */}
               <Route element={<MainLayout />}>
                 <Route path="/" element={<DashboardPage />} />
