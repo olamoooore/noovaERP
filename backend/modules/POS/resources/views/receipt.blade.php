@@ -128,7 +128,7 @@
         if ($whatsAppDigits) {
             $qrPayload = 'https://wa.me/' . $whatsAppDigits;
         }
-        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' . rawurlencode($qrPayload ?: ($order->order_number ?? 'NoovaERP'));
+        $qrUrl = 'https://quickchart.io/qr?size=120&text=' . rawurlencode($qrPayload ?: ($order->order_number ?? 'NoovaERP'));
 
         $paymentMethod = strtoupper($order->payments->first()?->method ?? ($order->status === 'paid' ? 'CARD' : 'N/A'));
         $paymentAmount = (float) ($order->payments->sum('amount') ?: $order->total);

@@ -187,6 +187,30 @@ class PosSessionController extends Controller
     }
 
     /**
+     * Receive customer display events from POS terminal.
+     * Best-effort endpoint: validates session ownership and acknowledges event.
+     */
+    public function displayEvent(Request $request, $sessionId): JsonResponse
+    {
+        $request->validate([
+            'event' => 'required|string|max:100',
+            'cart_items' => 'nullable|array',
+        ]);
+
+        $session = PosSession::findOrFail($sessionId);
+
+        if ((int) $session->user_id !== (int) Auth::id() && !Auth::user()?->hasRole('admin')) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'event' => $request->input('event'),
+            'session_id' => (int) $sessionId,
+        ], 202);
+    }
+
+    /**
      * List sessions
      */
     public function index(Request $request): JsonResponse

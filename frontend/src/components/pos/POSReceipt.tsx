@@ -82,7 +82,8 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
     const qrPayload = whatsappDigits
       ? `https://wa.me/${whatsappDigits}`
       : data.receiptNumber || data.orderNumber
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrPayload)}`
+    const primaryQrUrl = `https://quickchart.io/qr?size=120&text=${encodeURIComponent(qrPayload)}`
+    const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrPayload)}`
 
     const paymentLabel = `${(data.paymentMethod || 'CASH').toUpperCase()} SG$`
     const itemQty = data.items.reduce((s, i) => s + i.quantity, 0)
@@ -186,8 +187,14 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
           {qrPayload && (
             <div style={{ marginTop: 12, marginBottom: 6, textAlign: 'center' }}>
               <img
-                src={qrUrl}
+                src={primaryQrUrl}
                 alt="WhatsApp QR"
+                onError={(event) => {
+                  const img = event.currentTarget
+                  if (img.src !== fallbackQrUrl) {
+                    img.src = fallbackQrUrl
+                  }
+                }}
                 style={{ width: 90, height: 90, display: 'block', margin: '0 auto' }}
               />
               <div style={{ fontSize: 10, marginTop: 4 }}>Scan to contact us on WhatsApp</div>

@@ -38,6 +38,7 @@ Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     Route::get('/pos/sessions/{sessionId}', [PosSessionController::class, 'show']);
     Route::post('/pos/sessions/{sessionId}/close', [PosSessionController::class, 'closeSession']);
     Route::post('/pos/sessions/{sessionId}/cash-movement', [PosSessionController::class, 'cashMovement']);
+    Route::post('/pos/sessions/{sessionId}/display-event', [PosSessionController::class, 'displayEvent']);
 
     // POS Orders
     Route::get('/pos/sales/orders', [PosOrderController::class, 'index']);
