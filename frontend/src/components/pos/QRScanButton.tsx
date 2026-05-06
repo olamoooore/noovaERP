@@ -12,10 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import iotApi, { DeviceConfiguration, QRParsedData } from '@/lib/iotApi'
-import { getLinkedAgentId } from '@/services/printService'
-
-// Default agent ID - same as used in IoT pages
-const DEFAULT_AGENT_ID = 'agent-676da24f-97d3-4d74-bcd2-c235a30dbac7'
+import { useLinkedAgent } from '@/hooks/useLinkedAgent'
 
 interface QRScanButtonProps {
   onScanResult?: (barcode: string, parsed?: QRParsedData) => void
@@ -28,12 +25,14 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
   const [lastScan, setLastScan] = useState<{ barcode: string; parsed?: QRParsedData } | null>(null)
   const [lastScanId, setLastScanId] = useState<string | null>(null)
   const { toast } = useToast()
-  const agentId = getLinkedAgentId() ?? DEFAULT_AGENT_ID
+  const { agentId } = useLinkedAgent()
+  const hasLinkedAgent = !!agentId
 
   // Get agent health
   const { data: agentHealth } = useQuery({
     queryKey: ['agent-health', agentId],
-    queryFn: () => iotApi.checkAgentHealth(agentId),
+    queryFn: () => iotApi.checkAgentHealth(agentId!),
+    enabled: hasLinkedAgent,
     refetchInterval: 30000,
   })
 
@@ -42,8 +41,8 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
   // Find scanner device
   const { data: devicesData } = useQuery({
     queryKey: ['device-configs', agentId],
-    queryFn: () => iotApi.getDeviceConfigs(agentId),
-    enabled: agentOnline,
+    queryFn: () => iotApi.getDeviceConfigs(agentId!),
+    enabled: hasLinkedAgent && agentOnline,
   })
 
   const scanner = devicesData?.data?.find(
@@ -54,8 +53,8 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
   // Poll for scan results when scanning
   const { data: historyData } = useQuery({
     queryKey: ['scan-history', agentId, scanner?.id],
-    queryFn: () => iotApi.getScanHistory(agentId, scanner?.id, 1),
-    enabled: isScanning && !!scanner,
+    queryFn: () => iotApi.getScanHistory(agentId!, scanner?.id, 1),
+    enabled: hasLinkedAgent && isScanning && !!scanner,
     refetchInterval: isScanning ? 500 : false,
   })
 
@@ -94,10 +93,16 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
 
   // Start scanning mutation
   const startScanMutation = useMutation({
-    mutationFn: () => iotApi.startScannerListening(agentId, scanner!.id, {
-      mode: 'single',
-      timeout: 30,
-    }),
+    mutationFn: () => {
+      if (!agentId || !scanner) {
+        throw new Error('No linked scanner agent configured.')
+      }
+
+      return iotApi.startScannerListening(agentId, scanner.id, {
+        mode: 'single',
+        timeout: 30,
+      })
+    },
     onSuccess: () => {
       setIsScanning(true)
       setLastScanId(historyData?.data?.[0]?.id || null)
@@ -114,10 +119,25 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
 
   // Stop scanning mutation
   const stopScanMutation = useMutation({
-    mutationFn: () => iotApi.stopScannerListening(agentId, scanner!.id),
+    mutationFn: () => {
+      if (!agentId || !scanner) {
+        throw new Error('No linked scanner agent configured.')
+      }
+
+      return iotApi.stopScannerListening(agentId, scanner.id)
+    },
   })
 
   const startScanning = () => {
+    if (!agentId) {
+      toast({
+        title: 'No Linked Agent',
+        description: 'Link this POS session to a tenant agent before scanning.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     if (!scanner) {
       toast({
         title: 'No Scanner Available',
@@ -155,6 +175,7 @@ export function QRScanButton({ onScanResult, className }: QRScanButtonProps) {
 
   // Get button title for accessibility
   const getButtonTitle = () => {
+    if (!agentId) return 'No linked agent configured'
     if (!agentOnline) return 'Agent offline'
     if (!scanner) return 'No scanner configured'
     return 'Scan QR/Barcode'

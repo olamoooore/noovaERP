@@ -262,10 +262,22 @@ export const iotApi = {
     const response = await api.get('/iot/agent-config')
     return response.data
   },
+
+  getLinkedAgent: async (): Promise<{
+    success: boolean
+    data: {
+      agent_id: string
+      linked_at?: string | null
+    } | null
+    message?: string
+  }> => {
+    const response = await api.get('/user/linked-agent')
+    return response.data
+  },
   
   updateAgentConfig: async (data: {
     agent_url: string
-    agent_token: string
+    agent_token?: string
     agent_id?: string
   }) => {
     const response = await api.put('/iot/agent-config', data)
@@ -274,7 +286,7 @@ export const iotApi = {
   
   testAgentConnection: async (data: {
     agent_url: string
-    agent_token: string
+    agent_token?: string
   }) => {
     const response = await api.post('/iot/agent-config/test', data)
     return response.data

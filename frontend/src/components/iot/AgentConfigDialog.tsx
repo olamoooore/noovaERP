@@ -24,7 +24,7 @@ interface AgentConfigDialogProps {
 export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps) {
   const [agentUrl, setAgentUrl] = useState('')
   const [agentToken, setAgentToken] = useState('')
-  const [agentId, setAgentId] = useState('agent-auto-generated')
+  const [agentId, setAgentId] = useState('')
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState('')
   
@@ -43,13 +43,13 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
     if (configData?.data) {
       setAgentUrl(configData.data.agent_url || '')
       setAgentToken(configData.data.agent_token || '')
-      setAgentId(configData.data.agent_id || 'agent-auto-generated')
+      setAgentId(configData.data.agent_id || '')
     }
   }, [configData])
 
   // Test connection mutation
   const testMutation = useMutation({
-    mutationFn: (data: { agent_url: string; agent_token: string }) =>
+    mutationFn: (data: { agent_url: string; agent_token?: string }) =>
       iotApi.testAgentConnection(data),
     onMutate: () => {
       setTestStatus('testing')
@@ -86,7 +86,7 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
 
   // Save configuration mutation
   const saveMutation = useMutation({
-    mutationFn: (data: { agent_url: string; agent_token: string; agent_id?: string }) =>
+    mutationFn: (data: { agent_url: string; agent_token?: string; agent_id?: string }) =>
       iotApi.updateAgentConfig(data),
     onSuccess: () => {
       toast({
@@ -176,12 +176,12 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
               <Input
                 id="agent-token"
                 type="password"
-                placeholder="Bearer token for authentication"
+                placeholder="Optional bearer token for authentication"
                 value={agentToken}
                 onChange={(e) => setAgentToken(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Authentication token configured in your agent
+                Leave blank if your local agent does not require authentication
               </p>
             </div>
 
@@ -189,7 +189,7 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
               <Label htmlFor="agent-id">Agent ID</Label>
               <Input
                 id="agent-id"
-                placeholder="agent-auto-generated"
+                placeholder="Enter the agent ID for this POS machine"
                 value={agentId}
                 onChange={(e) => setAgentId(e.target.value)}
               />

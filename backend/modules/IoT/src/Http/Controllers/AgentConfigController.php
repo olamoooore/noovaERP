@@ -20,7 +20,7 @@ class AgentConfigController extends Controller
         $config = [
             'agent_url' => Setting::getValue('iot_agent_url'),
             'agent_token' => Setting::getValue('iot_agent_token'),
-            'agent_id' => Setting::getValue('iot_agent_id', 'agent-auto-generated'),
+            'agent_id' => Setting::getValue('iot_agent_id'),
         ];
 
         return response()->json([
@@ -38,7 +38,7 @@ class AgentConfigController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'agent_url' => 'required|url',
-            'agent_token' => 'required|string',
+            'agent_token' => 'nullable|string',
             'agent_id' => 'nullable|string',
         ]);
 
@@ -72,7 +72,7 @@ class AgentConfigController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'agent_url' => 'required|url',
-            'agent_token' => 'required|string',
+            'agent_token' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -84,12 +84,16 @@ class AgentConfigController extends Controller
 
         try {
             // Test connection to agent
-            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
-                ->timeout(5)
-                ->withHeaders([
+            $http = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->timeout(5);
+
+            if ($request->filled('agent_token')) {
+                $http = $http->withHeaders([
                     'Authorization' => 'Bearer ' . $request->agent_token,
-                ])
-                ->get($request->agent_url . '/api/health');
+                ]);
+            }
+
+            $response = $http->get($request->agent_url . '/api/health');
 
             if ($response->successful()) {
                 return response()->json([

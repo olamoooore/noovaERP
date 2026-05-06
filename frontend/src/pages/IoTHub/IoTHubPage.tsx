@@ -21,10 +21,7 @@ import { AgentConfigDialog } from '@/components/iot/AgentConfigDialog'
 import { ScannerControl } from '@/components/iot/ScannerControl'
 import { PrinterControl } from '@/components/iot/PrinterControl'
 import { getConnectionIcon, getConnectionLabel } from '@/lib/iot-helpers'
-import { getLinkedAgentId } from '@/services/printService'
-
-// Hardcoded agent ID for now - will be dynamic later
-const DEFAULT_AGENT_ID = 'agent-676da24f-97d3-4d74-bcd2-c235a30dbac7'
+import { useLinkedAgent } from '@/hooks/useLinkedAgent'
 
 export function IoTHubPage() {
   const [selectedTab, setSelectedTab] = useState('configured')
@@ -33,12 +30,14 @@ export function IoTHubPage() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceConfiguration | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const agentId = getLinkedAgentId() ?? DEFAULT_AGENT_ID
+  const { agentId, isLoading: agentLinkLoading } = useLinkedAgent()
+  const hasLinkedAgent = !!agentId
 
   // Fetch agent health
   const { data: agentHealth, isLoading: healthLoading, error: healthError } = useQuery({
     queryKey: ['agent-health', agentId],
-    queryFn: () => iotApi.checkAgentHealth(agentId),
+    queryFn: () => iotApi.checkAgentHealth(agentId!),
+    enabled: hasLinkedAgent,
     refetchInterval: 30000, // Poll every 30 seconds
     retry: 1,
   })
@@ -46,19 +45,24 @@ export function IoTHubPage() {
   // Fetch device configurations
   const { data: deviceConfigsData, isLoading: configsLoading } = useQuery({
     queryKey: ['device-configs', agentId],
-    queryFn: () => iotApi.getDeviceConfigs(agentId),
+    queryFn: () => iotApi.getDeviceConfigs(agentId!),
+    enabled: hasLinkedAgent,
   })
 
   // Fetch discovered devices - only when agent is online
   const { data: discoveredData, isLoading: discoveredLoading } = useQuery({
     queryKey: ['discovered-devices', agentId],
-    queryFn: () => iotApi.getDiscoveredDevices({ agentId }),
-    enabled: agentHealth?.status === 'online', // Only fetch when agent is online
+    queryFn: () => iotApi.getDiscoveredDevices({ agentId: agentId! }),
+    enabled: hasLinkedAgent && agentHealth?.status === 'online', // Only fetch when agent is online
   })
 
   // Trigger discovery scan
   const scanMutation = useMutation({
     mutationFn: () => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
       // Check if agent is online before scanning
       if (agentHealth?.status !== 'online') {
         throw new Error('Agent is not connected. Please ensure the Local Agent is running.')
@@ -83,7 +87,13 @@ export function IoTHubPage() {
 
   // Reload device
   const reloadDeviceMutation = useMutation({
-    mutationFn: (deviceId: string) => iotApi.reloadDevice(agentId, deviceId),
+    mutationFn: (deviceId: string) => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
+      return iotApi.reloadDevice(agentId, deviceId)
+    },
     onSuccess: () => {
       toast({
         title: 'Device reloaded',
@@ -101,7 +111,13 @@ export function IoTHubPage() {
 
   // Reload all devices
   const reloadAllMutation = useMutation({
-    mutationFn: () => iotApi.reloadAllDevices(agentId),
+    mutationFn: () => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
+      return iotApi.reloadAllDevices(agentId)
+    },
     onSuccess: (data) => {
       toast({
         title: 'All devices reloaded',
@@ -135,6 +151,15 @@ export function IoTHubPage() {
   }
 
   const handleAddDevice = () => {
+    if (!agentId) {
+      toast({
+        title: 'No linked agent',
+        description: 'Link this POS session to a tenant agent before adding devices.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setSelectedDevice(null)
     setConfigDialogOpen(true)
   }
@@ -148,6 +173,45 @@ export function IoTHubPage() {
   const handleAgentConfigClose = () => {
     setAgentConfigDialogOpen(false)
     queryClient.invalidateQueries({ queryKey: ['agent-health'] })
+  }
+
+  if (!agentLinkLoading && !hasLinkedAgent) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Icon icon="solar:cpu-bolt-bold-duotone" className="h-7 w-7 text-primary" />
+              NoovaERP IoT Hub
+            </h1>
+            <p className="text-muted-foreground">
+              Manage your IoT devices with multi-protocol support
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setAgentConfigDialogOpen(true)}>
+            <Icon icon="solar:settings-bold" className="h-4 w-4 mr-2" />
+            Agent Config
+          </Button>
+        </div>
+
+        <Card>
+          <CardContent className="py-10">
+            <div className="flex flex-col items-center text-center gap-3">
+              <Icon icon="solar:link-broken-bold-duotone" className="h-14 w-14 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">No linked agent configured</h2>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                This tenant session is not linked to a POS agent. Link the current machine's agent ID first so the hub targets the correct tenant agent.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <AgentConfigDialog
+          open={agentConfigDialogOpen}
+          onOpenChange={handleAgentConfigClose}
+        />
+      </div>
+    )
   }
 
   return (
@@ -344,10 +408,10 @@ export function IoTHubPage() {
                       <CardContent className="space-y-3">
                         {/* Device-specific controls */}
                         {device.device_type === 'scanner' && (
-                          <ScannerControl device={device} agentId={agentId} agentOnline={agentHealth?.status === 'online'} />
+                          <ScannerControl device={device} agentId={agentId ?? ''} agentOnline={agentHealth?.status === 'online'} />
                         )}
                         {device.device_type === 'printer' && (
-                          <PrinterControl device={device} agentId={agentId} agentOnline={agentHealth?.status === 'online'} />
+                          <PrinterControl device={device} agentId={agentId ?? ''} agentOnline={agentHealth?.status === 'online'} />
                         )}
 
                         {/* Action buttons */}
@@ -407,7 +471,7 @@ export function IoTHubPage() {
             </CardHeader>
             <CardContent>
               <DiscoveredDevicesPanel
-                agentId={agentId}
+                agentId={agentId ?? ''}
                 devices={discoveredDevices}
                 isLoading={discoveredLoading}
                 agentOnline={agentHealth?.status === 'online'}
@@ -430,7 +494,7 @@ export function IoTHubPage() {
         open={configDialogOpen}
         onOpenChange={(open) => !open && handleConfigDialogClose()}
         device={selectedDevice}
-        agentId={agentId}
+        agentId={agentId ?? ''}
         onSuccess={handleConfigDialogClose}
       />
 

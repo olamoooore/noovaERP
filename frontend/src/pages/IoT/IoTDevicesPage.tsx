@@ -14,10 +14,7 @@ import { ScannerControl } from '@/components/iot/ScannerControl'
 import { PrinterControl } from '@/components/iot/PrinterControl'
 import echo from '@/lib/echo'
 import { getConnectionIcon, getConnectionLabel } from '@/lib/iot-helpers'
-import { getLinkedAgentId } from '@/services/printService'
-
-// Hardcoded agent ID for now - will be dynamic later
-const DEFAULT_AGENT_ID = 'agent-676da24f-97d3-4d74-bcd2-c235a30dbac7'
+import { useLinkedAgent } from '@/hooks/useLinkedAgent'
 
 export function IoTDevicesPage() {
   const [selectedTab, setSelectedTab] = useState('configured')
@@ -26,12 +23,14 @@ export function IoTDevicesPage() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceConfiguration | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const agentId = getLinkedAgentId() ?? DEFAULT_AGENT_ID
+  const { agentId, isLoading: agentLinkLoading } = useLinkedAgent()
+  const hasLinkedAgent = !!agentId
 
   // Fetch agent health
   const { data: agentHealth, isLoading: healthLoading, error: healthError } = useQuery({
     queryKey: ['agent-health', agentId],
-    queryFn: () => iotApi.checkAgentHealth(agentId),
+    queryFn: () => iotApi.checkAgentHealth(agentId!),
+    enabled: hasLinkedAgent,
     refetchInterval: 30000, // Poll every 30 seconds
     retry: 1,
   })
@@ -39,19 +38,24 @@ export function IoTDevicesPage() {
   // Fetch device configurations
   const { data: deviceConfigsData, isLoading: configsLoading } = useQuery({
     queryKey: ['device-configs', agentId],
-    queryFn: () => iotApi.getDeviceConfigs(agentId),
+    queryFn: () => iotApi.getDeviceConfigs(agentId!),
+    enabled: hasLinkedAgent,
   })
 
   // Fetch discovered devices - only when agent is online
   const { data: discoveredData, isLoading: discoveredLoading } = useQuery({
     queryKey: ['discovered-devices', agentId],
-    queryFn: () => iotApi.getDiscoveredDevices({ agentId }),
-    enabled: agentHealth?.status === 'online', // Only fetch when agent is online
+    queryFn: () => iotApi.getDiscoveredDevices({ agentId: agentId! }),
+    enabled: hasLinkedAgent && agentHealth?.status === 'online', // Only fetch when agent is online
   })
 
   // Trigger discovery scan
   const scanMutation = useMutation({
     mutationFn: () => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
       // Check if agent is online before scanning
       if (agentHealth?.status !== 'online') {
         throw new Error('Agent is not connected. Please ensure the Local Agent is running.')
@@ -76,7 +80,13 @@ export function IoTDevicesPage() {
 
   // Reload device
   const reloadDeviceMutation = useMutation({
-    mutationFn: (deviceId: string) => iotApi.reloadDevice(agentId, deviceId),
+    mutationFn: (deviceId: string) => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
+      return iotApi.reloadDevice(agentId, deviceId)
+    },
     onSuccess: () => {
       toast({
         title: 'Device reloaded',
@@ -94,7 +104,13 @@ export function IoTDevicesPage() {
 
   // Reload all devices
   const reloadAllMutation = useMutation({
-    mutationFn: () => iotApi.reloadAllDevices(agentId),
+    mutationFn: () => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
+      return iotApi.reloadAllDevices(agentId)
+    },
     onSuccess: (data) => {
       toast({
         title: 'All devices reloaded',
@@ -112,7 +128,13 @@ export function IoTDevicesPage() {
 
   // Delete device
   const deleteDeviceMutation = useMutation({
-    mutationFn: (deviceId: string) => iotApi.deleteDeviceConfig(agentId, deviceId),
+    mutationFn: (deviceId: string) => {
+      if (!agentId) {
+        throw new Error('No linked agent configured for this tenant.')
+      }
+
+      return iotApi.deleteDeviceConfig(agentId, deviceId)
+    },
     onSuccess: () => {
       toast({
         title: 'Device deleted',
@@ -222,11 +244,29 @@ export function IoTDevicesPage() {
   }
 
   const handleAddNew = () => {
+    if (!agentId) {
+      toast({
+        title: 'No linked agent',
+        description: 'Link this POS session to a tenant agent before adding devices.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setSelectedDevice(null)
     setConfigDialogOpen(true)
   }
 
   const handleConfigureDiscovered = (discoveredDevice: DiscoveredDevice) => {
+    if (!agentId) {
+      toast({
+        title: 'No linked agent',
+        description: 'Link this POS session to a tenant agent before configuring devices.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     // Pre-fill the form with discovered device data
     setSelectedDevice({
       id: '',
@@ -256,6 +296,47 @@ export function IoTDevicesPage() {
   }
 
   const onlineDevicesCount = deviceConfigs.filter(d => d.currentStatus === 'ready' || d.currentStatus === 'online').length
+
+  if (!agentLinkLoading && !hasLinkedAgent) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-xl">
+              <Icon icon="solar:smart-speaker-bold-duotone" className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">NoovaERP IoT Hub</h1>
+              <p className="text-muted-foreground">
+                Manage your connected hardware devices
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => setAgentConfigDialogOpen(true)}>
+            <Icon icon="solar:settings-bold" className="mr-2 h-4 w-4" />
+            Agent Config
+          </Button>
+        </div>
+
+        <Card>
+          <CardContent className="py-10">
+            <div className="flex flex-col items-center text-center gap-3">
+              <Icon icon="solar:link-broken-bold-duotone" className="h-14 w-14 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">No linked agent configured</h2>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                This tenant session is not linked to a POS agent. Link the current machine's agent ID first so device discovery and scanner controls target the correct tenant agent.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <AgentConfigDialog
+          open={agentConfigDialogOpen}
+          onOpenChange={setAgentConfigDialogOpen}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -583,7 +664,7 @@ export function IoTDevicesPage() {
                   <PrinterControl
                     key={device.id}
                     device={device}
-                    agentId={agentId}
+                    agentId={agentId ?? ''}
                     agentOnline={agentHealth?.status === 'online'}
                   />
                 ))}
@@ -619,7 +700,7 @@ export function IoTDevicesPage() {
                   <ScannerControl
                     key={device.id}
                     device={device}
-                    agentId={agentId}
+                    agentId={agentId ?? ''}
                     agentOnline={agentHealth?.status === 'online'}
                   />
                 ))}
@@ -876,7 +957,7 @@ export function IoTDevicesPage() {
         {/* Discovered Devices Tab */}
         <TabsContent value="discovered" className="space-y-4">
           <DiscoveredDevicesPanel
-            agentId={agentId}
+            agentId={agentId ?? ''}
             devices={discoveredDevices}
             isLoading={discoveredLoading}
             agentOnline={agentHealth?.status === 'online'}
@@ -890,7 +971,7 @@ export function IoTDevicesPage() {
         open={configDialogOpen}
         onOpenChange={setConfigDialogOpen}
         device={selectedDevice}
-        agentId={agentId}
+        agentId={agentId ?? ''}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['device-configs'] })
           setConfigDialogOpen(false)
