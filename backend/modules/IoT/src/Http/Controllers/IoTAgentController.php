@@ -3,6 +3,7 @@
 namespace Modules\IoT\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
@@ -387,12 +388,23 @@ class IoTAgentController extends Controller
             // Get agent URL - from device config, request, or default
             $agentUrl = $request->query('agent_url') 
                 ?? ($agentDevice?->config['agent_url'] ?? null)
+                ?? Setting::getValue('iot_agent_url')
                 ?? config('iot.agent.default_url', 'http://localhost:3002');
+            $agentToken = $request->query('agent_token')
+                ?? ($agentDevice?->config['agent_token'] ?? null)
+                ?? Setting::getValue('iot_agent_token');
             
             // Try to ping the agent directly
             try {
-                $response = \Illuminate\Support\Facades\Http::timeout(5)
-                    ->get($agentUrl . '/api/health');
+                $http = \Illuminate\Support\Facades\Http::withoutVerifying()->timeout(5);
+
+                if (!empty($agentToken)) {
+                    $http = $http->withHeaders([
+                        'Authorization' => 'Bearer ' . $agentToken,
+                    ]);
+                }
+
+                $response = $http->get($agentUrl . '/api/health');
 
                 if ($response->successful()) {
                     $healthData = $response->json();

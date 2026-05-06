@@ -6,8 +6,8 @@ export interface DeviceConfiguration {
   id: string
   agentId: string
   // Support both camelCase and snake_case from API responses
-  deviceType?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display'
-  device_type?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display'
+  deviceType?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display' | 'kiosk'
+  device_type?: 'printer' | 'scanner' | 'terminal' | 'biometric' | 'scale' | 'display' | 'kiosk'
   driverType?: string
   driver_type?: string
   name: string
@@ -143,8 +143,23 @@ export interface AgentHealth {
 export const iotApi = {
   // Agent Health
   checkAgentHealth: async (agentId: string): Promise<AgentHealth> => {
-    const response = await api.get(`/iot/agents/${agentId}/health`)
-    return response.data
+    const response = await api.get(`/iot/agent/verify/${agentId}`)
+    const payload = response.data
+
+    return {
+      success: !!payload.success,
+      status: payload.success && payload.data?.status === 'online' ? 'online' : 'offline',
+      last_heartbeat: payload.success ? new Date().toISOString() : undefined,
+      data: payload.success
+        ? {
+            agentId: payload.data?.agent_id ?? agentId,
+            version: payload.data?.agent_version ?? 'Unknown',
+            uptime: payload.data?.uptime ?? 0,
+            devices: payload.data?.devices ?? [],
+          }
+        : undefined,
+      error: payload.success ? undefined : payload.message,
+    }
   },
 
   getAgentDevices: async (agentId: string) => {

@@ -14,6 +14,7 @@ import { ScannerControl } from '@/components/iot/ScannerControl'
 import { PrinterControl } from '@/components/iot/PrinterControl'
 import echo from '@/lib/echo'
 import { getConnectionIcon, getConnectionLabel } from '@/lib/iot-helpers'
+import { getLinkedAgentId } from '@/services/printService'
 
 // Hardcoded agent ID for now - will be dynamic later
 const DEFAULT_AGENT_ID = 'agent-676da24f-97d3-4d74-bcd2-c235a30dbac7'
@@ -25,25 +26,26 @@ export function IoTDevicesPage() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceConfiguration | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const agentId = getLinkedAgentId() ?? DEFAULT_AGENT_ID
 
   // Fetch agent health
   const { data: agentHealth, isLoading: healthLoading, error: healthError } = useQuery({
-    queryKey: ['agent-health', DEFAULT_AGENT_ID],
-    queryFn: () => iotApi.checkAgentHealth(DEFAULT_AGENT_ID),
+    queryKey: ['agent-health', agentId],
+    queryFn: () => iotApi.checkAgentHealth(agentId),
     refetchInterval: 30000, // Poll every 30 seconds
     retry: 1,
   })
 
   // Fetch device configurations
   const { data: deviceConfigsData, isLoading: configsLoading } = useQuery({
-    queryKey: ['device-configs', DEFAULT_AGENT_ID],
-    queryFn: () => iotApi.getDeviceConfigs(DEFAULT_AGENT_ID),
+    queryKey: ['device-configs', agentId],
+    queryFn: () => iotApi.getDeviceConfigs(agentId),
   })
 
   // Fetch discovered devices - only when agent is online
   const { data: discoveredData, isLoading: discoveredLoading } = useQuery({
-    queryKey: ['discovered-devices', DEFAULT_AGENT_ID],
-    queryFn: () => iotApi.getDiscoveredDevices({ agentId: DEFAULT_AGENT_ID }),
+    queryKey: ['discovered-devices', agentId],
+    queryFn: () => iotApi.getDiscoveredDevices({ agentId }),
     enabled: agentHealth?.status === 'online', // Only fetch when agent is online
   })
 
@@ -54,7 +56,7 @@ export function IoTDevicesPage() {
       if (agentHealth?.status !== 'online') {
         throw new Error('Agent is not connected. Please ensure the Local Agent is running.')
       }
-      return iotApi.triggerDiscoveryScan(DEFAULT_AGENT_ID)
+      return iotApi.triggerDiscoveryScan(agentId)
     },
     onSuccess: (data) => {
       toast({
@@ -74,7 +76,7 @@ export function IoTDevicesPage() {
 
   // Reload device
   const reloadDeviceMutation = useMutation({
-    mutationFn: (deviceId: string) => iotApi.reloadDevice(DEFAULT_AGENT_ID, deviceId),
+    mutationFn: (deviceId: string) => iotApi.reloadDevice(agentId, deviceId),
     onSuccess: () => {
       toast({
         title: 'Device reloaded',
@@ -92,7 +94,7 @@ export function IoTDevicesPage() {
 
   // Reload all devices
   const reloadAllMutation = useMutation({
-    mutationFn: () => iotApi.reloadAllDevices(DEFAULT_AGENT_ID),
+    mutationFn: () => iotApi.reloadAllDevices(agentId),
     onSuccess: (data) => {
       toast({
         title: 'All devices reloaded',
@@ -110,7 +112,7 @@ export function IoTDevicesPage() {
 
   // Delete device
   const deleteDeviceMutation = useMutation({
-    mutationFn: (deviceId: string) => iotApi.deleteDeviceConfig(DEFAULT_AGENT_ID, deviceId),
+    mutationFn: (deviceId: string) => iotApi.deleteDeviceConfig(agentId, deviceId),
     onSuccess: () => {
       toast({
         title: 'Device deleted',
@@ -133,8 +135,10 @@ export function IoTDevicesPage() {
 
   // WebSocket listeners for real-time updates
   useEffect(() => {
+    const echoClient = echo
+
     // Skip WebSocket setup if echo is not available
-    if (!echo) {
+    if (!echoClient) {
       console.log('WebSocket disabled - skipping real-time listeners')
       return
     }
@@ -142,7 +146,7 @@ export function IoTDevicesPage() {
     console.log('Setting up WebSocket listeners for IoT devices...')
 
     // Listen for device configuration updates
-    echo.channel('iot-devices')
+    echoClient.channel('iot-devices')
       .listen('.device.config.updated', (event: any) => {
         console.log('Device config updated:', event)
         queryClient.invalidateQueries({ queryKey: ['device-configs'] })
@@ -175,11 +179,11 @@ export function IoTDevicesPage() {
 
     return () => {
       console.log('Cleaning up WebSocket listeners...')
-      echo.leaveChannel('iot-devices')
+      echoClient.leaveChannel('iot-devices')
     }
   }, [queryClient, toast])
 
-  const getDeviceIcon = (type: string) => {
+  const getDeviceIcon = (type?: string) => {
     switch (type) {
       case 'printer':
         return 'solar:printer-bold-duotone'
@@ -196,7 +200,7 @@ export function IoTDevicesPage() {
     }
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'ready':
       case 'online':
@@ -226,7 +230,7 @@ export function IoTDevicesPage() {
     // Pre-fill the form with discovered device data
     setSelectedDevice({
       id: '',
-      agentId: DEFAULT_AGENT_ID,
+      agentId,
       deviceType: 'printer', // Default to printer, user can change
       driverType: 'label-printer-raw',
       name: `${discoveredDevice.manufacturer || 'Unknown'} ${discoveredDevice.model || 'Device'}`,
@@ -321,7 +325,7 @@ export function IoTDevicesPage() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              {agentHealth?.data?.agentId || DEFAULT_AGENT_ID}
+              {agentHealth?.data?.agentId || agentId}
             </p>
           </CardContent>
         </Card>
@@ -579,7 +583,7 @@ export function IoTDevicesPage() {
                   <PrinterControl
                     key={device.id}
                     device={device}
-                    agentId={DEFAULT_AGENT_ID}
+                    agentId={agentId}
                     agentOnline={agentHealth?.status === 'online'}
                   />
                 ))}
@@ -615,7 +619,7 @@ export function IoTDevicesPage() {
                   <ScannerControl
                     key={device.id}
                     device={device}
-                    agentId={DEFAULT_AGENT_ID}
+                    agentId={agentId}
                     agentOnline={agentHealth?.status === 'online'}
                   />
                 ))}
@@ -872,7 +876,7 @@ export function IoTDevicesPage() {
         {/* Discovered Devices Tab */}
         <TabsContent value="discovered" className="space-y-4">
           <DiscoveredDevicesPanel
-            agentId={DEFAULT_AGENT_ID}
+            agentId={agentId}
             devices={discoveredDevices}
             isLoading={discoveredLoading}
             agentOnline={agentHealth?.status === 'online'}
@@ -886,7 +890,7 @@ export function IoTDevicesPage() {
         open={configDialogOpen}
         onOpenChange={setConfigDialogOpen}
         device={selectedDevice}
-        agentId={DEFAULT_AGENT_ID}
+        agentId={agentId}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['device-configs'] })
           setConfigDialogOpen(false)

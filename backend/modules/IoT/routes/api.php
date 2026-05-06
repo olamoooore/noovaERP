@@ -32,7 +32,21 @@ Route::middleware(['auth:sanctum', 'entitlement:iot'])->prefix('iot')->group(fun
     
     // Device Configuration Management (Agent-specific)
     // These routes accept both user tokens (Sanctum) and agent tokens (custom)
-    Route::prefix('agents/{agentId}')->middleware('auth.agent_or_user')->withoutMiddleware('auth:sanctum')->group(function () {
+    Route::prefix('agents/{agentId}')
+        ->withoutMiddleware([
+            'auth:sanctum',
+            'entitlement:iot',
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+        ])
+        ->middleware([
+            'auth.agent_or_user',
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+            'entitlement:iot',
+        ])->group(function () {
         // Agent heartbeat (agent reports it's alive)
         Route::post('heartbeat', [AgentHealthController::class, 'heartbeat']);
         
