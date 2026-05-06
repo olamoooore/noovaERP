@@ -192,6 +192,7 @@ const PurchaseOrderCreatePage = lazy(() => import('@/pages/Inventory/PurchaseOrd
 const WarehouseTransfersPage = lazy(() => import('@/pages/Inventory/WarehouseTransfersPage').then(m => ({ default: m.WarehouseTransfersPage })))
 const WarehouseTransferCreatePage = lazy(() => import('@/pages/Inventory/WarehouseTransferCreatePage').then(m => ({ default: m.WarehouseTransferCreatePage })))
 const WarehousesPage = lazy(() => import('@/pages/Inventory/WarehousesPage').then(m => ({ default: m.WarehousesPage })))
+const InventorySettingsPage = lazy(() => import('@/pages/Inventory/InventorySettingsPage').then(m => ({ default: m.InventorySettingsPage })))
 
 // Payment Gateway Pages
 const PaymentDashboard = lazy(() => import('@/pages/PaymentDashboard').then(m => ({ default: m.PaymentDashboard })))
@@ -259,6 +260,7 @@ function App() {
                 <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
                 <Route path="/inventory/warehouses" element={<WarehousesPage />} />
                 <Route path="/inventory/suppliers" element={<SuppliersPage />} />
+                <Route path="/inventory/settings" element={<InventorySettingsPage />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
                 
                 {/* Sales Routes */}

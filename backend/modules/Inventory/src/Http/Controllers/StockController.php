@@ -5,6 +5,7 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\StockMovement;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\StockAdjustmentReason;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Services\InventoryService;
@@ -14,6 +15,20 @@ class StockController extends Controller
     public function __construct(
         private InventoryService $inventoryService
     ) {}
+
+    private function resolveReasonForType(int $reasonId, string $expectedType): StockAdjustmentReason
+    {
+        $reason = StockAdjustmentReason::findOrFail($reasonId);
+
+        $allowedTypes = $expectedType === 'both' ? ['both'] : [$expectedType, 'both'];
+        if (!in_array($reason->type, $allowedTypes, true)) {
+            throw ValidationException::withMessages([
+                'adjustment_reason_id' => ['Selected reason is not valid for this stock operation.'],
+            ]);
+        }
+
+        return $reason;
+    }
 
     /**
      * Get stock levels for a warehouse
@@ -39,33 +54,132 @@ class StockController extends Controller
     }
 
     /**
-     * Stock In operation
+     * Stock In operation (SME mode only)
+     *
+     * Adds stock directly to a warehouse without a Purchase Order / GRN.
+     * Requires sme_mode = true in inventory_settings.
      */
     public function stockIn(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock-in mutations are disabled. Use a controlled inventory document workflow.',
-        ], 410);
+        $settings = \Modules\Inventory\Models\InventorySettings::current();
+
+        if (!$settings->sme_mode) {
+            return response()->json([
+                'message' => 'Direct stock-in is not enabled. Enable SME Mode in Inventory Settings, or use the Purchase Order → Goods Receipt workflow.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'product_id'           => 'required|exists:products,id',
+            'warehouse_id'         => 'required|exists:warehouses,id',
+            'quantity'             => 'required|integer|min:1',
+            'reference'            => 'nullable|string|max:255',
+            'notes'                => 'nullable|string',
+            'batch_number'         => 'nullable|string|max:100',
+            'expiry_date'          => 'nullable|date',
+            'adjustment_reason_id' => 'required|exists:stock_adjustment_reasons,id',
+        ]);
+
+        $reason = $this->resolveReasonForType($validated['adjustment_reason_id'], 'increase');
+
+        $movement = $this->inventoryService->adjustStock(
+            productId:          $validated['product_id'],
+            warehouseId:        $validated['warehouse_id'],
+            quantity:           $validated['quantity'],
+            type:               'in',
+            reference:          $validated['reference'] ?? null,
+            referenceType:      null,
+            referenceId:        null,
+            adjustmentReasonId: $reason->id,
+            notes:              $validated['notes'] ?? null,
+            batchNumber:        $validated['batch_number'] ?? null,
+            expiryDate:         isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
+        );
+
+        return response()->json($movement->load('product', 'warehouse'), 201);
     }
 
     /**
-     * Stock Out operation
+     * Stock Out operation (SME mode only)
+     *
+     * Removes stock directly from a warehouse without a Sales Order.
+     * Requires sme_mode = true in inventory_settings.
      */
     public function stockOut(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock-out mutations are disabled. Use a controlled inventory document workflow.',
-        ], 410);
+        $settings = \Modules\Inventory\Models\InventorySettings::current();
+
+        if (!$settings->sme_mode) {
+            return response()->json([
+                'message' => 'Direct stock-out is not enabled. Enable SME Mode in Inventory Settings, or use the Sales Order fulfillment workflow.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'product_id'           => 'required|exists:products,id',
+            'warehouse_id'         => 'required|exists:warehouses,id',
+            'quantity'             => 'required|integer|min:1',
+            'reference'            => 'nullable|string|max:255',
+            'notes'                => 'nullable|string',
+            'adjustment_reason_id' => 'required|exists:stock_adjustment_reasons,id',
+        ]);
+
+        $reason = $this->resolveReasonForType($validated['adjustment_reason_id'], 'decrease');
+
+        $movement = $this->inventoryService->adjustStock(
+            productId:          $validated['product_id'],
+            warehouseId:        $validated['warehouse_id'],
+            quantity:           $validated['quantity'],
+            type:               'out',
+            reference:          $validated['reference'] ?? null,
+            referenceType:      null,
+            referenceId:        null,
+            adjustmentReasonId: $reason->id,
+            notes:              $validated['notes'] ?? null,
+        );
+
+        return response()->json($movement->load('product', 'warehouse'), 201);
     }
 
     /**
-     * Stock Adjustment operation
+     * Stock Adjustment operation (SME mode only)
+     *
+     * Sets stock quantity to a new absolute value for a product/warehouse pair.
+     * Requires sme_mode = true in inventory_settings.
      */
     public function adjust(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock adjustments are disabled. Use an approved inventory adjustment workflow.',
-        ], 410);
+        $settings = \Modules\Inventory\Models\InventorySettings::current();
+
+        if (!$settings->sme_mode) {
+            return response()->json([
+                'message' => 'Direct stock adjustment is not enabled. Enable SME Mode in Inventory Settings to use this feature.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'product_id'           => 'required|exists:products,id',
+            'warehouse_id'         => 'required|exists:warehouses,id',
+            'new_quantity'         => 'required|integer|min:0',
+            'adjustment_reason_id' => 'required|exists:stock_adjustment_reasons,id',
+            'notes'                => 'nullable|string',
+        ]);
+
+        $reason = $this->resolveReasonForType($validated['adjustment_reason_id'], 'both');
+
+        $movement = $this->inventoryService->adjustStock(
+            productId:          $validated['product_id'],
+            warehouseId:        $validated['warehouse_id'],
+            quantity:           $validated['new_quantity'],
+            type:               'adjustment',
+            reference:          null,
+            referenceType:      null,
+            referenceId:        null,
+            adjustmentReasonId: $reason->id,
+            notes:              $validated['notes'] ?? null,
+        );
+
+        return response()->json($movement->load('product', 'warehouse'), 201);
     }
 
     /**

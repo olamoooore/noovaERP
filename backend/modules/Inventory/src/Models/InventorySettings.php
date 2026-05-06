@@ -18,6 +18,7 @@ class InventorySettings extends Model
         'require_adjustment_approval',
         'low_stock_threshold_days',
         'enable_barcode_scanning',
+        'sme_mode',
     ];
 
     protected $casts = [
@@ -29,6 +30,7 @@ class InventorySettings extends Model
         'require_adjustment_approval' => 'boolean',
         'low_stock_threshold_days' => 'integer',
         'enable_barcode_scanning' => 'boolean',
+        'sme_mode' => 'boolean',
     ];
 
     public static function current(): self

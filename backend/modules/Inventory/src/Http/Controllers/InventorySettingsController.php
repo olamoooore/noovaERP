@@ -25,6 +25,7 @@ class InventorySettingsController extends Controller
             'require_adjustment_approval' => 'boolean',
             'low_stock_threshold_days' => 'nullable|integer|min:1|max:365',
             'enable_barcode_scanning' => 'boolean',
+            'sme_mode' => 'boolean',
         ]);
 
         $settings = InventorySettings::current();

@@ -99,6 +99,7 @@ export function GeneralSettings() {
       const response = await api.get('/accounting/settings')
       return response.data.data
     },
+    retry: false,
   })
 
   useEffect(() => {

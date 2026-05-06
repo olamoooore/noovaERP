@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,7 +50,9 @@ interface Warehouse {
 interface StockMovement {
   id: number
   product: Product
+  product_id?: number
   warehouse?: Warehouse
+  warehouse_id?: number
   type: string
   quantity: number
   old_quantity: number
@@ -66,6 +68,10 @@ interface AdjustmentReason {
   name: string
   code: string
   type: string
+}
+
+interface InventorySettings {
+  sme_mode: boolean
 }
 
 interface PaginatedResponse<T> {
@@ -96,8 +102,15 @@ const normalizePaginatedResponse = <T,>(payload: any): PaginatedResponse<T> => {
 type OperationType = 'in' | 'out' | 'adjust'
 type ActiveTab = 'products' | 'movements' | 'low-stock' | 'out-of-stock'
 
+const isReasonAllowedForOperation = (reason: AdjustmentReason, operationType: OperationType) => {
+  if (operationType === 'in') return reason.type === 'increase' || reason.type === 'both'
+  if (operationType === 'out') return reason.type === 'decrease' || reason.type === 'both'
+  return reason.type === 'both'
+}
+
 export function StockManagementPage() {
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   
   // Tab state
   const [activeTab, setActiveTab] = useState<ActiveTab>('products')
@@ -142,6 +155,8 @@ export function StockManagementPage() {
       const res = await api.get('/products', { params })
       return normalizePaginatedResponse<Product>(res.data)
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
   const { data: warehouses } = useQuery<Warehouse[]>({
@@ -156,6 +171,14 @@ export function StockManagementPage() {
     queryKey: ['adjustment-reasons'],
     queryFn: async () => {
       const res = await api.get('/stock/adjustment-reasons')
+      return res.data
+    },
+  })
+
+  const { data: inventorySettings } = useQuery<InventorySettings>({
+    queryKey: ['inventory-settings'],
+    queryFn: async () => {
+      const res = await api.get('/inventory/settings')
       return res.data
     },
   })
@@ -203,19 +226,226 @@ export function StockManagementPage() {
     },
   })
 
-  const showWorkflowToast = (type: OperationType) => {
-    const descriptions: Record<OperationType, string> = {
-      in: 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow to receive inventory.',
-      out: 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows to reduce inventory.',
-      adjust: 'Direct stock adjustment is disabled. Use an approved inventory adjustment workflow instead.',
-    }
+  const invalidateStockQueries = () => {
+    const keysToRefresh = new Set([
+      'stock-movements',
+      'products',
+      'products-stock',
+      'products-list',
+      'products-search',
+      'product-detail',
+      'low-stock',
+      'out-of-stock',
+      'inventory-dashboard',
+    ])
 
-    toast({
-      title: 'Direct stock mutations are disabled',
-      description: descriptions[type],
-      variant: 'destructive',
+    queryClient.invalidateQueries({
+      predicate: (query) => keysToRefresh.has(String(query.queryKey[0] ?? '')),
     })
   }
+
+  const assertMovementResponse = (payload: any) => {
+    if (!payload || typeof payload !== 'object' || typeof payload.id !== 'number') {
+      throw new Error('Unexpected stock mutation response from server.')
+    }
+    return payload
+  }
+
+  const getMovementDelta = (movement: StockMovement) => {
+    if (movement.type === 'adjustment') {
+      return movement.balance_after - movement.old_quantity
+    }
+
+    if (['out', 'sale', 'transfer_out'].includes(movement.type)) {
+      return -Math.abs(movement.quantity)
+    }
+
+    return Math.abs(movement.quantity)
+  }
+
+  const syncProductStockInCache = (movement: StockMovement) => {
+    const productId = movement?.product?.id ?? movement?.product_id
+    const serverStockQuantity = movement?.product?.stock_quantity
+    const movementDelta = getMovementDelta(movement)
+
+    if (typeof productId !== 'number') {
+      return
+    }
+
+    queryClient.setQueriesData({
+      predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
+    }, (existing: any) => {
+      if (!existing) return existing
+
+      if (Array.isArray(existing)) {
+        return existing.map((item) => {
+          if (item?.id !== productId) return item
+          const nextStockQuantity = typeof serverStockQuantity === 'number'
+            ? serverStockQuantity
+            : Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
+
+          return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
+        })
+      }
+
+      if (Array.isArray(existing?.data)) {
+        return {
+          ...existing,
+          data: existing.data.map((item: any) => {
+            if (item?.id !== productId) return item
+            const nextStockQuantity = typeof serverStockQuantity === 'number'
+              ? serverStockQuantity
+              : Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
+
+            return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
+          }),
+        }
+      }
+
+      return existing
+    })
+
+    queryClient.setQueriesData({
+      predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
+    }, (existing: any) => {
+      if (!existing) return existing
+      const nextStockQuantity = typeof serverStockQuantity === 'number'
+        ? serverStockQuantity
+        : Math.max(0, Number(existing?.stock_quantity ?? existing?.stock ?? 0) + movementDelta)
+
+      return { ...existing, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
+    })
+  }
+
+  const refreshProductStockInCache = async (productId: number) => {
+    const response = await api.get(`/stock/product/${productId}`)
+    const stockLevels = Array.isArray(response.data) ? response.data : []
+    const totalStock = stockLevels.reduce((sum, stockLevel) => sum + Number(stockLevel.quantity ?? 0), 0)
+
+    queryClient.setQueriesData({
+      predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
+    }, (existing: any) => {
+      if (!existing) return existing
+
+      if (Array.isArray(existing)) {
+        return existing.map((item) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item)
+      }
+
+      if (Array.isArray(existing?.data)) {
+        return {
+          ...existing,
+          data: existing.data.map((item: any) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item),
+        }
+      }
+
+      return existing
+    })
+
+    queryClient.setQueriesData({
+      predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
+    }, (existing: any) => {
+      if (!existing) return existing
+      return { ...existing, stock_quantity: totalStock, stock: totalStock }
+    })
+
+    return totalStock
+  }
+
+  const refetchStockQueries = async () => {
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['products-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['stock-movements'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['low-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['out-of-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['inventory-dashboard'], type: 'active' }),
+    ])
+  }
+
+  const stockInMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/in', {
+        product_id: parseInt(productId),
+        warehouse_id: parseInt(warehouseId),
+        quantity: parseInt(quantity),
+        reference: reference || null,
+        notes: notes || null,
+        adjustment_reason_id: parseInt(reasonId),
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: async (movement) => {
+      syncProductStockInCache(movement)
+      const updatedProductId = movement?.product?.id ?? movement?.product_id
+      if (typeof updatedProductId === 'number') {
+        await refreshProductStockInCache(updatedProductId)
+      }
+      invalidateStockQueries()
+      await refetchStockQueries()
+      toast({ title: 'Stock added successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to add stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
+
+  const stockOutMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/out', {
+        product_id: parseInt(productId),
+        warehouse_id: parseInt(warehouseId),
+        quantity: parseInt(quantity),
+        reference: reference || null,
+        notes: notes || null,
+        adjustment_reason_id: parseInt(reasonId),
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: async (movement) => {
+      syncProductStockInCache(movement)
+      const updatedProductId = movement?.product?.id ?? movement?.product_id
+      if (typeof updatedProductId === 'number') {
+        await refreshProductStockInCache(updatedProductId)
+      }
+      invalidateStockQueries()
+      await refetchStockQueries()
+      toast({ title: 'Stock removed successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to remove stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
+
+  const adjustMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/adjust', {
+        product_id: parseInt(productId),
+        warehouse_id: parseInt(warehouseId),
+        new_quantity: parseInt(newQuantity),
+        adjustment_reason_id: parseInt(reasonId),
+        notes: notes || null,
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: async (movement) => {
+      syncProductStockInCache(movement)
+      const updatedProductId = movement?.product?.id ?? movement?.product_id
+      if (typeof updatedProductId === 'number') {
+        await refreshProductStockInCache(updatedProductId)
+      }
+      invalidateStockQueries()
+      await refetchStockQueries()
+      toast({ title: 'Stock adjusted successfully' })
+      closeDialog()
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to adjust stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
 
   const closeDialog = () => {
     setIsDialogOpen(false)
@@ -242,18 +472,31 @@ export function StockManagementPage() {
       return
     }
 
+    if (inventorySettings && !inventorySettings.sme_mode) {
+      toast({
+        title: 'SME Mode is disabled',
+        description: 'Enable SME Mode in Inventory Settings before using direct stock entry.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     if (operationType === 'adjust') {
       if (newQuantity === '' || !reasonId) {
         toast({ title: 'Please fill all required fields', variant: 'destructive' })
         return
       }
-      showWorkflowToast('adjust')
+      adjustMutation.mutate()
     } else {
-      if (!quantity || parseInt(quantity) <= 0) {
+      if (!quantity || parseInt(quantity) <= 0 || !reasonId) {
         toast({ title: 'Please enter a valid quantity', variant: 'destructive' })
         return
       }
-      showWorkflowToast(operationType)
+      if (operationType === 'in') {
+        stockInMutation.mutate()
+      } else {
+        stockOutMutation.mutate()
+      }
     }
   }
 
@@ -265,9 +508,10 @@ export function StockManagementPage() {
     new Map([...products, ...lowStockItems, ...outOfStockItems].map((product) => [product.id, product])).values()
   )
   const selectedProduct = dialogProducts.find(p => p.id === parseInt(productId))
+  const availableReasons = (reasons || []).filter((reason) => isReasonAllowedForOperation(reason, operationType))
   const lowStockCount = inventoryDashboard?.summary?.low_stock_count ?? lowStockItems.length
   const outOfStockCount = inventoryDashboard?.summary?.out_of_stock_count ?? outOfStockItems.length
-  const isSubmitting = false
+  const isSubmitting = stockInMutation.isPending || stockOutMutation.isPending || adjustMutation.isPending
 
   const getTypeConfig = (type: string) => {
     const configs: Record<string, { color: string; icon: string; label: string }> = {
@@ -337,6 +581,18 @@ export function StockManagementPage() {
 
   return (
     <div className="space-y-6">
+      {inventorySettings && !inventorySettings.sme_mode && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <Icon icon="solar:info-circle-bold" className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <span className="font-semibold">SME Mode is disabled.</span> Direct stock entry requires SME Mode to be enabled.
+              Go to <a href="/inventory/settings" className="underline font-medium">Inventory Settings</a> and turn on <em>SME Mode</em> to use these actions.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -346,15 +602,15 @@ export function StockManagementPage() {
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => openDialog('in')} className="bg-primary hover:bg-primary/90">
             <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-            Stock In
+            Receive Stock
           </Button>
           <Button onClick={() => openDialog('out')} variant="destructive">
             <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
-            Stock Out
+            Remove Stock
           </Button>
           <Button onClick={() => openDialog('adjust')} variant="outline">
             <Icon icon="solar:tuning-2-bold" className="mr-2 h-4 w-4" />
-            Adjust
+            Reconcile Count
           </Button>
         </div>
       </div>
@@ -825,7 +1081,7 @@ export function StockManagementPage() {
 
       {/* Stock Operation Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {operationType === 'in' && (
@@ -833,7 +1089,7 @@ export function StockManagementPage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                     <Icon icon="solar:add-circle-bold" className="h-4 w-4 text-primary" />
                   </div>
-                  Stock In
+                  Receive Stock
                 </>
               )}
               {operationType === 'out' && (
@@ -841,7 +1097,7 @@ export function StockManagementPage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10">
                     <Icon icon="solar:minus-circle-bold" className="h-4 w-4 text-rose-500" />
                   </div>
-                  Stock Out
+                  Remove Stock
                 </>
               )}
               {operationType === 'adjust' && (
@@ -849,14 +1105,14 @@ export function StockManagementPage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
                     <Icon icon="solar:tuning-2-bold" className="h-4 w-4 text-violet-500" />
                   </div>
-                  Adjust Stock
+                  Post Stock Count
                 </>
               )}
             </DialogTitle>
             <DialogDescription>
-              {operationType === 'in' && 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow instead.'}
-              {operationType === 'out' && 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows instead.'}
-              {operationType === 'adjust' && 'Direct stock adjustment is disabled until an approved adjustment workflow is used.'}
+              {operationType === 'in' && 'Record a stock receipt for this product and warehouse.'}
+              {operationType === 'out' && 'Record a stock removal for this product and warehouse.'}
+              {operationType === 'adjust' && 'Reconcile the recorded quantity to the counted quantity.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -937,32 +1193,33 @@ export function StockManagementPage() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">New Quantity</label>
+                  <label className="text-sm font-medium">Counted Quantity</label>
                   <Input
                     type="number"
                     min="0"
-                    placeholder="Enter new stock quantity"
+                    placeholder="Enter physically counted stock"
                     value={newQuantity}
                     onChange={(e) => setNewQuantity(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Adjustment Reason</label>
-                  <Select value={reasonId} onValueChange={setReasonId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a reason" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {reasons?.map((reason) => (
-                        <SelectItem key={reason.id} value={String(reason.id)}>
-                          {reason.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </>
             )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Business Reason</label>
+              <Select value={reasonId} onValueChange={setReasonId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select why stock is changing" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableReasons.map((reason) => (
+                    <SelectItem key={reason.id} value={String(reason.id)}>
+                      {reason.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Reference (for Stock In/Out) */}
             {operationType !== 'adjust' && (
@@ -1005,9 +1262,7 @@ export function StockManagementPage() {
                   Processing...
                 </>
               ) : (
-                <>
-                  Use Supported Workflow
-                </>
+                operationType === 'in' ? 'Receive Stock' : operationType === 'out' ? 'Remove Stock' : 'Post Stock Count'
               )}
             </Button>
           </DialogFooter>

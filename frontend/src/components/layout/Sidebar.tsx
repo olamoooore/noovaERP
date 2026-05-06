@@ -123,6 +123,11 @@ const baseNavItems: NavItem[] = [
         href: '/inventory/suppliers',
         icon: 'solar:users-group-two-rounded-bold-duotone',
       },
+      {
+        title: 'Settings',
+        href: '/inventory/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
     ],
   },
   {
@@ -560,6 +565,7 @@ export function Sidebar() {
       const data = response.data
       return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     },
+    retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 

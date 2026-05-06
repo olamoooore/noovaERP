@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,8 +37,19 @@ interface AdjustmentReason {
   type: string
 }
 
+interface InventorySettings {
+  sme_mode: boolean
+}
+
+const isReasonAllowedForOperation = (reason: AdjustmentReason, operation: 'stock-in' | 'stock-out' | 'adjust') => {
+  if (operation === 'stock-in') return reason.type === 'increase' || reason.type === 'both'
+  if (operation === 'stock-out') return reason.type === 'decrease' || reason.type === 'both'
+  return reason.type === 'both'
+}
+
 export function StockOperationsPage() {
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('stock-in')
 
   // Stock In state
@@ -46,6 +57,7 @@ export function StockOperationsPage() {
     productId: '',
     warehouseId: '',
     quantity: '',
+    reasonId: '',
     reference: '',
     notes: '',
     batchNumber: '',
@@ -57,6 +69,7 @@ export function StockOperationsPage() {
     productId: '',
     warehouseId: '',
     quantity: '',
+    reasonId: '',
     reference: '',
     notes: '',
   })
@@ -91,45 +104,175 @@ export function StockOperationsPage() {
     },
   })
 
-  const showWorkflowToast = (operation: 'stock-in' | 'stock-out' | 'adjust') => {
-    const descriptions = {
-      'stock-in': 'Direct stock-in is disabled. Use the purchase order and goods receipt workflow to receive inventory.',
-      'stock-out': 'Direct stock-out is disabled. Use sales fulfillment or warehouse transfer workflows to reduce inventory.',
-      'adjust': 'Direct stock adjustment is disabled. Use an approved inventory adjustment workflow instead.',
-    }
+  const { data: inventorySettings } = useQuery<InventorySettings>({
+    queryKey: ['inventory-settings'],
+    queryFn: async () => {
+      const res = await api.get('/inventory/settings')
+      return res.data
+    },
+  })
 
-    toast({
-      title: 'Direct stock mutations are disabled',
-      description: descriptions[operation],
-      variant: 'destructive',
+  const invalidateStockQueries = () => {
+    const keysToRefresh = new Set([
+      'stock-movements',
+      'products',
+      'products-stock',
+      'products-list',
+      'products-search',
+      'product-detail',
+      'low-stock',
+      'out-of-stock',
+      'inventory-dashboard',
+    ])
+
+    queryClient.invalidateQueries({
+      predicate: (query) => keysToRefresh.has(String(query.queryKey[0] ?? '')),
     })
   }
 
+  const assertMovementResponse = (payload: any) => {
+    if (!payload || typeof payload !== 'object' || typeof payload.id !== 'number') {
+      throw new Error('Unexpected stock mutation response from server.')
+    }
+    return payload
+  }
+
+  const syncProductStockInCache = (movement: any) => {
+    const productId = movement?.product?.id ?? movement?.product_id
+    const stockQuantity = movement?.product?.stock_quantity
+
+    if (typeof productId !== 'number' || typeof stockQuantity !== 'number') {
+      return
+    }
+
+    queryClient.setQueriesData({
+      predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
+    }, (existing: any) => {
+      if (!existing) return existing
+
+      if (Array.isArray(existing)) {
+        return existing.map((item) => item?.id === productId ? { ...item, stock_quantity: stockQuantity, stock: stockQuantity } : item)
+      }
+
+      if (Array.isArray(existing?.data)) {
+        return {
+          ...existing,
+          data: existing.data.map((item: any) => item?.id === productId ? { ...item, stock_quantity: stockQuantity, stock: stockQuantity } : item),
+        }
+      }
+
+      return existing
+    })
+
+    queryClient.setQueriesData({
+      predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
+    }, (existing: any) => {
+      if (!existing) return existing
+      return { ...existing, stock_quantity: stockQuantity, stock: stockQuantity }
+    })
+  }
+
+  const stockInMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/in', {
+        product_id: parseInt(stockInData.productId),
+        warehouse_id: parseInt(stockInData.warehouseId),
+        quantity: parseInt(stockInData.quantity),
+        adjustment_reason_id: parseInt(stockInData.reasonId),
+        reference: stockInData.reference || null,
+        notes: stockInData.notes || null,
+        batch_number: stockInData.batchNumber || null,
+        expiry_date: stockInData.expiryDate || null,
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: (movement) => {
+      syncProductStockInCache(movement)
+      invalidateStockQueries()
+      toast({ title: 'Stock received successfully' })
+      setStockInData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '', batchNumber: '', expiryDate: '' })
+      setSelectedStockInProduct(undefined)
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to receive stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
+
+  const stockOutMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/out', {
+        product_id: parseInt(stockOutData.productId),
+        warehouse_id: parseInt(stockOutData.warehouseId),
+        quantity: parseInt(stockOutData.quantity),
+        adjustment_reason_id: parseInt(stockOutData.reasonId),
+        reference: stockOutData.reference || null,
+        notes: stockOutData.notes || null,
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: (movement) => {
+      syncProductStockInCache(movement)
+      invalidateStockQueries()
+      toast({ title: 'Stock removed successfully' })
+      setStockOutData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '' })
+      setSelectedStockOutProduct(undefined)
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to remove stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
+
+  const adjustMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/stock/adjust', {
+        product_id: parseInt(adjustData.productId),
+        warehouse_id: parseInt(adjustData.warehouseId),
+        new_quantity: parseInt(adjustData.newQuantity),
+        adjustment_reason_id: adjustData.reasonId ? parseInt(adjustData.reasonId) : undefined,
+        notes: adjustData.notes || null,
+      })
+      return assertMovementResponse(response.data)
+    },
+    onSuccess: (movement) => {
+      syncProductStockInCache(movement)
+      invalidateStockQueries()
+      toast({ title: 'Stock adjusted successfully' })
+      setAdjustData({ productId: '', warehouseId: '', newQuantity: '', reasonId: '', notes: '' })
+      setSelectedAdjustProduct(undefined)
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.message || 'Failed to adjust stock'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    },
+  })
+
   const handleStockIn = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!stockInData.productId || !stockInData.warehouseId || !stockInData.quantity) {
+    if (!stockInData.productId || !stockInData.warehouseId || !stockInData.quantity || !stockInData.reasonId) {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    showWorkflowToast('stock-in')
+    stockInMutation.mutate()
   }
 
   const handleStockOut = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!stockOutData.productId || !stockOutData.warehouseId || !stockOutData.quantity) {
+    if (!stockOutData.productId || !stockOutData.warehouseId || !stockOutData.quantity || !stockOutData.reasonId) {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    showWorkflowToast('stock-out')
+    stockOutMutation.mutate()
   }
 
   const handleAdjust = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!adjustData.productId || !adjustData.warehouseId || !adjustData.newQuantity) {
+    if (!adjustData.productId || !adjustData.warehouseId || adjustData.newQuantity === '' || !adjustData.reasonId) {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
-    showWorkflowToast('adjust')
+    adjustMutation.mutate()
   }
 
   return (
@@ -137,23 +280,36 @@ export function StockOperationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Stock Operations</h1>
-          <p className="text-muted-foreground">Manage stock movements - add, remove, or adjust inventory</p>
+          <p className="text-muted-foreground">Record business events that change stock: receipts, removals, and counted balances</p>
         </div>
       </div>
+
+      {inventorySettings && !inventorySettings.sme_mode && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <Icon icon="solar:info-circle-bold" className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <span className="font-semibold">SME Mode is disabled.</span> Direct stock entry requires SME Mode to be enabled.
+              Go to <a href="/inventory/settings" className="underline font-medium">Inventory Settings</a> and turn on <em>SME Mode</em> to use these operations, or use the{' '}
+              <a href="/inventory/purchase-orders" className="underline font-medium">Purchase Order</a> workflow instead.
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
           <TabsTrigger value="stock-in" className="flex items-center gap-2">
             <Icon icon="solar:arrow-down-bold" className="h-4 w-4" />
-            Stock In
+            Receive Stock
           </TabsTrigger>
           <TabsTrigger value="stock-out" className="flex items-center gap-2">
             <Icon icon="solar:arrow-up-bold" className="h-4 w-4" />
-            Stock Out
+            Remove Stock
           </TabsTrigger>
           <TabsTrigger value="adjust" className="flex items-center gap-2">
             <Icon icon="solar:tuning-square-2-bold" className="h-4 w-4" />
-            Adjust
+            Count Stock
           </TabsTrigger>
         </TabsList>
 
@@ -163,10 +319,10 @@ export function StockOperationsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:arrow-down-bold" className="h-5 w-5 text-green-500" />
-                Add Stock to Inventory
+                Receive Stock
               </CardTitle>
               <CardDescription>
-                Record incoming stock from purchases, returns, or transfers
+                Record a manual stock receipt such as opening balance, found stock, or a return to stock
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -218,6 +374,23 @@ export function StockOperationsPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label>Business Reason *</Label>
+                    <Select
+                      value={stockInData.reasonId}
+                      onValueChange={(v) => setStockInData({ ...stockInData, reasonId: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Why is stock increasing?" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {adjustmentReasons?.filter((reason) => isReasonAllowedForOperation(reason, 'stock-in')).map((reason) => (
+                          <SelectItem key={reason.id} value={String(reason.id)}>{reason.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label>Reference</Label>
                     <Input
                       value={stockInData.reference}
@@ -255,11 +428,9 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full md:w-auto">
-                  <>
-                    <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-                    Use Supported Workflow
-                  </>
+                <Button type="submit" className="w-full md:w-auto" disabled={stockInMutation.isPending}>
+                  <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+                  {stockInMutation.isPending ? 'Receiving...' : 'Receive Stock'}
                 </Button>
               </form>
             </CardContent>
@@ -272,10 +443,10 @@ export function StockOperationsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:arrow-up-bold" className="h-5 w-5 text-red-500" />
-                Remove Stock from Inventory
+                Remove Stock
               </CardTitle>
               <CardDescription>
-                Record outgoing stock for sales, damages, or other reasons
+                Record a business removal such as damage, loss, expiry, or internal consumption
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -327,6 +498,23 @@ export function StockOperationsPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label>Business Reason *</Label>
+                    <Select
+                      value={stockOutData.reasonId}
+                      onValueChange={(v) => setStockOutData({ ...stockOutData, reasonId: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Why is stock decreasing?" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {adjustmentReasons?.filter((reason) => isReasonAllowedForOperation(reason, 'stock-out')).map((reason) => (
+                          <SelectItem key={reason.id} value={String(reason.id)}>{reason.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label>Reference</Label>
                     <Input
                       value={stockOutData.reference}
@@ -346,11 +534,9 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" variant="destructive" className="w-full md:w-auto">
-                  <>
-                    <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
-                    Use Supported Workflow
-                  </>
+                <Button type="submit" variant="destructive" className="w-full md:w-auto" disabled={stockOutMutation.isPending}>
+                  <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
+                  {stockOutMutation.isPending ? 'Removing...' : 'Remove Stock'}
                 </Button>
               </form>
             </CardContent>
@@ -363,10 +549,10 @@ export function StockOperationsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:tuning-square-2-bold" className="h-5 w-5 text-blue-500" />
-                Adjust Stock Quantity
+                Reconcile Stock Count
               </CardTitle>
               <CardDescription>
-                Correct inventory counts after physical stock checks or for discrepancies
+                Reconcile stock to the physically counted quantity after a stock count
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -407,13 +593,13 @@ export function StockOperationsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>New Quantity *</Label>
+                    <Label>Counted Quantity *</Label>
                     <Input
                       type="number"
                       min="0"
                       value={adjustData.newQuantity}
                       onChange={(e) => setAdjustData({ ...adjustData, newQuantity: e.target.value })}
-                      placeholder="Enter new quantity"
+                      placeholder="Enter physically counted quantity"
                     />
                     {selectedAdjustProduct && adjustData.newQuantity && (
                       <p className="text-sm">
@@ -433,19 +619,18 @@ export function StockOperationsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Reason</Label>
+                    <Label>Business Reason *</Label>
                     <Select 
                       value={adjustData.reasonId} 
                       onValueChange={(v) => setAdjustData({ ...adjustData, reasonId: v })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select reason" />
+                        <SelectValue placeholder="Select why stock is being reconciled" />
                       </SelectTrigger>
                       <SelectContent>
-                        {adjustmentReasons?.map((r) => (
+                        {adjustmentReasons?.filter((reason) => isReasonAllowedForOperation(reason, 'adjust')).map((r) => (
                           <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
                         ))}
-                        <SelectItem value="other">Other</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -461,11 +646,9 @@ export function StockOperationsPage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full md:w-auto">
-                  <>
-                    <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                    Use Supported Workflow
-                  </>
+                <Button type="submit" className="w-full md:w-auto" disabled={adjustMutation.isPending}>
+                  <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
+                  {adjustMutation.isPending ? 'Posting...' : 'Post Stock Count'}
                 </Button>
               </form>
             </CardContent>

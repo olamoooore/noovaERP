@@ -19,6 +19,7 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax', 'brand'])
+            ->withSum('stockLevels as aggregated_stock_quantity', 'quantity')
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('search')) {
@@ -122,6 +123,17 @@ class ProductController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $products = $query->paginate($perPage);
+
+        $products->getCollection()->transform(function (Product $product) {
+            $aggregatedStockQuantity = $product->track_inventory
+                ? (int) ($product->aggregated_stock_quantity ?? 0)
+                : (int) ($product->stock_quantity ?? 0);
+
+            $product->setAttribute('stock_quantity', $aggregatedStockQuantity);
+            $product->setAttribute('stock', $aggregatedStockQuantity);
+
+            return $product;
+        });
 
         return response()->json($products);
     }

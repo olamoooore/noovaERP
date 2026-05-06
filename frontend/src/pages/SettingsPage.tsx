@@ -3,6 +3,7 @@ import { PaymentGatewaySettings } from './Settings/PaymentGatewaySettings'
 import { FulfillmentSettings } from './Settings/FulfillmentSettings'
 import { MailSettings } from './Settings/MailSettings'
 import { WhatsAppSettings } from './Settings/WhatsAppSettings'
+import { InventorySettingsPage } from './Inventory/InventorySettingsPage'
 
 // ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
@@ -104,6 +105,7 @@ export function SettingsPage() {
       const res = await api.get('/taxes')
       return Array.isArray(res.data) ? res.data : (res.data?.data || [])
     },
+    retry: false,
   })
 
   const taxesById = useMemo(() => {
@@ -223,6 +225,7 @@ export function SettingsPage() {
           <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="inventory">Inventory</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -243,6 +246,10 @@ export function SettingsPage() {
 
         <TabsContent value="fulfillment">
           <FulfillmentSettings />
+        </TabsContent>
+
+        <TabsContent value="inventory">
+          <InventorySettingsPage />
         </TabsContent>
 
         <TabsContent value="tax">

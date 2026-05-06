@@ -57,6 +57,11 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
         Route::get('/out-of-stock', [StockController::class, 'outOfStock']);
         Route::post('/check-availability', [StockController::class, 'checkAvailability']);
         Route::put('/level/{productId}/{warehouseId}', [StockController::class, 'updateStockLevel']);
+
+        // SME direct stock entry — gated by sme_mode setting in InventorySettings
+        Route::post('/in', [StockController::class, 'stockIn']);
+        Route::post('/out', [StockController::class, 'stockOut']);
+        Route::post('/adjust', [StockController::class, 'adjust']);
     });
 
     // Inventory Reports
