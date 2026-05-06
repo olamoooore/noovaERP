@@ -101,18 +101,25 @@ class AgentHttpClient implements DeviceClientInterface
             ->first();
 
         if ($agentDevice && !empty($agentDevice->config['agent_url'])) {
-            return $agentDevice->config['agent_url'];
+            $url = $agentDevice->config['agent_url'];
+            \Log::debug("AgentHttpClient: found URL in IoTDevice config", ['url' => $url, 'agent_id' => $agentId]);
+            return $url;
         }
 
         // 2. Try legacy agents table
         $agent = DB::table('agents')->where('id', $agentId)->first();
 
         if ($agent && !empty($agent->callback_url)) {
-            return $agent->callback_url;
+            $url = $agent->callback_url;
+            \Log::debug("AgentHttpClient: found URL in legacy agents table", ['url' => $url, 'agent_id' => $agentId]);
+            return $url;
         }
 
         // 3. Fallback to global settings
-        return Setting::getValue('iot_agent_url');
+        $url = Setting::getValue('iot_agent_url');
+        \Log::debug("AgentHttpClient: checking settings", ['url' => $url, 'key' => 'iot_agent_url', 'agent_id' => $agentId]);
+
+        return $url;
     }
     
     /**
