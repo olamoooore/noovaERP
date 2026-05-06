@@ -63,22 +63,26 @@ export function DeviceConfigDialog({
       setDriverType(device.driverType)
       setEnabled(device.enabled)
       
-      // Map old connectionInfo to new structure
+      // Map connectionInfo to form state
       const oldConnectionInfo = device.connectionInfo || {}
       
-      // Determine connection type from existing data
-      if (oldConnectionInfo.vendorId || oldConnectionInfo.productId) {
-        // USB device - treat as agent connection
+      // Determine connection type from existing data (new format first, then legacy)
+      if (oldConnectionInfo.type) {
+        // New multi-protocol format
+        setConnectionType(oldConnectionInfo.type)
+        setConnectionInfo(oldConnectionInfo as DeviceConnectionInfo)
+      } else if (oldConnectionInfo.vendorId || oldConnectionInfo.productId || oldConnectionInfo.port) {
+        // Legacy USB device format - treat as agent connection
         setConnectionType('agent')
         setConnectionInfo({
           type: 'agent',
-          agentId: agentId,
-          devicePath: oldConnectionInfo.port || '',
+          agent_id: agentId,
+          device_path: oldConnectionInfo.port || '',
         })
       } else {
         // Default to agent
         setConnectionType('agent')
-        setConnectionInfo({ type: 'agent', agentId: agentId })
+        setConnectionInfo({ type: 'agent', agent_id: agentId })
       }
     } else if (open) {
       // Reset form for new device
@@ -86,7 +90,7 @@ export function DeviceConfigDialog({
       setDeviceType('printer')
       setDriverType('label-printer-raw')
       setConnectionType('agent')
-      setConnectionInfo({ type: 'agent', agentId: agentId })
+      setConnectionInfo({ type: 'agent', agent_id: agentId })
       setEnabled(true)
     }
   }, [device, open, agentId])
@@ -95,11 +99,13 @@ export function DeviceConfigDialog({
   const handleConnectionTypeChange = (type: ConnectionType) => {
     setConnectionType(type)
     if (type === 'agent') {
-      setConnectionInfo({ type: 'agent', agentId: agentId })
+      setConnectionInfo({ type: 'agent', agent_id: agentId })
     } else {
       setConnectionInfo({ type })
     }
   }
+
+  const isEditingExistingDevice = !!(device && device.id && device.id.trim() !== '')
 
   // Validate form
   const validation = validateConnectionInfo(connectionType, connectionInfo)
@@ -155,7 +161,7 @@ export function DeviceConfigDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {(device && device.id && device.id.trim() !== '') ? 'Edit Device Configuration' : 'Add New Device'}
+            {isEditingExistingDevice ? 'Edit Device Configuration' : 'Add New Device'}
           </DialogTitle>
           <DialogDescription>
             Configure your IoT device with multi-protocol support
@@ -367,7 +373,7 @@ export function DeviceConfigDialog({
               ) : (
                 <>
                   <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                  {device ? 'Update' : 'Create'}
+                  {isEditingExistingDevice ? 'Update' : 'Create'}
                 </>
               )}
             </Button>

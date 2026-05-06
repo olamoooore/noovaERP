@@ -15,6 +15,7 @@ class DeviceConfiguration extends Model
 
     protected $fillable = [
         'agent_id',
+        'connection_type',
         'device_type',
         'driver_type',
         'name',

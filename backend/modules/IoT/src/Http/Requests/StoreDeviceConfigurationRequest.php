@@ -18,12 +18,9 @@ class StoreDeviceConfigurationRequest extends FormRequest
             'driver_type' => ['required', 'string', 'max:100'],
             'name' => ['required', 'string', 'max:255'],
             'enabled' => ['boolean'],
+            'connection_type' => ['nullable', 'string', 'in:agent,mqtt,http,webhook'],
             'connection_info' => ['required', 'array'],
-            'connection_info.vendor_id' => ['nullable', 'string', 'max:50'],
-            'connection_info.product_id' => ['nullable', 'string', 'max:50'],
-            'connection_info.port' => ['nullable', 'string', 'max:500'], // Increased for long USB paths
-            'connection_info.printer_name' => ['nullable', 'string', 'max:255'],
-            'driver_config' => ['nullable', 'array'], // Changed from required to nullable
+            'driver_config' => ['nullable', 'array'],
             'capabilities' => ['array'],
             'capabilities.*' => ['string', 'max:100'],
             'metadata' => ['nullable', 'array'],

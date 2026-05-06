@@ -18,11 +18,8 @@ class UpdateDeviceConfigurationRequest extends FormRequest
             'driver_type' => ['sometimes', 'string', 'max:100'],
             'name' => ['sometimes', 'string', 'max:255'],
             'enabled' => ['sometimes', 'boolean'],
+            'connection_type' => ['sometimes', 'string', 'in:agent,mqtt,http,webhook'],
             'connection_info' => ['sometimes', 'array'],
-            'connection_info.vendor_id' => ['nullable', 'string', 'max:50'],
-            'connection_info.product_id' => ['nullable', 'string', 'max:50'],
-            'connection_info.port' => ['nullable', 'string', 'max:500'], // Increased for long USB paths
-            'connection_info.printer_name' => ['nullable', 'string', 'max:255'],
             'driver_config' => ['sometimes', 'array'],
             'capabilities' => ['sometimes', 'array'],
             'capabilities.*' => ['string', 'max:100'],

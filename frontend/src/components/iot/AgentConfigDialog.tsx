@@ -86,15 +86,33 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
 
   // Save configuration mutation
   const saveMutation = useMutation({
-    mutationFn: (data: { agent_url: string; agent_token?: string; agent_id?: string }) =>
-      iotApi.updateAgentConfig(data),
-    onSuccess: () => {
+    mutationFn: async (data: { agent_url: string; agent_token?: string; agent_id?: string }) => {
+      const configResponse = await iotApi.updateAgentConfig(data)
+
+      const trimmedAgentId = data.agent_id?.trim()
+      if (trimmedAgentId) {
+        await iotApi.linkAgent(trimmedAgentId)
+      }
+
+      return {
+        configResponse,
+        linkedAgentId: trimmedAgentId ?? null,
+      }
+    },
+    onSuccess: ({ linkedAgentId }) => {
+      if (linkedAgentId && typeof window !== 'undefined') {
+        localStorage.setItem('ump_agent_id', linkedAgentId)
+      }
+
       toast({
         title: 'Configuration saved',
-        description: 'Agent configuration has been updated',
+        description: linkedAgentId
+          ? 'Agent configuration saved and linked to this session'
+          : 'Agent configuration has been updated',
       })
       queryClient.invalidateQueries({ queryKey: ['agent-config'] })
       queryClient.invalidateQueries({ queryKey: ['agent-health'] })
+      queryClient.invalidateQueries({ queryKey: ['linked-agent'] })
       onOpenChange(false)
     },
     onError: (error: any) => {

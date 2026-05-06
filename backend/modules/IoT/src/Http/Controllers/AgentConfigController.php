@@ -10,6 +10,21 @@ use App\Models\Setting;
 
 class AgentConfigController extends Controller
 {
+    private function normalizeAgentToken(?string $token): ?string
+    {
+        if (! is_string($token)) {
+            return null;
+        }
+
+        $token = trim($token);
+
+        if ($token === '') {
+            return null;
+        }
+
+        return preg_replace('/^Bearer\s+/i', '', $token) ?: null;
+    }
+
     /**
      * Get agent configuration.
      * 
@@ -51,7 +66,7 @@ class AgentConfigController extends Controller
 
         // Update or create settings using setValue method
         Setting::setValue('iot_agent_url', $request->agent_url);
-        Setting::setValue('iot_agent_token', $request->agent_token);
+        Setting::setValue('iot_agent_token', $this->normalizeAgentToken($request->agent_token));
 
         if ($request->has('agent_id')) {
             Setting::setValue('iot_agent_id', $request->agent_id);
@@ -87,9 +102,11 @@ class AgentConfigController extends Controller
             $http = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->timeout(5);
 
-            if ($request->filled('agent_token')) {
+            $agentToken = $this->normalizeAgentToken($request->agent_token);
+
+            if ($agentToken) {
                 $http = $http->withHeaders([
-                    'Authorization' => 'Bearer ' . $request->agent_token,
+                    'Authorization' => 'Bearer ' . $agentToken,
                 ]);
             }
 

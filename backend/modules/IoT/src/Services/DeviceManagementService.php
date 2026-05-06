@@ -21,6 +21,7 @@ class DeviceManagementService
     {
         $config = DeviceConfiguration::create([
             'agent_id' => $agentId,
+            'connection_type' => $data['connection_type'] ?? 'agent',
             'device_type' => $data['device_type'],
             'driver_type' => $data['driver_type'],
             'name' => $data['name'],
@@ -47,6 +48,7 @@ class DeviceManagementService
     public function updateConfiguration(DeviceConfiguration $config, array $data): DeviceConfiguration
     {
         $config->update([
+            'connection_type' => $data['connection_type'] ?? $config->connection_type,
             'device_type' => $data['device_type'] ?? $config->device_type,
             'driver_type' => $data['driver_type'] ?? $config->driver_type,
             'name' => $data['name'] ?? $config->name,

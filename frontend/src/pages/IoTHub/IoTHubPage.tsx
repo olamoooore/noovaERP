@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import iotApi, { DeviceConfiguration } from '@/lib/iotApi'
+import iotApi, { DeviceConfiguration, DiscoveredDevice } from '@/lib/iotApi'
 import { DeviceConfigDialog } from '@/components/iot/DeviceConfigDialog'
 import { DiscoveredDevicesPanel } from '@/components/iot/DiscoveredDevicesPanel'
 import { AgentConfigDialog } from '@/components/iot/AgentConfigDialog'
@@ -137,9 +137,9 @@ export function IoTHubPage() {
   const deviceConfigs = deviceConfigsData?.data || []
   const discoveredDevices = discoveredData?.data || []
 
-  // Group devices by type
+  // Group devices by type (supports both camelCase and snake_case from API)
   const devicesByType = deviceConfigs.reduce((acc, device) => {
-    const type = device.device_type || 'other'
+    const type = device.deviceType || device.device_type || 'other'
     if (!acc[type]) acc[type] = []
     acc[type].push(device)
     return acc
@@ -161,6 +161,37 @@ export function IoTHubPage() {
     }
 
     setSelectedDevice(null)
+    setConfigDialogOpen(true)
+  }
+
+  const handleConfigureDiscovered = (discoveredDevice: DiscoveredDevice) => {
+    if (!agentId) {
+      toast({
+        title: 'No linked agent',
+        description: 'Link this POS session to a tenant agent before configuring devices.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSelectedDevice({
+      id: '',
+      agentId,
+      deviceType: 'printer',
+      driverType: 'label-printer-raw',
+      name: `${discoveredDevice.manufacturer || 'Unknown'} ${discoveredDevice.model || 'Device'}`,
+      enabled: true,
+      connectionInfo: {
+        vendorId: discoveredDevice.vendorId,
+        productId: discoveredDevice.productId,
+        port: discoveredDevice.port,
+      },
+      driverConfig: {},
+      capabilities: [],
+      currentStatus: 'offline',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as any)
     setConfigDialogOpen(true)
   }
 
@@ -300,7 +331,7 @@ export function IoTHubPage() {
               </div>
               <div className="p-3 bg-muted/50 rounded-lg text-center">
                 <p className="text-2xl font-bold text-green-600">
-                  {deviceConfigs.filter(d => d.status === 'active').length}
+                  {deviceConfigs.filter(d => (d.status || d.currentStatus) === 'active').length}
                 </p>
                 <p className="text-xs text-muted-foreground">Active</p>
               </div>
@@ -394,23 +425,23 @@ export function IoTHubPage() {
                           <div className="flex-1">
                             <CardTitle className="text-base flex items-center gap-2">
                               {device.name}
-                              <Badge variant={device.status === 'active' ? 'default' : 'secondary'}>
-                                {device.status}
+                              <Badge variant={(device.status || device.currentStatus) === 'active' ? 'default' : 'secondary'}>
+                                {device.status || device.currentStatus || 'unknown'}
                               </Badge>
                             </CardTitle>
                             <CardDescription className="flex items-center gap-1 mt-1">
-                              <Icon icon={getConnectionIcon(device.connection_type || 'agent')} className="h-3 w-3" />
-                              {getConnectionLabel(device.connection_type || 'agent')}
+                              <Icon icon={getConnectionIcon(device.connectionType || device.connection_type || 'agent')} className="h-3 w-3" />
+                              {getConnectionLabel(device.connectionType || device.connection_type || 'agent')}
                             </CardDescription>
                           </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
-                        {/* Device-specific controls */}
-                        {device.device_type === 'scanner' && (
+                        {/* Device-specific controls (supports both camelCase and snake_case) */}
+                        {(device.deviceType === 'scanner' || device.device_type === 'scanner') && (
                           <ScannerControl device={device} agentId={agentId ?? ''} agentOnline={agentHealth?.status === 'online'} />
                         )}
-                        {device.device_type === 'printer' && (
+                        {(device.deviceType === 'printer' || device.device_type === 'printer') && (
                           <PrinterControl device={device} agentId={agentId ?? ''} agentOnline={agentHealth?.status === 'online'} />
                         )}
 
@@ -478,11 +509,7 @@ export function IoTHubPage() {
                 onRefresh={() => {
                   queryClient.invalidateQueries({ queryKey: ['discovered-devices'] })
                 }}
-                onConfigureDevice={(device) => {
-                  // Handle device configuration from discovery
-                  queryClient.invalidateQueries({ queryKey: ['device-configs'] })
-                  queryClient.invalidateQueries({ queryKey: ['discovered-devices'] })
-                }}
+                onConfigureDevice={handleConfigureDiscovered}
               />
             </CardContent>
           </Card>

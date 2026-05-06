@@ -42,7 +42,7 @@ export function LinkMiddleware({ onLinked }: LinkMiddlewareProps) {
 
     try {
       // Save to backend (user profile)
-      const response = await api.post('/user/link-agent', {
+      const response = await api.post('/iot/user/link-agent', {
         agent_id: agentId.trim(),
       })
 
@@ -79,7 +79,7 @@ export function LinkMiddleware({ onLinked }: LinkMiddlewareProps) {
     setAgentId('')
 
     // Remove from backend
-    api.post('/user/unlink-agent').catch(() => {
+    api.post('/iot/user/unlink-agent').catch(() => {
       // Silent fail - already removed from localStorage
     })
 

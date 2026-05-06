@@ -12,6 +12,8 @@ class DeviceConfigurationResource extends JsonResource
         return [
             'id' => $this->id,
             'agentId' => $this->agent_id,
+            'connectionType' => $this->connection_type,
+            'connection_type' => $this->connection_type,
             'deviceType' => $this->device_type,
             'driverType' => $this->driver_type,
             'name' => $this->name,
@@ -31,7 +33,8 @@ class DeviceConfigurationResource extends JsonResource
     }
 
     /**
-     * Transform connection_info keys to camelCase for frontend/agent compatibility
+     * Transform connection_info keys for frontend/agent compatibility.
+     * Preserves new multi-protocol keys while maintaining backward compatibility with legacy USB fields.
      */
     private function transformConnectionInfo(?array $connectionInfo): array
     {
@@ -39,11 +42,15 @@ class DeviceConfigurationResource extends JsonResource
             return [];
         }
 
-        return [
-            'vendorId' => $connectionInfo['vendor_id'] ?? $connectionInfo['vendorId'] ?? null,
-            'productId' => $connectionInfo['product_id'] ?? $connectionInfo['productId'] ?? null,
-            'port' => $connectionInfo['port'] ?? null,
-            'printerName' => $connectionInfo['printer_name'] ?? $connectionInfo['printerName'] ?? null,
-        ];
+        // Start with the raw stored data (includes new keys: type, agent_id, device_path, etc.)
+        $result = $connectionInfo;
+
+        // Add legacy camelCase aliases for backward compatibility
+        $result['vendorId'] = $connectionInfo['vendor_id'] ?? $connectionInfo['vendorId'] ?? null;
+        $result['productId'] = $connectionInfo['product_id'] ?? $connectionInfo['productId'] ?? null;
+        $result['port'] = $connectionInfo['port'] ?? $connectionInfo['device_path'] ?? null;
+        $result['printerName'] = $connectionInfo['printer_name'] ?? $connectionInfo['printerName'] ?? null;
+
+        return $result;
     }
 }

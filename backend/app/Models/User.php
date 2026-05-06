@@ -30,6 +30,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'deactivated_at'    => 'datetime',
         'is_active'         => 'boolean',
+        'meta'              => 'array',
         'password'          => 'hashed',
     ];
 

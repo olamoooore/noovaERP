@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Setting;
 use Modules\IoT\Contracts\DeviceClientInterface;
 use Modules\IoT\Models\DeviceConfiguration;
+use Modules\IoT\Models\IoTDevice;
 
 /**
  * HTTP Client for communicating with IoT Local Agents
@@ -18,6 +19,8 @@ use Modules\IoT\Models\DeviceConfiguration;
  */
 class AgentHttpClient implements DeviceClientInterface
 {
+    private const UMP_DEVICES_ENDPOINT = '/api/v1/devices';
+
     /**
      * Send command to device via agent (DeviceClientInterface implementation)
      */
@@ -82,26 +85,135 @@ class AgentHttpClient implements DeviceClientInterface
 
     /**
      * Get agent base URL from database.
+     *
+     * Resolution order:
+     * 1. IoTDevice config (type='agent' with matching agent_id)
+     * 2. Legacy agents table callback_url
+     * 3. Global Setting 'iot_agent_url'
+     *
+     * Returns null if not configured — callers must handle this.
      */
     private function getAgentUrl(string $agentId): ?string
     {
-        // Try to get from agent record in database
+        // 1. Try to get from IoTDevice agent record
+        $agentDevice = IoTDevice::where('type', 'agent')
+            ->where('agent_id', $agentId)
+            ->first();
+
+        if ($agentDevice && !empty($agentDevice->config['agent_url'])) {
+            return $agentDevice->config['agent_url'];
+        }
+
+        // 2. Try legacy agents table
         $agent = DB::table('agents')->where('id', $agentId)->first();
-        
+
         if ($agent && !empty($agent->callback_url)) {
             return $agent->callback_url;
         }
-        
-        // Fallback to settings
+
+        // 3. Fallback to global settings
         return Setting::getValue('iot_agent_url');
     }
     
     /**
-     * Get agent authentication token from settings.
+     * Get agent authentication token.
+     *
+     * Resolution order (matches IoTAgentController::verifyAgent logic):
+     * 1. IoTDevice config (type='agent' with matching agent_id)
+     * 2. Global Setting 'iot_agent_token'
      */
-    private function getAgentToken(): ?string
+    private function getAgentToken(string $agentId): ?string
     {
-        return Setting::getValue('iot_agent_token');
+        $agentDevice = IoTDevice::where('type', 'agent')
+            ->where('agent_id', $agentId)
+            ->first();
+
+        $token = $agentDevice?->config['agent_token']
+            ?? Setting::getValue('iot_agent_token');
+
+        return $this->normalizeBearerToken($token);
+    }
+
+    private function normalizeBearerToken(mixed $token): ?string
+    {
+        if (!is_string($token)) {
+            return null;
+        }
+
+        $token = trim($token);
+
+        if ($token === '') {
+            return null;
+        }
+
+        return preg_replace('/^Bearer\s+/i', '', $token) ?: null;
+    }
+
+    private function getAuthHeaders(string $agentId): array
+    {
+        $token = $this->getAgentToken($agentId);
+
+        return $token ? ['Authorization' => "Bearer {$token}"] : [];
+    }
+
+    private function fetchUmpDevices(string $agentId, string $url): array
+    {
+        $response = Http::withoutVerifying()
+            ->timeout(30)
+            ->withHeaders($this->getAuthHeaders($agentId))
+            ->get("{$url}" . self::UMP_DEVICES_ENDPOINT);
+
+        if (! $response->successful()) {
+            return [
+                'success' => false,
+                'error' => 'Failed to fetch devices from UMP',
+                'status' => $response->status(),
+            ];
+        }
+
+        $devices = $response->json('data.items', $response->json('data', []));
+
+        if (! is_array($devices)) {
+            $devices = [];
+        }
+
+        return [
+            'success' => true,
+            'discovered' => array_values(array_map(
+                fn (array $device) => $this->mapUmpDeviceToDiscovered($agentId, $device),
+                array_filter($devices, 'is_array')
+            )),
+            'source' => 'ump',
+        ];
+    }
+
+    private function mapUmpDeviceToDiscovered(string $agentId, array $device): array
+    {
+        $settings = $device['config']['settings'] ?? [];
+
+        if (! is_array($settings)) {
+            $settings = [];
+        }
+
+        $vendorSource = (string) ($device['vendor'] ?? $device['manufacturer'] ?? $device['type'] ?? 'ump');
+        $productSource = (string) ($device['serialNumber'] ?? $device['model'] ?? $device['name'] ?? $device['id'] ?? 'device');
+        $connectionType = strtolower((string) ($settings['connectionType'] ?? $device['communicationProtocol'] ?? 'usb'));
+
+        if (! in_array($connectionType, ['usb', 'serial', 'hid'], true)) {
+            $connectionType = 'usb';
+        }
+
+        return [
+            'agentId' => $agentId,
+            'vendorId' => substr(sha1($vendorSource), 0, 10),
+            'productId' => substr(sha1($productSource), 0, 10),
+            'manufacturer' => $device['vendor'] ?? $device['manufacturer'] ?? 'UMP',
+            'model' => $device['model'] ?? $device['name'] ?? $device['type'] ?? 'Unknown Device',
+            'serialNumber' => $device['serialNumber'] ?? $settings['agentDeviceId'] ?? $device['id'] ?? null,
+            'port' => $settings['printerPort'] ?? $settings['port'] ?? null,
+            'connectionType' => $connectionType,
+            'status' => $device['status'] ?? 'online',
+        ];
     }
 
     /**
@@ -154,13 +266,14 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            $headers = $token ? ['Authorization' => "Bearer {$token}"] : [];
-            
             $response = Http::withoutVerifying()
                 ->timeout(10)
-                ->withHeaders($headers)
+                ->withHeaders($this->getAuthHeaders($agentId))
                 ->get("{$url}/api/devices");
+
+            if ($response->status() === 404) {
+                return $this->fetchUmpDevices($agentId, $url);
+            }
 
             if ($response->successful()) {
                 return [
@@ -202,13 +315,14 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            $headers = $token ? ['Authorization' => "Bearer {$token}"] : [];
-            
             $response = Http::withoutVerifying()
                 ->timeout(30)
-                ->withHeaders($headers)
+                ->withHeaders($this->getAuthHeaders($agentId))
                 ->post("{$url}/api/devices/discover");
+
+            if ($response->status() === 404) {
+                return $this->fetchUmpDevices($agentId, $url);
+            }
 
             if ($response->successful()) {
                 return [
@@ -250,13 +364,14 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            $headers = $token ? ['Authorization' => "Bearer {$token}"] : [];
-            
             $response = Http::withoutVerifying()
                 ->timeout(10)
-                ->withHeaders($headers)
+                ->withHeaders($this->getAuthHeaders($agentId))
                 ->get("{$url}/api/devices/discovered");
+
+            if ($response->status() === 404) {
+                return $this->fetchUmpDevices($agentId, $url);
+            }
 
             if ($response->successful()) {
                 return [
@@ -298,12 +413,9 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            $headers = $token ? ['Authorization' => "Bearer {$token}"] : [];
-            
             $response = Http::withoutVerifying()
                 ->timeout(30)
-                ->withHeaders($headers)
+                ->withHeaders($this->getAuthHeaders($agentId))
                 ->post("{$url}/api/devices/reload");
 
             if ($response->successful()) {
@@ -346,12 +458,9 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            $headers = $token ? ['Authorization' => "Bearer {$token}"] : [];
-            
             $response = Http::withoutVerifying()
                 ->timeout(10)
-                ->withHeaders($headers)
+                ->withHeaders($this->getAuthHeaders($agentId))
                 ->post("{$url}/api/devices/{$deviceId}/reload");
 
             if ($response->successful()) {
@@ -430,11 +539,13 @@ class AgentHttpClient implements DeviceClientInterface
 
     /**
      * Generic POST request to agent.
+     *
+     * Uses Laravel's HTTP facade for cross-platform compatibility.
      */
     public function post(string $agentId, string $endpoint, array $data = []): array
     {
         $url = $this->getAgentUrl($agentId);
-        
+
         if (!$url) {
             return [
                 'success' => false,
@@ -443,61 +554,26 @@ class AgentHttpClient implements DeviceClientInterface
         }
 
         try {
-            $token = $this->getAgentToken();
-            
-            // Write JSON to temp file to avoid Windows escaping issues
-            $jsonData = json_encode($data);
-            $tempFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'agent_request_' . uniqid() . '.json';
-            file_put_contents($tempFile, $jsonData);
-            
-            $headers = '-H "Content-Type: application/json" -H "Accept: application/json"';
-            if ($token) {
-                $headers .= " -H \"Authorization: Bearer {$token}\"";
-            }
-            
-            // Use curl.exe with shorter timeout for faster response
-            $curlCmd = "curl.exe -s -k -X POST \"{$url}{$endpoint}\" {$headers} -d @\"{$tempFile}\" --connect-timeout 2 --max-time 3 2>&1";
-            
-            $responseBody = shell_exec($curlCmd);
-            
-            // Clean up temp file
-            @unlink($tempFile);
-            
-            // shell_exec returns null on error, but empty string is valid
-            if ($responseBody === null || trim($responseBody) === '') {
-                // The request might have been sent but we didn't get a response
-                // This is common with Cloudflare tunnels - treat as success if no error
-                Log::info("Curl returned empty/null - request may have been sent", [
-                    'endpoint' => $endpoint,
-                    'url' => $url,
-                ]);
-                return ['success' => true, 'message' => 'Request sent'];
-            }
-            
-            $body = json_decode($responseBody, true);
-            
-            if ($body === null) {
-                // Response wasn't JSON - check if it looks like an error
-                if (stripos($responseBody, 'error') !== false || stripos($responseBody, 'failed') !== false) {
-                    Log::warning("Non-JSON error response from agent", ['response' => substr($responseBody, 0, 200)]);
-                    return ['success' => false, 'error' => substr($responseBody, 0, 100)];
+            $response = Http::withoutVerifying()
+                ->timeout(10)
+                ->withHeaders($this->getAuthHeaders($agentId))
+                ->post("{$url}{$endpoint}", $data);
+
+            if ($response->successful()) {
+                $body = $response->json();
+
+                if (is_array($body) && isset($body['success'])) {
+                    return $body;
                 }
-                // Otherwise treat as success
-                return ['success' => true, 'message' => 'Request sent'];
+
+                return array_merge(['success' => true], $body ?? []);
             }
 
-            if (isset($body['success']) && $body['success'] === true) {
-                return $body;
-            }
-            
-            if (isset($body['error'])) {
-                return [
-                    'success' => false,
-                    'error' => $body['error'],
-                ];
-            }
-
-            return array_merge(['success' => true], $body);
+            return [
+                'success' => false,
+                'error' => $response->body() ?: 'Agent returned HTTP ' . $response->status(),
+                'status' => $response->status(),
+            ];
         } catch (\Exception $e) {
             Log::error("Failed to POST to agent: {$e->getMessage()}", [
                 'agent_id' => $agentId,

@@ -271,7 +271,21 @@ export const iotApi = {
     } | null
     message?: string
   }> => {
-    const response = await api.get('/user/linked-agent')
+    const response = await api.get('/iot/user/linked-agent')
+    return response.data
+  },
+
+  linkAgent: async (agentId: string): Promise<{
+    success: boolean
+    data?: {
+      agent_id: string
+      linked_at?: string | null
+    }
+    message?: string
+  }> => {
+    const response = await api.post('/iot/user/link-agent', {
+      agent_id: agentId,
+    })
     return response.data
   },
   

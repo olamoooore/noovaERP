@@ -385,14 +385,29 @@ class IoTAgentController extends Controller
                 ->where('agent_id', $agentId)
                 ->first();
 
-            // Get agent URL - from device config, request, or default
-            $agentUrl = $request->query('agent_url') 
+            // Get agent URL - from device config, request, or settings
+            $agentUrl = $request->query('agent_url')
                 ?? ($agentDevice?->config['agent_url'] ?? null)
-                ?? Setting::getValue('iot_agent_url')
-                ?? config('iot.agent.default_url', 'http://localhost:3002');
+                ?? Setting::getValue('iot_agent_url');
+
+            if (!$agentUrl) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Agent URL not configured. Set it in IoT Device config (agent_url) or Settings (iot_agent_url).',
+                    'data' => [
+                        'agent_id' => $agentId,
+                        'status' => 'not_configured',
+                        'registered' => $agentDevice !== null,
+                    ],
+                ]);
+            }
             $agentToken = $request->query('agent_token')
                 ?? ($agentDevice?->config['agent_token'] ?? null)
                 ?? Setting::getValue('iot_agent_token');
+
+            if (is_string($agentToken)) {
+                $agentToken = preg_replace('/^Bearer\s+/i', '', trim($agentToken)) ?: null;
+            }
             
             // Try to ping the agent directly
             try {
@@ -408,6 +423,37 @@ class IoTAgentController extends Controller
 
                 if ($response->successful()) {
                     $healthData = $response->json();
+                    $devices = [];
+
+                    try {
+                        $devicesResponse = $http->get($agentUrl . '/api/v1/devices');
+
+                        if (! $devicesResponse->successful()) {
+                            $devicesResponse = $http->get($agentUrl . '/api/devices');
+                        }
+
+                        if ($devicesResponse->successful()) {
+                            $rawDevices = $devicesResponse->json('data.items', $devicesResponse->json('data', []));
+
+                            if (is_array($rawDevices)) {
+                                $devices = array_values(array_map(static function (array $device): array {
+                                    return [
+                                        'deviceId' => $device['id'] ?? $device['_id'] ?? $device['serialNumber'] ?? $device['name'] ?? 'unknown-device',
+                                        'type' => $device['type'] ?? 'unknown',
+                                        'vendor' => $device['vendor'] ?? $device['manufacturer'] ?? 'Unknown',
+                                        'model' => $device['model'] ?? $device['name'] ?? 'Unknown Device',
+                                        'status' => $device['status'] ?? 'unknown',
+                                    ];
+                                }, array_filter($rawDevices, 'is_array')));
+                            }
+                        }
+                    } catch (\Throwable $deviceFetchError) {
+                        Log::debug('Agent device list fetch failed during verification', [
+                            'agent_id' => $agentId,
+                            'agent_url' => $agentUrl,
+                            'error' => $deviceFetchError->getMessage(),
+                        ]);
+                    }
                     
                     // Update agent device if it exists
                     if ($agentDevice) {
@@ -423,6 +469,7 @@ class IoTAgentController extends Controller
                             'registered' => $agentDevice !== null,
                             'agent_version' => $healthData['version'] ?? null,
                             'uptime' => $healthData['uptime'] ?? null,
+                            'devices' => $devices,
                             'agent_url' => $agentUrl,
                         ],
                     ]);
