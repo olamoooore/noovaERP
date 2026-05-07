@@ -130,20 +130,22 @@ export function StockOperationsPage() {
     })
   }
 
-  const assertMovementResponse = (payload: any) => {
-    if (!payload || typeof payload !== 'object' || typeof payload.id !== 'number') {
-      throw new Error('Unexpected stock mutation response from server.')
+  const getMovementDelta = (movement: any) => {
+    if (movement.type === 'adjustment') {
+      return movement.balance_after - movement.old_quantity
     }
-    return payload
+
+    if (['out', 'sale', 'transfer_out'].includes(movement.type)) {
+      return -Math.abs(movement.quantity)
+    }
+
+    return Math.abs(movement.quantity)
   }
 
-  const syncProductStockInCache = (movement: any) => {
-    const productId = movement?.product?.id ?? movement?.product_id
-    const stockQuantity = movement?.product?.stock_quantity
-
-    if (typeof productId !== 'number' || typeof stockQuantity !== 'number') {
-      return
-    }
+  const refreshProductStockInCache = async (productId: number) => {
+    const response = await api.get(`/stock/product/${productId}`)
+    const stockLevels = Array.isArray(response.data) ? response.data : []
+    const totalStock = stockLevels.reduce((sum, stockLevel) => sum + Number(stockLevel.quantity ?? 0), 0)
 
     queryClient.setQueriesData({
       predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
@@ -151,13 +153,13 @@ export function StockOperationsPage() {
       if (!existing) return existing
 
       if (Array.isArray(existing)) {
-        return existing.map((item) => item?.id === productId ? { ...item, stock_quantity: stockQuantity, stock: stockQuantity } : item)
+        return existing.map((item) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item)
       }
 
       if (Array.isArray(existing?.data)) {
         return {
           ...existing,
-          data: existing.data.map((item: any) => item?.id === productId ? { ...item, stock_quantity: stockQuantity, stock: stockQuantity } : item),
+          data: existing.data.map((item: any) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item),
         }
       }
 
@@ -168,7 +170,70 @@ export function StockOperationsPage() {
       predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
     }, (existing: any) => {
       if (!existing) return existing
-      return { ...existing, stock_quantity: stockQuantity, stock: stockQuantity }
+      return { ...existing, stock_quantity: totalStock, stock: totalStock }
+    })
+
+    return totalStock
+  }
+
+  const refetchStockQueries = async () => {
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['products-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['stock-movements'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['low-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['out-of-stock'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['inventory-dashboard'], type: 'active' }),
+    ])
+  }
+
+  const assertMovementResponse = (payload: any) => {
+    if (!payload || typeof payload !== 'object' || typeof payload.id !== 'number') {
+      throw new Error('Unexpected stock mutation response from server.')
+    }
+    return payload
+  }
+
+  const syncProductStockInCache = (movement: any) => {
+    const productId = movement?.product?.id ?? movement?.product_id
+    const movementDelta = getMovementDelta(movement)
+
+    if (typeof productId !== 'number') {
+      return
+    }
+
+    queryClient.setQueriesData({
+      predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
+    }, (existing: any) => {
+      if (!existing) return existing
+
+      if (Array.isArray(existing)) {
+        return existing.map((item) => {
+          if (item?.id !== productId) return item
+          const nextStockQuantity = Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
+          return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
+        })
+      }
+
+      if (Array.isArray(existing?.data)) {
+        return {
+          ...existing,
+          data: existing.data.map((item: any) => {
+            if (item?.id !== productId) return item
+            const nextStockQuantity = Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
+            return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
+          }),
+        }
+      }
+
+      return existing
+    })
+
+    queryClient.setQueriesData({
+      predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
+    }, (existing: any) => {
+      if (!existing) return existing
+      const nextStockQuantity = Math.max(0, Number(existing?.stock_quantity ?? existing?.stock ?? 0) + movementDelta)
+      return { ...existing, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
     })
   }
 
@@ -186,12 +251,15 @@ export function StockOperationsPage() {
       })
       return assertMovementResponse(response.data)
     },
-    onSuccess: (movement) => {
+    onSuccess: async (movement) => {
       syncProductStockInCache(movement)
       invalidateStockQueries()
+      const newStock = movement?.product?.stock_quantity ?? movement?.balance_after
+      if (selectedStockInProduct && typeof newStock === 'number') {
+        setSelectedStockInProduct({ ...selectedStockInProduct, stock_quantity: newStock })
+      }
       toast({ title: 'Stock received successfully' })
       setStockInData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '', batchNumber: '', expiryDate: '' })
-      setSelectedStockInProduct(undefined)
     },
     onError: (error: any) => {
       const msg = error.response?.data?.message || 'Failed to receive stock'
@@ -211,12 +279,15 @@ export function StockOperationsPage() {
       })
       return assertMovementResponse(response.data)
     },
-    onSuccess: (movement) => {
+    onSuccess: async (movement) => {
       syncProductStockInCache(movement)
       invalidateStockQueries()
+      const newStock = movement?.product?.stock_quantity ?? movement?.balance_after
+      if (selectedStockOutProduct && typeof newStock === 'number') {
+        setSelectedStockOutProduct({ ...selectedStockOutProduct, stock_quantity: newStock })
+      }
       toast({ title: 'Stock removed successfully' })
       setStockOutData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '' })
-      setSelectedStockOutProduct(undefined)
     },
     onError: (error: any) => {
       const msg = error.response?.data?.message || 'Failed to remove stock'
@@ -235,12 +306,15 @@ export function StockOperationsPage() {
       })
       return assertMovementResponse(response.data)
     },
-    onSuccess: (movement) => {
+    onSuccess: async (movement) => {
       syncProductStockInCache(movement)
       invalidateStockQueries()
+      const newStock = movement?.product?.stock_quantity ?? movement?.balance_after
+      if (selectedAdjustProduct && typeof newStock === 'number') {
+        setSelectedAdjustProduct({ ...selectedAdjustProduct, stock_quantity: newStock })
+      }
       toast({ title: 'Stock adjusted successfully' })
       setAdjustData({ productId: '', warehouseId: '', newQuantity: '', reasonId: '', notes: '' })
-      setSelectedAdjustProduct(undefined)
     },
     onError: (error: any) => {
       const msg = error.response?.data?.message || 'Failed to adjust stock'

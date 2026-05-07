@@ -265,7 +265,6 @@ export function StockManagementPage() {
 
   const syncProductStockInCache = (movement: StockMovement) => {
     const productId = movement?.product?.id ?? movement?.product_id
-    const serverStockQuantity = movement?.product?.stock_quantity
     const movementDelta = getMovementDelta(movement)
 
     if (typeof productId !== 'number') {
@@ -280,10 +279,7 @@ export function StockManagementPage() {
       if (Array.isArray(existing)) {
         return existing.map((item) => {
           if (item?.id !== productId) return item
-          const nextStockQuantity = typeof serverStockQuantity === 'number'
-            ? serverStockQuantity
-            : Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
-
+          const nextStockQuantity = Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
           return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
         })
       }
@@ -293,10 +289,7 @@ export function StockManagementPage() {
           ...existing,
           data: existing.data.map((item: any) => {
             if (item?.id !== productId) return item
-            const nextStockQuantity = typeof serverStockQuantity === 'number'
-              ? serverStockQuantity
-              : Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
-
+            const nextStockQuantity = Math.max(0, Number(item?.stock_quantity ?? item?.stock ?? 0) + movementDelta)
             return { ...item, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
           }),
         }
@@ -309,10 +302,7 @@ export function StockManagementPage() {
       predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
     }, (existing: any) => {
       if (!existing) return existing
-      const nextStockQuantity = typeof serverStockQuantity === 'number'
-        ? serverStockQuantity
-        : Math.max(0, Number(existing?.stock_quantity ?? existing?.stock ?? 0) + movementDelta)
-
+      const nextStockQuantity = Math.max(0, Number(existing?.stock_quantity ?? existing?.stock ?? 0) + movementDelta)
       return { ...existing, stock_quantity: nextStockQuantity, stock: nextStockQuantity }
     })
   }
@@ -375,12 +365,7 @@ export function StockManagementPage() {
     },
     onSuccess: async (movement) => {
       syncProductStockInCache(movement)
-      const updatedProductId = movement?.product?.id ?? movement?.product_id
-      if (typeof updatedProductId === 'number') {
-        await refreshProductStockInCache(updatedProductId)
-      }
       invalidateStockQueries()
-      await refetchStockQueries()
       toast({ title: 'Stock added successfully' })
       closeDialog()
     },
@@ -404,12 +389,7 @@ export function StockManagementPage() {
     },
     onSuccess: async (movement) => {
       syncProductStockInCache(movement)
-      const updatedProductId = movement?.product?.id ?? movement?.product_id
-      if (typeof updatedProductId === 'number') {
-        await refreshProductStockInCache(updatedProductId)
-      }
       invalidateStockQueries()
-      await refetchStockQueries()
       toast({ title: 'Stock removed successfully' })
       closeDialog()
     },
@@ -432,12 +412,7 @@ export function StockManagementPage() {
     },
     onSuccess: async (movement) => {
       syncProductStockInCache(movement)
-      const updatedProductId = movement?.product?.id ?? movement?.product_id
-      if (typeof updatedProductId === 'number') {
-        await refreshProductStockInCache(updatedProductId)
-      }
       invalidateStockQueries()
-      await refetchStockQueries()
       toast({ title: 'Stock adjusted successfully' })
       closeDialog()
     },
