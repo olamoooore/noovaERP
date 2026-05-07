@@ -10,6 +10,12 @@ use App\Http\Controllers\Api\TenantController;
 |--------------------------------------------------------------------------
 */
 
+// Lightweight connectivity ping — always returns 200 if the app is running
+// Used by POS and other clients to check backend reachability (not infrastructure health)
+Route::match(['get', 'head'], '/ping', function () {
+    return response()->json(['status' => 'ok', 'timestamp' => now()->toIso8601String()], 200);
+});
+
 // Root health check for load balancers and CI/CD
 Route::get('/health', function () {
     $checks = [];

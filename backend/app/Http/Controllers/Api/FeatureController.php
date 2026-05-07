@@ -37,19 +37,17 @@ class FeatureController extends Controller
             ? collect($this->featureGate->all($tenantId))->pluck('key')->flip()
             : collect();
 
-        $features = Feature::all()->map(function (Feature $feature) use ($entitledKeys, $tenantId) {
-            // Core features are always enabled regardless of entitlement record.
+        // Features catalog is central (public schema), not tenant-scoped
+        $features = \DB::table('public.features')->get()->map(function ($feature) use ($entitledKeys, $tenantId) {
             if ($feature->is_core) {
-                return $this->formatFeature($feature, true);
+                return $this->formatFeatureFromRow($feature, true);
             }
 
             if ($tenantId !== null) {
-                return $this->formatFeature($feature, $entitledKeys->has($feature->key));
+                return $this->formatFeatureFromRow($feature, $entitledKeys->has($feature->key));
             }
 
-            // No tenant context (CLI, tests) — fall back to legacy row.
-            $tenantFeature = TenantFeature::where('feature_id', $feature->id)->first();
-            return $this->formatFeature($feature, (bool) $tenantFeature?->is_enabled);
+            return $this->formatFeatureFromRow($feature, false);
         });
 
         return response()->json($features);
@@ -57,7 +55,11 @@ class FeatureController extends Controller
 
     public function toggle(Request $request, $id)
     {
-        $feature = Feature::findOrFail($id);
+        $feature = \DB::table('public.features')->where('id', $id)->first();
+
+        if (!$feature) {
+            return response()->json(['message' => 'Feature not found'], 404);
+        }
 
         if ($feature->is_core) {
             return response()->json(['message' => 'Cannot disable core features'], 403);
@@ -90,7 +92,7 @@ class FeatureController extends Controller
         ]);
     }
 
-    private function syncToCanonicalEntitlements(string $tenantId, Feature $feature, bool $enabled): void
+    private function syncToCanonicalEntitlements(string $tenantId, object $feature, bool $enabled): void
     {
         $catalogItem = CatalogItem::where('key', $feature->key)->first();
 
@@ -134,6 +136,18 @@ class FeatureController extends Controller
             'key'         => $feature->key,
             'description' => $feature->description,
             'is_core'     => $feature->is_core,
+            'enabled'     => $enabled,
+        ];
+    }
+
+    private function formatFeatureFromRow(object $feature, bool $enabled): array
+    {
+        return [
+            'id'          => $feature->id,
+            'name'        => $feature->name,
+            'key'         => $feature->key,
+            'description' => $feature->description ?? '',
+            'is_core'     => (bool) $feature->is_core,
             'enabled'     => $enabled,
         ];
     }

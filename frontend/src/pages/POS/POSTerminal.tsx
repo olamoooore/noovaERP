@@ -270,7 +270,8 @@ export function POSTerminal() {
     // localhost works fine).
     const checkConnectivity = async () => {
       try {
-        const res = await fetch('/api/health', { method: 'HEAD', cache: 'no-store' })
+        const basePath = import.meta.env.VITE_BASE_PATH || ''
+        const res = await fetch(`${basePath}/api/ping`, { method: 'HEAD', cache: 'no-store' })
         setIsOnline(res.ok)
       } catch {
         setIsOnline(false)
