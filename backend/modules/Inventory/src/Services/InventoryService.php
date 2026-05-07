@@ -99,12 +99,29 @@ class InventoryService
                 ->first();
 
             if (!$stockLevel) {
+                // If no stock_levels row exists for ANY warehouse for this product, the product
+                // was likely imported or created with stock_quantity set directly on the products
+                // table without a corresponding stock_levels entry. Seed from products.stock_quantity
+                // so the first sale doesn't immediately fail with "Insufficient stock".
+                $hasAnyLevel = StockLevel::where('product_id', $productId)->exists();
+                $initialQty = (!$hasAnyLevel && $product->stock_quantity > 0)
+                    ? (int) $product->stock_quantity
+                    : 0;
+
+                if ($initialQty > 0) {
+                    Log::info('InventoryService: seeding StockLevel from products.stock_quantity', [
+                        'product_id'   => $productId,
+                        'warehouse_id' => $warehouseId,
+                        'initial_qty'  => $initialQty,
+                    ]);
+                }
+
                 $stockLevel = StockLevel::create([
-                    'product_id' => $productId,
-                    'warehouse_id' => $warehouseId,
-                    'quantity' => 0,
-                    'reserved_quantity' => 0,
-                    'min_quantity' => 0,
+                    'product_id'       => $productId,
+                    'warehouse_id'     => $warehouseId,
+                    'quantity'         => $initialQty,
+                    'reserved_quantity'=> 0,
+                    'min_quantity'     => 0,
                 ]);
             }
 

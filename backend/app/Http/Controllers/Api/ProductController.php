@@ -18,9 +18,24 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $warehouseFilter = $request->filled('warehouse_id') ? (int) $request->input('warehouse_id') : null;
+
         $query = Product::with(['incomeAccount', 'expenseAccount', 'category', 'tax', 'brand'])
             ->withSum('stockLevels as aggregated_stock_quantity', 'quantity')
             ->orderBy('created_at', 'desc');
+
+        // When a specific warehouse is requested (e.g. from POS), append the per-warehouse
+        // stock as a virtual `stock` column so the UI shows what is actually available at
+        // that location, not the aggregate across all warehouses.
+        if ($warehouseFilter) {
+            $query->addSelect([
+                '*',
+                \Illuminate\Support\Facades\DB::raw(
+                    "(SELECT COALESCE(sl.quantity, 0) FROM stock_levels sl " .
+                    "WHERE sl.product_id = products.id AND sl.warehouse_id = {$warehouseFilter} LIMIT 1) AS stock"
+                ),
+            ]);
+        }
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');

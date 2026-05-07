@@ -257,18 +257,42 @@ export function POSTerminal() {
   const [currentTime, setCurrentTime] = useState(() =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   )
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
     const tick = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     }, 1000)
-    const handleOnline = () => setIsOnline(true)
+
+    // Use an active server ping instead of navigator.onLine.
+    // navigator.onLine reflects the browser's NIC state, not backend reachability —
+    // it fires false positives in dev (e.g. DevTools offline mode, no internet but
+    // localhost works fine).
+    const checkConnectivity = async () => {
+      try {
+        const res = await fetch('/api/health', { method: 'HEAD', cache: 'no-store' })
+        setIsOnline(res.ok)
+      } catch {
+        setIsOnline(false)
+      }
+    }
+
+    // Initial probe
+    checkConnectivity()
+
+    // Re-probe every 30 s while the component is mounted
+    const connectivityTick = setInterval(checkConnectivity, 30_000)
+
+    // When the browser fires 'online', re-verify with the server before trusting it
+    const handleOnline = () => checkConnectivity()
+    // When the browser fires 'offline', trust it immediately — no point pinging
     const handleOffline = () => setIsOnline(false)
+
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     return () => {
       clearInterval(tick)
+      clearInterval(connectivityTick)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }

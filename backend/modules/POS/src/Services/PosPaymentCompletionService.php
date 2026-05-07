@@ -101,6 +101,7 @@ class PosPaymentCompletionService
                         type: 'sale',
                         reference: $posOrder->order_number,
                         referenceType: 'PosOrder',
+                        referenceId: $posOrder->id,
                     );
                 }
             $posOrder->update([
@@ -187,6 +188,7 @@ class PosPaymentCompletionService
                     type: 'sale',
                     reference: $posOrder->order_number,
                     referenceType: 'PosOrder',
+                    referenceId: $posOrder->id,
                 );
             }
 

@@ -46,7 +46,15 @@ class EnsureEntitlementAccess
         }
 
         // ── 2. Core features always pass ─────────────────────────────────────
-        $feature = \App\Models\Feature::query()->where('key', $featureKey)->first();
+        // Query features from public schema explicitly to avoid tenant search_path interference
+        try {
+            DB::statement("SET search_path TO public");
+            $feature = \App\Models\Feature::query()->where('key', $featureKey)->first();
+        } catch (\Throwable $e) {
+            $feature = null;
+        } finally {
+            // search_path will be restored by EnsureTenantSearchPath for subsequent middleware
+        }
         if ($feature && $feature->is_core) {
             return $next($request);
         }
