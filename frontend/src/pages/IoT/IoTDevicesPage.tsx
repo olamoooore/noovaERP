@@ -279,6 +279,7 @@ export function IoTDevicesPage() {
         vendorId: discoveredDevice.vendorId,
         productId: discoveredDevice.productId,
         port: discoveredDevice.port,
+        ump_device_id: (discoveredDevice as any).ump_device_id,
       },
       driverConfig: {},
       capabilities: [],

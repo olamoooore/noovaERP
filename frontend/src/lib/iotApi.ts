@@ -53,6 +53,7 @@ export interface DiscoveredDevice {
   status: string
   discoveredAt: string
   configuredDeviceId?: string
+  ump_device_id?: string
 }
 
 export interface DeviceTemplate {

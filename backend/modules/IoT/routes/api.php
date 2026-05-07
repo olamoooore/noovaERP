@@ -36,9 +36,6 @@ Route::middleware(['auth:sanctum', 'entitlement:iot'])->prefix('iot')->group(fun
         ->withoutMiddleware([
             'auth:sanctum',
             'entitlement:iot',
-            \App\Http\Middleware\SetTenantFromUserPreference::class,
-            \App\Http\Middleware\EnsureTenantSearchPath::class,
-            \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
         ])
         ->middleware([
             'auth.agent_or_user',

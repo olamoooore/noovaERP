@@ -35,7 +35,7 @@ class AgentHttpClient implements DeviceClientInterface
             throw new \InvalidArgumentException('Agent ID required for agent-based devices');
         }
 
-        return $this->post($agentId, $command, $payload);
+        return $this->post($agentId, $command, $payload, $device);
     }
 
     /**
@@ -95,6 +95,10 @@ class AgentHttpClient implements DeviceClientInterface
      */
     private function getAgentUrl(string $agentId): ?string
     {
+        // Ensure we're querying the tenant schema (not public)
+        // This is needed because agent routes may bypass tenant middleware
+        $this->ensureTenantSearchPath();
+
         // 1. Try to get from IoTDevice agent record
         $agentDevice = IoTDevice::where('type', 'agent')
             ->where('agent_id', $agentId)
@@ -121,13 +125,70 @@ class AgentHttpClient implements DeviceClientInterface
 
         return $url;
     }
+
+    /**
+     * Ensure the PostgreSQL search_path includes the tenant schema.
+     * This allows settings queries to work even when tenant middleware hasn't run.
+     */
+    private function ensureTenantSearchPath(): void
+    {
+        static $searchPathSet = false;
+        if ($searchPathSet) {
+            return;
+        }
+
+        try {
+            // Check if search_path is already set to a tenant schema
+            $currentPath = DB::selectOne("SHOW search_path");
+            $path = $currentPath->search_path ?? '';
+
+            // If already set to something other than just 'public', skip
+            if ($path && $path !== 'public' && $path !== '"$user", public') {
+                $searchPathSet = true;
+                return;
+            }
+
+            // Try to get tenant ID from the authenticated user's default company
+            $user = request()->user();
+            if ($user) {
+                $defaultCompany = DB::table('user_company_access')
+                    ->where('user_id', $user->id)
+                    ->where('is_default', true)
+                    ->first();
+
+                if ($defaultCompany && $defaultCompany->tenant_id) {
+                    $tenantId = $defaultCompany->tenant_id;
+                    DB::statement("SET search_path TO \"{$tenantId}\", public");
+                    \Log::debug("AgentHttpClient: set search_path to tenant", ['tenant_id' => $tenantId]);
+                    $searchPathSet = true;
+                    return;
+                }
+            }
+
+            // Fallback: try to get tenant from X-Tenant-ID header
+            $tenantId = request()->header('X-Tenant-ID');
+            if ($tenantId) {
+                DB::statement("SET search_path TO \"{$tenantId}\", public");
+                \Log::debug("AgentHttpClient: set search_path from header", ['tenant_id' => $tenantId]);
+                $searchPathSet = true;
+                return;
+            }
+
+            // Last resort: query ALL schemas for the setting
+            // This is a fallback for when tenant context is completely missing
+            \Log::warning("AgentHttpClient: no tenant context, searching all schemas for agent_url");
+        } catch (\Exception $e) {
+            \Log::warning("AgentHttpClient: failed to set search_path", ['error' => $e->getMessage()]);
+        }
+    }
     
     /**
      * Get agent authentication token.
      *
      * Resolution order (matches IoTAgentController::verifyAgent logic):
      * 1. IoTDevice config (type='agent' with matching agent_id)
-     * 2. Global Setting 'iot_agent_token'
+     * 2. Request header X-UMP-Token (passed from frontend)
+     * 3. Global Setting 'iot_agent_token'
      */
     private function getAgentToken(string $agentId): ?string
     {
@@ -136,6 +197,7 @@ class AgentHttpClient implements DeviceClientInterface
             ->first();
 
         $token = $agentDevice?->config['agent_token']
+            ?? request()->header('X-UMP-Token')
             ?? Setting::getValue('iot_agent_token');
 
         return $this->normalizeBearerToken($token);
@@ -220,6 +282,7 @@ class AgentHttpClient implements DeviceClientInterface
             'port' => $settings['printerPort'] ?? $settings['port'] ?? null,
             'connectionType' => $connectionType,
             'status' => $device['status'] ?? 'online',
+            'ump_device_id' => $device['id'] ?? null,
         ];
     }
 
@@ -545,11 +608,104 @@ class AgentHttpClient implements DeviceClientInterface
     }
 
     /**
+     * Check if the agent URL is the UMP cloud backend.
+     */
+    private function isUmpCloud(string $url): bool
+    {
+        return str_contains($url, 'ump.example.com') || str_contains($url, 'localhost:3100');
+    }
+
+    /**
+     * Map local agent endpoint to UMP cloud action.
+     */
+    private function mapEndpointToUmpAction(string $endpoint): ?string
+    {
+        return match ($endpoint) {
+            '/api/printer/receipt' => 'PRINT_RECEIPT',
+            '/api/printer/print' => 'PRINT_RAW',
+            '/api/printer/print-label' => 'PRINT_LABEL',
+            default => null,
+        };
+    }
+
+    /**
+     * Send command via UMP cloud backend.
+     */
+    private function postViaUmpCloud(string $agentId, string $endpoint, array $data, ?DeviceConfiguration $device = null): array
+    {
+        $url = $this->getAgentUrl($agentId);
+        $action = $this->mapEndpointToUmpAction($endpoint);
+
+        if (!$action) {
+            return [
+                'success' => false,
+                'error' => "Unsupported endpoint for UMP cloud: {$endpoint}",
+            ];
+        }
+
+        $umpUrl = rtrim($url, '/') . '/api/v1/universal/execute';
+
+        // Get UMP device ID from connection_info or fall back to provided deviceId
+        $umpDeviceId = $data['deviceId'] ?? $data['device_id'] ?? '';
+        if ($device && !empty($device->connection_info['ump_device_id'])) {
+            $umpDeviceId = $device->connection_info['ump_device_id'];
+        }
+
+        $payload = [
+            'deviceId' => $umpDeviceId,
+            'action' => $action,
+            'data' => [
+                'commands' => $data['commands'] ?? null,
+                'encoding' => $data['encoding'] ?? null,
+                'content' => $data['content'] ?? null,
+                'jobId' => $data['jobId'] ?? null,
+                'jobType' => $data['jobType'] ?? null,
+            ],
+        ];
+
+        // Remove null values from data
+        $payload['data'] = array_filter($payload['data'], fn($v) => $v !== null);
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(15)
+                ->withHeaders($this->getAuthHeaders($agentId))
+                ->post($umpUrl, $payload);
+
+            if ($response->successful()) {
+                $body = $response->json();
+                if (is_array($body) && isset($body['success'])) {
+                    return $body;
+                }
+                return array_merge(['success' => true], $body ?? []);
+            }
+
+            return [
+                'success' => false,
+                'error' => $response->body() ?: 'UMP cloud returned HTTP ' . $response->status(),
+                'status' => $response->status(),
+            ];
+        } catch (\Exception $e) {
+            Log::error("Failed to POST to UMP cloud: {$e->getMessage()}", [
+                'agent_id' => $agentId,
+                'endpoint' => $endpoint,
+                'url' => $umpUrl,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Generic POST request to agent.
      *
      * Uses Laravel's HTTP facade for cross-platform compatibility.
+     * Automatically routes to UMP cloud API if agent URL is the UMP backend.
      */
-    public function post(string $agentId, string $endpoint, array $data = []): array
+    public function post(string $agentId, string $endpoint, array $data = [], ?DeviceConfiguration $device = null): array
     {
         $url = $this->getAgentUrl($agentId);
 
@@ -558,6 +714,11 @@ class AgentHttpClient implements DeviceClientInterface
                 'success' => false,
                 'error' => 'Agent URL not configured',
             ];
+        }
+
+        // Route to UMP cloud API if applicable
+        if ($this->isUmpCloud($url)) {
+            return $this->postViaUmpCloud($agentId, $endpoint, $data, $device);
         }
 
         try {

@@ -39,6 +39,10 @@ api.interceptors.request.use((config) => {
   if (tenantId) {
     config.headers['X-Tenant-ID'] = tenantId
   }
+  const umpApiKey = localStorage.getItem('ump_api_key')
+  if (umpApiKey) {
+    config.headers['X-UMP-Token'] = umpApiKey
+  }
   return config
 })
 

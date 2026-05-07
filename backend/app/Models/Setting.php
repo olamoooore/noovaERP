@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Setting extends Model
 {
@@ -17,18 +18,44 @@ class Setting extends Model
 
     public static function getValue(string $key, mixed $default = null): mixed
     {
-        $row = static::query()->where('key', $key)->first();
+        $row = DB::table((new static())->getTable())->where('key', $key)->first();
         if (!$row) {
             return $default;
         }
-        return $row->value ?? $default;
+        
+        $rawValue = $row->value ?? null;
+        if ($rawValue === null) {
+            return $default;
+        }
+        
+        // If it's already an array, return it
+        if (is_array($rawValue)) {
+            return $rawValue;
+        }
+        
+        // Try to decode JSON
+        $decoded = json_decode($rawValue, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded ?? $default;
+        }
+        
+        // Return raw value if not valid JSON
+        return $rawValue;
     }
 
     public static function setValue(string $key, mixed $value): void
     {
-        static::query()->updateOrCreate(
-            ['key' => $key],
-            ['value' => $value]
-        );
+        $table = (new static())->getTable();
+        
+        // Store strings directly (not JSON-encoded) to avoid double-encoding issues
+        $storedValue = is_string($value) ? $value : json_encode($value);
+        
+        $existing = DB::table($table)->where('key', $key)->first();
+        
+        if ($existing) {
+            DB::table($table)->where('key', $key)->update(['value' => $storedValue, 'updated_at' => now()]);
+        } else {
+            DB::table($table)->insert(['key' => $key, 'value' => $storedValue, 'created_at' => now(), 'updated_at' => now()]);
+        }
     }
 }

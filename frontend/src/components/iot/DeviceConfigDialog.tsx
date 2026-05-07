@@ -78,6 +78,7 @@ export function DeviceConfigDialog({
           type: 'agent',
           agent_id: agentId,
           device_path: oldConnectionInfo.port || '',
+          ump_device_id: (oldConnectionInfo as any).ump_device_id,
         })
       } else {
         // Default to agent

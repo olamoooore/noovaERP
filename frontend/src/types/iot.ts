@@ -32,6 +32,7 @@ export interface DeviceConnectionInfo {
   // Agent connection (USB/Network devices via local agent)
   agent_id?: string
   device_path?: string
+  ump_device_id?: string  // UMP cloud device MongoDB ObjectId
   
   // MQTT connection (IoT sensors, smart devices)
   broker_url?: string
