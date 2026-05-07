@@ -1,4 +1,4 @@
-import { Download, CheckCircle, Wifi, WifiOff } from 'lucide-react'
+import { Download, CheckCircle, WifiOff } from 'lucide-react'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { useState, useEffect } from 'react'
 
@@ -35,16 +35,7 @@ export function PWAInstallButton() {
   }
 
   if (!isInstallable) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {isOnline ? (
-          <Wifi className="h-3.5 w-3.5 text-green-500" />
-        ) : (
-          <WifiOff className="h-3.5 w-3.5 text-yellow-500" />
-        )}
-        <span>{isOnline ? 'Online' : 'Offline'}</span>
-      </div>
-    )
+    return null
   }
 
   return (

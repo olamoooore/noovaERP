@@ -19,26 +19,21 @@ class CustomerDisplayController extends Controller
      */
     public function show(Request $request, int $terminalId): JsonResponse
     {
-        $tenantId = tenant()->getTenantKey();
-        
         // Check if customer display is enabled
-        $settings = PosSetting::where('tenant_id', $tenantId)->first();
-        if (!$settings || !($settings->settings['enable_customer_display'] ?? false)) {
+        $enabled = PosSetting::getValue('enable_customer_display', false);
+        if (!$enabled) {
             return response()->json(['message' => 'Customer display is disabled.'], 403);
         }
         
         // Verify terminal exists
-        $terminal = PosTerminal::where('tenant_id', $tenantId)
-            ->where('id', $terminalId)
-            ->first();
+        $terminal = PosTerminal::find($terminalId);
             
         if (!$terminal) {
             return response()->json(['message' => 'Terminal not found.'], 404);
         }
         
         // Get terminal's active session
-        $session = PosSession::where('tenant_id', $tenantId)
-            ->where('terminal_id', $terminalId)
+        $session = PosSession::where('terminal_id', $terminalId)
             ->where('status', 'open')
             ->latest('opened_at')
             ->first();
@@ -46,14 +41,13 @@ class CustomerDisplayController extends Controller
         if (!$session) {
             return response()->json([
                 'state' => 'idle',
-                'message' => $settings->settings['customer_display_message'] ?? 'Welcome!',
+                'message' => PosSetting::getValue('customer_display_message', 'Welcome!'),
                 'terminal_name' => $terminal->name,
             ]);
         }
         
         // Get active draft order for this session
-        $order = PosOrder::where('tenant_id', $tenantId)
-            ->where('session_id', $session->id)
+        $order = PosOrder::where('session_id', $session->id)
             ->where('status', 'draft')
             ->latest('created_at')
             ->with(['items.product', 'customer'])
@@ -64,11 +58,11 @@ class CustomerDisplayController extends Controller
                 'state' => 'session-active',
                 'session_opened_at' => $session->opened_at,
                 'terminal_name' => $terminal->name,
-                'message' => $settings->settings['customer_display_message'] ?? 'Welcome!',
+                'message' => PosSetting::getValue('customer_display_message', 'Welcome!'),
             ]);
         }
         
-        return response()->json(new CustomerDisplayResource($order, $terminal, $settings));
+        return response()->json(new CustomerDisplayResource($order, $terminal, $enabled));
     }
     
     /**
@@ -77,12 +71,8 @@ class CustomerDisplayController extends Controller
      */
     public function issueToken(Request $request, int $terminalId): JsonResponse
     {
-        $tenantId = tenant()->getTenantKey();
-        
-        // Verify terminal exists and belongs to tenant
-        $terminal = PosTerminal::where('tenant_id', $tenantId)
-            ->where('id', $terminalId)
-            ->firstOrFail();
+        // Verify terminal exists
+        $terminal = PosTerminal::findOrFail($terminalId);
             
         // Create display-scoped token (8 hour TTL, read-only)
         $token = $request->user()->createToken(

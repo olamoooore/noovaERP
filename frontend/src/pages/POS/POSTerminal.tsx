@@ -50,7 +50,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
-import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
+import { cn, formatCurrency, getCurrencySymbol, resolveImageUrl } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { POSReceipt } from '@/components/pos/POSReceipt'
@@ -59,6 +59,7 @@ import { StripePaymentDialog } from '@/components/StripePaymentDialog'
 import { HitPayPaymentDialog } from '@/components/pos/HitPayPaymentDialog'
 import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import loyaltyApi from '@/lib/loyaltyApi'
+import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 
 interface Product {
   id: number
@@ -1424,7 +1425,7 @@ export function POSTerminal() {
   return (
     <>
       <OfflineBanner isOnline={isOnline} />
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(30,64,175,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
       <div className="flex min-h-0 flex-1 flex-row-reverse gap-3 overflow-hidden p-3 xl:gap-4 xl:p-4">
         <section className="flex min-h-0 min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
           <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 xl:px-5">
@@ -1438,7 +1439,7 @@ export function POSTerminal() {
                   <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-700">
                     {productTotal.toLocaleString()} catalog items
                   </Badge>
-                  <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                  <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-medium text-blue-700">
                     {visibleInStockCount.toLocaleString()} in stock
                   </Badge>
                   {lowStockVisibleCount > 0 && (
@@ -1504,7 +1505,7 @@ export function POSTerminal() {
                 className={cn(
                   'h-8 shrink-0 rounded-full px-4 text-xs font-medium shadow-sm',
                   selectedCategory === null
-                    ? 'bg-[#238fa1] text-white hover:bg-[#1d7c8c]'
+                    ? 'bg-[#1e40af] text-white hover:bg-[#1e3a8a]'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 )}
                 onClick={() => setSelectedCategory(null)}
@@ -1552,7 +1553,7 @@ export function POSTerminal() {
                       ? 'border-rose-200 bg-rose-50 text-rose-600'
                       : isLowStock
                         ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-blue-200 bg-blue-50 text-blue-700'
 
                     return (
                       <Card
@@ -1698,7 +1699,7 @@ export function POSTerminal() {
             className={cn(
               'h-14 w-full justify-start gap-3 rounded-[1.2rem] border px-4 text-left shadow-sm transition',
               selectedCustomer
-                ? 'border-[#238fa1] bg-[linear-gradient(135deg,#2b8ea0_0%,#37a7b8_100%)] text-white hover:bg-[linear-gradient(135deg,#277f90_0%,#3097a7_100%)]'
+                ? 'border-[#1e40af] bg-[linear-gradient(135deg,#1e40af_0%,#2563eb_100%)] text-white hover:bg-[linear-gradient(135deg,#1e3a8a_0%,#1d4ed8_100%)]'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             )}
             onClick={() => setShowCustomerDialog(true)}
@@ -1722,9 +1723,9 @@ export function POSTerminal() {
 
           {/* Selected Customer Info Card */}
           {selectedCustomer && (
-            <div className="rounded-[1.2rem] border border-[#cfe6eb] bg-[linear-gradient(135deg,#f4fbfc_0%,#ecf7f9_100%)] p-4 shadow-sm">
+            <div className="rounded-[1.2rem] border border-blue-100 bg-[linear-gradient(135deg,#eff6ff_0%,#dbeafe_100%)] p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#238fa1]/15">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100">
                   <Icon icon="solar:user-circle-bold" className="h-6 w-6 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -2107,7 +2108,7 @@ export function POSTerminal() {
           {/* PAY — primary full-width action */}
           <Button
             size="lg"
-            className="h-14 w-full rounded-[1.2rem] bg-[linear-gradient(135deg,#238fa1_0%,#2ea3b4_100%)] text-base font-semibold text-white shadow-[0_18px_35px_rgba(35,143,161,0.28)] hover:bg-[linear-gradient(135deg,#1e7f90_0%,#2993a3_100%)]"
+            className="h-14 w-full rounded-[1.2rem] bg-[linear-gradient(135deg,#1e40af_0%,#2563eb_100%)] text-base font-semibold text-white shadow-[0_18px_35px_rgba(30,64,175,0.28)] hover:bg-[linear-gradient(135deg,#1e3a8a_0%,#1d4ed8_100%)]"
             onClick={() => setShowCheckoutDialog(true)}
             disabled={cart.length === 0}
           >

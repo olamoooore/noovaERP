@@ -3,6 +3,7 @@
 namespace Modules\POS\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\POS\Models\PosSetting;
 
 class CustomerDisplayResource extends JsonResource
 {
@@ -66,7 +67,9 @@ class CustomerDisplayResource extends JsonResource
             'terminal_name' => $this->terminal?->name,
             
             // Welcome message
-            'message' => $this->settings?->settings['customer_display_message'] ?? 'Welcome!',
+            'message' => is_object($this->settings) 
+                ? ($this->settings->settings['customer_display_message'] ?? 'Welcome!')
+                : PosSetting::getValue('customer_display_message', 'Welcome!'),
             
             // Session metadata
             'session_opened_at' => $this->session?->opened_at,
