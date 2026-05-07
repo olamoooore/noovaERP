@@ -6,7 +6,6 @@ namespace App\SuperAdmin\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\SearchPathGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -30,8 +29,7 @@ class AdminAuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        SearchPathGuard::setSearchPath('public', 'Admin login authentication');
-
+        // search_path is already set to 'public' by EnsurePublicSchemaForAuth middleware
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
