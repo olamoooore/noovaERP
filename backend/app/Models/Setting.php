@@ -47,8 +47,8 @@ class Setting extends Model
     {
         $table = (new static())->getTable();
         
-        // Store strings directly (not JSON-encoded) to avoid double-encoding issues
-        $storedValue = is_string($value) ? $value : json_encode($value);
+        // PostgreSQL json column requires valid JSON, so always encode
+        $storedValue = json_encode($value);
         
         $existing = DB::table($table)->where('key', $key)->first();
         
