@@ -67,6 +67,7 @@ export function POSPage() {
   const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false)
   const [selectedStaffId, setSelectedStaffId] = useState<string>('')
   const [openingBalance, setOpeningBalance] = useState<string>('0')
+  const [openingNotes, setOpeningNotes] = useState<string>('')
   const [pendingTerminalId, setPendingTerminalId] = useState<string | null>(null)
   const [pendingWarehouseId, setPendingWarehouseId] = useState<string | null>(null)
 
@@ -285,6 +286,7 @@ export function POSPage() {
     setPendingWarehouseId(terminal.warehouse_id || (warehouses[0]?.id?.toString() ?? null))
     setSelectedStaffId('')
     setOpeningBalance('0')
+    setOpeningNotes('')
     setIsSessionDialogOpen(true)
   }
 
@@ -301,6 +303,7 @@ export function POSPage() {
     openSessionMutation.mutate({
       terminal_id: pendingTerminalId,
       opening_balance: parseFloat(openingBalance) || 0,
+      notes: openingNotes || undefined,
     })
   }
 
@@ -500,22 +503,47 @@ export function POSPage() {
 
       {/* Session Opening Dialog */}
       <Dialog open={isSessionDialogOpen} onOpenChange={setIsSessionDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Open Session</DialogTitle>
-            <DialogDescription>
-              Select staff member and enter opening balance to start this terminal session.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid gap-6 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none">
-                Staff Member *
-              </label>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
+          {/* Header */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
+            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] bg-emerald-500/15 ring-1 ring-emerald-400/20">
+                <Icon icon="solar:cash-in-bold-duotone" className="h-6 w-6 text-emerald-400" />
+              </div>
+              <DialogHeader className="space-y-1 p-0 text-left">
+                <DialogTitle className="text-lg font-semibold tracking-[-0.02em]">Open Register</DialogTitle>
+                <DialogDescription className="text-sm leading-relaxed text-white/60">
+                  Count the cash in the drawer and assign a staff member to start the session.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="flex flex-col overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+            {/* Terminal Info */}
+            <div className="mb-5 grid grid-cols-2 gap-3 rounded-[1rem] border border-slate-200/80 bg-slate-50/80 p-3">
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Terminal</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {terminals.find(t => String(t.id) === pendingTerminalId)?.name || '—'}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Warehouse</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {warehouses.find(w => String(w.id) === pendingWarehouseId)?.name || '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* Staff Assignment */}
+            <div className="mb-5">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Staff Assignment</h3>
               <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select staff" />
+                <SelectTrigger className="h-11 rounded-lg border-slate-200 bg-slate-50">
+                  <SelectValue placeholder="Select staff member" />
                 </SelectTrigger>
                 <SelectContent>
                   {users.map((user: any) => (
@@ -527,56 +555,74 @@ export function POSPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none">
-                Opening Balance
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={openingBalance}
-                onChange={(e) => setOpeningBalance(e.target.value)}
-                placeholder="0.00"
-              />
-              <p className="text-xs text-muted-foreground">
-                Cash amount in the drawer at session start
-              </p>
+            {/* Opening Cash Count */}
+            <div className="mb-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Opening Cash Count</h3>
+              <div className="rounded-[1rem] border border-slate-200/80 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50">
+                      <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Cash in Drawer</div>
+                      <div className="text-xs text-slate-400">Count the physical cash before opening</div>
+                    </div>
+                  </div>
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={openingBalance}
+                      onChange={(e) => setOpeningBalance(e.target.value)}
+                      className="h-11 rounded-lg border-slate-200 bg-slate-50 pl-7 text-right text-base font-semibold tabular-nums focus:bg-white"
+                      placeholder="0.00"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none">
-                Warehouse
-              </label>
-              <Select 
-                value={pendingWarehouseId || ''} 
-                onValueChange={setPendingWarehouseId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id.toString()}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Notes */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">Notes (optional)</label>
+              <Input
+                value={openingNotes}
+                onChange={(e) => setOpeningNotes(e.target.value)}
+                placeholder="Any notes about the opening cash..."
+                className="h-9 rounded-lg border-slate-200 bg-slate-50 text-sm"
+              />
             </div>
           </div>
 
-          <DialogFooter>
-            <Button 
-              onClick={confirmOpenSession} 
-              disabled={!selectedStaffId || openSessionMutation.isPending}
-            >
-              {openSessionMutation.isPending && (
-                <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Open Session
-            </Button>
-          </DialogFooter>
+          {/* Footer */}
+          <div className="border-t border-slate-200/80 bg-slate-50/50 px-6 py-4">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsSessionDialogOpen(false)}
+                disabled={openSessionMutation.isPending}
+                className="flex-1 rounded-[0.85rem] border-slate-200 bg-white py-2.5 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmOpenSession}
+                disabled={!selectedStaffId || openSessionMutation.isPending}
+                className="flex-1 rounded-[0.85rem] bg-gradient-to-b from-emerald-600 to-emerald-700 py-2.5 font-semibold text-white shadow-[0_8px_20px_rgba(16,185,129,0.30)] hover:from-emerald-700 hover:to-emerald-800"
+              >
+                {openSessionMutation.isPending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon icon="svg-spinners:ring-resize" className="h-4 w-4" />
+                    Opening...
+                  </span>
+                ) : 'Open Register'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

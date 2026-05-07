@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
-import { useMemo, useState, useEffect } from 'react'
+import { Input } from '@/components/ui/input'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog,
@@ -11,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-// import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import { usePosSessionStore } from '@/store/posSessionStore'
 import { POSOrderDrawer } from '@/components/pos/POSOrderDrawer'
 import { PWAInstallButton } from '@/components/pos/PWAInstallButton'
@@ -19,6 +20,35 @@ import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import { useToast } from '@/hooks/use-toast'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 import api from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
+
+interface PaymentBreakdown {
+  method: string
+  methodLabel: string
+  expectedAmount: number
+  countedAmount: string
+  icon: string
+}
+
+const METHOD_ICONS: Record<string, string> = {
+  cash: 'solar:wallet-money-bold-duotone',
+  card: 'solar:card-bold-duotone',
+  bank_transfer: 'solar:bank-card-bold-duotone',
+  mobile: 'solar:smartphone-bold-duotone',
+  voucher: 'solar:ticket-bold-duotone',
+  credit: 'solar:file-text-bold-duotone',
+  other: 'solar:wallet-bold-duotone',
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank_transfer: 'Bank Transfer',
+  mobile: 'Mobile Payment',
+  voucher: 'Voucher',
+  credit: 'Credit',
+  other: 'Other',
+}
 
 export function POSLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -26,6 +56,8 @@ export function POSLayout() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [showCloseSessionDialog, setShowCloseSessionDialog] = useState(false)
   const [drawerStatusFilter, setDrawerStatusFilter] = useState<'all' | 'draft' | 'paid'>('all')
+  const [closingNotes, setClosingNotes] = useState('')
+  const [paymentBreakdown, setPaymentBreakdown] = useState<PaymentBreakdown[]>([])
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -33,7 +65,6 @@ export function POSLayout() {
 
   const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
   const activeSessionId = usePosSessionStore((s) => s.activeSessionId)
-  // const warehouseId = usePosSessionStore((s) => s.warehouseId) // Reserved for future use
   const openedAt = usePosSessionStore((s) => s.openedAt)
   const clearSession = usePosSessionStore((s) => s.clearSession)
   const [now, setNow] = useState(() => new Date())
@@ -72,13 +103,86 @@ export function POSLayout() {
     }
   }, [])
 
+  // Fetch expected payment breakdown when close dialog opens
+  useEffect(() => {
+    if (!showCloseSessionDialog || !activeSessionId) return
+
+    const fetchBreakdown = async () => {
+      try {
+        const response = await api.get(`/pos/sessions/${activeSessionId}/close-summary`)
+        const breakdown = response.data?.expected_breakdown || []
+
+        const items: PaymentBreakdown[] = breakdown.map((item: { method: string; expected_amount: number }) => ({
+          method: item.method,
+          methodLabel: METHOD_LABELS[item.method] || item.method,
+          expectedAmount: item.expected_amount,
+          countedAmount: item.expected_amount.toFixed(2),
+          icon: METHOD_ICONS[item.method] || 'solar:wallet-bold-duotone',
+        }))
+
+        // Always include cash even if no transactions (for float counting)
+        if (!items.some((i) => i.method === 'cash')) {
+          items.unshift({
+            method: 'cash',
+            methodLabel: 'Cash',
+            expectedAmount: 0,
+            countedAmount: '0.00',
+            icon: 'solar:wallet-money-bold-duotone',
+          })
+        }
+
+        setPaymentBreakdown(items)
+      } catch {
+        // Fallback to basic cash only
+        setPaymentBreakdown([
+          {
+            method: 'cash',
+            methodLabel: 'Cash',
+            expectedAmount: 0,
+            countedAmount: '0.00',
+            icon: 'solar:wallet-money-bold-duotone',
+          },
+        ])
+      }
+    }
+
+    void fetchBreakdown()
+    setClosingNotes('')
+  }, [showCloseSessionDialog, activeSessionId])
+
+  const updateCountedAmount = useCallback((method: string, value: string) => {
+    setPaymentBreakdown((prev) =>
+      prev.map((item) =>
+        item.method === method ? { ...item, countedAmount: value } : item
+      )
+    )
+  }, [])
+
+  const totalExpected = useMemo(
+    () => paymentBreakdown.reduce((sum, item) => sum + item.expectedAmount, 0),
+    [paymentBreakdown]
+  )
+
+  const totalCounted = useMemo(
+    () => paymentBreakdown.reduce((sum, item) => sum + (parseFloat(item.countedAmount) || 0), 0),
+    [paymentBreakdown]
+  )
+
+  const totalDifference = totalCounted - totalExpected
+
   // Close Session Mutation
   const closeSessionMutation = useMutation({
-    mutationFn: async ({ sessionId, closingBalance }: { sessionId: number; closingBalance: number }) => {
-      console.log('POSLayout: Closing session via API:', sessionId)
-      const response = await api.post(`/pos/sessions/${sessionId}/close`, {
-        closing_balance: closingBalance,
-        notes: 'Closed from POS header',
+    mutationFn: async () => {
+      console.log('POSLayout: Closing session via API:', activeSessionId)
+      const paymentCounts = paymentBreakdown.map((item) => ({
+        method: item.method,
+        method_name: item.methodLabel,
+        counted_amount: parseFloat(item.countedAmount) || 0,
+      }))
+
+      const response = await api.post(`/pos/sessions/${activeSessionId}/close`, {
+        payment_counts: paymentCounts,
+        notes: closingNotes,
       })
       return response.data
     },
@@ -123,10 +227,7 @@ export function POSLayout() {
   const confirmCloseSession = () => {
     if (!activeSessionId) return
     console.log('POSLayout: User confirmed, closing session via API...')
-    closeSessionMutation.mutate({
-      sessionId: activeSessionId,
-      closingBalance: 0,
-    })
+    closeSessionMutation.mutate()
   }
 
   useEffect(() => {
@@ -335,50 +436,126 @@ export function POSLayout() {
       />
 
 <Dialog open={showCloseSessionDialog} onOpenChange={setShowCloseSessionDialog}>
-        <DialogContent className="max-w-[420px] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 pt-8 pb-6 text-white">
-            <div className="absolute right-4 top-4 h-28 w-28 rounded-full bg-[#1e40af]/10 blur-2xl" />
-            <div className="absolute left-[-2rem] bottom-[-2rem] h-32 w-32 rounded-full bg-blue-500/8 blur-2xl" />
-            <div className="relative">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[1.2rem] bg-rose-500/15 ring-1 ring-rose-400/20">
-                <Icon icon="solar:logout-2-bold-duotone" className="h-7 w-7 text-rose-400" />
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
+          {/* Header */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
+            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] bg-rose-500/15 ring-1 ring-rose-400/20">
+                <Icon icon="solar:logout-2-bold-duotone" className="h-6 w-6 text-rose-400" />
               </div>
-              <DialogHeader className="space-y-1.5 p-0">
-                <DialogTitle className="text-xl font-semibold tracking-[-0.02em] text-white">Close Session</DialogTitle>
+              <DialogHeader className="space-y-1 p-0 text-left">
+                <DialogTitle className="text-lg font-semibold tracking-[-0.02em]">Close Register</DialogTitle>
                 <DialogDescription className="text-sm leading-relaxed text-white/60">
-                  End the active session and return to the POS landing screen.
+                  Count cash and verify all payment methods before closing.
                 </DialogDescription>
               </DialogHeader>
             </div>
           </div>
 
-          <div className="space-y-4 p-6">
-            <div className="space-y-2.5 rounded-[1.2rem] border border-slate-200/80 bg-white p-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-slate-500">Terminal</span>
-                <span className="text-sm font-semibold text-slate-900">{activeTerminal?.name || 'Terminal'}</span>
+          {/* Body */}
+          <div className="flex flex-col overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+            {/* Session Info */}
+            <div className="mb-5 grid grid-cols-3 gap-3 rounded-[1rem] border border-slate-200/80 bg-slate-50/80 p-3">
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Terminal</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{activeTerminal?.name || '—'}</div>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-slate-500">Session runtime</span>
-                <span className="font-mono text-sm font-semibold tabular-nums text-slate-900">{openedDurationLabel}</span>
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Runtime</div>
+                <div className="mt-1 font-mono text-sm font-semibold tabular-nums text-slate-900">{openedDurationLabel}</div>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-slate-500">Connectivity</span>
-                <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Status</div>
+                <div className={`mt-1 inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                   {isOnline ? 'Online' : 'Offline'}
-                </span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-[1.1rem] border border-amber-200/80 bg-amber-50/70 px-4 py-3">
-              <Icon icon="solar:shield-warning-bold-duotone" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-[13px] leading-relaxed text-amber-900/80">
-                This closes the current session immediately. Confirm that all sales, cash, and connected devices are in the right state before proceeding.
-              </p>
+            {/* Payment Method Counting */}
+            <div className="mb-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Payment Reconciliation</h3>
+              <div className="space-y-2">
+                {paymentBreakdown.map((item) => {
+                  const counted = parseFloat(item.countedAmount) || 0
+                  const diff = counted - item.expectedAmount
+                  const diffTone = diff > 0.005 ? 'text-emerald-600' : diff < -0.005 ? 'text-rose-600' : 'text-slate-400'
+                  const diffLabel = diff > 0.005 ? 'Over' : diff < -0.005 ? 'Short' : 'Exact'
+
+                  return (
+                    <div key={item.method} className="rounded-[0.85rem] border border-slate-200/80 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                            <Icon icon={item.icon} className="h-4 w-4 text-slate-600" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{item.methodLabel}</div>
+                            <div className="text-xs text-slate-400">Expected: {formatCurrency(item.expectedAmount)}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.countedAmount}
+                            onChange={(e) => updateCountedAmount(item.method, e.target.value)}
+                            className="h-9 w-28 rounded-lg border-slate-200 bg-slate-50 text-right text-sm font-semibold tabular-nums focus:bg-white"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      {item.expectedAmount > 0 && (
+                        <div className={`mt-2 flex items-center justify-end gap-1 text-xs font-medium ${diffTone}`}>
+                          <span>{diffLabel}</span>
+                          <span>{diff > 0 ? '+' : ''}{formatCurrency(diff)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
-            <div className="flex gap-3 pt-1">
+            {/* Totals Summary */}
+            <div className="mb-4 rounded-[1rem] border border-slate-200/80 bg-slate-50/80 p-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Expected</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{formatCurrency(totalExpected)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Counted</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{formatCurrency(totalCounted)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-700">Difference</span>
+                  <span className={`font-bold tabular-nums ${totalDifference > 0.005 ? 'text-emerald-600' : totalDifference < -0.005 ? 'text-rose-600' : 'text-slate-500'}`}>
+                    {totalDifference > 0.005 ? '+' : ''}{formatCurrency(totalDifference)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">Closing Notes (optional)</label>
+              <Input
+                value={closingNotes}
+                onChange={(e) => setClosingNotes(e.target.value)}
+                placeholder="Any discrepancies or notes..."
+                className="h-9 rounded-lg border-slate-200 bg-slate-50 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-slate-200/80 bg-slate-50/50 px-6 py-4">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowCloseSessionDialog(false)}
@@ -397,7 +574,7 @@ export function POSLayout() {
                     <Icon icon="svg-spinners:ring-resize" className="h-4 w-4" />
                     Closing...
                   </span>
-                ) : 'Close Session'}
+                ) : 'Close Register'}
               </Button>
             </div>
           </div>

@@ -68,6 +68,11 @@ class PosSession extends Model
         return $this->hasMany(PosHeldOrder::class, 'session_id');
     }
 
+    public function closures(): HasMany
+    {
+        return $this->hasMany(PosSessionClosure::class, 'session_id');
+    }
+
     /**
      * Calculate expected balance based on transactions
      */
@@ -109,6 +114,80 @@ class PosSession extends Model
         $this->closed_by = TenantUserHelper::resolveTenantUserId();
         $this->status = 'closed';
         $this->save();
+    }
+
+    /**
+     * Close the session with per-payment-method reconciliation
+     */
+    public function closeWithPaymentBreakdown(array $paymentCounts, string $notes = null): void
+    {
+        $this->expected_balance = $this->calculateExpectedBalance();
+        $this->closing_notes = $notes;
+        $this->closed_at = now();
+        $this->closed_by = TenantUserHelper::resolveTenantUserId();
+        $this->status = 'closed';
+
+        $totalCounted = 0;
+
+        foreach ($paymentCounts as $paymentCount) {
+            $method = $paymentCount['method'] ?? '';
+            $countedAmount = (float) ($paymentCount['counted_amount'] ?? 0);
+            $expectedAmount = $this->getExpectedAmountForMethod($method);
+            $difference = $countedAmount - $expectedAmount;
+            $totalCounted += $countedAmount;
+
+            $this->closures()->create([
+                'payment_method' => $method,
+                'payment_method_name' => $paymentCount['method_name'] ?? $method,
+                'expected_amount' => $expectedAmount,
+                'counted_amount' => $countedAmount,
+                'difference' => $difference,
+            ]);
+        }
+
+        $this->closing_balance = $totalCounted;
+        $this->difference = $totalCounted - $this->expected_balance;
+        $this->save();
+    }
+
+    /**
+     * Get expected amount for a specific payment method
+     */
+    protected function getExpectedAmountForMethod(string $method): float
+    {
+        return $this->orders()
+            ->where('status', 'paid')
+            ->whereHas('payments', function ($q) use ($method) {
+                $q->where('method', $method);
+            })
+            ->get()
+            ->sum(function ($order) use ($method) {
+                return $order->payments->where('method', $method)->sum('amount');
+            });
+    }
+
+    /**
+     * Get expected payment breakdown for session close
+     */
+    public function getExpectedPaymentBreakdown(): array
+    {
+        $breakdown = [];
+
+        $payments = PosPayment::whereHas('order', function ($q) {
+            $q->where('session_id', $this->id)->where('status', 'paid');
+        })
+        ->selectRaw('method, SUM(amount) as total')
+        ->groupBy('method')
+        ->get();
+
+        foreach ($payments as $payment) {
+            $breakdown[] = [
+                'method' => $payment->method,
+                'expected_amount' => round((float) $payment->total, 2),
+            ];
+        }
+
+        return $breakdown;
     }
 
     /**

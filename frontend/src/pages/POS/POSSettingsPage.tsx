@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import iotApi, { type DeviceConfiguration } from '@/lib/iotApi'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -101,7 +102,13 @@ interface Terminal {
   receipt_header: string | null
   receipt_footer: string | null
   is_active: boolean
-  settings: Record<string, unknown> | null
+  settings: {
+    receipt_print_mode?: 'web' | 'direct'
+    printer_agent_id?: string
+    receipt_printer_device_id?: string
+    label_printer_device_id?: string
+    [key: string]: unknown
+  } | null
   has_open_session?: boolean
   warehouse?: { id: number; name: string }
 }
@@ -161,7 +168,6 @@ export function POSSettingsPage() {
         return raw.filter((w: Warehouse) => w && w.id && w.name).map((w: Warehouse) => ({
           id: w.id,
           name: w.name,
-          code: w.code,
         }))
       } catch (e) {
         console.error('Failed to fetch warehouses:', e)
@@ -540,36 +546,107 @@ function TerminalsTab({
 }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Terminal | null>(null)
   const [form, setForm] = useState({
     name: '',
     warehouse_id: '' as string,
     receipt_header: '',
     receipt_footer: '',
+    receipt_print_mode: 'web' as 'web' | 'direct',
+    printer_agent_id: '',
+    receipt_printer_device_id: '',
+    label_printer_device_id: '',
     is_active: true,
   })
 
+  const { data: linkedAgent } = useQuery({
+    queryKey: ['iot-linked-agent-for-pos-terminal-settings'],
+    queryFn: async () => {
+      try {
+        return await iotApi.getLinkedAgent()
+      } catch {
+        return { success: false, data: null as { agent_id: string } | null }
+      }
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const linkedAgentId = linkedAgent?.success ? linkedAgent.data?.agent_id ?? null : null
+
+  const { data: printerDevices = [] } = useQuery<DeviceConfiguration[]>({
+    queryKey: ['iot-printer-devices-for-pos-terminal-settings', linkedAgentId],
+    queryFn: async () => {
+      if (!linkedAgentId) return []
+      try {
+        const res = await iotApi.getDeviceConfigs(linkedAgentId)
+        return (res.data || []).filter((device) => {
+          const type = device.deviceType || device.device_type
+          return type === 'printer' && (device.enabled ?? true)
+        })
+      } catch {
+        return []
+      }
+    },
+    enabled: !!linkedAgentId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const receiptPrinters = printerDevices.filter((device) => {
+    const driver = (device.driverType || device.driver_type || '').toLowerCase()
+    return driver.includes('receipt') || driver.includes('kpos')
+  })
+
+  const labelPrinters = printerDevices.filter((device) => {
+    const driver = (device.driverType || device.driver_type || '').toLowerCase()
+    return driver.includes('label') || driver.includes('gprinter')
+  })
+
+  useEffect(() => {
+    if (!linkedAgentId) return
+    setForm((prev) => ({
+      ...prev,
+      printer_agent_id: prev.printer_agent_id || linkedAgentId,
+    }))
+  }, [linkedAgentId])
+
   const resetForm = () => {
-    setForm({ name: '', warehouse_id: '', receipt_header: '', receipt_footer: '', is_active: true })
+    setForm({
+      name: '',
+      warehouse_id: '',
+      receipt_header: '',
+      receipt_footer: '',
+      receipt_print_mode: 'web',
+      printer_agent_id: linkedAgentId || '',
+      receipt_printer_device_id: '',
+      label_printer_device_id: '',
+      is_active: true,
+    })
     setEditing(null)
   }
 
   const openCreate = () => {
     resetForm()
-    setDialogOpen(true)
+    setEditorOpen(true)
   }
 
   const openEdit = (t: Terminal) => {
+    const settings = t.settings || {}
     setEditing(t)
     setForm({
       name: t.name,
       warehouse_id: t.warehouse_id?.toString() ?? '',
       receipt_header: t.receipt_header ?? '',
       receipt_footer: t.receipt_footer ?? '',
+      receipt_print_mode: settings.receipt_print_mode === 'direct' ? 'direct' : 'web',
+      printer_agent_id: settings.printer_agent_id || linkedAgentId || '',
+      receipt_printer_device_id: settings.receipt_printer_device_id || '',
+      label_printer_device_id: settings.label_printer_device_id || '',
       is_active: t.is_active,
     })
-    setDialogOpen(true)
+    setEditorOpen(true)
   }
 
   const saveMutation = useMutation({
@@ -579,6 +656,12 @@ function TerminalsTab({
         warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
         receipt_header: form.receipt_header || null,
         receipt_footer: form.receipt_footer || null,
+        settings: {
+          receipt_print_mode: form.receipt_print_mode,
+          printer_agent_id: form.printer_agent_id || null,
+          receipt_printer_device_id: form.receipt_printer_device_id || null,
+          label_printer_device_id: form.label_printer_device_id || null,
+        },
         is_active: form.is_active,
       }
       if (editing) {
@@ -589,7 +672,7 @@ function TerminalsTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pos-terminals'] })
       toast({ title: editing ? 'Terminal updated' : 'Terminal created' })
-      setDialogOpen(false)
+      setEditorOpen(false)
       resetForm()
     },
     onError: () => {
@@ -619,7 +702,7 @@ function TerminalsTab({
         </div>
         <Button onClick={openCreate}>
           <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-          Add Terminal
+          {editorOpen ? 'New Terminal' : 'Add Terminal'}
         </Button>
       </div>
 
@@ -691,78 +774,170 @@ function TerminalsTab({
         </CardContent>
       </Card>
 
-      {/* Terminal Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Terminal' : 'Add Terminal'}</DialogTitle>
-            <DialogDescription>
-              {editing ? 'Update the terminal details.' : 'Create a new POS terminal.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Terminal Name *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Counter 1"
-              />
+      {editorOpen && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{editing ? 'Edit Terminal' : 'Add Terminal'}</CardTitle>
+            <CardDescription>
+              {editing ? 'Update terminal details and printer routing.' : 'Create a new POS terminal and configure printing.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Terminal Name *</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Counter 1"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Warehouse</Label>
+                <Select
+                  value={form.warehouse_id}
+                  onValueChange={(v) => setForm((p) => ({ ...p, warehouse_id: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Array.isArray(warehouses) ? warehouses : []).map((w: Warehouse) => (
+                      <SelectItem key={w.id} value={w.id.toString()}>
+                        {w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Receipt Print Mode</Label>
+                <Select
+                  value={form.receipt_print_mode}
+                  onValueChange={(v) => setForm((p) => ({ ...p, receipt_print_mode: v as 'web' | 'direct' }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="web">Web Print (Browser Popup)</SelectItem>
+                    <SelectItem value="direct">Direct Print (IoT Printer)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Warehouse</Label>
-              <Select
-                value={form.warehouse_id}
-                onValueChange={(v) => setForm((p) => ({ ...p, warehouse_id: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Array.isArray(warehouses) ? warehouses : []).map((w: Warehouse) => (
-                    <SelectItem key={w.id} value={w.id.toString()}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Receipt Header</Label>
+                <Textarea
+                  value={form.receipt_header}
+                  onChange={(e) => setForm((p) => ({ ...p, receipt_header: e.target.value }))}
+                  placeholder="Your Store Name&#10;123 Main Street"
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Receipt Footer</Label>
+                <Textarea
+                  value={form.receipt_footer}
+                  onChange={(e) => setForm((p) => ({ ...p, receipt_footer: e.target.value }))}
+                  placeholder="Thank you for shopping with us!"
+                  rows={4}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Receipt Header</Label>
-              <Textarea
-                value={form.receipt_header}
-                onChange={(e) => setForm((p) => ({ ...p, receipt_header: e.target.value }))}
-                placeholder="Your Store Name&#10;123 Main Street"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Receipt Footer</Label>
-              <Textarea
-                value={form.receipt_footer}
-                onChange={(e) => setForm((p) => ({ ...p, receipt_footer: e.target.value }))}
-                placeholder="Thank you for shopping with us!"
-                rows={2}
-              />
-            </div>
+
+            {form.receipt_print_mode === 'direct' && (
+              <>
+                <Separator />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Linked Agent</Label>
+                    <Input
+                      value={form.printer_agent_id}
+                      onChange={(e) => setForm((p) => ({ ...p, printer_agent_id: e.target.value }))}
+                      placeholder="Agent ID"
+                    />
+                    {!linkedAgentId && (
+                      <p className="text-xs text-amber-600">No IoT agent is currently linked for this user.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Receipt Printer (IoT)</Label>
+                    <Select
+                      value={form.receipt_printer_device_id || '__none__'}
+                      onValueChange={(v) => setForm((p) => ({
+                        ...p,
+                        receipt_printer_device_id: v === '__none__' ? '' : v,
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select receipt printer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Not selected</SelectItem>
+                        {receiptPrinters.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name} ({device.driverType || device.driver_type || 'printer'})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Label/Barcode Printer (IoT)</Label>
+                    <Select
+                      value={form.label_printer_device_id || '__none__'}
+                      onValueChange={(v) => setForm((p) => ({
+                        ...p,
+                        label_printer_device_id: v === '__none__' ? '' : v,
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select label printer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Not selected</SelectItem>
+                        {labelPrinters.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name} ({device.driverType || device.driver_type || 'printer'})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+
             <SwitchRow
               label="Active"
               description="Inactive terminals cannot start new sessions."
               checked={form.is_active}
               onCheckedChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
             />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={!form.name || saveMutation.isPending}>
-              {saveMutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
-              {editing ? 'Update' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditorOpen(false)
+                  resetForm()
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => saveMutation.mutate()} disabled={!form.name || saveMutation.isPending}>
+                {saveMutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+                {editing ? 'Update Terminal' : 'Create Terminal'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

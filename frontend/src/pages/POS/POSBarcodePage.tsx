@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
+import iotApi from '@/lib/iotApi'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency } from '@/lib/utils'
 import Barcode from 'react-barcode'
+import { usePosSessionStore } from '@/store/posSessionStore'
 
 interface Product {
   id: number
@@ -53,9 +55,21 @@ interface BarcodeSettings {
   bar_height: number
 }
 
+interface PosTerminalSummary {
+  id: number | string
+  name: string
+  settings?: {
+    receipt_print_mode?: 'web' | 'direct'
+    printer_agent_id?: string | null
+    label_printer_device_id?: string | null
+    [key: string]: unknown
+  } | null
+}
+
 export function POSBarcodePage() {
   const { toast } = useToast()
   const printRef = useRef<HTMLDivElement>(null)
+  const activeTerminalId = usePosSessionStore((s) => s.activeTerminalId)
   const [search, setSearch] = useState('')
   const [selectedProducts, setSelectedProducts] = useState<number[]>([])
   const [printQuantity, setPrintQuantity] = useState(1)
@@ -81,6 +95,21 @@ export function POSBarcodePage() {
       return response.data
     },
   })
+
+  const { data: terminals = [] } = useQuery<PosTerminalSummary[]>({
+    queryKey: ['pos-terminals-for-barcode-printing'],
+    queryFn: async () => {
+      const response = await api.get('/pos/terminals')
+      return response.data?.terminals || []
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const activeTerminal = useMemo(
+    () => terminals.find((terminal) => String(terminal.id) === String(activeTerminalId)) ?? null,
+    [activeTerminalId, terminals]
+  )
 
   // Generate print data
   const printMutation = useMutation({
@@ -141,7 +170,7 @@ export function POSBarcodePage() {
     })
   }
 
-  const doPrint = () => {
+  const doWebPrint = () => {
     if (printRef.current) {
       const printContent = printRef.current.innerHTML
       const printWindow = window.open('', '_blank')
@@ -172,6 +201,49 @@ export function POSBarcodePage() {
         printWindow.print()
       }
     }
+  }
+
+  const doPrint = async () => {
+    const terminalSettings = activeTerminal?.settings || {}
+    const isDirectMode = terminalSettings.receipt_print_mode === 'direct'
+    const agentId = terminalSettings.printer_agent_id || null
+    const labelPrinterId = terminalSettings.label_printer_device_id || null
+
+    if (isDirectMode && agentId && labelPrinterId) {
+      try {
+        if (selectedProductsData.length === 0) {
+          throw new Error('No products selected for label printing')
+        }
+
+        for (const product of selectedProductsData) {
+          await iotApi.printLabel(agentId, labelPrinterId, {
+            jobType: 'product_label',
+            data: {
+              productName: product.name,
+              barcode: product.barcode || product.sku,
+              price: formatCurrency(Number(product.price)),
+              sku: product.sku,
+            },
+            copies: printQuantity,
+          })
+        }
+
+        toast({
+          title: 'Labels sent to printer',
+          description: `Printed ${selectedProductsData.length} product label set(s) via IoT printer.`,
+        })
+        setShowPrintDialog(false)
+        return
+      } catch (error: any) {
+        toast({
+          title: 'Direct label print failed',
+          description: error?.message || 'Falling back to web print preview.',
+          variant: 'destructive',
+        })
+      }
+    }
+
+    doWebPrint()
   }
 
   const selectedProductsData = products.filter((p: Product) => selectedProducts.includes(p.id))

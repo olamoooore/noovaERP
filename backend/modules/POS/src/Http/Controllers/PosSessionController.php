@@ -25,6 +25,10 @@ class PosSessionController extends Controller
                     'id' => $terminal->id,
                     'name' => $terminal->name,
                     'code' => $terminal->code,
+                    'warehouse_id' => $terminal->warehouse_id,
+                    'receipt_header' => $terminal->receipt_header,
+                    'receipt_footer' => $terminal->receipt_footer,
+                    'settings' => $terminal->settings,
                     'warehouse' => $terminal->warehouse ? [
                         'id' => $terminal->warehouse->id,
                         'name' => $terminal->warehouse->name,
@@ -118,7 +122,11 @@ class PosSessionController extends Controller
         \Log::info('Close session called', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
         
         $request->validate([
-            'closing_balance' => 'required|numeric|min:0',
+            'closing_balance' => 'nullable|numeric|min:0',
+            'payment_counts' => 'nullable|array',
+            'payment_counts.*.method' => 'required|string',
+            'payment_counts.*.method_name' => 'nullable|string',
+            'payment_counts.*.counted_amount' => 'required|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 
@@ -130,7 +138,13 @@ class PosSessionController extends Controller
         }
 
         // Verify user owns this session or is admin
-        if ($session->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+        $authUser = Auth::user();
+        $isAdmin = false;
+        if ($authUser) {
+            $isAdmin = method_exists($authUser, 'hasRole') ? $authUser->hasRole('admin') : false;
+        }
+        
+        if ($session->user_id !== Auth::id() && !$isAdmin) {
             \Log::warning('Unauthorized session close attempt', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -140,15 +154,60 @@ class PosSessionController extends Controller
             return response()->json(['error' => 'Session is not open'], 400);
         }
 
-        $session->close($request->closing_balance, $request->notes);
+        try {
+            // Use new per-payment-method closing if payment_counts provided
+            if (!empty($request->payment_counts)) {
+                $session->closeWithPaymentBreakdown($request->payment_counts, $request->notes);
+            } else {
+                // Fallback to legacy single closing_balance
+                $closingBalance = (float) ($request->closing_balance ?? 0);
+                $session->close($closingBalance, $request->notes);
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Failed to close session', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Failed to close session: ' . $e->getMessage()], 500);
+        }
         \Log::info('Session closed successfully', ['session_id' => $sessionId]);
 
         return response()->json([
             'message' => 'Session closed successfully',
             'session' => [
-                ...$session->fresh()->toArray(),
+                ...$session->fresh()->load('closures')->toArray(),
                 'summary' => $session->getSummary(),
             ],
+        ]);
+    }
+
+    /**
+     * Get expected payment breakdown for session close
+     */
+    public function getCloseSummary($sessionId): JsonResponse
+    {
+        $session = PosSession::find($sessionId);
+
+        if (!$session) {
+            return response()->json(['error' => 'Session not found'], 404);
+        }
+
+        if ($session->status !== 'open') {
+            return response()->json(['error' => 'Session is not open'], 400);
+        }
+
+        return response()->json([
+            'session' => [
+                'id' => $session->id,
+                'session_number' => $session->session_number,
+                'terminal' => $session->terminal?->only(['id', 'name', 'code']),
+                'user' => $session->user?->only(['id', 'name']),
+                'opened_at' => $session->opened_at,
+                'opening_balance' => $session->opening_balance,
+            ],
+            'expected_breakdown' => $session->getExpectedPaymentBreakdown(),
+            'summary' => $session->getSummary(),
         ]);
     }
 

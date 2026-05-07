@@ -11,10 +11,16 @@ class PosProductController extends Controller
     public function lookup(Request $request)
     {
         $validated = $request->validate([
-            'code' => 'required|string|max:255',
+            'code' => 'nullable|string|max:255|required_without:barcode',
+            'barcode' => 'nullable|string|max:255|required_without:code',
         ]);
 
-        $results = Product::findAllSellableByBarcodeOrSku($validated['code']);
+        $lookupCode = trim((string) ($validated['code'] ?? $validated['barcode'] ?? ''));
+        if ($lookupCode === '') {
+            return response()->json(['message' => 'Barcode or code is required'], 422);
+        }
+
+        $results = Product::findAllSellableByBarcodeOrSku($lookupCode);
         
         if (empty($results)) {
             return response()->json(['message' => 'Product not found'], 404);

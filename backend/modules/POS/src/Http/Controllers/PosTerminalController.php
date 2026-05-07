@@ -41,6 +41,10 @@ class PosTerminalController extends Controller
             'receipt_header' => 'nullable|string',
             'receipt_footer' => 'nullable|string',
             'settings' => 'nullable|array',
+            'settings.receipt_print_mode' => 'nullable|string|in:web,direct',
+            'settings.printer_agent_id' => 'nullable|string|max:255',
+            'settings.receipt_printer_device_id' => 'nullable|string|max:255',
+            'settings.label_printer_device_id' => 'nullable|string|max:255',
         ]);
 
         $terminal = PosTerminal::create($request->all());
@@ -80,6 +84,10 @@ class PosTerminalController extends Controller
             'receipt_header' => 'nullable|string',
             'receipt_footer' => 'nullable|string',
             'settings' => 'nullable|array',
+            'settings.receipt_print_mode' => 'nullable|string|in:web,direct',
+            'settings.printer_agent_id' => 'nullable|string|max:255',
+            'settings.receipt_printer_device_id' => 'nullable|string|max:255',
+            'settings.label_printer_device_id' => 'nullable|string|max:255',
             'is_active' => 'boolean',
         ]);
 

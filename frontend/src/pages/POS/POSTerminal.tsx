@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import api from '@/lib/api'
+import iotApi from '@/lib/iotApi'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,6 +61,26 @@ import { HitPayPaymentDialog } from '@/components/pos/HitPayPaymentDialog'
 import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import loyaltyApi from '@/lib/loyaltyApi'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
+
+const METHOD_ICONS: Record<string, string> = {
+  cash: 'solar:wallet-money-bold-duotone',
+  card: 'solar:card-bold-duotone',
+  bank_transfer: 'solar:bank-card-bold-duotone',
+  mobile: 'solar:smartphone-bold-duotone',
+  voucher: 'solar:ticket-bold-duotone',
+  credit: 'solar:file-text-bold-duotone',
+  other: 'solar:wallet-bold-duotone',
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank_transfer: 'Bank Transfer',
+  mobile: 'Mobile Payment',
+  voucher: 'Voucher',
+  credit: 'Credit',
+  other: 'Other',
+}
 
 interface Product {
   id: number
@@ -136,10 +157,21 @@ interface PosTerminalSummary {
   code?: string | null
   receipt_header?: string | null
   receipt_footer?: string | null
+  settings?: {
+    receipt_print_mode?: 'web' | 'direct'
+    printer_agent_id?: string | null
+    receipt_printer_device_id?: string | null
+    label_printer_device_id?: string | null
+    [key: string]: unknown
+  } | null
   warehouse?: {
     id: number
     name: string
   } | null
+}
+
+interface PosRuntimeSettings {
+  auto_print_receipt?: boolean
 }
 
 interface PosPaymentResponse {
@@ -249,10 +281,12 @@ export function POSTerminal() {
   const [warehouseId, setWarehouseId] = useState<string>(sessionWarehouseId ?? 'all')
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>('cash')
-  const [barcodeInput, setBarcodeInput] = useState('')
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
   const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null)
   const [productPage, setProductPage] = useState(1) // Product pagination
+  const scannerBufferRef = useRef('')
+  const scannerLastKeyTsRef = useRef(0)
+  const scannerFlushTimerRef = useRef<number | null>(null)
 
   // Top bar: live clock + online status
   const [currentTime, setCurrentTime] = useState(() =>
@@ -324,8 +358,14 @@ export function POSTerminal() {
   
   // Session Close State
   const [showCloseSessionDialog, setShowCloseSessionDialog] = useState(false)
-  const [closingBalance, setClosingBalance] = useState<string>('')
   const [closingNotes, setClosingNotes] = useState<string>('')
+  const [paymentBreakdown, setPaymentBreakdown] = useState<Array<{
+    method: string
+    methodLabel: string
+    expectedAmount: number
+    countedAmount: string
+    icon: string
+  }>>([])
   
   // Discount/Loyalty/Coupon Tab State
   const [activeDiscountTab, setActiveDiscountTab] = useState<'discount' | 'loyalty' | 'coupon'>('discount')
@@ -561,6 +601,16 @@ export function POSTerminal() {
     [activeTerminalId, terminals]
   )
 
+  const { data: posRuntimeSettings } = useQuery<PosRuntimeSettings>({
+    queryKey: ['pos-runtime-settings-for-printing'],
+    queryFn: async () => {
+      const response = await api.get('/pos/settings')
+      return response.data?.settings || {}
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+
   const { data: pendingOrdersData } = useQuery({
     queryKey: ['pos-draft-orders-summary'],
     queryFn: async () => {
@@ -619,17 +669,22 @@ export function POSTerminal() {
 
   // Close Session Mutation
   const closeSessionMutation = useMutation({
-    mutationFn: async ({ sessionId, closingBalance, notes }: { sessionId: number; closingBalance: number; notes?: string }) => {
-      console.log('Closing session:', sessionId, closingBalance, notes)
-      const response = await api.post(`/pos/sessions/${sessionId}/close`, {
-        closing_balance: closingBalance,
-        notes,
+    mutationFn: async () => {
+      const paymentCounts = paymentBreakdown.map((item) => ({
+        method: item.method,
+        method_name: item.methodLabel,
+        counted_amount: parseFloat(item.countedAmount) || 0,
+      }))
+
+      const response = await api.post(`/pos/sessions/${activeSessionId}/close`, {
+        payment_counts: paymentCounts,
+        notes: closingNotes,
       })
-      console.log('Close session response:', response.data)
       return response.data
     },
     onSuccess: async () => {
       console.log('Session closed successfully')
+      setShowCloseSessionDialog(false)
       // Clear session state first
       clearSession()
       
@@ -656,6 +711,71 @@ export function POSTerminal() {
       })
     },
   })
+
+  // Fetch expected payment breakdown when close dialog opens
+  useEffect(() => {
+    if (!showCloseSessionDialog || !activeSessionId) return
+
+    const fetchBreakdown = async () => {
+      try {
+        const response = await api.get(`/pos/sessions/${activeSessionId}/close-summary`)
+        const breakdown = response.data?.expected_breakdown || []
+
+        const items = breakdown.map((item: { method: string; expected_amount: number }) => ({
+          method: item.method,
+          methodLabel: METHOD_LABELS[item.method] || item.method,
+          expectedAmount: item.expected_amount,
+          countedAmount: item.expected_amount.toFixed(2),
+          icon: METHOD_ICONS[item.method] || 'solar:wallet-bold-duotone',
+        }))
+
+        if (!items.some((i: { method: string }) => i.method === 'cash')) {
+          items.unshift({
+            method: 'cash',
+            methodLabel: 'Cash',
+            expectedAmount: 0,
+            countedAmount: '0.00',
+            icon: 'solar:wallet-money-bold-duotone',
+          })
+        }
+
+        setPaymentBreakdown(items)
+      } catch {
+        setPaymentBreakdown([
+          {
+            method: 'cash',
+            methodLabel: 'Cash',
+            expectedAmount: 0,
+            countedAmount: '0.00',
+            icon: 'solar:wallet-money-bold-duotone',
+          },
+        ])
+      }
+    }
+
+    void fetchBreakdown()
+    setClosingNotes('')
+  }, [showCloseSessionDialog, activeSessionId])
+
+  const updateCountedAmount = useCallback((method: string, value: string) => {
+    setPaymentBreakdown((prev) =>
+      prev.map((item) =>
+        item.method === method ? { ...item, countedAmount: value } : item
+      )
+    )
+  }, [])
+
+  const totalExpected = useMemo(
+    () => paymentBreakdown.reduce((sum, item) => sum + item.expectedAmount, 0),
+    [paymentBreakdown]
+  )
+
+  const totalCounted = useMemo(
+    () => paymentBreakdown.reduce((sum, item) => sum + (parseFloat(item.countedAmount) || 0), 0),
+    [paymentBreakdown]
+  )
+
+  const totalDifference = totalCounted - totalExpected
 
   const taxEnabled = taxConfig.enabled
 
@@ -878,18 +998,25 @@ export function POSTerminal() {
   }
 
   const handleBarcodeScan = useCallback(async (barcode: string) => {
+    const code = barcode.trim()
+    if (!code) return
+
     try {
-      const response = await api.get('/pos/products/lookup', { params: { code: barcode } })
+      const response = await api.get('/pos/products/lookup', {
+        params: {
+          code,
+          barcode: code,
+        },
+      })
       if (response.data) {
         // Check if multiple matches
         if (response.data.multiple_matches) {
           // TODO: Show selection modal for multiple matches
           toast({
             title: 'Multiple Products Found',
-            description: `${response.data.count} products match barcode ${barcode}. Please select manually.`,
+            description: `${response.data.count} products match barcode ${code}. Please select manually.`,
             variant: 'default',
           })
-          setBarcodeInput('')
           return
         }
 
@@ -914,23 +1041,83 @@ export function POSTerminal() {
     } catch {
       toast({
         title: 'Product Not Found',
-        description: `No product found with barcode: ${barcode}`,
+        description: `No product found with barcode: ${code}`,
         variant: 'destructive',
       })
     }
-    setBarcodeInput('')
   }, [addToCart, toast])
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' && barcodeInput.length > 0) {
-        handleBarcodeScan(barcodeInput)
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null
+      if (!el) return false
+      const tagName = el.tagName?.toLowerCase()
+      return tagName === 'input' || tagName === 'textarea' || el.isContentEditable
+    }
+
+    const flushBuffer = () => {
+      const code = scannerBufferRef.current.trim()
+      scannerBufferRef.current = ''
+      if (code.length >= 6) {
+        void handleBarcodeScan(code)
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [barcodeInput, handleBarcodeScan])
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+
+      const now = Date.now()
+      const delta = now - scannerLastKeyTsRef.current
+      scannerLastKeyTsRef.current = now
+
+      const editableTarget = isEditableTarget(event.target)
+
+      if (event.key === 'Enter') {
+        if (scannerBufferRef.current.length >= 6) {
+          event.preventDefault()
+          flushBuffer()
+        }
+        return
+      }
+
+      if (event.key.length !== 1) return
+
+      // Scanner keyboards emit very fast bursts; avoid interfering with normal typing.
+      if (editableTarget && delta > 70) {
+        scannerBufferRef.current = ''
+        if (scannerFlushTimerRef.current !== null) {
+          window.clearTimeout(scannerFlushTimerRef.current)
+          scannerFlushTimerRef.current = null
+        }
+        return
+      }
+
+      if (delta > 120) {
+        scannerBufferRef.current = ''
+      }
+
+      scannerBufferRef.current += event.key
+
+      if (scannerFlushTimerRef.current !== null) {
+        window.clearTimeout(scannerFlushTimerRef.current)
+      }
+
+      // Some scanners do not emit Enter; flush after brief silence.
+      scannerFlushTimerRef.current = window.setTimeout(() => {
+        flushBuffer()
+      }, 90)
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      if (scannerFlushTimerRef.current !== null) {
+        window.clearTimeout(scannerFlushTimerRef.current)
+        scannerFlushTimerRef.current = null
+      }
+    }
+  }, [handleBarcodeScan])
 
   const extractErrorMessage = (error: any): string => {
     if (error.response?.data) {
@@ -1276,6 +1463,73 @@ export function POSTerminal() {
       printWindow.close()
     }, 250)
   }, [lastOrder, toast])
+
+  const printReceiptDirect = useCallback(async (receipt: PosReceiptOrder): Promise<boolean> => {
+    const terminalSettings = activeTerminal?.settings || {}
+    const printMode = terminalSettings.receipt_print_mode || 'web'
+    const agentId = terminalSettings.printer_agent_id || null
+    const deviceId = terminalSettings.receipt_printer_device_id || null
+
+    if (printMode !== 'direct' || !agentId || !deviceId) {
+      return false
+    }
+
+    try {
+      const response = await iotApi.printReceipt({
+        agent_id: agentId,
+        device_id: deviceId,
+        receipt_data: {
+          store_name: receiptBranding.businessName,
+          items: receipt.items.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          subtotal: receipt.subtotal,
+          tax: receipt.taxAmount,
+          total: receipt.total,
+          payment_method: receipt.paymentMethod,
+          payment_amount: receipt.amountPaid,
+          change: receipt.change,
+          receipt_number: receipt.receiptNumber,
+          date: receipt.date.toISOString(),
+        },
+      })
+
+      if (!response?.success) {
+        throw new Error(response?.message || 'Direct receipt print failed')
+      }
+
+      toast({
+        title: 'Receipt sent to printer',
+        description: `Printed via IoT device ${deviceId}`,
+      })
+      return true
+    } catch (error: any) {
+      toast({
+        title: 'Direct print failed',
+        description: error?.message || 'Falling back to web print.',
+        variant: 'destructive',
+      })
+      return false
+    }
+  }, [activeTerminal?.settings, receiptBranding.businessName, toast])
+
+  const handleReceiptPrint = useCallback(async () => {
+    if (!lastOrder) return
+
+    const printedDirectly = await printReceiptDirect(lastOrder)
+    if (!printedDirectly) {
+      printReceiptPreview()
+    }
+  }, [lastOrder, printReceiptDirect, printReceiptPreview])
+
+  useEffect(() => {
+    if (!lastOrder) return
+    if (posRuntimeSettings?.auto_print_receipt !== true) return
+
+    void printReceiptDirect(lastOrder)
+  }, [lastOrder, posRuntimeSettings?.auto_print_receipt, printReceiptDirect])
 
   // Handle Save Draft
   const handleSaveDraft = async () => {
@@ -2408,104 +2662,148 @@ export function POSTerminal() {
 
       {/* Close Session Dialog */}
       <Dialog open={showCloseSessionDialog} onOpenChange={setShowCloseSessionDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Icon icon="solar:logout-bold" className="h-5 w-5" />
-              Close Session
-            </DialogTitle>
-            <DialogDescription>
-              Enter the closing cash balance to close this session. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Closing Balance *
-              </label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={closingBalance}
-                onChange={(e) => setClosingBalance(e.target.value)}
-                placeholder="0.00"
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">
-                Actual cash amount in the drawer
-              </p>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
+          {/* Header */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
+            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] bg-rose-500/15 ring-1 ring-rose-400/20">
+                <Icon icon="solar:logout-2-bold-duotone" className="h-6 w-6 text-rose-400" />
+              </div>
+              <DialogHeader className="space-y-1 p-0 text-left">
+                <DialogTitle className="text-lg font-semibold tracking-[-0.02em]">Close Register</DialogTitle>
+                <DialogDescription className="text-sm leading-relaxed text-white/60">
+                  Count cash and verify all payment methods before closing.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="flex flex-col overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+            {/* Session Info */}
+            <div className="mb-5 grid grid-cols-3 gap-3 rounded-[1rem] border border-slate-200/80 bg-slate-50/80 p-3">
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Terminal</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{activeTerminal?.name || '—'}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Orders</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{cart.length} in cart</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-slate-400">Status</div>
+                <div className={`mt-1 inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {isOnline ? 'Online' : 'Offline'}
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Notes
-              </label>
+            {/* Payment Method Counting */}
+            <div className="mb-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Payment Reconciliation</h3>
+              <div className="space-y-2">
+                {paymentBreakdown.map((item) => {
+                  const counted = parseFloat(item.countedAmount) || 0
+                  const diff = counted - item.expectedAmount
+                  const diffTone = diff > 0.005 ? 'text-emerald-600' : diff < -0.005 ? 'text-rose-600' : 'text-slate-400'
+                  const diffLabel = diff > 0.005 ? 'Over' : diff < -0.005 ? 'Short' : 'Exact'
+
+                  return (
+                    <div key={item.method} className="rounded-[0.85rem] border border-slate-200/80 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                            <Icon icon={item.icon} className="h-4 w-4 text-slate-600" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{item.methodLabel}</div>
+                            <div className="text-xs text-slate-400">Expected: {formatCurrency(item.expectedAmount)}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.countedAmount}
+                            onChange={(e) => updateCountedAmount(item.method, e.target.value)}
+                            className="h-9 w-28 rounded-lg border-slate-200 bg-slate-50 text-right text-sm font-semibold tabular-nums focus:bg-white"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      {item.expectedAmount > 0 && (
+                        <div className={`mt-2 flex items-center justify-end gap-1 text-xs font-medium ${diffTone}`}>
+                          <span>{diffLabel}</span>
+                          <span>{diff > 0 ? '+' : ''}{formatCurrency(diff)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Totals Summary */}
+            <div className="mb-4 rounded-[1rem] border border-slate-200/80 bg-slate-50/80 p-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Expected</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{formatCurrency(totalExpected)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Counted</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{formatCurrency(totalCounted)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-700">Difference</span>
+                  <span className={`font-bold tabular-nums ${totalDifference > 0.005 ? 'text-emerald-600' : totalDifference < -0.005 ? 'text-rose-600' : 'text-slate-500'}`}>
+                    {totalDifference > 0.005 ? '+' : ''}{formatCurrency(totalDifference)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">Closing Notes (optional)</label>
               <Input
                 value={closingNotes}
                 onChange={(e) => setClosingNotes(e.target.value)}
                 placeholder="Any discrepancies or notes..."
+                className="h-9 rounded-lg border-slate-200 bg-slate-50 text-sm"
               />
             </div>
-
-            {cart.length > 0 && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                <div className="flex items-center gap-2">
-                  <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
-                  <span className="font-medium">Warning</span>
-                </div>
-                <p className="mt-1">
-                  You have {cart.length} item(s) in the cart. Closing the session will clear the cart.
-                </p>
-              </div>
-            )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCloseSessionDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive"
-              onClick={() => {
-                console.log('Close button clicked!')
-                console.log('activeSessionId:', activeSessionId)
-                console.log('closingBalance:', closingBalance)
-                if (!activeSessionId) {
-                  console.error('No active session ID')
-                  toast({
-                    title: 'Error',
-                    description: 'No active session to close',
-                    variant: 'destructive',
-                  })
-                  return
-                }
-                const balance = parseFloat(closingBalance)
-                console.log('Parsed balance:', balance)
-                if (isNaN(balance) || balance < 0) {
-                  toast({
-                    title: 'Invalid Balance',
-                    description: 'Please enter a valid closing balance',
-                    variant: 'destructive',
-                  })
-                  return
-                }
-                console.log('Calling closeSessionMutation with:', { sessionId: activeSessionId, closingBalance: balance, notes: closingNotes })
-                closeSessionMutation.mutate({
-                  sessionId: activeSessionId,
-                  closingBalance: balance,
-                  notes: closingNotes,
-                })
-              }}
-              disabled={closeSessionMutation.isPending}
-            >
-              {closeSessionMutation.isPending && (
-                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Close Session
-            </Button>
-          </DialogFooter>
+          {/* Footer */}
+          <div className="border-t border-slate-200/80 bg-slate-50/50 px-6 py-4">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowCloseSessionDialog(false)}
+                disabled={closeSessionMutation.isPending}
+                className="flex-1 rounded-[0.85rem] border-slate-200 bg-white py-2.5 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => closeSessionMutation.mutate()}
+                disabled={closeSessionMutation.isPending}
+                className="flex-1 rounded-[0.85rem] bg-gradient-to-b from-rose-600 to-rose-700 py-2.5 font-semibold text-white shadow-[0_8px_20px_rgba(225,29,72,0.30)] hover:from-rose-700 hover:to-rose-800"
+              >
+                {closeSessionMutation.isPending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon icon="svg-spinners:ring-resize" className="h-4 w-4" />
+                    Closing...
+                  </span>
+                ) : 'Close Register'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2571,7 +2869,7 @@ export function POSTerminal() {
             </Button>
             <Button 
               className="flex-1"
-              onClick={printReceiptPreview}
+              onClick={() => void handleReceiptPrint()}
             >
               <Icon icon="solar:printer-bold" className="h-4 w-4 mr-2" />
               Print

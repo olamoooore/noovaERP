@@ -17,6 +17,13 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -126,6 +133,12 @@ type ProductStatus = 'draft' | 'pending_approval' | 'active' | 'discontinued' | 
 type TrackingMethod = 'none' | 'quantity' | 'batch' | 'serial'
 type TopTabKey = 'product' | 'commercial' | 'inventory' | 'operations' | 'channels' | 'control' | 'media'
 
+interface BarcodeDetectorWindow extends Window {
+  BarcodeDetector?: new (options?: { formats?: string[] }) => {
+    detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>
+  }
+}
+
 function slugSkuBase(name: string): string {
   const raw = (name || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '')
   return raw.slice(0, 8) || 'SKU'
@@ -213,6 +226,9 @@ export function ProductCreatePage() {
   const [unitSearch, setUnitSearch] = useState('')
   const [detailsTab, setDetailsTab] = useState('inventory')
   const [activeTopTab, setActiveTopTab] = useState<TopTabKey>('product')
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false)
+  const [barcodeScannerLoading, setBarcodeScannerLoading] = useState(false)
+  const [barcodeScannerError, setBarcodeScannerError] = useState<string | null>(null)
 
   const productSectionRef = useRef<HTMLDivElement | null>(null)
   const channelsSectionRef = useRef<HTMLDivElement | null>(null)
@@ -221,6 +237,29 @@ export function ProductCreatePage() {
   const controlSectionRef = useRef<HTMLDivElement | null>(null)
   const operationsSectionRef = useRef<HTMLDivElement | null>(null)
   const mediaSectionRef = useRef<HTMLDivElement | null>(null)
+  const barcodeVideoRef = useRef<HTMLVideoElement | null>(null)
+  const barcodeStreamRef = useRef<MediaStream | null>(null)
+  const barcodeDetectIntervalRef = useRef<number | null>(null)
+  const barcodeDetectLockRef = useRef(false)
+
+  const stopBarcodeScanner = () => {
+    if (barcodeDetectIntervalRef.current !== null) {
+      window.clearInterval(barcodeDetectIntervalRef.current)
+      barcodeDetectIntervalRef.current = null
+    }
+
+    if (barcodeStreamRef.current) {
+      barcodeStreamRef.current.getTracks().forEach((track) => track.stop())
+      barcodeStreamRef.current = null
+    }
+
+    if (barcodeVideoRef.current) {
+      barcodeVideoRef.current.srcObject = null
+    }
+
+    setBarcodeScannerLoading(false)
+    barcodeDetectLockRef.current = false
+  }
 
   // Default to the same pricing mode as Settings
   useEffect(() => {
@@ -245,6 +284,94 @@ export function ProductCreatePage() {
     if (!autoSku) return
     setFormData((prev) => ({ ...prev, sku: generateSku(prev.name) }))
   }, [autoSku, formData.name])
+
+  useEffect(() => {
+    if (!barcodeScannerOpen) {
+      stopBarcodeScanner()
+      return
+    }
+
+    let cancelled = false
+
+    const startScanner = async () => {
+      const BarcodeDetectorCtor = (window as BarcodeDetectorWindow).BarcodeDetector
+      if (!BarcodeDetectorCtor) {
+        setBarcodeScannerError('Camera barcode scanning is not supported in this browser.')
+        return
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setBarcodeScannerError('Camera access is not available on this device.')
+        return
+      }
+
+      try {
+        setBarcodeScannerLoading(true)
+        setBarcodeScannerError(null)
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+          },
+          audio: false,
+        })
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+
+        barcodeStreamRef.current = stream
+
+        if (barcodeVideoRef.current) {
+          barcodeVideoRef.current.srcObject = stream
+          await barcodeVideoRef.current.play()
+        }
+
+        const detector = new BarcodeDetectorCtor({
+          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
+        })
+
+        barcodeDetectIntervalRef.current = window.setInterval(async () => {
+          if (!barcodeVideoRef.current || barcodeDetectLockRef.current) return
+          if (barcodeVideoRef.current.readyState < 2) return
+
+          barcodeDetectLockRef.current = true
+
+          try {
+            const results = await detector.detect(barcodeVideoRef.current)
+            const scanned = results.find((item) => (item.rawValue || '').trim().length > 0)?.rawValue?.trim()
+
+            if (!scanned) return
+
+            setFormData((prev) => ({ ...prev, barcode: scanned }))
+            setBarcodeScannerOpen(false)
+            toast({
+              title: 'Barcode scanned',
+              description: `Detected: ${scanned}`,
+            })
+          } catch {
+            // Ignore transient detection failures while the camera stream is active.
+          } finally {
+            barcodeDetectLockRef.current = false
+          }
+        }, 250)
+      } catch {
+        setBarcodeScannerError('Could not start camera. Check camera permission and try again.')
+      } finally {
+        if (!cancelled) {
+          setBarcodeScannerLoading(false)
+        }
+      }
+    }
+
+    void startScanner()
+
+    return () => {
+      cancelled = true
+      stopBarcodeScanner()
+    }
+  }, [barcodeScannerOpen, toast])
 
   const generateVariants = () => {
     if (selectedAttributes.length === 0) return
@@ -878,11 +1005,25 @@ export function ProductCreatePage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="barcode">Barcode (optional)</Label>
-                    <Input
-                      id="barcode"
-                      value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="barcode"
+                        value={formData.barcode}
+                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setBarcodeScannerOpen(true)}
+                        className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                        title="Scan barcode with camera"
+                        aria-label="Scan barcode with camera"
+                      >
+                        <Icon icon="solar:camera-bold" className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -2608,6 +2749,51 @@ export function ProductCreatePage() {
           </Card>
         </div>
       </div>
+
+      <Dialog
+        open={barcodeScannerOpen}
+        onOpenChange={(open) => {
+          setBarcodeScannerOpen(open)
+          if (!open) {
+            stopBarcodeScanner()
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Scan Product Barcode</DialogTitle>
+            <DialogDescription>
+              Point your camera at a barcode. The value will be filled automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-md border bg-black">
+              <video
+                ref={barcodeVideoRef}
+                className="h-72 w-full object-cover"
+                muted
+                playsInline
+                autoPlay
+              />
+            </div>
+
+            {barcodeScannerLoading && (
+              <p className="text-sm text-muted-foreground">Starting camera...</p>
+            )}
+
+            {barcodeScannerError && (
+              <p className="text-sm text-destructive">{barcodeScannerError}</p>
+            )}
+
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={() => setBarcodeScannerOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
