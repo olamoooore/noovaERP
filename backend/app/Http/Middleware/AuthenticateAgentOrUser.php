@@ -42,7 +42,7 @@ class AuthenticateAgentOrUser
             
             \Log::info('Checking Sanctum token', ['token_id' => $id]);
             
-            $accessToken = DB::table('personal_access_tokens')
+            $accessToken = DB::table('public.personal_access_tokens')
                 ->where('id', $id)
                 ->where('token', hash('sha256', $plaintext))
                 ->first();
@@ -51,7 +51,7 @@ class AuthenticateAgentOrUser
                 \Log::info('Sanctum token found', ['user_id' => $accessToken->tokenable_id]);
                 
                 // Valid Sanctum token - get the user
-                $user = DB::table('users')
+                $user = DB::table('public.users')
                     ->where('id', $accessToken->tokenable_id)
                     ->first();
                 
@@ -59,7 +59,7 @@ class AuthenticateAgentOrUser
                     \Log::info('User authenticated', ['email' => $user->email]);
                     
                     // Update last_used_at
-                    DB::table('personal_access_tokens')
+                    DB::table('public.personal_access_tokens')
                         ->where('id', $id)
                         ->update(['last_used_at' => now()]);
                     
@@ -128,7 +128,7 @@ class AuthenticateAgentOrUser
 
         try {
             DB::statement("SET search_path TO public");
-            $domain = DB::table('domains')->where('domain', $host)->first();
+            $domain = DB::table('public.domains')->where('domain', $host)->first();
 
             if ($domain) {
                 $tenant = \App\Models\Tenant::find($domain->tenant_id);

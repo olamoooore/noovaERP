@@ -168,7 +168,7 @@ class InitializeTenantForPublicAccess
         }
 
         try {
-            $domain = DB::table('domains')->where('domain', $host)->first();
+            $domain = DB::table('public.domains')->where('domain', $host)->first();
 
             if ($domain) {
                 $tenant = \App\Models\Tenant::find($domain->tenant_id);

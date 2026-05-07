@@ -29,8 +29,8 @@ class AuthController extends Controller
             ]);
         }
 
-        // Get the user's default tenant from company access
-        $defaultCompany = \DB::table('user_company_access')
+        // Get the user's default tenant from company access (public schema)
+        $defaultCompany = \DB::table('public.user_company_access')
             ->where('user_id', $user->id)
             ->where('is_default', true)
             ->first();

@@ -48,8 +48,8 @@ class SetTenantFromUserPreference
 
             $this->tenancy->initialize($tenant);
         } else {
-            // Get user's default company
-            $defaultCompany = DB::table('user_company_access')
+            // Get user's default company from public schema
+            $defaultCompany = DB::table('public.user_company_access')
                 ->where('user_id', $user->id)
                 ->where('is_default', true)
                 ->first();
