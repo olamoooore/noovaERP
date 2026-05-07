@@ -9,6 +9,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 // Auth API (non-tenant routes)
@@ -66,7 +67,10 @@ accountingApi.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Normalize common auth/validation errors to improve UX
+    const status = error.response?.status
+    // 401: Unauthorized
+    if (status === 401) {
       // Don't redirect web-shop API calls to admin login
       const requestUrl = error.config?.url || ''
       if (requestUrl.includes('web-shop')) {
@@ -78,7 +82,34 @@ api.interceptors.response.use(
       // Use basename-aware redirect
       const basePath = import.meta.env.VITE_BASE_PATH || ''
       window.location.href = `${basePath}/login`
+      return Promise.reject(error)
     }
+
+    // 403: Forbidden and 422: Unprocessable Entity should bubble to UI for handling
+    if (status === 403) {
+      return Promise.reject(error)
+    }
+    if (status === 422) {
+      // Attach a friendlier message if backend provided field errors
+      const data = error.response?.data ?? {}
+      let message = data?.message ?? 'Validation failed'
+      // Laravel style: fields -> messages map
+      const fieldErrors = data?.errors ?? null
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        const parts: string[] = []
+        for (const key in fieldErrors) {
+          const arr = Array.isArray(fieldErrors[key]) ? fieldErrors[key] : [fieldErrors[key]]
+          arr.forEach((m: any) => {
+            if (typeof m === 'string') parts.push(`${key}: ${m}`)
+          })
+        }
+        if (parts.length) message = parts.join('; ')
+      }
+      error.message = message
+      return Promise.reject(error)
+    }
+
+    // Other errors: pass through to UI/error handling
     return Promise.reject(error)
   }
 )

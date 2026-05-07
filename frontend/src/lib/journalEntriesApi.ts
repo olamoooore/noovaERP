@@ -112,6 +112,17 @@ class JournalEntriesApi {
     message: string;
     entry: JournalEntry;
   }> {
+    // Client-side basic validation to catch simple issues early
+    if (!Array.isArray(data.lines) || data.lines.length < 2) {
+      throw new Error('Journal entry must contain at least two lines.');
+    }
+    for (let i = 0; i < data.lines.length; i++) {
+      const line = data.lines[i] as any;
+      if (typeof line.account_id !== 'number' ||
+          (typeof line.debit !== 'number' && typeof line.credit !== 'number')) {
+        throw new Error(`Line ${i + 1} must include an account_id and either debit or credit.`);
+      }
+    }
     const response = await api.post('/accounting/journal-entries', data);
     return response.data;
   }

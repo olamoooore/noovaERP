@@ -224,7 +224,18 @@ class APIClient {
           userMessage: 'A server error occurred. Please try again later.'
         }
 
+      case 422:
+        // Laravel validation errors
+        return {
+          category: ErrorCategory.VALIDATION,
+          message: data?.message ?? 'Validation failed',
+          originalError: error,
+          shouldRetry: false,
+          userMessage: (data?.errors ? Object.values(data.errors).flat().join(', ') : (data?.message ?? 'Validation failed'))
+        }
       default:
+        
+        // Fall-through for unexpected codes
         return {
           category: ErrorCategory.CLIENT,
           message: data?.message || 'An unexpected error occurred',

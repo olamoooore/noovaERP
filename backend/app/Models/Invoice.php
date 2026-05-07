@@ -174,6 +174,17 @@ class Invoice extends Model
 
     public static function generateInvoiceNumber(): string
     {
+        // Prefer a database sequence to guarantee concurrency-safe numbering
+        try {
+            $seqVal = \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val ?? null;
+            if ($seqVal !== null) {
+                return 'INV-' . date('Y') . '-' . str_pad((int) $seqVal, 4, '0', STR_PAD_LEFT);
+            }
+        } catch (\Throwable $e) {
+            // Fall back to legacy mechanism if sequence is unavailable
+        }
+
+        // Fallback: derive next number from the latest invoice
         $latest = static::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->invoice_number, -4) + 1 : 1;
         return 'INV-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);

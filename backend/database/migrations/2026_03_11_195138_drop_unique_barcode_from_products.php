@@ -15,6 +15,19 @@ return new class extends Migration
             return;
         }
 
+        // Guard: only drop if the constraint actually exists
+        $connection = Schema::getConnection();
+        $schema = $connection->selectOne('select current_schema() as schema')->schema;
+        $exists = (bool) $connection->table('pg_indexes')
+            ->where('schemaname', $schema)
+            ->where('tablename', 'products')
+            ->where('indexname', 'products_barcode_unique')
+            ->exists();
+
+        if (!$exists) {
+            return;
+        }
+
         Schema::table('products', function (Blueprint $table) {
             $table->dropUnique('products_barcode_unique');
         });

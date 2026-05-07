@@ -78,6 +78,8 @@ class AuthenticateAgentOrUser
         }
         
         // Try agent authentication (for agents)
+        // Agents live in the tenant schema — resolve tenant from Host header first.
+        $this->initTenantFromHost($request);
         $agent = DB::table('agents')
             ->where('api_token', $token)
             ->first();
@@ -101,11 +103,44 @@ class AuthenticateAgentOrUser
         }
         
         \Log::warning('Authentication failed - neither user nor agent token valid');
-        
+
         // Neither user nor agent authentication succeeded
         return response()->json([
             'success' => false,
             'message' => 'Unauthenticated. Invalid token.'
         ], 401);
+    }
+
+    /**
+     * Resolve and initialize the tenant from the Host header.
+     * Only runs when tenancy is not already initialized (agent requests bypass Sanctum).
+     */
+    private function initTenantFromHost(Request $request): void
+    {
+        if (function_exists('tenancy') && tenancy()->initialized) {
+            return;
+        }
+
+        $host = $request->getHost();
+        if (!$host) {
+            return;
+        }
+
+        try {
+            DB::statement("SET search_path TO public");
+            $domain = DB::table('domains')->where('domain', $host)->first();
+
+            if ($domain) {
+                $tenant = \App\Models\Tenant::find($domain->tenant_id);
+                if ($tenant) {
+                    tenancy()->initialize($tenant);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('AuthenticateAgentOrUser: Tenant resolution from Host header failed', [
+                'host'  => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

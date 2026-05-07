@@ -41,6 +41,7 @@ class PostingEngine implements PostingEngineInterface
     public function post(PostingRequest $request): PostingResult
     {
         // ── 0. Idempotency guard ─────────────────────────────
+        // ✅ IDEMPOTENT
         if ($request->documentId !== null) {
             $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
                 ->where('source_document_id', $request->documentId)
@@ -78,6 +79,7 @@ class PostingEngine implements PostingEngineInterface
         }
 
         // ── 3. Balance check ──────────────────────────────────
+        // ⚠️ FLOAT RISK
         $totalDebit  = array_sum(array_column($resolvedLines, 'debit'));
         $totalCredit = array_sum(array_column($resolvedLines, 'credit'));
 
@@ -113,7 +115,20 @@ class PostingEngine implements PostingEngineInterface
 
         // ── 4. Atomic create + post ───────────────────────────
         try {
+            // ✅ ATOMIC
             return DB::transaction(function () use ($request, $resolvedLines) {
+                // Idempotency pre-check inside the transaction to avoid orphan postings
+                $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
+                    ->where('source_document_id', $request->documentId)
+                    ->where('relation_type', 'post')
+                    ->lockForUpdate()
+                    ->first();
+                if ($existingLink) {
+                    return PostingResult::success(
+                        JournalEntry::find($existingLink->journal_entry_id)->load('lines'),
+                        null
+                    );
+                }
                 $userId = TenantUserHelper::requireTenantUserId($request->userId);
 
                 $entry = JournalEntry::create([
@@ -142,12 +157,28 @@ class PostingEngine implements PostingEngineInterface
                 // Skip when documentId is null (batch processes like FX revaluation have
                 // no single source document; storing 0 or null would create a meaningless link).
                 if ($request->documentId !== null) {
-                    JournalEntryLink::create([
-                        'source_document_type' => $request->documentType,
-                        'source_document_id'   => $request->documentId,
-                        'journal_entry_id'     => $entry->id,
-                        'relation_type'        => 'post',
-                    ]);
+                    try {
+                        JournalEntryLink::create([
+                            'source_document_type' => $request->documentType,
+                            'source_document_id'   => $request->documentId,
+                            'journal_entry_id'     => $entry->id,
+                            'relation_type'        => 'post',
+                        ]);
+                    } catch (\Throwable $e) {
+                        // If a race condition caused a unique constraint violation (two posts with
+                        // the same source document), fetch the existing link and return the
+                        // existing journal entry as the successful post result.
+                        if (method_exists($e, 'getCode') && $e->getCode() === '23505') {
+                            $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
+                                ->where('source_document_id', $request->documentId)
+                                ->where('relation_type', 'post')
+                                ->first();
+                            if ($existingLink) {
+                                return PostingResult::success(JournalEntry::find($existingLink->journal_entry_id)->load('lines'), null);
+                            }
+                        }
+                        throw $e;
+                    }
                 }
 
                 // ── audit log with correlation tracking ──
@@ -193,6 +224,7 @@ class PostingEngine implements PostingEngineInterface
     public function reverse(ReversalRequest $request): PostingResult
     {
         // ── 0. Reversal Idempotency guard ────────────────────────────────
+        // ✅ IDEMPOTENT
         $existingReversalLink = JournalEntryLink::where('original_journal_entry_id', $request->journalEntryId)
             ->where('relation_type', 'reversal')
             ->first();
@@ -264,6 +296,7 @@ class PostingEngine implements PostingEngineInterface
         }
 
         try {
+            // ✅ ATOMIC
             return DB::transaction(function () use ($request, $actorId, $approvedBy) {
                 $original = JournalEntry::with('lines')->findOrFail($request->journalEntryId);
 
@@ -452,7 +485,7 @@ class PostingEngine implements PostingEngineInterface
     {
         $resolved = [];
 
-        foreach ($lines as $line) {
+        foreach ($lines as $idx => $line) {
             // Skip zero-value lines
             if (abs($line->debit) < 0.001 && abs($line->credit) < 0.001) {
                 continue;
@@ -464,7 +497,13 @@ class PostingEngine implements PostingEngineInterface
                     ? $this->roleResolver->resolveId($line->accountMappingKey, $documentType)
                     : $this->accountMapper->resolveId($line->accountMappingKey, $documentType));
 
+            // Validation: every GL line must have a valid account
+            if (!$accountId) {
+                throw new \InvalidArgumentException("Unable to resolve account for line #" . ($idx + 1));
+            }
+
             // TASK ACC-002: Store tax identity on GL lines
+            // ⚠️ RISK: null account_id possible
             $resolved[] = [
                 'account_id'      => $accountId,
                 'debit'           => round($line->debit, 2),
@@ -565,6 +604,7 @@ class PostingEngine implements PostingEngineInterface
 
         // ── 3. Create draft entry ─────────────────────────────
         try {
+            // ✅ ATOMIC
             return DB::transaction(function () use ($request, $totalDebit) {
                 $userId = TenantUserHelper::resolveTenantUserId($request->userId);
 
