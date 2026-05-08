@@ -82,6 +82,19 @@ const METHOD_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
+const CASH_DENOMINATIONS = [
+  { label: '$100', value: 100, type: 'note' as const },
+  { label: '$50', value: 50, type: 'note' as const },
+  { label: '$10', value: 10, type: 'note' as const },
+  { label: '$5', value: 5, type: 'note' as const },
+  { label: '$2', value: 2, type: 'note' as const },
+  { label: '$1', value: 1, type: 'coin' as const },
+  { label: '50¢', value: 0.5, type: 'coin' as const },
+  { label: '20¢', value: 0.2, type: 'coin' as const },
+  { label: '10¢', value: 0.1, type: 'coin' as const },
+  { label: '5¢', value: 0.05, type: 'coin' as const },
+]
+
 interface Product {
   id: number
   name: string
@@ -359,6 +372,8 @@ export function POSTerminal() {
   // Session Close State
   const [showCloseSessionDialog, setShowCloseSessionDialog] = useState(false)
   const [closingNotes, setClosingNotes] = useState<string>('')
+  const [showCashCountPanel, setShowCashCountPanel] = useState(false)
+  const [cashDenominationCounts, setCashDenominationCounts] = useState<Record<string, number>>({})
   const [paymentBreakdown, setPaymentBreakdown] = useState<Array<{
     method: string
     methodLabel: string
@@ -755,6 +770,8 @@ export function POSTerminal() {
 
     void fetchBreakdown()
     setClosingNotes('')
+    setShowCashCountPanel(false)
+    setCashDenominationCounts({})
   }, [showCloseSessionDialog, activeSessionId])
 
   const updateCountedAmount = useCallback((method: string, value: string) => {
@@ -764,6 +781,45 @@ export function POSTerminal() {
       )
     )
   }, [])
+
+  const cashNotesTotal = useMemo(() => {
+    return CASH_DENOMINATIONS
+      .filter((item) => item.type === 'note')
+      .reduce((sum, item) => sum + (cashDenominationCounts[item.label] || 0) * item.value, 0)
+  }, [cashDenominationCounts])
+
+  const cashCoinsTotal = useMemo(() => {
+    return CASH_DENOMINATIONS
+      .filter((item) => item.type === 'coin')
+      .reduce((sum, item) => sum + (cashDenominationCounts[item.label] || 0) * item.value, 0)
+  }, [cashDenominationCounts])
+
+  const cashPiecesTotal = useMemo(() => {
+    return CASH_DENOMINATIONS.reduce((sum, item) => sum + (cashDenominationCounts[item.label] || 0), 0)
+  }, [cashDenominationCounts])
+
+  const updateCashDenominationCount = useCallback((label: string, qty: number) => {
+    const nextQty = Math.max(0, Math.floor(Number.isFinite(qty) ? qty : 0))
+    setCashDenominationCounts((prev) => {
+      const next = {
+        ...prev,
+        [label]: nextQty,
+      }
+
+      const total = CASH_DENOMINATIONS.reduce(
+        (sum, item) => sum + (next[item.label] || 0) * item.value,
+        0
+      )
+      updateCountedAmount('cash', total.toFixed(2))
+
+      return next
+    })
+  }, [updateCountedAmount])
+
+  const adjustCashDenominationCount = useCallback((label: string, delta: number) => {
+    const currentQty = cashDenominationCounts[label] || 0
+    updateCashDenominationCount(label, currentQty + delta)
+  }, [cashDenominationCounts, updateCashDenominationCount])
 
   const totalExpected = useMemo(
     () => paymentBreakdown.reduce((sum, item) => sum + item.expectedAmount, 0),
@@ -2662,7 +2718,7 @@ export function POSTerminal() {
 
       {/* Close Session Dialog */}
       <Dialog open={showCloseSessionDialog} onOpenChange={setShowCloseSessionDialog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
+        <DialogContent className="w-[96vw] max-w-none sm:max-w-[860px] max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
           {/* Header */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
             <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
@@ -2671,7 +2727,10 @@ export function POSTerminal() {
                 <Icon icon="solar:logout-2-bold-duotone" className="h-6 w-6 text-rose-400" />
               </div>
               <DialogHeader className="space-y-1 p-0 text-left">
-                <DialogTitle className="text-lg font-semibold tracking-[-0.02em]">Close Register</DialogTitle>
+                <DialogTitle className="flex items-center gap-2 text-lg font-semibold tracking-[-0.02em]">
+                  <Icon icon="solar:logout-2-bold-duotone" className="h-5 w-5 text-rose-300" />
+                  Close Register
+                </DialogTitle>
                 <DialogDescription className="text-sm leading-relaxed text-white/60">
                   Count cash and verify all payment methods before closing.
                 </DialogDescription>
@@ -2709,6 +2768,7 @@ export function POSTerminal() {
                   const diff = counted - item.expectedAmount
                   const diffTone = diff > 0.005 ? 'text-emerald-600' : diff < -0.005 ? 'text-rose-600' : 'text-slate-400'
                   const diffLabel = diff > 0.005 ? 'Over' : diff < -0.005 ? 'Short' : 'Exact'
+                  const isCash = item.method === 'cash'
 
                   return (
                     <div key={item.method} className="rounded-[0.85rem] border border-slate-200/80 bg-white p-3">
@@ -2732,8 +2792,107 @@ export function POSTerminal() {
                             className="h-9 w-28 rounded-lg border-slate-200 bg-slate-50 text-right text-sm font-semibold tabular-nums focus:bg-white"
                             placeholder="0.00"
                           />
+                          {isCash && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className={cn(
+                                'h-9 w-9 rounded-lg border-slate-200',
+                                showCashCountPanel && 'border-primary bg-primary/5 text-primary'
+                              )}
+                              onClick={() => setShowCashCountPanel((prev) => !prev)}
+                              title="Count notes and coins"
+                            >
+                              <Icon icon="solar:calculator-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
+                      {isCash && showCashCountPanel && (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Notes Count</div>
+                              <div className="space-y-2">
+                                {CASH_DENOMINATIONS.filter((denom) => denom.type === 'note').map((denom) => {
+                                  const qty = cashDenominationCounts[denom.label] || 0
+                                  const rowTotal = qty * denom.value
+                                  return (
+                                    <div key={denom.label} className="grid grid-cols-[60px_1fr_84px] items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-1.5">
+                                      <span className="text-xs font-semibold text-slate-700">{denom.label}</span>
+                                      <div className="grid grid-cols-[26px_1fr_26px] items-center gap-1">
+                                        <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, -1)}>
+                                          -
+                                        </Button>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="1"
+                                          value={qty}
+                                          onChange={(e) => updateCashDenominationCount(denom.label, Number(e.target.value || 0))}
+                                          className="h-7 px-1 text-center text-xs"
+                                        />
+                                        <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, 1)}>
+                                          +
+                                        </Button>
+                                      </div>
+                                      <span className="text-right text-[11px] font-semibold text-slate-600">{formatCurrency(rowTotal)}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Coins Count</div>
+                              <div className="space-y-2">
+                                {CASH_DENOMINATIONS.filter((denom) => denom.type === 'coin').map((denom) => {
+                                  const qty = cashDenominationCounts[denom.label] || 0
+                                  const rowTotal = qty * denom.value
+                                  return (
+                                    <div key={denom.label} className="grid grid-cols-[60px_1fr_84px] items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-1.5">
+                                      <span className="text-xs font-semibold text-slate-700">{denom.label}</span>
+                                      <div className="grid grid-cols-[26px_1fr_26px] items-center gap-1">
+                                        <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, -1)}>
+                                          -
+                                        </Button>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="1"
+                                          value={qty}
+                                          onChange={(e) => updateCashDenominationCount(denom.label, Number(e.target.value || 0))}
+                                          className="h-7 px-1 text-center text-xs"
+                                        />
+                                        <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, 1)}>
+                                          +
+                                        </Button>
+                                      </div>
+                                      <span className="text-right text-[11px] font-semibold text-slate-600">{formatCurrency(rowTotal)}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <div className="rounded-md border border-slate-200 bg-white p-2">
+                              <div className="text-[11px] text-slate-500">Notes Total</div>
+                              <div className="text-sm font-semibold text-slate-800">{formatCurrency(cashNotesTotal)}</div>
+                            </div>
+                            <div className="rounded-md border border-slate-200 bg-white p-2">
+                              <div className="text-[11px] text-slate-500">Coins Total</div>
+                              <div className="text-sm font-semibold text-slate-800">{formatCurrency(cashCoinsTotal)}</div>
+                            </div>
+                            <div className="rounded-md border border-slate-200 bg-white p-2">
+                              <div className="text-[11px] text-slate-500">Total Pieces</div>
+                              <div className="text-sm font-semibold text-slate-800">{cashPiecesTotal}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {item.expectedAmount > 0 && (
                         <div className={`mt-2 flex items-center justify-end gap-1 text-xs font-medium ${diffTone}`}>
                           <span>{diffLabel}</span>
