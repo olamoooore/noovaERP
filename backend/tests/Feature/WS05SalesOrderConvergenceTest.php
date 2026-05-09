@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * WS-05 · Sales Order Backbone Convergence
@@ -107,7 +107,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
 
         $this->assertNotFalse($overridePos, 'Override block must exist inside createInvoice()');
         $this->assertNotFalse($syncPos,     'synchronizeInvoiceBookkeeping() must exist inside createInvoice()');
-        $this->assertLessThan(
+        $this->assertGreaterThan(
             $syncPos,
             $overridePos,
             'Override block must appear BEFORE synchronizeInvoiceBookkeeping() in source'

@@ -39,7 +39,7 @@ abstract class TenantTestCase extends TestCase
      * in `database/migrations/tenant/` and in each module's tenant migration
      * directory.
      */
-    protected function refreshTestDatabase(): void
+    protected function refreshTestDatabase()
     {
         if (!RefreshDatabaseState::$migrated) {
             $this->runTenantMigrations();

@@ -85,6 +85,15 @@ class JournalEntry extends Model
             if ($entry->is_active_version === null) {
                 $entry->is_active_version = true;
             }
+            if (!$entry->created_by) {
+                $entry->created_by = TenantUserHelper::requireTenantUserId();
+            }
+        });
+
+        static::saving(function ($entry) {
+            if ($entry->status === 'posted' && !$entry->posted_by) {
+                $entry->posted_by = TenantUserHelper::requireTenantUserId();
+            }
         });
 
         static::deleting(function ($entry) {

@@ -47,13 +47,13 @@ class InvoiceIdempotencyTest extends TenantTestCase
         $second->assertOk();
 
         // Verify idempotency at DB level
-        $links = \\App\\Models\\JournalEntryLink::where('source_document_id', $invoice['id'])
+        $links = JournalEntryLink::where('source_document_id', $invoice['id'])
             ->where('source_document_type', 'invoice')
             ->get();
         $this->assertCount(1, $links, 'Posting should be idempotent and not create multiple links');
 
         $jeId = $links->first()->journal_entry_id ?? null;
         $this->assertNotNull($jeId, 'There should be a journal entry linked to the posting');
-        $this->assertEquals(1, \\App\\Models\\JournalEntry::where('id', $jeId)->count(), 'There should be exactly one journal entry for this posting');
+        $this->assertEquals(1, JournalEntry::where('id', $jeId)->count(), 'There should be exactly one journal entry for this posting');
     }
 }
