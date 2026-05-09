@@ -30,6 +30,11 @@ class PosPaymentCompletionService
             
             $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse');
 
+            $requiresWarehouse = $this->hasStockTrackedItems($posOrder);
+            $warehouseId = $requiresWarehouse
+                ? $this->requireWarehouseId($posOrder, 'complete')
+                : null;
+
             if ($posOrder->status === 'paid' || $posOrder->paid_at) {
                 Log::info('Skipping already-paid order in completion', [
                     'order_id' => $posOrder->id,
@@ -71,8 +76,6 @@ class PosPaymentCompletionService
                 $paymentMethod
             );
 
-            $warehouseId = $this->resolveWarehouseId($posOrder);
-
             foreach ($posOrder->items as $item) {
                     $productId = $item->variant ? $item->variant->product_id : $item->product_id;
                     $trackInventory = $item->variant
@@ -91,10 +94,6 @@ class PosPaymentCompletionService
                     $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
 
                     if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    if (!$warehouseId) {
                         continue;
                     }
 
@@ -134,6 +133,11 @@ class PosPaymentCompletionService
             $posOrder = PosOrder::whereKey($posOrder->id)->lockForUpdate()->firstOrFail();
             $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse');
 
+            $requiresWarehouse = $this->hasStockTrackedItems($posOrder);
+            $warehouseId = $requiresWarehouse
+                ? $this->requireWarehouseId($posOrder, 'backfill')
+                : null;
+
             // GL posting — only if not already posted
             if (!$posOrder->journal_entry_id) {
                 $entry = $this->posPostingService->postPaidOrder($posOrder, $posOrder->total, $paymentMethod);
@@ -161,8 +165,6 @@ class PosPaymentCompletionService
             }
 
             // Stock deduction — idempotent via already-deducted check
-            $warehouseId = $this->resolveWarehouseId($posOrder);
-
             foreach ($posOrder->items as $item) {
                 $productId = $item->variant ? $item->variant->product_id : $item->product_id;
                 $trackInventory = $item->variant
@@ -185,10 +187,6 @@ class PosPaymentCompletionService
                     continue;
                 }
 
-                if (!$warehouseId) {
-                    continue;
-                }
-
                 $this->inventoryService->adjustStock(
                     productId: $productId,
                     warehouseId: $warehouseId,
@@ -204,17 +202,35 @@ class PosPaymentCompletionService
         });
     }
 
-    private function resolveWarehouseId(PosOrder $posOrder): ?int
+    private function hasStockTrackedItems(PosOrder $posOrder): bool
+    {
+        foreach ($posOrder->items as $item) {
+            $trackInventory = $item->variant
+                ? (bool) $item->variant->track_inventory
+                : (bool) ($item->product?->track_inventory ?? false);
+
+            if ($trackInventory) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function requireWarehouseId(PosOrder $posOrder, string $flow): int
     {
         $warehouseId = $posOrder->terminal?->warehouse_id;
 
         if (!$warehouseId) {
-            Log::warning('POS order has no terminal warehouse; stock deduction skipped', [
+            Log::error('POS completion failed: terminal warehouse_id is required for stock-tracked order', [
                 'pos_order_id' => $posOrder->id,
                 'terminal_id' => $posOrder->terminal_id,
+                'flow' => $flow,
             ]);
 
-            return null;
+            throw new \RuntimeException(
+                'Cannot complete stock-tracked POS order without terminal warehouse_id.'
+            );
         }
 
         return (int) $warehouseId;

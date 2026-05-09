@@ -100,7 +100,7 @@ class WS04InventoryMutationTest extends TestCase
 
     /**
      * POS payment and return paths must not fall back to Warehouse::getDefault().
-     * Missing warehouse must be logged explicitly; stock deduction is skipped.
+     * Missing warehouse must be logged explicitly and stock-tracked payment must hard-fail.
      */
     public function test_pos_payment_completion_service_does_not_use_default_warehouse_fallback(): void
     {
@@ -112,16 +112,16 @@ class WS04InventoryMutationTest extends TestCase
             'PosPaymentCompletionService must not fall back to Warehouse::getDefault()');
     }
 
-    public function test_pos_payment_completion_service_logs_missing_warehouse(): void
+    public function test_pos_payment_completion_service_logs_missing_warehouse_and_hard_fails(): void
     {
         $source = file_get_contents(
             base_path('modules/POS/src/Services/PosPaymentCompletionService.php')
         );
 
-        $this->assertStringContainsString('Log::warning', $source,
+        $this->assertStringContainsString('Log::error', $source,
             'PosPaymentCompletionService must log when no terminal warehouse is found');
-        $this->assertStringContainsString('stock deduction skipped', $source,
-            'Warning message must explain that stock deduction was skipped');
+        $this->assertStringContainsString('Cannot complete stock-tracked POS order without terminal warehouse_id.', $source,
+            'PosPaymentCompletionService must hard-fail when warehouse is missing for stock-tracked items.');
     }
 
     public function test_pos_order_controller_create_return_does_not_use_default_warehouse_fallback(): void
