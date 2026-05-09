@@ -25,6 +25,7 @@ backend/database/database.sqlite
 # Keep storage folder structure with .gitkeep files
 backend/storage/framework/cache/data/*
 !backend/storage/framework/cache/data/.gitkeep
+backend/storage/framework/cache/*.php
 backend/storage/framework/sessions/*
 !backend/storage/framework/sessions/.gitkeep
 backend/storage/framework/views/*
