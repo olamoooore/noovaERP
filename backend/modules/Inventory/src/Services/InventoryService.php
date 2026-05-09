@@ -69,13 +69,28 @@ class InventoryService
         ?int $adjustmentReasonId = null,
         ?string $notes = null,
         ?string $batchNumber = null,
-        ?\DateTime $expiryDate = null
+        ?\DateTime $expiryDate = null,
+        ?string $idempotencyKey = null
     ): StockMovement {
         return DB::transaction(function () use (
             $productId, $warehouseId, $quantity, $type, $reference,
             $referenceType, $referenceId, $adjustmentReasonId, $notes,
-            $batchNumber, $expiryDate
+            $batchNumber, $expiryDate, $idempotencyKey
         ) {
+            // ── AR-002: Idempotency guard ─────────────────────────────────────
+            // If a stable caller-supplied key is provided and a movement already
+            // exists with that key, return it immediately without re-mutating stock.
+            if ($idempotencyKey !== null) {
+                $existing = StockMovement::where('idempotency_key', $idempotencyKey)->first();
+                if ($existing) {
+                    Log::info('InventoryService: idempotent adjustStock — returning existing movement', [
+                        'idempotency_key' => $idempotencyKey,
+                        'movement_id'     => $existing->id,
+                    ]);
+                    return $existing;
+                }
+            }
+
             $settings = InventorySettings::current();
 
             // ── Guard: warehouse must be active ──────────────────────────────
@@ -171,6 +186,7 @@ class InventoryService
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
+                'idempotency_key' => $idempotencyKey,
                 'adjustment_reason_id' => $adjustmentReasonId,
                 'notes' => $notes,
                 'batch_number' => $batchNumber,

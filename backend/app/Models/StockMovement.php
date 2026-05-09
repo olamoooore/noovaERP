@@ -17,6 +17,7 @@ class StockMovement extends Model
         'reference',
         'reference_type',
         'reference_id',
+        'idempotency_key',
         'adjustment_reason_id',
         'notes',
         'batch_number',
