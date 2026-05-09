@@ -94,6 +94,10 @@ class PosPaymentCompletionService
                         continue;
                     }
 
+                    if (!$warehouseId) {
+                        continue;
+                    }
+
                     $this->inventoryService->adjustStock(
                         productId: $productId,
                         warehouseId: $warehouseId,
@@ -181,6 +185,10 @@ class PosPaymentCompletionService
                     continue;
                 }
 
+                if (!$warehouseId) {
+                    continue;
+                }
+
                 $this->inventoryService->adjustStock(
                     productId: $productId,
                     warehouseId: $warehouseId,
@@ -196,21 +204,17 @@ class PosPaymentCompletionService
         });
     }
 
-    private function resolveWarehouseId(PosOrder $posOrder): int
+    private function resolveWarehouseId(PosOrder $posOrder): ?int
     {
         $warehouseId = $posOrder->terminal?->warehouse_id;
 
         if (!$warehouseId) {
-            Log::error('POS order has no terminal warehouse — payment blocked', [
+            Log::warning('POS order has no terminal warehouse; stock deduction skipped', [
                 'pos_order_id' => $posOrder->id,
                 'terminal_id' => $posOrder->terminal_id,
             ]);
 
-            throw new \RuntimeException(
-                "Terminal {$posOrder->terminal_id} has no warehouse assigned. " .
-                "Cannot complete sale without warehouse. " .
-                "Please assign a warehouse to the terminal."
-            );
+            return null;
         }
 
         return (int) $warehouseId;

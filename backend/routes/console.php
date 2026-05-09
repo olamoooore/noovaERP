@@ -2,11 +2,32 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
+use Modules\Inventory\Services\StockReservationService;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('inventory:expire-reservations', function () {
+    try {
+        $expiredCount = app(StockReservationService::class)->expireOverdue();
+
+        $this->info("Expired {$expiredCount} stock reservation(s).");
+
+        return 0;
+    } catch (\Throwable $e) {
+        Log::error('Failed to run reservation expiry command', [
+            'command' => 'inventory:expire-reservations',
+            'error' => $e->getMessage(),
+        ]);
+
+        $this->error('Reservation expiry command failed. Check logs for details.');
+
+        return 1;
+    }
+})->purpose('Expire overdue stock reservations and release reserved quantity.');
 
 // Financial Reporting Module - Scheduled Jobs
 Schedule::command('reports:process-schedules')
@@ -16,6 +37,12 @@ Schedule::command('reports:process-schedules')
 
 Schedule::command('reports:clear-cache')
     ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Inventory reservation expiry (RM-001 runtime closure gate)
+Schedule::command('inventory:expire-reservations')
+    ->everyTenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 

@@ -377,18 +377,9 @@ class InventoryService
      */
     public function reserveStock(int $productId, int $warehouseId, int $quantity): bool
     {
-        $stockLevel = StockLevel::where('product_id', $productId)
-            ->where('warehouse_id', $warehouseId)
-            ->first();
-
-        if (!$stockLevel || $stockLevel->available_quantity < $quantity) {
-            return false;
-        }
-
-        $stockLevel->reserved_quantity += $quantity;
-        $stockLevel->save();
-
-        return true;
+        throw new \LogicException(
+            'InventoryService::reserveStock() is deprecated. Use StockReservationService::reserve() to ensure reservation records are created.'
+        );
     }
 
     /**

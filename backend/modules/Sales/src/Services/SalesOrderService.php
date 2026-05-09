@@ -4,10 +4,10 @@ namespace Modules\Sales\Services;
 
 use App\Models\JournalEntryLink;
 use App\Models\Customer;
-use App\Models\Warehouse;
 use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
@@ -122,7 +122,14 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order) {
-            $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
+            $order->loadMissing('lines');
+
+            $stockTrackedLines = $order->lines->filter(fn ($line) => (bool) $line->product_id);
+            $warehouseId = null;
+
+            if ($stockTrackedLines->isNotEmpty()) {
+                $warehouseId = $this->resolveFulfilmentWarehouseId($order);
+            }
 
             // Deduct stock for each line item
             foreach ($order->lines as $line) {
@@ -131,26 +138,39 @@ class SalesOrderService
                     $line->update(['quantity_fulfilled' => $line->quantity]);
                     
                     // Deduct stock through canonical InventoryService
-                    // Use default warehouse if not specified
-                    $warehouseId = $order->warehouse_id ?? Warehouse::getDefault()?->id;
-                    
-                    if ($warehouseId) {
-                        $this->inventoryService->adjustStock(
-                            productId: $line->product_id,
-                            warehouseId: $warehouseId,
-                            quantity: (int) $line->quantity,
-                            type: 'sale',
-                            reference: $order->sales_order_number,
-                            referenceType: 'SalesOrder',
-                            referenceId: $order->id,
-                            notes: "Stock deducted for sales order fulfillment"
-                        );
-                    }
+                    $this->inventoryService->adjustStock(
+                        productId: $line->product_id,
+                        warehouseId: $warehouseId,
+                        quantity: (int) $line->quantity,
+                        type: 'sale',
+                        reference: $order->sales_order_number,
+                        referenceType: 'SalesOrder',
+                        referenceId: $order->id,
+                        notes: "Stock deducted for sales order fulfillment"
+                    );
                 }
             }
 
+            $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
+
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
         });
+    }
+
+    private function resolveFulfilmentWarehouseId(SalesOrder $order): int
+    {
+        if (!$order->warehouse_id) {
+            Log::error('Sales fulfilment failed: warehouse_id is required for stock-tracked order', [
+                'sales_order_id' => $order->id,
+                'sales_order_number' => $order->sales_order_number,
+            ]);
+
+            throw new \RuntimeException(
+                'Cannot fulfil stock-tracked sales order without explicit warehouse_id.'
+            );
+        }
+
+        return (int) $order->warehouse_id;
     }
 
     public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice

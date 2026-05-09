@@ -18,6 +18,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('bills')) {
+            return;
+        }
+
+        if (Schema::hasColumn('bills', 'bill_type')) {
+            return;
+        }
+
         Schema::table('bills', function (Blueprint $table) {
             $table->string('bill_type')->default('expense')->after('status');
         });
@@ -35,6 +43,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('bills') || ! Schema::hasColumn('bills', 'bill_type')) {
+            return;
+        }
+
         Schema::table('bills', function (Blueprint $table) {
             $table->dropColumn('bill_type');
         });
