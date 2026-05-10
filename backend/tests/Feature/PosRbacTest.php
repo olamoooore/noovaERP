@@ -345,6 +345,53 @@ class PosRbacTest extends TenantTestCase
     }
 
     /**
+     * Test SEC-001: stock-affecting endpoints must be blocked without POS entitlement.
+     */
+    public function test_stock_affecting_pos_endpoints_require_entitlement()
+    {
+        // Build orders while entitlement is enabled.
+        $this->mockFeatureGate(true);
+        $draftOrder = $this->createDraftOrder($this->cashier);
+        $paidOrderForVoid = $this->createAndPayOrder($this->cashier);
+        $paidOrderForRefund = $this->createAndPayOrder($this->cashier);
+        $paidOrderForReturn = $this->createAndPayOrder($this->cashier);
+        $returnItemId = $paidOrderForReturn->items()->first()->id;
+
+        // Switch to denied entitlement and verify all stock-affecting endpoints are blocked.
+        $this->mockFeatureGate(false);
+        $userWithoutPos = User::factory()->create();
+
+        $payResponse = $this->actingAs($userWithoutPos)->postJson("/api/v1/pos/orders/{$draftOrder->id}/pay", [
+            'method' => 'cash',
+            'amount' => (float) $draftOrder->total,
+        ]);
+        $this->assertContains($payResponse->status(), [403, 422]);
+
+        $voidResponse = $this->actingAs($userWithoutPos)->postJson("/api/v1/pos/orders/{$paidOrderForVoid->id}/void", [
+            'reason' => 'Attempted void without entitlement access',
+        ]);
+        $this->assertContains($voidResponse->status(), [403, 422]);
+
+        $refundResponse = $this->actingAs($userWithoutPos)->postJson("/api/v1/pos/orders/{$paidOrderForRefund->id}/refund", [
+            'notes' => 'Attempted refund without entitlement access',
+            'refund_method' => 'cash',
+        ]);
+        $this->assertContains($refundResponse->status(), [403, 422]);
+
+        $returnResponse = $this->actingAs($userWithoutPos)->postJson("/api/v1/pos/orders/{$paidOrderForReturn->id}/return", [
+            'items' => [
+                [
+                    'item_id' => $returnItemId,
+                    'quantity' => 1,
+                ],
+            ],
+            'notes' => 'Attempted return without entitlement access',
+            'refund_method' => 'cash',
+        ]);
+        $this->assertContains($returnResponse->status(), [403, 422]);
+    }
+
+    /**
      * Test RBAC-001: Verify route middleware configuration
      */
     public function test_pos_routes_have_correct_middleware()
