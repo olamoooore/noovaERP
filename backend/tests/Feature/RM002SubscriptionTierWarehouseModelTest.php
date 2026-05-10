@@ -107,6 +107,76 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
         $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
     }
 
+    public function test_warehouse_with_stock_cannot_be_deactivated(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $this->seedTenantWithActiveTier($tenantId, 'growth');
+
+        $warehouse = $this->postJson('/api/v1/warehouses', [
+            'name' => 'Stocked Warehouse',
+            'code' => 'WH-STOCK',
+            'is_active' => true,
+        ]);
+        $warehouse->assertCreated();
+        $warehouseId = (int) $warehouse->json('id');
+
+        $productId = $this->createProductId();
+        DB::table('stock_levels')->insert([
+            'product_id' => $productId,
+            'warehouse_id' => $warehouseId,
+            'quantity' => 10,
+            'reserved_quantity' => 0,
+            'min_quantity' => 0,
+            'max_quantity' => null,
+            'bin_location' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->putJson('/api/v1/warehouses/' . $warehouseId, [
+            'is_active' => false,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['is_active']);
+
+        $this->assertTrue((bool) DB::table('warehouses')->where('id', $warehouseId)->value('is_active'));
+    }
+
+    public function test_warehouse_with_stock_cannot_be_deleted(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $this->seedTenantWithActiveTier($tenantId, 'growth');
+
+        $warehouse = $this->postJson('/api/v1/warehouses', [
+            'name' => 'Delete Guard Warehouse',
+            'code' => 'WH-DEL',
+            'is_active' => true,
+        ]);
+        $warehouse->assertCreated();
+        $warehouseId = (int) $warehouse->json('id');
+
+        $productId = $this->createProductId();
+        DB::table('stock_levels')->insert([
+            'product_id' => $productId,
+            'warehouse_id' => $warehouseId,
+            'quantity' => 5,
+            'reserved_quantity' => 0,
+            'min_quantity' => 0,
+            'max_quantity' => null,
+            'bin_location' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->deleteJson('/api/v1/warehouses/' . $warehouseId);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse']);
+
+        $this->assertDatabaseHas('warehouses', ['id' => $warehouseId]);
+    }
+
     private function seedTenantWithActiveTier(string $tenantId, string $tierKey): void
     {
         DB::table('tenants')->insert([
@@ -154,6 +224,18 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
             'status' => 'active',
             'current_period_start' => now()->subDay(),
             'current_period_end' => now()->addMonth(),
+        ]);
+    }
+
+    private function createProductId(): int
+    {
+        return (int) DB::table('products')->insertGetId([
+            'name' => 'WH001 Test Product',
+            'sku' => 'WH001-' . Str::upper(Str::random(8)),
+            'track_inventory' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 }

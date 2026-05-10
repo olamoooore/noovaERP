@@ -50,6 +50,17 @@ class WarehouseController extends Controller
 
         $this->enforceTierWarehouseLimit($validated, $warehouse);
 
+        if (
+            array_key_exists('is_active', $validated)
+            && $validated['is_active'] === false
+            && $warehouse->is_active
+            && $this->hasPositiveStock($warehouse)
+        ) {
+            throw ValidationException::withMessages([
+                'is_active' => 'Warehouse cannot be deactivated while stock remains. Transfer or clear stock first.',
+            ]);
+        }
+
         $warehouse->update($validated);
 
         return $warehouse;
@@ -58,9 +69,24 @@ class WarehouseController extends Controller
     public function destroy($warehouse)
     {
         $warehouse = Warehouse::findOrFail($warehouse);
+
+        if ($this->hasPositiveStock($warehouse)) {
+            throw ValidationException::withMessages([
+                'warehouse' => 'Warehouse cannot be deleted while stock remains. Transfer or clear stock first.',
+            ]);
+        }
+
         $warehouse->delete();
 
         return response()->json(null, 204);
+    }
+
+    private function hasPositiveStock(Warehouse $warehouse): bool
+    {
+        return DB::table('stock_levels')
+            ->where('warehouse_id', $warehouse->id)
+            ->where('quantity', '>', 0)
+            ->exists();
     }
 
     private function enforceTierWarehouseLimit(array $validated, ?Warehouse $updating = null): void
