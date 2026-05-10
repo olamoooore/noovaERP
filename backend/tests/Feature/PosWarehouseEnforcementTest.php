@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
@@ -103,7 +104,7 @@ class PosWarehouseEnforcementTest extends TenantTestCase
 
     private function createDraftOrder(PosTerminal $terminal, PosSession $session): PosOrder
     {
-        return PosOrder::create([
+        $order = PosOrder::create([
             'external_id' => (string) Str::uuid(),
             'order_number' => 'POS-TEST-' . uniqid(),
             'status' => 'draft',
@@ -114,6 +115,26 @@ class PosWarehouseEnforcementTest extends TenantTestCase
             'total' => 100.00,
             'created_by' => $this->user->id,
         ]);
+
+        $product = Product::factory()->create([
+            'price' => 100.00,
+            'stock_quantity' => 100,
+            'track_inventory' => true,
+        ]);
+
+        PosOrderItem::create([
+            'pos_order_id' => $order->id,
+            'product_id' => $product->id,
+            'name' => $product->name,
+            'sku' => $product->sku,
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 100.00,
+        ]);
+
+        return $order;
     }
 
     /** @test */
