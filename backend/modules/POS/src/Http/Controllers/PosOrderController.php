@@ -572,6 +572,16 @@ class PosOrderController extends Controller
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+
+            if (
+                $approvalRequest->request_type !== 'void'
+                || $approvalRequest->subject_type !== 'PosOrder'
+                || (int) $approvalRequest->subject_id !== (int) $posOrder->id
+            ) {
+                return response()->json([
+                    'error' => 'Approval request does not match this void operation',
+                ], 403);
+            }
             
             if (!$approvalRequest->isApproved()) {
                 return response()->json([
@@ -742,6 +752,16 @@ class PosOrderController extends Controller
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+
+            if (
+                $approvalRequest->request_type !== 'refund'
+                || $approvalRequest->subject_type !== 'PosOrder'
+                || (int) $approvalRequest->subject_id !== (int) $posOrder->id
+            ) {
+                return response()->json([
+                    'error' => 'Approval request does not match this refund operation',
+                ], 403);
+            }
             
             if (!$approvalRequest->isApproved()) {
                 return response()->json([
@@ -888,6 +908,16 @@ class PosOrderController extends Controller
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
+
+            if (
+                $approvalRequest->request_type !== 'return'
+                || $approvalRequest->subject_type !== 'PosOrder'
+                || (int) $approvalRequest->subject_id !== (int) $posOrder->id
+            ) {
+                return response()->json([
+                    'error' => 'Approval request does not match this return operation',
+                ], 403);
+            }
             
             if (!$approvalRequest->isApproved()) {
                 return response()->json([

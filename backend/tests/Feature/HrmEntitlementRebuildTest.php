@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Tenant;
 use App\SuperAdmin\Application\EntitlementService;
 use App\SuperAdmin\Domain\CatalogItem;
+use App\SuperAdmin\Domain\CatalogItemType;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -28,6 +29,43 @@ class HrmEntitlementRebuildTest extends TestCase
     {
         parent::setUp();
         $this->entitlementService = app(EntitlementService::class);
+        $this->seedBaselineFixtureData();
+    }
+
+    private function seedBaselineFixtureData(): void
+    {
+        if (!DB::table('tenants')->exists()) {
+            DB::table('tenants')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'name' => 'HRM Rebuild Test Tenant',
+                'email' => 'hrm-rebuild@test.local',
+                'plan' => 'test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $type = CatalogItemType::query()->firstOrCreate(
+            ['key' => 'module'],
+            [
+                'name' => 'Module',
+                'description' => 'Module catalog type for tests',
+                'sort_order' => 0,
+            ]
+        );
+
+        CatalogItem::query()->firstOrCreate(
+            ['key' => 'hrm'],
+            [
+                'name' => 'Human Resources',
+                'description' => 'HRM module',
+                'type_id' => $type->id,
+                'is_active' => true,
+                'sort_order' => 0,
+                'effective_from' => now()->toDateString(),
+                'source' => 'catalog',
+            ]
+        );
     }
 
     /**

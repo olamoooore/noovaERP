@@ -245,6 +245,56 @@ class PosRbacTest extends TenantTestCase
     }
 
     /**
+     * Test SEC-002: approved void request cannot be reused for a different order.
+     */
+    public function test_approved_void_request_cannot_be_reused_for_different_order()
+    {
+        $orderA = $this->createAndPayOrder($this->cashier);
+        $orderB = $this->createAndPayOrder($this->cashier);
+
+        $requestResponse = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$orderA->id}/void", [
+            'reason' => 'Customer requested void due to duplicate charge',
+        ]);
+
+        $requestResponse->assertStatus(202);
+        $approvalRequestId = $requestResponse->json('approval_request.id');
+        $this->approveRequest($approvalRequestId, $this->manager->id);
+
+        $bypassResponse = $this->actingAs($this->manager)->postJson("/api/v1/pos/orders/{$orderB->id}/void", [
+            'reason' => 'Attempt to reuse approval from another order',
+            'approval_request_id' => $approvalRequestId,
+        ]);
+
+        $bypassResponse->assertStatus(403);
+        $bypassResponse->assertJsonPath('error', 'Approval request does not match this void operation');
+    }
+
+    /**
+     * Test SEC-002: approved void request cannot bypass refund approval path.
+     */
+    public function test_approved_void_request_cannot_be_used_for_refund()
+    {
+        $order = $this->createAndPayOrder($this->cashier);
+
+        $requestResponse = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
+            'reason' => 'Customer requested void due to duplicate charge',
+        ]);
+
+        $requestResponse->assertStatus(202);
+        $approvalRequestId = $requestResponse->json('approval_request.id');
+        $this->approveRequest($approvalRequestId, $this->manager->id);
+
+        $bypassResponse = $this->actingAs($this->manager)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
+            'notes' => 'Attempt to bypass refund with void approval request',
+            'refund_method' => 'cash',
+            'approval_request_id' => $approvalRequestId,
+        ]);
+
+        $bypassResponse->assertStatus(403);
+        $bypassResponse->assertJsonPath('error', 'Approval request does not match this refund operation');
+    }
+
+    /**
      * Test RBAC-001: All POS routes require auth
      */
     public function test_all_pos_routes_require_auth()
