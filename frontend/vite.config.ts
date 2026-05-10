@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 const backendTarget = process.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const iotBackendTarget = process.env.VITE_IOT_BACKEND_URL || backendTarget
 
 export default defineConfig({
   plugins: [
@@ -99,10 +100,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy IoT API calls to UMP Backend (port 3100)
-      // Must be before the general /api proxy to take precedence
+      // Proxy IoT API calls.
+      // Defaults to main backend unless VITE_IOT_BACKEND_URL is explicitly set.
+      // Must be before the general /api proxy to take precedence.
       '/api/v1/iot': {
-        target: 'http://localhost:3100',
+        target: iotBackendTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/v1\/iot/, '/api/v1/iot'),
       },

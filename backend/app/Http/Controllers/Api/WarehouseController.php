@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class WarehouseController extends Controller
@@ -117,12 +118,23 @@ class WarehouseController extends Controller
     {
         $status = ['active', 'trialing', 'past_due'];
 
-        return DB::table('public.subscriptions as subscriptions')
-            ->join('public.plan_versions as versions', 'versions.id', '=', 'subscriptions.plan_version_id')
-            ->join('public.plan_families as families', 'families.id', '=', 'versions.plan_family_id')
-            ->where('subscriptions.tenant_id', $tenantId)
-            ->whereIn('subscriptions.status', $status)
-            ->orderByDesc('subscriptions.id')
-            ->value('families.key');
+        try {
+            return DB::table('public.subscriptions as subscriptions')
+                ->join('public.plan_versions as versions', 'versions.id', '=', 'subscriptions.plan_version_id')
+                ->join('public.plan_families as families', 'families.id', '=', 'versions.plan_family_id')
+                ->where('subscriptions.tenant_id', $tenantId)
+                ->whereIn('subscriptions.status', $status)
+                ->orderByDesc('subscriptions.id')
+                ->value('families.key');
+        } catch (\Throwable $e) {
+            // Some deployments do not have the central billing tables yet.
+            // In that case, skip tier-based warehouse limits instead of failing writes.
+            Log::warning('WarehouseController: tier lookup unavailable, skipping warehouse-tier enforcement', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 }
