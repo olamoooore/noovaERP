@@ -2,6 +2,7 @@
 
 namespace Modules\AI\Http\Controllers;
 
+use App\Models\Customer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -33,7 +34,7 @@ class ChatbotController extends Controller
     public function sendMessage(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'customer_id' => 'required|integer|exists:customers,id',
+            'customer_id' => 'nullable|integer',
             'message' => 'required|string|max:1000',
             'channel' => 'nullable|string|in:web,whatsapp,telegram',
             'conversation_id' => 'nullable|integer|exists:ai_conversations,id',
@@ -48,7 +49,14 @@ class ChatbotController extends Controller
         }
         
         try {
-            $customerId = $request->input('customer_id');
+            $customerId = $this->resolveCustomerId($request);
+            if ($customerId === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unable to resolve customer context for this user.',
+                ], 422);
+            }
+
             $message = $request->input('message');
             $channel = $request->input('channel', 'web');
             $conversationId = $request->input('conversation_id');
@@ -262,7 +270,7 @@ class ChatbotController extends Controller
     public function getConversations(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'customer_id' => 'required|integer|exists:customers,id',
+            'customer_id' => 'nullable|integer',
             'status' => 'nullable|string|in:active,closed,transferred',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
@@ -275,7 +283,14 @@ class ChatbotController extends Controller
         }
         
         try {
-            $customerId = $request->input('customer_id');
+            $customerId = $this->resolveCustomerId($request);
+            if ($customerId === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unable to resolve customer context for this user.',
+                ], 422);
+            }
+
             $status = $request->input('status');
             $limit = $request->input('limit', 10);
             
@@ -386,5 +401,45 @@ class ChatbotController extends Controller
                 'error' => 'Failed to delete conversation',
             ], 500);
         }
+    }
+
+    /**
+     * Resolve a valid tenant-customer id from request payload or authenticated user.
+     */
+    private function resolveCustomerId(Request $request): ?int
+    {
+        $requestedId = $request->input('customer_id');
+        if (is_numeric($requestedId)) {
+            $requestedId = (int) $requestedId;
+            if (Customer::query()->whereKey($requestedId)->exists()) {
+                return $requestedId;
+            }
+        }
+
+        $authUser = $request->user();
+        if (!$authUser) {
+            return null;
+        }
+
+        if (!empty($authUser->email)) {
+            $existingByEmail = Customer::query()->where('email', $authUser->email)->first();
+            if ($existingByEmail) {
+                return (int) $existingByEmail->id;
+            }
+        }
+
+        $name = trim((string) ($authUser->name ?? ''));
+        if ($name === '') {
+            $name = (string) ($authUser->email ?? 'Walk-in Customer');
+        }
+
+        $created = Customer::query()->create([
+            'name' => $name,
+            'email' => $authUser->email,
+            'phone' => $authUser->phone ?? null,
+            'is_active' => true,
+        ]);
+
+        return (int) $created->id;
     }
 }
