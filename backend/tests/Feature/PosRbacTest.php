@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 use App\Models\User;
 use App\Models\Product;
 use App\Models\Customer;
@@ -10,12 +10,9 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Spatie\Permission\Models\Role;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class PosRbacTest extends TestCase
+class PosRbacTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     protected User $cashier;
     protected User $manager;
     protected User $supervisor;
@@ -51,11 +48,18 @@ class PosRbacTest extends TestCase
             'stock_quantity' => 1000,
         ]);
 
-        $this->terminal = PosTerminal::factory()->create();
-        $this->session = PosSession::factory()->create([
+        $this->terminal = PosTerminal::create([
+            'name' => 'RBAC Test Terminal',
+            'code' => 'RBAC-TERM-001',
+            'is_active' => true,
+        ]);
+
+        $this->session = PosSession::create([
             'terminal_id' => $this->terminal->id,
             'user_id' => $this->cashier->id,
             'status' => 'open',
+            'opening_balance' => 0,
+            'opened_at' => now(),
         ]);
     }
 
@@ -68,7 +72,7 @@ class PosRbacTest extends TestCase
         $order = $this->createAndPayOrder($this->cashier);
 
         // Cashier requests void (creates approval request)
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
         ]);
 
@@ -77,7 +81,7 @@ class PosRbacTest extends TestCase
         $approvalRequestId = $response->json('approval_request.id');
 
         // Cashier tries to approve their own void
-        $approveResponse = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/void", [
+        $approveResponse = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
             'approval_request_id' => $approvalRequestId,
         ]);
@@ -95,7 +99,7 @@ class PosRbacTest extends TestCase
         $order = $this->createAndPayOrder($this->cashier);
 
         // Cashier requests refund (creates approval request)
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer request',
             'refund_method' => 'cash',
         ]);
@@ -105,7 +109,7 @@ class PosRbacTest extends TestCase
         $approvalRequestId = $response->json('approval_request.id');
 
         // Cashier tries to approve their own refund
-        $approveResponse = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $approveResponse = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer request',
             'refund_method' => 'cash',
             'approval_request_id' => $approvalRequestId,
@@ -124,7 +128,7 @@ class PosRbacTest extends TestCase
         $order = $this->createAndPayOrder($this->cashier);
 
         // Cashier requests void
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
         ]);
 
@@ -132,7 +136,7 @@ class PosRbacTest extends TestCase
         $approvalRequestId = $response->json('approval_request.id');
 
         // Manager approves void
-        $approveResponse = $this->actingAs($this->manager)->postJson("/api/pos/orders/{$order->id}/void", [
+        $approveResponse = $this->actingAs($this->manager)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
             'approval_request_id' => $approvalRequestId,
         ]);
@@ -150,7 +154,7 @@ class PosRbacTest extends TestCase
         $order = $this->createAndPayOrder($this->cashier);
 
         // Cashier requests refund
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer request',
             'refund_method' => 'cash',
         ]);
@@ -159,7 +163,7 @@ class PosRbacTest extends TestCase
         $approvalRequestId = $response->json('approval_request.id');
 
         // Manager approves refund
-        $approveResponse = $this->actingAs($this->manager)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $approveResponse = $this->actingAs($this->manager)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer request',
             'refund_method' => 'cash',
             'approval_request_id' => $approvalRequestId,
@@ -178,7 +182,7 @@ class PosRbacTest extends TestCase
         $order = $this->createAndPayOrder($this->cashier);
 
         // Cashier requests void
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
         ]);
 
@@ -186,7 +190,7 @@ class PosRbacTest extends TestCase
         $approvalRequestId = $response->json('approval_request.id');
 
         // Supervisor approves void
-        $approveResponse = $this->actingAs($this->supervisor)->postJson("/api/pos/orders/{$order->id}/void", [
+        $approveResponse = $this->actingAs($this->supervisor)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
             'approval_request_id' => $approvalRequestId,
         ]);
@@ -202,12 +206,12 @@ class PosRbacTest extends TestCase
     {
         // Test unauthenticated access to various POS routes
         $routes = [
-            ['GET', '/api/pos/orders'],
-            ['POST', '/api/pos/orders'],
-            ['GET', '/api/pos/sessions'],
-            ['POST', '/api/pos/sessions/open'],
-            ['GET', '/api/pos/sync/pending'],
-            ['POST', '/api/pos/sync/queue'],
+            ['GET', '/api/v1/pos/orders'],
+            ['POST', '/api/v1/pos/orders'],
+            ['GET', '/api/v1/pos/sessions'],
+            ['POST', '/api/v1/pos/sessions/open'],
+            ['GET', '/api/v1/pos/sync/pending'],
+            ['POST', '/api/v1/pos/sync/queue'],
         ];
 
         foreach ($routes as [$method, $uri]) {
@@ -229,9 +233,9 @@ class PosRbacTest extends TestCase
 
         // Test access to various POS routes
         $routes = [
-            ['GET', '/api/pos/orders'],
-            ['POST', '/api/pos/orders'],
-            ['GET', '/api/pos/sessions'],
+            ['GET', '/api/v1/pos/orders'],
+            ['POST', '/api/v1/pos/orders'],
+            ['GET', '/api/v1/pos/sessions'],
         ];
 
         foreach ($routes as [$method, $uri]) {
@@ -252,7 +256,7 @@ class PosRbacTest extends TestCase
         $routes = \Route::getRoutes();
         
         $posRoutes = collect($routes)->filter(function ($route) {
-            return str_contains($route->uri(), 'api/pos/');
+            return str_contains($route->uri(), 'api/v1/pos/');
         });
 
         foreach ($posRoutes as $route) {
@@ -283,7 +287,7 @@ class PosRbacTest extends TestCase
      */
     public function test_cashier_can_create_orders()
     {
-        $response = $this->actingAs($this->cashier)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->cashier)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'customer_id' => $this->customer->id,
             'items' => [
@@ -305,7 +309,7 @@ class PosRbacTest extends TestCase
     {
         $order = $this->createDraftOrder($this->cashier);
 
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/pay", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);
@@ -320,7 +324,7 @@ class PosRbacTest extends TestCase
     {
         $order = $this->createAndPayOrder($this->cashier);
 
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'void_reason' => 'Customer request',
         ]);
 
@@ -336,7 +340,7 @@ class PosRbacTest extends TestCase
     {
         $order = $this->createAndPayOrder($this->cashier);
 
-        $response = $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer request',
             'refund_method' => 'cash',
         ]);
@@ -350,7 +354,7 @@ class PosRbacTest extends TestCase
 
     protected function createDraftOrder(User $user): PosOrder
     {
-        $response = $this->actingAs($user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'customer_id' => $this->customer->id,
             'items' => [
@@ -370,7 +374,7 @@ class PosRbacTest extends TestCase
     {
         $order = $this->createDraftOrder($user);
 
-        $this->actingAs($user)->postJson("/api/pos/orders/{$order->id}/pay", [
+        $this->actingAs($user)->postJson("/api/v1/pos/orders/{$order->id}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);

@@ -2,20 +2,25 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 use Modules\POS\Models\PosOfflineQueue;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 
-class PosOfflineQueueStateMachineTest extends TestCase
+class PosOfflineQueueStateMachineTest extends TenantTestCase
 {
-    use RefreshDatabase;
+    private function createQueue(array $attributes): PosOfflineQueue
+    {
+        return PosOfflineQueue::create(array_merge([
+            'idempotency_key' => (string) Str::uuid(),
+        ], $attributes));
+    }
 
     /**
      * Test STATE-002: Valid transition pending → syncing succeeds
      */
     public function test_valid_transition_pending_to_syncing_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -36,7 +41,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_valid_transition_syncing_to_synced_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -59,7 +64,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_valid_transition_pending_to_failed_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -78,7 +83,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_valid_transition_failed_to_pending_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'failed',
             'payload' => ['test' => 'data'],
@@ -97,7 +102,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_valid_transition_pending_to_conflict_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -116,7 +121,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_valid_transition_conflict_to_pending_succeeds()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'conflict',
             'payload' => ['test' => 'data'],
@@ -135,7 +140,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_invalid_transition_synced_to_syncing_throws_exception()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'synced',
             'payload' => ['test' => 'data'],
@@ -154,7 +159,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_invalid_transition_pending_to_synced_throws_exception()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -173,7 +178,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_synced_item_cannot_transition()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'synced',
             'payload' => ['test' => 'data'],
@@ -190,7 +195,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_sync_attempts_increment_on_syncing_transition()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],
@@ -218,7 +223,7 @@ class PosOfflineQueueStateMachineTest extends TestCase
      */
     public function test_synced_at_timestamp_set_on_synced_transition()
     {
-        $queue = PosOfflineQueue::create([
+        $queue = $this->createQueue([
             'operation_type' => 'create_order',
             'status' => 'pending',
             'payload' => ['test' => 'data'],

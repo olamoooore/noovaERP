@@ -6,20 +6,62 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
+use App\Models\User;
 use App\Models\Product;
 use App\Models\Warehouse;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
-class PosWarehouseEnforcementTest extends TestCase
+class PosWarehouseEnforcementTest extends TenantTestCase
 {
-    use RefreshDatabase;
+    private User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->artisan('migrate:fresh');
+        $this->user = User::factory()->create();
+
+        if (Schema::hasTable('pos_orders') && !Schema::hasColumn('pos_orders', 'deleted_at')) {
+            Schema::table('pos_orders', function (Blueprint $table) {
+                $table->softDeletes();
+            });
+        }
+
+        $this->ensureOpenFiscalPeriodForToday();
+    }
+
+    private function ensureOpenFiscalPeriodForToday(): void
+    {
+        if (!Schema::hasTable('fiscal_periods')) {
+            return;
+        }
+
+        $today = now()->toDateString();
+        $exists = DB::table('fiscal_periods')
+            ->where('period_start', '<=', $today)
+            ->where('period_end', '>=', $today)
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        DB::table('fiscal_periods')->insert([
+            'name' => now()->format('F Y'),
+            'code' => now()->format('Y-m'),
+            'period_start' => now()->startOfMonth()->toDateString(),
+            'period_end' => now()->endOfMonth()->toDateString(),
+            'period_type' => 'monthly',
+            'fiscal_year' => (int) now()->format('Y'),
+            'is_locked' => false,
+            'status' => 'open',
+            'created_by' => $this->user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function createTerminalWithWarehouse(): PosTerminal
@@ -52,15 +94,17 @@ class PosWarehouseEnforcementTest extends TestCase
     {
         return PosSession::create([
             'terminal_id' => $terminal->id,
+            'user_id' => $this->user->id,
             'status' => 'open',
             'opened_at' => now(),
-            'opened_by' => 1,
+            'opening_balance' => 0,
         ]);
     }
 
     private function createDraftOrder(PosTerminal $terminal, PosSession $session): PosOrder
     {
         return PosOrder::create([
+            'external_id' => (string) Str::uuid(),
             'order_number' => 'POS-TEST-' . uniqid(),
             'status' => 'draft',
             'terminal_id' => $terminal->id,
@@ -68,7 +112,7 @@ class PosWarehouseEnforcementTest extends TestCase
             'subtotal' => 100.00,
             'tax_amount' => 0,
             'total' => 100.00,
-            'created_by' => 1,
+            'created_by' => $this->user->id,
         ]);
     }
 

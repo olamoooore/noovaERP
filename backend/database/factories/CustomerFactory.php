@@ -13,23 +13,27 @@ class CustomerFactory extends Factory
     public function definition(): array
     {
         return [
+            'type' => 'individual',
             'name' => $this->faker->company(),
             'code' => 'CUST-' . str_pad((string) (Customer::count() + 1), 4, '0', STR_PAD_LEFT),
             'email' => $this->faker->unique()->companyEmail(),
             'phone' => $this->faker->optional()->phoneNumber(),
-            'address' => $this->faker->optional()->address(),
-            'city' => $this->faker->optional()->city(),
-            'state' => $this->faker->optional()->state(),
-            'country' => $this->faker->optional()->country(),
-            'postal_code' => $this->faker->optional()->postcode(),
-            'status' => 'active',
+            'company' => $this->faker->optional()->company(),
+            'billing_address' => $this->faker->optional()->address(),
+            'shipping_address' => $this->faker->optional()->address(),
+            'credit_limit' => 0,
+            'payment_terms' => 30,
+            'total_outstanding' => 0,
+            'is_active' => true,
+            'marketing_opt_in' => false,
+            'customer_since' => now()->toDateString(),
         ];
     }
 
     public function inactive(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'inactive',
+            'is_active' => false,
         ]);
     }
 }
