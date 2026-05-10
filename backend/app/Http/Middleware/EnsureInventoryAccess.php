@@ -28,7 +28,7 @@ class EnsureInventoryAccess
     private const WRITE_PERMISSION = 'inventory.write';
 
     /** Roles that implicitly carry inventory write access. */
-    private const WRITE_ROLES = ['admin', 'super-admin', 'Owner', 'inventory_manager', 'warehouse_officer', 'storekeeper', 'procurement_officer'];
+    private const WRITE_ROLES = ['admin', 'Admin', 'super-admin', 'Owner', 'inventory_manager', 'warehouse_officer', 'storekeeper', 'procurement_officer'];
 
     /** Central user_company_access roles. */
     private const TENANT_WRITE_ROLES = ['owner', 'admin', 'inventory_manager'];
@@ -51,8 +51,10 @@ class EnsureInventoryAccess
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        $centralUserId = $this->resolveCentralUserId($user);
+
         // ── 1. Tenant entitlement check (canonical: FeatureGateService + cache) ──
-        $tenantId = tenant('id');
+        $tenantId = $this->resolveTenantId($request, $user);
         if ($tenantId) {
             $check = $this->featureGate->check((string) $tenantId, 'inventory');
             if (!$check['is_entitled']) {
@@ -93,9 +95,9 @@ class EnsureInventoryAccess
                 : 'user_company_access';
 
             $hasTenantAccess = DB::table($accessTable)
-                ->where('user_id', $user->id)
+                ->where('user_id', $centralUserId)
                 ->where('tenant_id', $tenantId)
-                ->whereIn('role', self::TENANT_WRITE_ROLES)
+                ->whereIn(DB::raw('LOWER(role)'), self::TENANT_WRITE_ROLES)
                 ->exists();
 
             if ($hasTenantAccess) {
@@ -106,5 +108,48 @@ class EnsureInventoryAccess
         return response()->json([
             'message' => 'You do not have permission to perform inventory write operations.',
         ], 403);
+    }
+
+    /**
+     * Resolve tenant id from runtime tenancy first, then explicit header, then user's default mapping.
+     */
+    private function resolveTenantId(Request $request, User $user): ?string
+    {
+        if (function_exists('tenant') && tenant()) {
+            $id = tenant('id');
+            if ($id !== null && $id !== '') {
+                return (string) $id;
+            }
+        }
+
+        $headerTenantId = $request->header('X-Tenant-ID');
+        if (is_string($headerTenantId) && $headerTenantId !== '') {
+            return $headerTenantId;
+        }
+
+        $accessTable = DB::connection()->getDriverName() === 'pgsql'
+            ? 'public.user_company_access'
+            : 'user_company_access';
+
+        $centralUserId = $this->resolveCentralUserId($user);
+
+        $defaultTenantId = DB::table($accessTable)
+            ->where('user_id', $centralUserId)
+            ->where('is_default', true)
+            ->value('tenant_id');
+
+        return $defaultTenantId ? (string) $defaultTenantId : null;
+    }
+
+    /**
+     * Resolve central auth user id even when request user is swapped to a tenant user.
+     */
+    private function resolveCentralUserId(User $user): int
+    {
+        $centralUserId = DB::table('public.users')
+            ->where('email', $user->email)
+            ->value('id');
+
+        return (int) ($centralUserId ?? $user->id);
     }
 }
