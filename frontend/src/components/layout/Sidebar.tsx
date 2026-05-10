@@ -585,11 +585,24 @@ export function Sidebar() {
     'financial-reporting': ['financial_reporting'],
   }
 
+  // Tenant-specific hard blocks for modules that must never appear in navigation.
+  const tenantForceDisabledFeatures: Record<string, string[]> = {
+    'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
+  }
+
   const isFeatureEnabled = (featureKey?: string) => {
     if (!featureKey) return true
     if (!features) return true
 
     const normalizedKey = normalizeFeatureKey(featureKey)
+    const forceDisabledForTenant = (tenantForceDisabledFeatures[tenantId] || []).map((key) =>
+      normalizeFeatureKey(key)
+    )
+
+    if (forceDisabledForTenant.includes(normalizedKey)) {
+      return false
+    }
+
     const keysToCheck = [
       normalizedKey,
       ...(featureKeyAliases[normalizedKey] || []).map((key) => normalizeFeatureKey(key)),
