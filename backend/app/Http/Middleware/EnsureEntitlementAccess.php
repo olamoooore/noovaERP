@@ -74,7 +74,19 @@ class EnsureEntitlementAccess
         $tenantId = $this->currentTenantId();
 
         if ($tenantId !== null) {
-            $result = $this->featureGate->check($tenantId, $featureKey);
+            try {
+                $result = $this->featureGate->check($tenantId, $featureKey);
+            } catch (\Throwable $e) {
+                Log::error('EnsureEntitlementAccess: Entitlement check failed', [
+                    'tenant_id' => $tenantId,
+                    'feature_key' => $featureKey,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Feature access check is currently unavailable. Please contact support.',
+                ], 503);
+            }
 
             if ($result['is_entitled']) {
                 return $next($request);
@@ -89,7 +101,19 @@ class EnsureEntitlementAccess
         $resolved = $this->resolveTenantFromHost($request);
 
         if ($resolved !== null) {
-            $result = $this->featureGate->check((string) $resolved->id, $featureKey);
+            try {
+                $result = $this->featureGate->check((string) $resolved->id, $featureKey);
+            } catch (\Throwable $e) {
+                Log::error('EnsureEntitlementAccess: Host-resolved entitlement check failed', [
+                    'tenant_id' => (string) $resolved->id,
+                    'feature_key' => $featureKey,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Feature access check is currently unavailable. Please contact support.',
+                ], 503);
+            }
 
             if ($result['is_entitled']) {
                 return $next($request);

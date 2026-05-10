@@ -6,6 +6,7 @@ namespace App\SuperAdmin\Application;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FeatureGateService
 {
@@ -103,9 +104,17 @@ class FeatureGateService
         }
 
         // Fallback: iterate known tenant IDs from the central schema.
-        $tenantIds = DB::table('public.tenant_entitlements')
-            ->distinct()
-            ->pluck('tenant_id');
+        try {
+            $tenantIds = DB::table('public.tenant_entitlements')
+                ->distinct()
+                ->pluck('tenant_id');
+        } catch (\Throwable $e) {
+            Log::warning('FeatureGateService: invalidateAll skipped (entitlements store unavailable)', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
 
         foreach ($tenantIds as $tenantId) {
             $this->invalidate($tenantId);
@@ -121,21 +130,30 @@ class FeatureGateService
 
     private function resolveFromDb(string $tenantId): array
     {
-        return DB::table('public.tenant_entitlements as tenant_entitlements')
-            ->join('public.catalog_items as catalog_items', 'catalog_items.id', '=', 'tenant_entitlements.catalog_item_id')
-            ->where('tenant_entitlements.tenant_id', $tenantId)
-            ->where('tenant_entitlements.is_entitled', true)
-            ->whereNotNull('catalog_items.key')
-            ->get([
-                'catalog_items.key as key',
-                'catalog_items.name as name',
-                'tenant_entitlements.source as source',
-            ])
-            ->map(fn ($row) => [
-                'key' => (string) $row->key,
-                'name' => (string) $row->name,
-                'source' => (string) $row->source,
-            ])
-            ->all();
+        try {
+            return DB::table('public.tenant_entitlements as tenant_entitlements')
+                ->join('public.catalog_items as catalog_items', 'catalog_items.id', '=', 'tenant_entitlements.catalog_item_id')
+                ->where('tenant_entitlements.tenant_id', $tenantId)
+                ->where('tenant_entitlements.is_entitled', true)
+                ->whereNotNull('catalog_items.key')
+                ->get([
+                    'catalog_items.key as key',
+                    'catalog_items.name as name',
+                    'tenant_entitlements.source as source',
+                ])
+                ->map(fn ($row) => [
+                    'key' => (string) $row->key,
+                    'name' => (string) $row->name,
+                    'source' => (string) $row->source,
+                ])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('FeatureGateService: entitlement resolution failed', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 }
