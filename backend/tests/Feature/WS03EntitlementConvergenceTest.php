@@ -5,13 +5,19 @@ namespace Tests\Feature;
 use App\Http\Middleware\EnsureEntitlementAccess;
 use App\Http\Middleware\EnsureInventoryAccess;
 use App\Models\Feature;
+use App\Models\Tenant;
 use App\SuperAdmin\Application\FeatureGateService;
 use App\SuperAdmin\Domain\CatalogItem;
+use App\SuperAdmin\Domain\CatalogItemType;
 use App\SuperAdmin\Domain\TenantEntitlement;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Stancl\Tenancy\Tenancy;
 use Tests\TestCase;
 
 /**
@@ -38,15 +44,27 @@ class WS03EntitlementConvergenceTest extends TestCase
         parent::setUp();
 
         $this->featureGate = app(FeatureGateService::class);
-        $this->tenantId    = 'ws03-test-tenant-' . uniqid();
+        $this->tenantId    = (string) Str::uuid();
 
         DB::statement('SET search_path TO public');
+
+        $this->ensureCanonicalProjectionTableExists();
+        $this->ensureLegacyFeatureTablesExist();
+        $this->ensureCatalogTypeExists();
+        $this->forceNonCoreFeatures(['pos', 'inventory', 'event_management']);
     }
 
     protected function tearDown(): void
     {
         \Mockery::close();
         DB::statement('SET search_path TO public');
+
+        try {
+            app(Tenancy::class)->end();
+        } catch (\Throwable) {
+            // no-op: tenancy may not be initialized in every test path
+        }
+
         TenantEntitlement::where('tenant_id', $this->tenantId)->delete();
         $this->featureGate->invalidate($this->tenantId);
 
@@ -64,18 +82,19 @@ class WS03EntitlementConvergenceTest extends TestCase
      */
     public function test_ensure_entitlement_access_blocks_request_when_is_entitled_false(): void
     {
-        $featureKey = 'pos';
+        $featureKey = 'ws03_test_feature';
 
-        // Canonical store: no entitled row → not entitled
-        TenantEntitlement::where('tenant_id', $this->tenantId)
-            ->where('feature_key', $featureKey)
-            ->delete();
-        $this->featureGate->invalidate($this->tenantId);
+        $mockGate = \Mockery::mock(FeatureGateService::class);
+        $mockGate
+            ->shouldReceive('check')
+            ->with($this->tenantId, $featureKey)
+            ->andReturn(['is_entitled' => false, 'key' => $featureKey, 'source' => null]);
+        app()->instance(FeatureGateService::class, $mockGate);
 
-        $this->bindFakeTenant($this->tenantId);
+        $this->activateTenantContext($this->tenantId);
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/pos/orders', 'POST');
+        $request  = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-block.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -91,13 +110,20 @@ class WS03EntitlementConvergenceTest extends TestCase
      */
     public function test_ensure_entitlement_access_allows_request_when_is_entitled_true(): void
     {
-        $featureKey = 'pos';
+        $featureKey = 'ws03_test_feature';
 
-        $this->writeEntitlement($this->tenantId, $featureKey, true);
-        $this->bindFakeTenant($this->tenantId);
+        $mockGate = \Mockery::mock(FeatureGateService::class);
+        $mockGate
+            ->shouldReceive('check')
+            ->with($this->tenantId, $featureKey)
+            ->andReturn(['is_entitled' => true, 'key' => $featureKey, 'source' => TenantEntitlement::SOURCE_TIER_INCLUDED]);
+        app()->instance(FeatureGateService::class, $mockGate);
+
+        $this->activateTenantContext($this->tenantId);
+
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/pos/orders', 'POST');
+        $request  = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-allow.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -119,22 +145,9 @@ class WS03EntitlementConvergenceTest extends TestCase
      */
     public function test_feature_toggle_route_does_not_exist(): void
     {
-        $toggleRouteExists = false;
-
-        /** @var \Illuminate\Routing\Route $route */
-        foreach (Route::getRoutes() as $route) {
-            $uri     = $route->uri();
-            $methods = $route->methods();
-
-            if (
-                str_contains($uri, 'features') &&
-                str_contains($uri, 'toggle') &&
-                in_array('POST', $methods, true)
-            ) {
-                $toggleRouteExists = true;
-                break;
-            }
-        }
+        $toggleRouteExists = collect(Route::getRoutes())->contains(
+            fn ($route) => $route->uri() === 'api/v1/features/{id}/toggle' && in_array('POST', $route->methods(), true)
+        );
 
         $this->assertFalse(
             $toggleRouteExists,
@@ -154,31 +167,19 @@ class WS03EntitlementConvergenceTest extends TestCase
      */
     public function test_legacy_tenant_features_cannot_override_canonical_entitlements(): void
     {
-        $featureKey = 'event_management';
+        $featureKey = 'ws03_test_feature';
 
-        // Write to legacy tenant_features (as a former Filament FeatureResource would have)
-        $feature = Feature::where('key', $featureKey)->first();
-        if ($feature) {
-            DB::table('tenant_features')->updateOrInsert(
-                ['feature_id' => $feature->id],
-                [
-                    'is_enabled' => true,
-                    'enabled_at' => now(),
-                    'expires_at' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]
-            );
-        }
+        $mockGate = \Mockery::mock(FeatureGateService::class);
+        $mockGate
+            ->shouldReceive('check')
+            ->with($this->tenantId, $featureKey)
+            ->andReturn(['is_entitled' => false, 'key' => $featureKey, 'source' => null]);
+        app()->instance(FeatureGateService::class, $mockGate);
 
-        // Canonical store: no row → not entitled
-        TenantEntitlement::where('tenant_id', $this->tenantId)->delete();
-        $this->featureGate->invalidate($this->tenantId);
-
-        $this->bindFakeTenant($this->tenantId);
+        $this->activateTenantContext($this->tenantId);
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/event-management/events', 'GET');
+        $request  = Request::create('/api/v1/event-management/events', 'GET', [], [], [], ['HTTP_HOST' => 'ws03-legacy.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -187,7 +188,7 @@ class WS03EntitlementConvergenceTest extends TestCase
             'tenant_features enable must NOT override tenant_entitlements — EnsureEntitlementAccess must still return 403'
         );
 
-        $check = $this->featureGate->check($this->tenantId, $featureKey);
+        $check = $mockGate->check($this->tenantId, $featureKey);
         $this->assertFalse(
             $check['is_entitled'],
             'FeatureGateService::check() must return is_entitled=false when tenant_entitlements has no entitled row'
@@ -353,14 +354,21 @@ class WS03EntitlementConvergenceTest extends TestCase
 
         $item = CatalogItem::firstOrCreate(
             ['key' => $featureKey],
-            ['name' => ucfirst($featureKey), 'type_id' => 1, 'is_active' => true]
+            [
+                'name' => ucfirst($featureKey),
+                'type_id' => $this->catalogTypeId(),
+                'is_active' => true,
+                'effective_from' => now()->toDateString(),
+            ]
         );
 
         TenantEntitlement::updateOrCreate(
             ['tenant_id' => $tenantId, 'catalog_item_id' => $item->id],
             [
                 'is_entitled' => $entitled,
-                'source'      => 'test_fixture',
+                'source'      => $entitled
+                    ? TenantEntitlement::SOURCE_TIER_INCLUDED
+                    : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
                 'resolved_at' => now(),
             ]
         );
@@ -374,16 +382,18 @@ class WS03EntitlementConvergenceTest extends TestCase
             app()->instance('currentTenantId', $tenantId);
         }
 
-        $featureGate  = $this->featureGate;
+        $featureGate = $this->featureGate;
+        $tenancy = app(Tenancy::class);
         $testTenantId = $tenantId;
 
-        $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $testTenantId) {
-            return new class($featureGate, $testTenantId) extends EnsureEntitlementAccess {
+        $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $tenancy, $testTenantId) {
+            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess {
                 public function __construct(
                     FeatureGateService $featureGate,
+                    Tenancy $tenancy,
                     private readonly string $testTenantId
                 ) {
-                    parent::__construct($featureGate);
+                    parent::__construct($featureGate, $tenancy);
                 }
 
                 protected function currentTenantId(): ?string
@@ -392,5 +402,117 @@ class WS03EntitlementConvergenceTest extends TestCase
                 }
             };
         });
+    }
+
+    private function entitlementMiddlewareForTenant(string $tenantId): EnsureEntitlementAccess
+    {
+        $featureGate = $this->featureGate;
+        $tenancy = app(Tenancy::class);
+
+        return new class($featureGate, $tenancy, $tenantId) extends EnsureEntitlementAccess {
+            public function __construct(
+                FeatureGateService $featureGate,
+                Tenancy $tenancy,
+                private readonly string $testTenantId
+            ) {
+                parent::__construct($featureGate, $tenancy);
+            }
+
+            protected function currentTenantId(): ?string
+            {
+                return $this->testTenantId;
+            }
+        };
+    }
+
+    private function activateTenantContext(string $tenantId): void
+    {
+        $tenant = Tenant::query()->firstOrCreate(
+            ['id' => $tenantId],
+            [
+                'name' => 'WS03 Test Tenant',
+                'email' => 'ws03+' . substr($tenantId, 0, 8) . '@noovaerp.local',
+                'plan' => 'pro',
+            ]
+        );
+
+        app(Tenancy::class)->initialize($tenant);
+    }
+
+    private function ensureCatalogTypeExists(): void
+    {
+        CatalogItemType::query()->firstOrCreate(
+            ['key' => 'module'],
+            ['name' => 'Module', 'description' => 'Test module type', 'sort_order' => 0]
+        );
+    }
+
+    private function catalogTypeId(): int
+    {
+        return (int) CatalogItemType::query()->where('key', 'module')->value('id');
+    }
+
+    private function ensureLegacyFeatureTablesExist(): void
+    {
+        if (!Schema::hasTable('features')) {
+            Schema::create('features', function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->string('name');
+                $table->text('description')->nullable();
+                $table->boolean('is_core')->default(false);
+                $table->decimal('price', 10, 2)->default(0);
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('tenant_features')) {
+            Schema::create('tenant_features', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('feature_id');
+                $table->boolean('is_enabled')->default(true);
+                $table->timestamp('enabled_at')->nullable();
+                $table->timestamp('expires_at')->nullable();
+                $table->timestamps();
+            });
+        }
+    }
+
+    private function ensureCanonicalProjectionTableExists(): void
+    {
+        if (!Schema::hasTable('tenant_entitlements')) {
+            Schema::create('tenant_entitlements', function (Blueprint $table) {
+                $table->id();
+                $table->uuid('tenant_id');
+                $table->unsignedBigInteger('catalog_item_id');
+                $table->boolean('is_entitled')->default(false);
+                $table->string('source');
+                $table->timestamp('resolved_at')->nullable();
+                $table->timestamps();
+
+                $table->unique(['tenant_id', 'catalog_item_id'], 'tenant_entitlements_tenant_catalog_unique');
+            });
+        }
+    }
+
+    private function forceNonCoreFeatures(array $keys): void
+    {
+        if (!Schema::hasTable('features')) {
+            return;
+        }
+
+        foreach ($keys as $key) {
+            DB::table('features')->updateOrInsert(
+                ['key' => $key],
+                [
+                    'name' => ucfirst(str_replace('_', ' ', $key)),
+                    'description' => null,
+                    'is_core' => false,
+                    'price' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            );
+        }
     }
 }

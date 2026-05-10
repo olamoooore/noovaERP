@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Str;
+use Stancl\Tenancy\Tenancy;
 use Tests\TestCase;
 
 /**
@@ -41,6 +42,7 @@ class ControlPlaneProjectionTest extends TestCase
 
         $this->ensureLegacyFeatureTablesExist();
         $this->ensureCatalogTypeExists();
+        $this->forceNonCoreFeatures(['pos', 'inventory']);
     }
 
     protected function tearDown(): void
@@ -77,7 +79,7 @@ class ControlPlaneProjectionTest extends TestCase
         // Bind the tenant resolution helper so currentTenantId() returns our test tenant
         $this->bindFakeTenant($this->tenantId);
 
-        $middleware = new EnsureEntitlementAccess($this->featureGate);
+        $middleware = new EnsureEntitlementAccess($this->featureGate, app(Tenancy::class));
 
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
@@ -99,7 +101,7 @@ class ControlPlaneProjectionTest extends TestCase
         $request = Request::create('/api/v1/pos/orders', 'GET');
         $this->bindFakeTenant($this->tenantId);
 
-        $middleware = new EnsureEntitlementAccess($this->featureGate);
+        $middleware = new EnsureEntitlementAccess($this->featureGate, app(Tenancy::class));
 
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
@@ -146,7 +148,7 @@ class ControlPlaneProjectionTest extends TestCase
         $request = Request::create('/api/v1/inventory/items', 'GET');
         $this->bindFakeTenant($this->tenantId);
 
-        $middleware = new EnsureEntitlementAccess($this->featureGate);
+        $middleware = new EnsureEntitlementAccess($this->featureGate, app(Tenancy::class));
 
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
@@ -312,13 +314,16 @@ class ControlPlaneProjectionTest extends TestCase
         $featureGate = $this->featureGate;
         $testTenantId = $tenantId;
 
-        $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $testTenantId) {
-            return new class($featureGate, $testTenantId) extends EnsureEntitlementAccess {
+        $tenancy = app(Tenancy::class);
+
+        $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $tenancy, $testTenantId) {
+            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess {
                 public function __construct(
                     FeatureGateService $featureGate,
+                    Tenancy $tenancy,
                     private readonly string $testTenantId
                 ) {
-                    parent::__construct($featureGate);
+                    parent::__construct($featureGate, $tenancy);
                 }
 
                 protected function currentTenantId(): ?string
@@ -365,6 +370,27 @@ class ControlPlaneProjectionTest extends TestCase
                 $table->timestamp('expires_at')->nullable();
                 $table->timestamps();
             });
+        }
+    }
+
+    private function forceNonCoreFeatures(array $keys): void
+    {
+        if (!Schema::hasTable('features')) {
+            return;
+        }
+
+        foreach ($keys as $key) {
+            DB::table('features')->updateOrInsert(
+                ['key' => $key],
+                [
+                    'name' => ucfirst(str_replace('_', ' ', $key)),
+                    'description' => null,
+                    'is_core' => false,
+                    'price' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            );
         }
     }
 }

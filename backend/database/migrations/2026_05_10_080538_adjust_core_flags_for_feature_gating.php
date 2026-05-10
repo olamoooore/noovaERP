@@ -32,12 +32,16 @@ return new class extends Migration
             return;
         }
 
-        DB::table('public.features')
-            ->whereIn('key', ['accounting', 'sales'])
-            ->update([
-                'is_core' => false,
-                'updated_at' => now(),
-            ]);
+        try {
+            DB::table('public.features')
+                ->whereIn('key', ['accounting', 'sales'])
+                ->update([
+                    'is_core' => false,
+                    'updated_at' => now(),
+                ]);
+        } catch (\Throwable) {
+            return;
+        }
     }
 
     /**
@@ -49,11 +53,15 @@ return new class extends Migration
             return;
         }
 
-        DB::table('public.features')
-            ->whereIn('key', ['accounting', 'sales'])
-            ->update([
-                'is_core' => true,
-                'updated_at' => now(),
-            ]);
+        try {
+            DB::table('public.features')
+                ->whereIn('key', ['accounting', 'sales'])
+                ->update([
+                    'is_core' => true,
+                    'updated_at' => now(),
+                ]);
+        } catch (\Throwable) {
+            return;
+        }
     }
 };

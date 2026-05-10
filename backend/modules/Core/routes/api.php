@@ -96,7 +96,6 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     
     // Features
     Route::get('/features', [FeatureController::class, 'index']);
-    Route::post('/features/{id}/toggle', [FeatureController::class, 'toggle']);
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
