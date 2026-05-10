@@ -64,6 +64,49 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
         $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
     }
 
+    public function test_downgrade_to_essential_preserves_existing_active_warehouses_and_blocks_new_activation(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $this->seedTenantWithActiveTier($tenantId, 'growth');
+
+        $this->postJson('/api/v1/warehouses', [
+            'name' => 'Warehouse A',
+            'code' => 'WH-A',
+            'is_active' => true,
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/warehouses', [
+            'name' => 'Warehouse B',
+            'code' => 'WH-B',
+            'is_active' => true,
+        ])->assertCreated();
+
+        $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
+
+        // Downgrade tenant to essential tier by writing a newer active subscription row.
+        $this->addActiveTierSubscription($tenantId, 'essential');
+
+        // Existing active warehouses must remain untouched (no destructive auto-deactivation).
+        $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
+
+        // Restricted mode: cannot activate additional warehouses beyond essential-tier cap.
+        $inactive = $this->postJson('/api/v1/warehouses', [
+            'name' => 'Warehouse C',
+            'code' => 'WH-C',
+            'is_active' => false,
+        ]);
+        $inactive->assertCreated();
+
+        $activationAttempt = $this->putJson('/api/v1/warehouses/' . $inactive->json('id'), [
+            'is_active' => true,
+        ]);
+
+        $activationAttempt->assertStatus(422)
+            ->assertJsonValidationErrors(['is_active']);
+
+        $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
+    }
+
     private function seedTenantWithActiveTier(string $tenantId, string $tierKey): void
     {
         DB::table('tenants')->insert([
@@ -74,6 +117,15 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->addActiveTierSubscription($tenantId, $tierKey);
+
+        // Bind tenant context so tenant('id') is available in controller enforcement.
+        $this->bindTenantContext($tenantId);
+    }
+
+    private function addActiveTierSubscription(string $tenantId, string $tierKey): void
+    {
 
         $planFamilyId = DB::table('plan_families')->insertGetId([
             'key' => $tierKey,
@@ -103,8 +155,5 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
             'current_period_start' => now()->subDay(),
             'current_period_end' => now()->addMonth(),
         ]);
-
-        // Bind tenant context so tenant('id') is available in controller enforcement.
-        $this->bindTenantContext($tenantId);
     }
 }
