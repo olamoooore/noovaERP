@@ -90,6 +90,14 @@ class PosPostingService
             $totalCost += $cost * (int) $item->quantity;
         }
 
+        // Entitlement safety / no-silent-no-op guard:
+        // If this order contains stock-tracked items, GL must include COGS+inventory lines.
+        if ($this->orderHasTrackedInventoryItems($order) && $totalCost <= 0) {
+            throw new \RuntimeException(
+                "Cannot post stock-tracked POS order without cost basis (COGS/inventory lines would be skipped)."
+            );
+        }
+
         if ($totalCost > 0) {
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'cogs',
@@ -127,6 +135,21 @@ class PosPostingService
         }
 
         return $result->journalEntry;
+    }
+
+    private function orderHasTrackedInventoryItems(PosOrder $order): bool
+    {
+        return $order->items->contains(function ($item) {
+            if ($item->product_variant_id && $item->variant) {
+                return (bool) $item->variant->track_inventory;
+            }
+
+            if ($item->product_id && $item->product) {
+                return (bool) $item->product->track_inventory;
+            }
+
+            return false;
+        });
     }
 
     /**

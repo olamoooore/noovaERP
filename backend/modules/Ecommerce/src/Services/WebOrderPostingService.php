@@ -252,6 +252,14 @@ class WebOrderPostingService
                 $totalCost += $cost * (int) $item->quantity;
             }
 
+            // Entitlement safety / no-silent-no-op guard:
+            // If tracked items exist, GL must include COGS+inventory lines.
+            if ($this->orderHasTrackedInventoryItems($order) && $totalCost <= 0) {
+                throw new \RuntimeException(
+                    "Cannot post stock-tracked web order without cost basis (COGS/inventory lines would be skipped)."
+                );
+            }
+
             if ($totalCost > 0) {
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'cogs',
