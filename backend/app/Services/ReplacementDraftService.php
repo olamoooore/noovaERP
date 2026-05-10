@@ -24,6 +24,7 @@ class ReplacementDraftService
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
         $original->update([
+            'correction_group_id' => $correctionGroupId,
             'is_active_version' => false,
             'lifecycle_status' => 'superseded',
             'superseded_at' => now(),
@@ -98,6 +99,7 @@ class ReplacementDraftService
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
         $original->update([
+            'correction_group_id' => $correctionGroupId,
             'is_active_version' => false,
             'lifecycle_status' => 'superseded',
             'superseded_at' => now(),

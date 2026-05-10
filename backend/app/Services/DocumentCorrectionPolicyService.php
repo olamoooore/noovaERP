@@ -99,15 +99,13 @@ class DocumentCorrectionPolicyService
 
         if ($document instanceof Invoice || $document instanceof Bill) {
             if ($document->settlement_status === 'paid') {
-                return PolicyResult::deny([
-                    'message' => 'Document is fully paid. Use credit note or refund workflow instead.',
+                return PolicyResult::deny('Document is fully paid. Use credit note or refund workflow instead.', [
                     'suggested_actions' => ['credit_note', 'reverse_and_refund']
                 ]);
             }
 
             if ($document->settlement_status === 'partially_paid') {
-                return PolicyResult::deny([
-                    'message' => 'Document has partial payments. Resolve payment issue first.',
+                return PolicyResult::deny('Document has partial payments. Resolve payment issue first.', [
                     'suggested_actions' => ['reverse_and_refund']
                 ]);
             }

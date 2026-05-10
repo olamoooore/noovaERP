@@ -7,9 +7,11 @@ use App\Models\Bill;
 use App\Models\JournalEntry;
 use App\Models\Payment;
 use App\Models\Customer;
+use App\Models\FiscalPeriod;
 use App\Models\Vendor;
 use App\Models\User;
 use App\Services\CorrectionRequest;
+use Illuminate\Support\Facades\Gate;
 use Tests\TenantTestCase;
 
 class DocumentCorrectionEngineTest extends TenantTestCase
@@ -19,7 +21,28 @@ class DocumentCorrectionEngineTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::first() ?? User::factory()->create();
+        $this->user = User::find(1) ?? User::factory()->create(['id' => 1]);
+        Gate::before(static function (User $user, string $ability): ?bool {
+            return str_starts_with($ability, 'accounting.') ? true : null;
+        });
+        $this->ensureOpenFiscalPeriod();
+    }
+
+    private function ensureOpenFiscalPeriod(): void
+    {
+        FiscalPeriod::firstOrCreate(
+            ['code' => now()->format('Y-m')],
+            [
+                'name' => now()->format('F Y'),
+                'period_start' => now()->startOfMonth()->toDateString(),
+                'period_end' => now()->endOfMonth()->toDateString(),
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $this->user->id,
+            ]
+        );
     }
 
     public function test_posted_invoice_cannot_be_edited_in_place(): void
@@ -30,7 +53,7 @@ class DocumentCorrectionEngineTest extends TenantTestCase
             'journal_entry_id' => null,
         ]);
 
-        $response = $this->putJson("/api/v1/invoices/{$invoice->id}", [
+        $response = $this->actingAs($this->user)->putJson("/api/v1/invoices/{$invoice->id}", [
             'customer_id' => $invoice->customer_id,
             'invoice_date' => now()->toDateString(),
             'due_date' => now()->addDays(30)->toDateString(),
@@ -190,11 +213,14 @@ class DocumentCorrectionEngineTest extends TenantTestCase
             'settlement_status' => 'paid',
         ]);
 
-        $payment = Payment::factory()->create([
+        $payment = Payment::create([
             'invoice_id' => $invoice->id,
             'amount' => 500,
             'payment_status' => 'applied',
             'customer_id' => $invoice->customer_id,
+            'payment_date' => now()->toDateString(),
+            'method' => 'cash',
+            'received_by' => $this->user->id,
         ]);
 
         $correctionRequest = new CorrectionRequest(

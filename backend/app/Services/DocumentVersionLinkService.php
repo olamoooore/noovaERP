@@ -58,6 +58,23 @@ class DocumentVersionLinkService
         ]);
     }
 
+    public function linkVoid($document, CorrectionRequest $request): void
+    {
+        $documentType = $this->getDocumentType($document);
+
+        DocumentCorrectionLink::create([
+            'document_type'         => $documentType,
+            'document_id'           => $document->id,
+            'related_document_type' => $documentType,
+            'related_document_id'   => $document->id,
+            'relation_type'         => 'void',
+            'created_by'            => $request->userId,
+            'reason_code'           => $request->reasonCode,
+            'reason_text'           => $request->reasonText,
+            'correction_group_id'   => $document->correction_group_id,
+        ]);
+    }
+
     public function linkCreditNote($original, $creditNote, CorrectionRequest $request): void
     {
         DocumentCorrectionLink::create([

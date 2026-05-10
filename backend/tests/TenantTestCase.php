@@ -41,12 +41,19 @@ abstract class TenantTestCase extends TestCase
      */
     protected function refreshTestDatabase()
     {
-        if (!RefreshDatabaseState::$migrated) {
+        if (!RefreshDatabaseState::$migrated || !$this->tenantSchemaExists()) {
             $this->runTenantMigrations();
             RefreshDatabaseState::$migrated = true;
         }
 
         $this->beginDatabaseTransaction();
+    }
+
+    protected function tenantSchemaExists(): bool
+    {
+        return Schema::hasTable('invoices')
+            && Schema::hasTable('journal_entries')
+            && Schema::hasTable('document_correction_links');
     }
 
     /**

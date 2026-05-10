@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\Invoice;
 use App\Models\Bill;
 use App\Models\JournalEntry;
@@ -30,6 +31,7 @@ class DocumentCorrectionService
         }
 
         $this->lifecycleService->markVoided($document, $request);
+        $this->linkService->linkVoid($document, $request);
 
         return new CorrectionResult(
             document: $document,
@@ -45,11 +47,29 @@ class DocumentCorrectionService
             throw new \RuntimeException($policy->message());
         }
 
-        $reversalEntry = app(\App\Accounting\PostingEngine::class)->reverse(
-            $document->journal_entry_id,
-            $request->reasonText ?? 'Reversal: ' . ($document instanceof Invoice ? $document->invoice_number : ($document instanceof Bill ? $document->bill_number : $document->entry_number)),
-            $request->userId
+        $reversalTargetId = $document instanceof JournalEntry
+            ? $document->id
+            : $document->journal_entry_id;
+
+        if (!$reversalTargetId) {
+            throw new \RuntimeException('Document has no posted journal entry to reverse');
+        }
+
+        $reversalRequest = new ReversalRequest(
+            journalEntryId: $reversalTargetId,
+            reversalDate: now()->toDateString(),
+            reason: $request->reasonText ?? 'Reversal: ' . ($document instanceof Invoice ? $document->invoice_number : ($document instanceof Bill ? $document->bill_number : $document->entry_number)),
+            reasonCode: $request->reasonCode,
+            actorUserId: $request->userId,
         );
+
+        $reversalResult = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+
+        if (!$reversalResult->success || !$reversalResult->journalEntry) {
+            throw new \RuntimeException($reversalResult->error ?? 'Failed to create reversal journal entry');
+        }
+
+        $reversalEntry = $reversalResult->journalEntry;
 
         $this->lifecycleService->markReversed($document, $request, $reversalEntry->id);
 
