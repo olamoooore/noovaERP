@@ -15,6 +15,7 @@ class LoyaltyReward extends Model
         'name',
         'description',
         'points_cost',
+        'reward_quota_quantity',
         'stock_quantity',
         'image_url',
         'is_active',

@@ -174,7 +174,10 @@ class RedemptionService
             }
 
             // Check quota-only availability for non-product rewards.
-            if (!$isProductBacked && $reward->stock_quantity !== null && $reward->stock_quantity <= 0) {
+            if (!$isProductBacked
+                && $reward->reward_quota_quantity !== null
+                && $reward->reward_quota_quantity <= 0
+            ) {
                 throw new \Exception('Reward is out of stock');
             }
 
@@ -236,9 +239,9 @@ class RedemptionService
                 );
             }
 
-            // Non-product rewards: stock_quantity is quota.
-            if (!$isProductBacked && $reward->stock_quantity !== null) {
-                $reward->decrement('stock_quantity');
+            // Non-product rewards: reward_quota_quantity is quota.
+            if (!$isProductBacked && $reward->reward_quota_quantity !== null) {
+                $reward->decrement('reward_quota_quantity');
             }
 
             // Check for tier downgrade
@@ -322,8 +325,8 @@ class RedemptionService
                 }
 
                 // Non-product rewards: restore quota counter.
-                if (!$isProductBacked && $redemption->reward->stock_quantity !== null) {
-                    $redemption->reward->increment('stock_quantity');
+                if (!$isProductBacked && $redemption->reward->reward_quota_quantity !== null) {
+                    $redemption->reward->increment('reward_quota_quantity');
                 }
             }
 
