@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class WarehouseController extends Controller
 {
@@ -21,6 +23,8 @@ class WarehouseController extends Controller
             'address' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
+
+        $this->enforceTierWarehouseLimit($validated);
 
         $warehouse = Warehouse::create($validated);
 
@@ -43,6 +47,8 @@ class WarehouseController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        $this->enforceTierWarehouseLimit($validated, $warehouse);
+
         $warehouse->update($validated);
 
         return $warehouse;
@@ -54,5 +60,69 @@ class WarehouseController extends Controller
         $warehouse->delete();
 
         return response()->json(null, 204);
+    }
+
+    private function enforceTierWarehouseLimit(array $validated, ?Warehouse $updating = null): void
+    {
+        if (!array_key_exists('is_active', $validated) || $validated['is_active'] !== true) {
+            return;
+        }
+
+        $tenantId = $this->currentTenantId();
+        if ($tenantId === null) {
+            return;
+        }
+
+        $tierKey = $this->resolveActiveTierKey($tenantId);
+        if ($tierKey === null) {
+            return;
+        }
+
+        $maxActiveWarehouses = $this->maxActiveWarehousesForTierKey($tierKey);
+        if ($maxActiveWarehouses === null) {
+            return;
+        }
+
+        $activeCount = Warehouse::query()
+            ->where('is_active', true)
+            ->when($updating, fn ($query) => $query->whereKeyNot($updating->id))
+            ->count();
+
+        if ($activeCount >= $maxActiveWarehouses) {
+            throw ValidationException::withMessages([
+                'is_active' => "Current subscription tier allows only {$maxActiveWarehouses} active warehouse.",
+            ]);
+        }
+    }
+
+    private function currentTenantId(): ?string
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return null;
+        }
+
+        return (string) tenant('id');
+    }
+
+    private function maxActiveWarehousesForTierKey(string $tierKey): ?int
+    {
+        return match ($tierKey) {
+            'essential' => 1,
+            'growth', 'enterprise-standard', 'enterprise-custom' => null,
+            default => null,
+        };
+    }
+
+    private function resolveActiveTierKey(string $tenantId): ?string
+    {
+        $status = ['active', 'trialing', 'past_due'];
+
+        return DB::table('public.subscriptions as subscriptions')
+            ->join('public.plan_versions as versions', 'versions.id', '=', 'subscriptions.plan_version_id')
+            ->join('public.plan_families as families', 'families.id', '=', 'versions.plan_family_id')
+            ->where('subscriptions.tenant_id', $tenantId)
+            ->whereIn('subscriptions.status', $status)
+            ->orderByDesc('subscriptions.id')
+            ->value('families.key');
     }
 }

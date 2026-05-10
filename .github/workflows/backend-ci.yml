@@ -98,7 +98,7 @@ jobs:
       - name: Run PRD closure gate proof tests
         working-directory: backend
         run: |
-          php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
+          php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM002SubscriptionTierWarehouseModelTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
 
       - name: Run Feature test suite
         working-directory: backend
