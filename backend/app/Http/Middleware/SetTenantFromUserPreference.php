@@ -48,6 +48,48 @@ class SetTenantFromUserPreference
 
             $this->tenancy->initialize($tenant);
         } else {
+            $requestedTenantId = $request->header('X-Tenant-ID');
+
+            if ($requestedTenantId) {
+                $requestedAccess = DB::table('public.user_company_access')
+                    ->where('user_id', $user->id)
+                    ->where('tenant_id', $requestedTenantId)
+                    ->first();
+
+                if (!$requestedAccess) {
+                    Log::warning('SetTenantFromUserPreference: User requested unauthorized tenant', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $requestedTenantId,
+                    ]);
+
+                    return response()->json([
+                        'message' => 'You do not have access to the requested tenant.',
+                    ], 403);
+                }
+
+                $tenant = \App\Models\Tenant::find($requestedTenantId);
+
+                if (!$tenant) {
+                    Log::error('SetTenantFromUserPreference: Requested tenant not found', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $requestedTenantId,
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Requested tenant not found.',
+                    ], 404);
+                }
+
+                Log::info('SetTenantFromUserPreference: Using requested tenant for user', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $tenant->id,
+                ]);
+
+                $this->tenancy->initialize($tenant);
+
+                return $next($request);
+            }
+
             // Get user's default company from public schema
             $defaultCompany = DB::table('public.user_company_access')
                 ->where('user_id', $user->id)

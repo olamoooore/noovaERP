@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
+use App\Models\Tenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -150,6 +151,50 @@ class FeatureGateService
         } catch (\Throwable $e) {
             Log::warning('FeatureGateService: entitlement resolution failed', [
                 'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->resolveFromLegacyTenantFeatures($tenantId);
+        }
+    }
+
+    private function resolveFromLegacyTenantFeatures(string $tenantId): array
+    {
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant) {
+            return [];
+        }
+
+        $schema = $tenant->getSchemaName();
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $schema)) {
+            Log::warning('FeatureGateService: Invalid tenant schema name for legacy fallback', [
+                'tenant_id' => $tenantId,
+                'schema' => $schema,
+            ]);
+
+            return [];
+        }
+
+        try {
+            $sql = <<<SQL
+                select f.key as key, f.name as name
+                from "{$schema}".tenant_features tf
+                inner join public.features f on f.id = tf.feature_id
+                where tf.is_enabled = true
+                  and f.key is not null
+            SQL;
+
+            return collect(DB::select($sql))
+                ->map(fn ($row) => [
+                    'key' => (string) $row->key,
+                    'name' => (string) $row->name,
+                    'source' => 'legacy_tenant_features',
+                ])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('FeatureGateService: legacy tenant_features fallback failed', [
+                'tenant_id' => $tenantId,
+                'schema' => $schema,
                 'error' => $e->getMessage(),
             ]);
 
