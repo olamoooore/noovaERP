@@ -2,6 +2,7 @@
 
 namespace Modules\FinancialReporting\Services\Inventory;
 
+use App\Models\AccountingPolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\FinancialReporting\DTOs\ReportData;
@@ -26,6 +27,7 @@ class StockValuationService extends BaseReportService
         // Calculate totals
         $totalQuantity = $products->sum('quantity');
         $totalValue = $products->sum('total_value');
+        $valuationMethod = $this->resolveValuationMethod();
 
         // Group by category if available
         $byCategory = $products->groupBy('category_name')->map(function ($items, $category) {
@@ -49,6 +51,7 @@ class StockValuationService extends BaseReportService
             metadata: [
                 'as_of_date' => $asOfDate->format('Y-m-d'),
                 'category_filter' => $categoryId,
+                'valuation_method' => $valuationMethod,
                 'by_category' => $byCategory->toArray(),
                 'generated_at' => now()->toIso8601String(),
             ]
@@ -95,6 +98,7 @@ class StockValuationService extends BaseReportService
 
         // Calculate current stock from stock_levels when available
         $valuations = collect();
+        $valuationMethod = $this->resolveValuationMethod();
         
         foreach ($products as $product) {
             $quantity = $stockLevelsExists
@@ -103,7 +107,12 @@ class StockValuationService extends BaseReportService
             
             // Only include products with stock
             if ($quantity > 0) {
-                $totalValue = $quantity * $product->cost;
+                $unitCost = $this->resolveCostForMethod(
+                    productId: (int) $product->id,
+                    fallbackCost: (float) $product->cost,
+                    valuationMethod: $valuationMethod,
+                );
+                $totalValue = $quantity * $unitCost;
                 
                 $valuations->push([
                     'id' => $product->id,
@@ -112,7 +121,7 @@ class StockValuationService extends BaseReportService
                     'category_name' => null, // No categories in current schema
                     'quantity' => $quantity,
                     'unit' => $product->unit,
-                    'cost' => round($product->cost, 2),
+                    'cost' => round($unitCost, 2),
                     'total_value' => round($totalValue, 2),
                     'reorder_level' => $product->reorder_level,
                     'below_reorder' => $quantity < $product->reorder_level,
@@ -160,6 +169,8 @@ class StockValuationService extends BaseReportService
             $stockLevelsExists = false;
         }
 
+        $valuationMethod = $this->resolveValuationMethod();
+
         $valuations = [];
         $totalValue = 0;
 
@@ -169,7 +180,12 @@ class StockValuationService extends BaseReportService
                 : $this->getQuantityAsOfDate($product->id, $asOfDate);
 
             if ($quantity > 0) {
-                $value = $quantity * $product->cost;
+                $unitCost = $this->resolveCostForMethod(
+                    productId: (int) $product->id,
+                    fallbackCost: (float) $product->cost,
+                    valuationMethod: $valuationMethod,
+                );
+                $value = $quantity * $unitCost;
                 $totalValue += $value;
 
                 $valuations[] = [
@@ -179,7 +195,7 @@ class StockValuationService extends BaseReportService
                     'category_name' => null, // No categories in current schema
                     'quantity' => $quantity,
                     'unit' => $product->unit,
-                    'cost' => round($product->cost, 2),
+                    'cost' => round($unitCost, 2),
                     'total_value' => round($value, 2),
                 ];
             }
@@ -190,12 +206,71 @@ class StockValuationService extends BaseReportService
 
         return [
             'as_of_date' => $asOfDate->format('Y-m-d'),
+            'valuation_method' => $valuationMethod,
             'products' => $valuations,
             'summary' => [
                 'total_products' => count($valuations),
                 'total_value' => round($totalValue, 2),
             ],
         ];
+    }
+
+    protected function resolveValuationMethod(): string
+    {
+        try {
+            return AccountingPolicy::current()->inventory_valuation_method ?? 'fifo';
+        } catch (\Throwable $e) {
+            return 'fifo';
+        }
+    }
+
+    protected function resolveCostForMethod(int $productId, float $fallbackCost, string $valuationMethod): float
+    {
+        if (!DB::getSchemaBuilder()->hasTable('product_batches')) {
+            return $fallbackCost;
+        }
+
+        $batches = DB::table('product_batches')
+            ->where('product_id', $productId)
+            ->where('quantity', '>', 0)
+            ->select('cost', 'quantity', 'created_at', 'id');
+
+        if (DB::getSchemaBuilder()->hasColumn('product_batches', 'manufacture_date')) {
+            $batches->addSelect(DB::raw('manufacture_date as valuation_date'));
+        } elseif (DB::getSchemaBuilder()->hasColumn('product_batches', 'manufacturing_date')) {
+            $batches->addSelect(DB::raw('manufacturing_date as valuation_date'));
+        } else {
+            $batches->addSelect(DB::raw('NULL as valuation_date'));
+        }
+
+        $batches = $batches->get();
+
+        if ($batches->isEmpty()) {
+            return $fallbackCost;
+        }
+
+        return match ($valuationMethod) {
+            'weighted_average' => $this->weightedAverageBatchCost($batches, $fallbackCost),
+            'lifo' => (float) ($batches->sortByDesc(fn ($b) => [$b->valuation_date ?? $b->created_at, $b->id])->first()->cost ?? $fallbackCost),
+            'fifo' => (float) ($batches->sortBy(fn ($b) => [$b->valuation_date ?? $b->created_at, $b->id])->first()->cost ?? $fallbackCost),
+            'specific_identification' => $fallbackCost,
+            default => $fallbackCost,
+        };
+    }
+
+    protected function weightedAverageBatchCost($batches, float $fallbackCost): float
+    {
+        $totalQty = (float) $batches->sum('quantity');
+        if ($totalQty <= 0) {
+            return $fallbackCost;
+        }
+
+        $totalCost = $batches->reduce(
+            fn (float $carry, $batch) => $carry + ((float) $batch->cost * (float) $batch->quantity),
+            0.0
+        );
+
+        return $totalCost / $totalQty;
     }
 
     /**
