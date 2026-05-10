@@ -14,10 +14,14 @@ interface Feature {
 }
 
 export function ModulesPage() {
+  const tenantId = localStorage.getItem('tenant_id') || 'default'
+
   const { data: features, isLoading } = useQuery<Feature[]>({
-    queryKey: ['features'],
+    queryKey: ['features', tenantId],
     queryFn: async () => {
-      const response = await api.get('/features')
+      const response = await api.get('/features', {
+        headers: { 'X-Feature-Gate-Fresh': '1' },
+      })
       return response.data
     },
   })

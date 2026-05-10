@@ -557,16 +557,19 @@ const baseNavItems: NavItem[] = [
 export function Sidebar() {
   const location = useLocation()
   const [expandedItems, setExpandedItems] = useState<string[]>([])
+  const tenantId = localStorage.getItem('tenant_id') || 'default'
 
   const { data: features } = useQuery({
-    queryKey: ['features'],
+    queryKey: ['features', tenantId],
     queryFn: async () => {
-      const response = await api.get('/features')
+      const response = await api.get('/features', {
+        headers: { 'X-Feature-Gate-Fresh': '1' },
+      })
       const data = response.data
       return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     },
     retry: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 30,
   })
 
   const normalizeFeatureKey = (key: string) => key.toLowerCase().replace(/[\s_]+/g, '-')
