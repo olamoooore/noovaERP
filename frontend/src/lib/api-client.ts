@@ -120,6 +120,11 @@ class APIClient {
     // Response interceptor
     this.axiosInstance.interceptors.response.use(
       (response) => {
+        const resolvedTenant = response.headers?.['x-tenant-id'] as string | undefined
+        if (resolvedTenant && localStorage.getItem('tenant_id') !== resolvedTenant) {
+          localStorage.setItem('tenant_id', resolvedTenant)
+        }
+
         // Log response time for performance monitoring
         const duration = Date.now() - (response.config.metadata?.startTime || 0)
         if (duration > 5000) {

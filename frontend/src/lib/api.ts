@@ -65,7 +65,13 @@ accountingApi.interceptors.request.use((config) => {
 
 // Response interceptor to handle errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const resolvedTenant = response.headers?.['x-tenant-id'] as string | undefined
+    if (resolvedTenant && localStorage.getItem('tenant_id') !== resolvedTenant) {
+      localStorage.setItem('tenant_id', resolvedTenant)
+    }
+    return response
+  },
   (error) => {
     // Normalize common auth/validation errors to improve UX
     const status = error.response?.status

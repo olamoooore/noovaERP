@@ -592,7 +592,7 @@ export function Sidebar() {
 
   const isFeatureEnabled = (featureKey?: string) => {
     if (!featureKey) return true
-    if (!features) return true
+    if (!features) return false
 
     const normalizedKey = normalizeFeatureKey(featureKey)
     const forceDisabledForTenant = (tenantForceDisabledFeatures[tenantId] || []).map((key) =>

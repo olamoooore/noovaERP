@@ -25,6 +25,8 @@ class SetTenantFromUserPreference
             return $next($request);
         }
 
+        $resolvedTenant = null;
+
         if ($user->is_super_admin ?? false) {
             // Super-admins must explicitly select a tenant via X-Tenant-ID header
             $tenantId = $request->header('X-Tenant-ID');
@@ -47,6 +49,7 @@ class SetTenantFromUserPreference
             ]);
 
             $this->tenancy->initialize($tenant);
+            $resolvedTenant = $tenant;
         } else {
             $requestedTenantId = $request->header('X-Tenant-ID');
 
@@ -60,71 +63,75 @@ class SetTenantFromUserPreference
                     Log::warning('SetTenantFromUserPreference: User requested unauthorized tenant', [
                         'user_id' => $user->id,
                         'tenant_id' => $requestedTenantId,
+                        'action' => 'fallback_to_default_tenant',
                     ]);
+                    $requestedTenantId = null;
+                }
 
+                if ($requestedTenantId) {
+                    $tenant = \App\Models\Tenant::find($requestedTenantId);
+
+                    if ($tenant) {
+                        Log::info('SetTenantFromUserPreference: Using requested tenant for user', [
+                            'user_id' => $user->id,
+                            'tenant_id' => $tenant->id,
+                        ]);
+
+                        $this->tenancy->initialize($tenant);
+                        $resolvedTenant = $tenant;
+                    } else {
+                        Log::warning('SetTenantFromUserPreference: Requested tenant not found, falling back to default', [
+                            'user_id' => $user->id,
+                            'tenant_id' => $requestedTenantId,
+                        ]);
+                    }
+                }
+            }
+
+            if (!$resolvedTenant) {
+                // Get user's default company from public schema
+                $defaultCompany = DB::table('public.user_company_access')
+                    ->where('user_id', $user->id)
+                    ->where('is_default', true)
+                    ->first();
+
+                if (!$defaultCompany) {
+                    Log::warning('SetTenantFromUserPreference: No tenant mapping for user', [
+                        'user_id' => $user->id,
+                    ]);
                     return response()->json([
-                        'message' => 'You do not have access to the requested tenant.',
+                        'message' => 'No tenant configured for this user.',
                     ], 403);
                 }
 
-                $tenant = \App\Models\Tenant::find($requestedTenantId);
-
+                $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+                
                 if (!$tenant) {
-                    Log::error('SetTenantFromUserPreference: Requested tenant not found', [
+                    Log::error('SetTenantFromUserPreference: Tenant not found', [
                         'user_id' => $user->id,
-                        'tenant_id' => $requestedTenantId,
+                        'tenant_id' => $defaultCompany->tenant_id,
                     ]);
-
                     return response()->json([
-                        'message' => 'Requested tenant not found.',
-                    ], 404);
+                        'message' => 'Tenant not found.',
+                    ], 403);
                 }
 
-                Log::info('SetTenantFromUserPreference: Using requested tenant for user', [
+                Log::info('SetTenantFromUserPreference: Initializing tenant', [
                     'user_id' => $user->id,
                     'tenant_id' => $tenant->id,
                 ]);
-
+                
                 $this->tenancy->initialize($tenant);
-
-                return $next($request);
+                $resolvedTenant = $tenant;
             }
-
-            // Get user's default company from public schema
-            $defaultCompany = DB::table('public.user_company_access')
-                ->where('user_id', $user->id)
-                ->where('is_default', true)
-                ->first();
-
-            if (!$defaultCompany) {
-                Log::warning('SetTenantFromUserPreference: No tenant mapping for user', [
-                    'user_id' => $user->id,
-                ]);
-                return response()->json([
-                    'message' => 'No tenant configured for this user.',
-                ], 403);
-            }
-
-            $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
-            
-            if (!$tenant) {
-                Log::error('SetTenantFromUserPreference: Tenant not found', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $defaultCompany->tenant_id,
-                ]);
-                return response()->json([
-                    'message' => 'Tenant not found.',
-                ], 403);
-            }
-
-            Log::info('SetTenantFromUserPreference: Initializing tenant', [
-                'user_id' => $user->id,
-                'tenant_id' => $tenant->id,
-            ]);
-            
-            $this->tenancy->initialize($tenant);
         }
 
-        return $next($request);
+        $response = $next($request);
+
+        if ($resolvedTenant) {
+            $response->headers->set('X-Tenant-ID', (string) $resolvedTenant->id);
+        }
+
+        return $response;
     }
 }

@@ -28,6 +28,8 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem('user', JSON.stringify(user))
         if (tenantId) {
           localStorage.setItem('tenant_id', tenantId)
+        } else {
+          localStorage.removeItem('tenant_id')
         }
         set({ user, token, tenantId: tenantId || null })
       },
