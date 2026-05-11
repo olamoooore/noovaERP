@@ -7,10 +7,38 @@ use Illuminate\Support\Facades\Log;
 use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosSetting;
+use Modules\POS\Models\PosTerminal;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosSyncService
 {
+    private const REQUIRED_ENVELOPE_KEYS = [
+        'tenant_id',
+        'offline_device_id',
+        'offline_session_id',
+        'offline_event_id',
+        'idempotency_key',
+        'source_module',
+        'source_document_type',
+        'source_document_id',
+        'source_line_id',
+        'user_id_at_capture',
+        'warehouse_id_at_capture',
+        'captured_at_device_time',
+        'captured_at_server_last_seen_time',
+        'client_sequence_number',
+        'app_version',
+        'capability_snapshot_version',
+        'permission_snapshot_version',
+        'offline_policy_tier',
+        'payload_hash',
+        'signature_or_auth_proof',
+        'local_cache_encrypted',
+        'local_cache_visibility_scope',
+    ];
+
     /**
      * Queue an offline operation
      */
@@ -30,6 +58,22 @@ class PosSyncService
             $sessionId,
             $metadata
         ) {
+            $metadata = $this->buildSyncEnvelope(
+                payload: $payload,
+                idempotencyKey: $idempotencyKey,
+                terminalId: $terminalId,
+                sessionId: $sessionId,
+                metadata: $metadata,
+                operationType: $operationType,
+            );
+
+            $this->logOfflineEvent('queue.accepted', [
+                'operation_type' => $operationType,
+                'idempotency_key' => $idempotencyKey,
+                'terminal_id' => $terminalId,
+                'session_id' => $sessionId,
+            ]);
+
             // Check for existing queue item with same idempotency key
             $existing = PosOfflineQueue::where('idempotency_key', $idempotencyKey)->first();
             
@@ -60,8 +104,202 @@ class PosSyncService
                 'operation_type' => $operationType,
             ]);
 
+            $this->logOfflineEvent('queue.persisted', [
+                'queue_id' => $queueItem->id,
+                'queue_number' => $queueItem->queue_number,
+                'operation_type' => $operationType,
+            ]);
+
             return $queueItem;
         });
+    }
+
+    private function buildSyncEnvelope(
+        array $payload,
+        string $idempotencyKey,
+        ?int $terminalId,
+        ?int $sessionId,
+        ?array $metadata,
+        string $operationType,
+    ): array {
+        $metadata = $metadata ?? [];
+        $tenantId = (string) (function_exists('tenant') && tenant() ? tenant('id') : 'unknown');
+        $deviceId = $metadata['offline_device_id'] ?? ($terminalId ? (string) $terminalId : null);
+        $offlineEventId = $metadata['offline_event_id'] ?? null;
+        $capturedAtDevice = $metadata['captured_at_device_time'] ?? null;
+        $capturedAtServer = $metadata['captured_at_server_last_seen_time'] ?? now()->toIso8601String();
+
+        $envelope = [
+            'tenant_id' => $tenantId,
+            'offline_device_id' => $deviceId,
+            'offline_session_id' => $metadata['offline_session_id'] ?? ($sessionId ? (string) $sessionId : null),
+            'offline_event_id' => $offlineEventId,
+            'idempotency_key' => $idempotencyKey,
+            'source_module' => $metadata['source_module'] ?? 'pos',
+            'source_document_type' => $metadata['source_document_type'] ?? $operationType,
+            'source_document_id' => $metadata['source_document_id'] ?? ($payload['pos_order_id'] ?? $payload['external_id'] ?? null),
+            'source_line_id' => $metadata['source_line_id'] ?? null,
+            'user_id_at_capture' => $metadata['user_id_at_capture'] ?? TenantUserHelper::resolveTenantUserId(),
+            'warehouse_id_at_capture' => $metadata['warehouse_id_at_capture'] ?? null,
+            'captured_at_device_time' => $capturedAtDevice,
+            'captured_at_server_last_seen_time' => $capturedAtServer,
+            'client_sequence_number' => $metadata['client_sequence_number'] ?? null,
+            'app_version' => $metadata['app_version'] ?? null,
+            'capability_snapshot_version' => $metadata['capability_snapshot_version'] ?? null,
+            'permission_snapshot_version' => $metadata['permission_snapshot_version'] ?? null,
+            'offline_policy_tier' => $metadata['offline_policy_tier'] ?? null,
+            'payload_hash' => $metadata['payload_hash'] ?? hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
+            'signature_or_auth_proof' => $metadata['signature_or_auth_proof'] ?? null,
+            'local_cache_encrypted' => $metadata['local_cache_encrypted'] ?? null,
+            'local_cache_visibility_scope' => $metadata['local_cache_visibility_scope'] ?? null,
+        ];
+
+        // Fail fast when required envelope fields are missing to prevent ambiguous offline replay.
+        $missing = collect(self::REQUIRED_ENVELOPE_KEYS)
+            ->filter(fn (string $key) => blank($envelope[$key] ?? null))
+            ->values()
+            ->all();
+
+        if (!empty($missing)) {
+            throw new \InvalidArgumentException('Offline sync envelope incomplete: ' . implode(', ', $missing));
+        }
+
+        $this->assertOfflineGuardrails(
+            envelope: $envelope,
+            terminalId: $terminalId,
+            sessionId: $sessionId,
+            operationType: $operationType,
+            payload: $payload,
+        );
+
+        return array_merge($metadata, $envelope);
+    }
+
+    private function assertOfflineGuardrails(
+        array $envelope,
+        ?int $terminalId,
+        ?int $sessionId,
+        string $operationType,
+        array $payload,
+    ): void {
+        $this->assertTenantBoundary($envelope);
+        $terminal = $this->assertDeviceRegistrationState($envelope, $terminalId, $sessionId);
+        $this->assertWarehouseScopeState($envelope, $terminal);
+        $this->assertCapabilitySnapshotState($envelope);
+        $this->assertOfflinePolicyTierState($envelope, $operationType, $payload);
+        $this->assertLocalCacheSecurityState($envelope);
+    }
+
+    private function assertTenantBoundary(array $envelope): void
+    {
+        $runtimeTenantId = (string) (function_exists('tenant') && tenant() ? tenant('id') : 'unknown');
+        if ((string) ($envelope['tenant_id'] ?? '') !== $runtimeTenantId) {
+            throw new \InvalidArgumentException('Offline tenant boundary mismatch.');
+        }
+    }
+
+    private function assertDeviceRegistrationState(array $envelope, ?int $terminalId, ?int $sessionId): PosTerminal
+    {
+        $resolvedTerminalId = $terminalId;
+        if (!$resolvedTerminalId && is_numeric($envelope['offline_device_id'] ?? null)) {
+            $resolvedTerminalId = (int) $envelope['offline_device_id'];
+        }
+
+        $terminal = $resolvedTerminalId
+            ? PosTerminal::where('id', $resolvedTerminalId)->where('is_active', true)->first()
+            : null;
+
+        if (!$terminal) {
+            throw new \InvalidArgumentException('Offline device is not registered or active.');
+        }
+
+        if (!empty($envelope['device_revoked_at'])) {
+            throw new \InvalidArgumentException('Offline device has been revoked.');
+        }
+
+        if ($sessionId) {
+            $openSessionExists = PosSession::query()
+                ->where('id', $sessionId)
+                ->where('terminal_id', $terminal->id)
+                ->where('status', 'open')
+                ->exists();
+
+            if (!$openSessionExists) {
+                throw new \InvalidArgumentException('Offline session is not active for the registered device.');
+            }
+        }
+
+        return $terminal;
+    }
+
+    private function assertWarehouseScopeState(array $envelope, PosTerminal $terminal): void
+    {
+        $capturedWarehouseId = (string) ($envelope['warehouse_id_at_capture'] ?? '');
+        $terminalWarehouseId = (string) ($terminal->warehouse_id ?? '');
+
+        if ($terminalWarehouseId === '' || $capturedWarehouseId !== $terminalWarehouseId) {
+            throw new \InvalidArgumentException('Offline warehouse scope mismatch for captured event.');
+        }
+    }
+
+    private function assertCapabilitySnapshotState(array $envelope): void
+    {
+        $expectedCapabilityVersion = PosSetting::getValue('offline_capability_snapshot_version');
+        if ($expectedCapabilityVersion !== null && (string) $expectedCapabilityVersion !== (string) $envelope['capability_snapshot_version']) {
+            throw new \InvalidArgumentException('Offline capability snapshot is stale.');
+        }
+
+        $expectedPermissionVersion = PosSetting::getValue('offline_permission_snapshot_version');
+        if ($expectedPermissionVersion !== null && (string) $expectedPermissionVersion !== (string) $envelope['permission_snapshot_version']) {
+            throw new \InvalidArgumentException('Offline permission snapshot is stale.');
+        }
+    }
+
+    private function assertOfflinePolicyTierState(array $envelope, string $operationType, array $payload): void
+    {
+        $requestedTier = (string) ($envelope['offline_policy_tier'] ?? '');
+        $configuredTier = (string) (PosSetting::getValue('offline_policy_tier', $requestedTier) ?? '');
+
+        if ($configuredTier !== '' && $requestedTier !== $configuredTier) {
+            throw new \InvalidArgumentException('Offline policy tier mismatch.');
+        }
+
+        $allowedOperationsByTier = [
+            'strict' => ['create_order'],
+            'standard' => ['create_order', 'payment'],
+            'enterprise' => ['create_order', 'payment', 'void', 'refund'],
+        ];
+
+        $allowedOperations = $allowedOperationsByTier[$requestedTier] ?? [];
+        if (!in_array($operationType, $allowedOperations, true)) {
+            throw new \InvalidArgumentException('Offline policy tier does not allow operation: ' . $operationType);
+        }
+
+        $allocationEnabled = (bool) PosSetting::getValue('offline_enable_stock_allocation', false);
+        if ($operationType === 'create_order' && $allocationEnabled && empty($payload['allocation_plan'])) {
+            throw new \InvalidArgumentException('Offline stock allocation plan is required when allocation is enabled.');
+        }
+
+        if (($payload['workflow'] ?? null) === 'stock_count' && empty($payload['draft_reconciliation_reference'])) {
+            throw new \InvalidArgumentException('Offline stock count requires draft reconciliation reference.');
+        }
+    }
+
+    private function assertLocalCacheSecurityState(array $envelope): void
+    {
+        if (($envelope['local_cache_encrypted'] ?? false) !== true) {
+            throw new \InvalidArgumentException('Offline local cache must be encrypted.');
+        }
+
+        $scope = (string) ($envelope['local_cache_visibility_scope'] ?? '');
+        if (!in_array($scope, ['user', 'session', 'device'], true)) {
+            throw new \InvalidArgumentException('Offline local cache visibility scope is invalid.');
+        }
+    }
+
+    private function logOfflineEvent(string $event, array $context = []): void
+    {
+        Log::info('offline_sync_event', array_merge(['event' => $event], $context));
     }
 
     /**
@@ -114,6 +352,13 @@ class PosSyncService
                     'entity_id' => $result['entity_id'],
                 ]);
 
+                $this->logOfflineEvent('sync.succeeded', [
+                    'queue_id' => $queueItem->id,
+                    'queue_number' => $queueItem->queue_number,
+                    'entity_type' => $result['entity_type'],
+                    'entity_id' => $result['entity_id'],
+                ]);
+
                 return [
                     'success' => true,
                     'message' => 'Synced successfully',
@@ -136,6 +381,12 @@ class PosSyncService
                     'queue_number' => $queueItem->queue_number,
                     'error' => $e->getMessage(),
                     'is_conflict' => $isConflict,
+                ]);
+
+                $this->logOfflineEvent($isConflict ? 'sync.conflict' : 'sync.failed', [
+                    'queue_id' => $queueItem->id,
+                    'queue_number' => $queueItem->queue_number,
+                    'error' => $e->getMessage(),
                 ]);
 
                 return [
@@ -556,6 +807,11 @@ class PosSyncService
             ]);
 
             Log::info('Conflict resolved', [
+                'queue_id' => $queueItem->id,
+                'resolution' => $resolution,
+            ]);
+
+            $this->logOfflineEvent('conflict.resolved', [
                 'queue_id' => $queueItem->id,
                 'resolution' => $resolution,
             ]);

@@ -103,6 +103,12 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order) {
+            $order->loadMissing('lines.product');
+
+            if ($this->hasStockTrackedLines($order)) {
+                $this->requireCommitmentWarehouseId($order, 'allocate');
+            }
+
             $order = $this->lifecycleService->allocate($order, 'Stock allocated');
 
             foreach ($order->lines as $line) {
@@ -128,7 +134,7 @@ class SalesOrderService
             $warehouseId = null;
 
             if ($stockTrackedLines->isNotEmpty()) {
-                $warehouseId = $this->resolveFulfilmentWarehouseId($order);
+                $warehouseId = $this->requireCommitmentWarehouseId($order, 'fulfil');
             }
 
             // Deduct stock for each line item
@@ -157,20 +163,32 @@ class SalesOrderService
         });
     }
 
-    private function resolveFulfilmentWarehouseId(SalesOrder $order): int
+    private function requireCommitmentWarehouseId(SalesOrder $order, string $phase): int
     {
         if (!$order->warehouse_id) {
-            Log::error('Sales fulfilment failed: warehouse_id is required for stock-tracked order', [
+            Log::error('Sales commitment failed: warehouse_id is required for stock-tracked order', [
+                'phase' => $phase,
                 'sales_order_id' => $order->id,
                 'sales_order_number' => $order->sales_order_number,
             ]);
 
             throw new \RuntimeException(
-                'Cannot fulfil stock-tracked sales order without explicit warehouse_id.'
+                "Cannot {$phase} stock-tracked sales order without explicit warehouse_id."
             );
         }
 
         return (int) $order->warehouse_id;
+    }
+
+    private function hasStockTrackedLines(SalesOrder $order): bool
+    {
+        return $order->lines->contains(function ($line) {
+            if (!$line->product_id) {
+                return false;
+            }
+
+            return (bool) ($line->product?->track_inventory ?? true);
+        });
     }
 
     public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice
@@ -258,6 +276,8 @@ class SalesOrderService
 
     public function createFromPosOrder(\Modules\POS\Models\PosOrder $posOrder, ?string $idempotencyKey = null): SalesOrder
     {
+        $posOrder->loadMissing('terminal');
+
         $existing = SalesChannelReference::where('channel', 'pos')
             ->where('external_id', (string) $posOrder->id)
             ->first();
@@ -286,6 +306,7 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $posOrder->customer_id,
             'channel' => 'pos',
+            'warehouse_id' => $posOrder->terminal?->warehouse_id,
             'created_by' => $posOrder->created_by,
             'accounting_status' => $this->resolveSourceAccountingStatus('PosOrder', $posOrder->id, $posOrder->journal_entry_id),
             'source_document_type' => 'PosOrder',
@@ -332,6 +353,7 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $webOrder->customer_id,
             'channel' => 'ecommerce',
+            'warehouse_id' => $webOrder->fulfillment_warehouse_id,
             'accounting_status' => $this->resolveSourceAccountingStatus('WebOrder', $webOrder->id),
             'source_document_type' => 'WebOrder',
             'source_document_id' => $webOrder->id,

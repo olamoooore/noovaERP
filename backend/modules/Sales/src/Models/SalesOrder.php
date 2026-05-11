@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Warehouse;
 
 class SalesOrder extends Model
 {
@@ -32,6 +33,7 @@ class SalesOrder extends Model
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',
+        'warehouse_id',
         'created_by',
         'confirmed_by',
         'allocated_by',
@@ -45,6 +47,7 @@ class SalesOrder extends Model
         'order_date' => 'date',
         'required_date' => 'date',
         'cancelled_at' => 'datetime',
+        'warehouse_id' => 'integer',
     ];
 
     protected static function boot()
@@ -69,6 +72,11 @@ class SalesOrder extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SalesOrderLine::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
 
     public function statusHistory(): HasMany
