@@ -52,6 +52,12 @@ Route::middleware([
     // Available payment gateways
     Route::get('/web-shop/payment-gateways', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'getPaymentGateways']);
 
+    // Web shop queue admission (waiting room)
+    Route::post('/web-shop/queue/join', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'join']);
+    Route::post('/web-shop/queue/status', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'status']);
+    Route::post('/web-shop/queue/heartbeat', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'heartbeat']);
+    Route::post('/web-shop/queue/leave', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'leave']);
+
     // Guest order lookup by token
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 

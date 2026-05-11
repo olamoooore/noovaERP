@@ -43,6 +43,7 @@ import {
   LoyaltyBalance,
   calculateLoyaltyDiscount,
 } from '@/storefront/lib/api';
+import { persistCheckoutQueueContext, resolveCheckoutQueueContext } from '@/lib/checkout-queue';
 import { Stripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -553,6 +554,7 @@ const Checkout = () => {
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedRateForSubmit = shippingRates.find((rate) => rate.id === selectedShippingRateId);
+    const queueContext = resolveCheckoutQueueContext();
 
     if (shippingRates.length > 0 && !selectedRateForSubmit) {
       toast.error('Please select a shipping method');
@@ -566,6 +568,8 @@ const Checkout = () => {
     setIsSubmitting(true);
 
     try {
+      persistCheckoutQueueContext(queueContext);
+
       const payload: CheckoutPayload = {
         email: formData.email || customer?.email || '',
         phone: formData.phone || customer?.phone || undefined,
@@ -593,6 +597,9 @@ const Checkout = () => {
         })),
         gateway_id: selectedGatewayId || undefined,
         loyalty_points_to_redeem: loyaltyPointsToRedeem > 0 ? loyaltyPointsToRedeem : undefined,
+        queue_required: queueContext?.queue_required,
+        campaign_key: queueContext?.campaign_key,
+        queue_token: queueContext?.queue_token,
       };
 
       const response = await guestCheckout(payload);
@@ -632,6 +639,16 @@ const Checkout = () => {
         toast.error(
           `Payment setup failed: ${errData?.message || 'No payment gateway configured. Please contact the store.'}`,
         );
+      } else if (error.response?.status === 429 || errData?.error === 'QUEUE_ADMISSION_REQUIRED') {
+        const campaignKey = errData?.campaign_key || queueContext?.campaign_key;
+        const params = new URLSearchParams({
+          return_to: storefrontRoutes.checkout,
+        });
+        if (campaignKey) {
+          params.set('campaign_key', campaignKey);
+        }
+
+        window.location.assign(`${storefrontRoutes.waitingRoom}?${params.toString()}`);
       } else {
         toast.error(
           errData?.error || errData?.message || error.message || 'Failed to process checkout',

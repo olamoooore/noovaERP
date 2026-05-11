@@ -25,6 +25,10 @@ class UpdateEventRequest extends FormRequest
             'event_date' => ['sometimes', 'date', 'after:now'],
             'venue' => ['sometimes', 'string', 'max:255', 'min:3'],
             'terms_conditions' => ['nullable', 'string', 'max:10000'],
+            'merchandise_product_ids' => ['sometimes', 'array'],
+            'merchandise_product_ids.*' => ['integer', 'exists:products,id'],
+            'bundle_product_ids' => ['sometimes', 'array'],
+            'bundle_product_ids.*' => ['integer', 'exists:products,id'],
         ];
     }
 
@@ -37,6 +41,8 @@ class UpdateEventRequest extends FormRequest
             'title.min' => 'Event title must be at least 3 characters.',
             'event_date.after' => 'Event date must be in the future.',
             'venue.min' => 'Venue must be at least 3 characters.',
+            'merchandise_product_ids.*.exists' => 'One or more selected merchandise products are invalid.',
+            'bundle_product_ids.*.exists' => 'One or more selected bundle products are invalid.',
         ];
     }
 
@@ -50,6 +56,8 @@ class UpdateEventRequest extends FormRequest
             'event_date' => 'event date',
             'venue' => 'venue',
             'terms_conditions' => 'terms and conditions',
+            'merchandise_product_ids' => 'linked merchandise products',
+            'bundle_product_ids' => 'linked bundle products',
         ];
     }
 }

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { useStorefrontEvents } from '@/storefront/hooks/useEvents';
 import { Button } from '@/storefront/components/ui/button';
 import { Badge } from '@/storefront/components/ui/badge';
 import { storefrontRoutes, storefrontPath } from '@/storefront/lib/paths';
+import { getEventTimelineStatus } from '@/storefront/data/events';
 
 interface CountdownProps {
   targetDate: Date;
@@ -51,6 +52,11 @@ const Countdown = ({ targetDate }: CountdownProps) => {
 
 export const EventsSection = () => {
   const { data: events = [], isLoading } = useStorefrontEvents();
+  const featuredEvents = useMemo(() => {
+    return events
+      .filter((event) => getEventTimelineStatus(event) !== 'past')
+      .slice(0, 3);
+  }, [events]);
 
   return (
     <section className="py-24 bg-white relative overflow-hidden">
@@ -62,10 +68,10 @@ export const EventsSection = () => {
         <div className="flex items-end justify-between mb-12">
           <div>
             <h2 className="text-4xl font-display font-bold mb-3 tracking-tight">
-              Upcoming <span className="text-aura">Events</span>
+              Featured <span className="text-aura">Events</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              Don't miss out on exclusive fan experiences
+              Live and upcoming campaigns worth acting on now
             </p>
           </div>
           <Button variant="ghost" asChild className="hidden md:flex hover:bg-secondary/10 hover:text-secondary hover:shadow-sm">
@@ -81,7 +87,7 @@ export const EventsSection = () => {
           {isLoading && [1, 2, 3].map((i) => (
             <div key={i} className="rounded-3xl overflow-hidden bg-muted/30 animate-pulse h-96 border border-border/20" />
           ))}
-          {!isLoading && events.map((event, index) => (
+          {!isLoading && featuredEvents.map((event, index) => (
             <div
               key={event.id}
               className="group relative rounded-3xl overflow-hidden bg-white border border-border/40 hover:border-border hover:shadow-xl transition-all duration-500 hover:-translate-y-1 animate-fade-in-up"
@@ -152,7 +158,7 @@ export const EventsSection = () => {
                     {event.price === 0 ? 'FREE' : `SGD ${event.price.toFixed(2)}`}
                   </span>
                   <Button className="rounded-full px-6 bg-foreground text-background hover:scale-105 transition-transform" asChild>
-                    <Link to={`${storefrontRoutes.events}/${event.id}`}>Register</Link>
+                    <Link to={`${storefrontRoutes.events}?event=${encodeURIComponent(event.title)}`}>View Event</Link>
                   </Button>
                 </div>
               </div>

@@ -57,8 +57,10 @@ class RiskScoringService
     public function calculateRiskScore(array $context): array
     {
         try {
+            $tenantId = $this->resolveTenantId($context['tenant_id'] ?? null);
+
             // Get active risk model for tenant
-            $riskModel = $this->getActiveRiskModel($context['tenant_id'] ?? 'default');
+            $riskModel = $this->getActiveRiskModel($tenantId);
             
             if (!$riskModel) {
                 return [
@@ -77,7 +79,7 @@ class RiskScoringService
             $riskScore = $this->calculateCompositeScore($riskFactors, $riskModel);
             
             // Determine risk level
-            $riskLevel = $this->determineRiskLevel($riskScore, $context['tenant_id'] ?? 'default');
+            $riskLevel = $this->determineRiskLevel($riskScore, $tenantId);
             
             // Calculate confidence score
             $confidenceScore = $this->calculateConfidenceScore($riskFactors, $riskModel);
@@ -143,7 +145,7 @@ class RiskScoringService
                 'risk_factors' => $riskFactors,
                 'model_name' => $riskModel['model_name'],
                 'model_version' => $riskModel['model_version'],
-                'recommended_actions' => $this->getRecommendedActions($riskLevel, $context['tenant_id'] ?? 'default'),
+                'recommended_actions' => $this->getRecommendedActions($riskLevel, $tenantId),
             ];
             
         } catch (\Exception $e) {
@@ -621,6 +623,17 @@ class RiskScoringService
         }
         
         return 0.0;
+    }
+
+    private function resolveTenantId(?string $tenantId = null): string
+    {
+        $resolvedTenantId = $tenantId ?? tenant('id');
+
+        if (!is_string($resolvedTenantId) || trim($resolvedTenantId) === '') {
+            throw new \RuntimeException('Tenant context is required for risk scoring');
+        }
+
+        return $resolvedTenantId;
     }
 
     private function calculateAmountAnomalyFactor(array $signals): float

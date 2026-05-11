@@ -32,6 +32,27 @@ export interface ApiProduct {
   stock_quantity: number;
   unit: string | null;
   manufacturer: string | null;
+  is_merchandise: boolean;
+  is_bundle: boolean;
+  bundle_type: 'fixed' | 'dynamic' | 'customizable' | null;
+  bundle_components: Array<{
+    id: number;
+    quantity: number;
+    component_product: {
+      id: number;
+      name: string;
+      price: number;
+      image: string | null;
+    } | null;
+  }>;
+}
+
+export interface ApiLinkedEventProduct {
+  id: number;
+  name: string;
+  price: number;
+  is_bundle: boolean;
+  bundle_type: 'fixed' | 'dynamic' | 'customizable' | null;
 }
 
 export interface ApiCategory {
@@ -66,6 +87,9 @@ export async function fetchProducts(params?: {
   tag?: string;
   sort_by?: string;
   sort_dir?: string;
+  event_id?: number;
+  event_relation_type?: 'merchandise' | 'bundle';
+  is_bundle?: boolean;
   per_page?: number;
   page?: number;
 }): Promise<PaginatedResponse<ApiProduct>> {
@@ -129,6 +153,9 @@ export interface CheckoutPayload {
   gateway_id?: number;
   notes?: string;
   loyalty_points_to_redeem?: number;
+  queue_required?: boolean;
+  campaign_key?: string;
+  queue_token?: string;
 }
 
 // ---- Public Events API ----
@@ -149,6 +176,8 @@ export interface ApiEvent {
   total_spots: number;
   status: string;
   is_sold_out: boolean;
+  merchandise_products?: ApiLinkedEventProduct[];
+  bundle_products?: ApiLinkedEventProduct[];
 }
 
 export interface BookEventPayload {

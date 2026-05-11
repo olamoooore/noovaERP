@@ -5,6 +5,7 @@ namespace Modules\EventManagement\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\BookingConfirmation;
@@ -24,10 +25,14 @@ class PublicEventController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $events = Event::where('status', 'published')
-                ->orderBy('start_date', 'asc')
-                ->get()
-                ->map(fn($event) => $this->formatEvent($event));
+            $query = Event::where('status', 'published')
+                ->orderBy('start_date', 'asc');
+
+            if ($this->supportsEventProductLinks()) {
+                $query->with(['merchandiseProducts', 'bundleProducts']);
+            }
+
+            $events = $query->get()->map(fn($event) => $this->formatEvent($event));
 
             return response()->json([
                 'data'    => $events,
@@ -49,7 +54,13 @@ class PublicEventController extends Controller
     public function show(int $id): JsonResponse
     {
         try {
-            $event = Event::where('status', 'published')->findOrFail($id);
+            $query = Event::where('status', 'published');
+
+            if ($this->supportsEventProductLinks()) {
+                $query->with(['merchandiseProducts', 'bundleProducts']);
+            }
+
+            $event = $query->findOrFail($id);
 
             return response()->json([
                 'data'    => $this->formatEvent($event),
@@ -204,6 +215,8 @@ class PublicEventController extends Controller
      */
     private function formatEvent(Event $event): array
     {
+        $supportsEventProductLinks = $this->supportsEventProductLinks();
+
         // Fallback images based on event keywords
         $image = $event->image_url;
         if (!$image) {
@@ -237,6 +250,26 @@ class PublicEventController extends Controller
             'total_spots'        => $event->total_capacity ?? 0,
             'status'             => $event->status,
             'is_sold_out'        => ($event->available_capacity ?? 1) <= 0,
+            'merchandise_products' => $supportsEventProductLinks ? $this->formatLinkedProducts($event->merchandiseProducts) : [],
+            'bundle_products'      => $supportsEventProductLinks ? $this->formatLinkedProducts($event->bundleProducts) : [],
         ];
+    }
+
+    private function supportsEventProductLinks(): bool
+    {
+        return Schema::hasTable('event_product_links');
+    }
+
+    private function formatLinkedProducts($products): array
+    {
+        return $products->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => (float) $product->price,
+                'is_bundle' => (bool) $product->is_bundle,
+                'bundle_type' => $product->bundle_type,
+            ];
+        })->values()->all();
     }
 }

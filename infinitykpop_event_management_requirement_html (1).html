@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InfinityKpop Event Management System Requirement</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #222;
+      background: #f7f7f9;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 30px 20px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 28px;
+      margin-bottom: 22px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    h1, h2, h3 {
+      color: #111827;
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 23px;
+      border-bottom: 2px solid #eeeeee;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+
+    .highlight {
+      background: #fff7d6;
+      border-left: 5px solid #f2c94c;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+
+    .danger {
+      background: #fff1f2;
+      border-left: 5px solid #e11d48;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+
+    .success {
+      background: #ecfdf5;
+      border-left: 5px solid #10b981;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+
+    ul {
+      padding-left: 22px;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+
+    .feature-box {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 18px;
+      background: #fafafa;
+    }
+
+    .feature-box.must {
+      background: #eff6ff;
+      border-color: #93c5fd;
+    }
+
+    .feature-box.good {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .tag {
+      display: inline-block;
+      background: #e8f0ff;
+      color: #1d4ed8;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    .tag.must {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .tag.good {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      background: #fff;
+    }
+
+    th, td {
+      border: 1px solid #e5e7eb;
+      padding: 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f3f4f6;
+    }
+
+    .flow-step {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      padding: 14px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+
+    .footer-note {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .prd-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .meta-item {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .meta-label {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    .meta-value {
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .diagram {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .diagram-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .diagram-node {
+      border: 2px solid #d1d5db;
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+      min-height: 95px;
+    }
+
+    .diagram-node strong {
+      display: block;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+
+    .diagram-node span {
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    .diagram-node.core {
+      border-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .diagram-node.money {
+      border-color: #059669;
+      background: #ecfdf5;
+    }
+
+    .diagram-node.queue {
+      border-color: #d97706;
+      background: #fffbeb;
+    }
+
+    .diagram-node.analytics {
+      border-color: #7c3aed;
+      background: #f5f3ff;
+    }
+
+    .arrow {
+      text-align: center;
+      color: #6b7280;
+      font-weight: bold;
+      font-size: 20px;
+    }
+
+    .priority-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .priority-card {
+      border-radius: 12px;
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+    }
+
+    .number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #111827;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .phase-label {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .phase-label.prototype {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .phase-label.phase2 {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .kpi-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .kpi-title {
+      font-weight: bold;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+
+    .kpi-desc {
+      font-size: 14px;
+      color: #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>InfinityKpop Event Management System Requirement</h1>
+      <p class="subtitle">
+        Product Requirement Document (PRD) for the Event Management System, Webshop Integration, Queue System, Gamified Waiting Room, Sales Reporting, and Analytics.
+      </p>
+
+      <div class="prd-meta">
+        <div class="meta-item">
+          <div class="meta-label">Client</div>
+          <div class="meta-value">InfinityKpop</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Product Type</div>
+          <div class="meta-value">Event Commerce Platform</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Priority</div>
+          <div class="meta-value">Prototype + Production Roadmap</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Audience</div>
+          <div class="meta-value">Business, Product, Engineering</div>
+        </div>
+      </div>
+
+      <div class="highlight">
+        <strong>Summary:</strong> InfinityKpop requires an Event Management System that integrates with their existing e-commerce webshop. The system should allow them to publish events, sell tickets, sell event merchandise, create bundles, manage fan-site activities, and control high-traffic customer access through a queue and waiting room system.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>1. Main Objective</h2>
+      <p>
+        The client wants to build an Event Management System connected to their current online shop. The platform should help them manage events and create new revenue opportunities through ticketing, merchandise sales, bundled packages, fan activities, rewards, vouchers, and limited-time offers.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>2. Event Publishing Requirement</h2>
+      <p>The system should allow the client to publish and manage different types of events:</p>
+
+      <div class="grid">
+        <div class="feature-box">
+          <span class="tag">Upcoming Events</span>
+          <h3>Upcoming Event Listing</h3>
+          <p>Show future events with details such as event name, date, venue, ticket availability, description, images, and call-to-action button.</p>
+        </div>
+
+        <div class="feature-box">
+          <span class="tag">Current Events</span>
+          <h3>Ongoing Event Display</h3>
+          <p>Highlight events currently running, including live sales, event updates, promotions, check-in information, and active merchandise campaigns.</p>
+        </div>
+
+        <div class="feature-box">
+          <span class="tag">Past Events</span>
+          <h3>Past Event Archive</h3>
+          <p>Display completed events for branding, fan engagement, galleries, recap content, previous merchandise, and future marketing reference.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. Monetization Features</h2>
+      <p>
+        The platform should not only publish events, but also help InfinityKpop generate revenue from different event-related sales channels.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Description</th>
+            <th>Business Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Event Ticket Sales</td>
+            <td>Sell event tickets directly through the platform.</td>
+            <td>Generate ticketing revenue and manage event capacity.</td>
+          </tr>
+          <tr>
+            <td>Event Merchandise Sales</td>
+            <td>Sell official event merchandise such as light sticks, apparel, albums, posters, collectibles, and fan goods.</td>
+            <td>Increase average order value and event-related sales.</td>
+          </tr>
+          <tr>
+            <td>Ticket + Merchandise Bundle</td>
+            <td>Allow customers to buy ticket packages bundled with selected merchandise.</td>
+            <td>Encourage larger purchases and improve campaign value.</td>
+          </tr>
+          <tr>
+            <td>Fan-Site Event Activities</td>
+            <td>Support fan engagement events such as fan registration, fan missions, reward campaigns, lucky draws, or exclusive access.</td>
+            <td>Improve fan loyalty and create more interactive experiences.</td>
+          </tr>
+          <tr>
+            <td>Limited-Time Merchandise</td>
+            <td>Offer merchandise that is available only during specific time windows or while stocks last.</td>
+            <td>Create urgency and increase conversion rate.</td>
+          </tr>
+          <tr>
+            <td>Vouchers and Reward Coins</td>
+            <td>Allow customers to earn coins or vouchers that can be used for future purchases or campaign rewards.</td>
+            <td>Encourage repeat purchases and longer engagement.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>4. E-Commerce Webshop Integration</h2>
+      <p>
+        The Event Management System should be integrated with the client's existing webshop so that event-related sales can work together with the current e-commerce flow.
+      </p>
+
+      <ul>
+        <li>Customers should be able to purchase event tickets through the webshop checkout flow.</li>
+        <li>Event merchandise should be linked with existing product management where possible.</li>
+        <li>Ticket and merchandise bundles should be treated as purchasable products or packages.</li>
+        <li>Orders, payments, vouchers, customer accounts, and purchase history should be connected to the existing webshop system.</li>
+        <li>The admin team should be able to manage event sales performance, inventory, and customer orders.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>5. Customer Queue and Waiting Room System</h2>
+      <p>
+        The client also requires a queue system to manage high traffic during event ticket launches, merchandise drops, or limited-time campaigns.
+      </p>
+
+      <div class="highlight">
+        <strong>Purpose:</strong> The queue system should limit the maximum number of customers who can access and perform transactions at the same time. Customers who exceed the active access limit will be placed into a waiting room.
+      </div>
+
+      <h3>Queue System Requirement</h3>
+      <ul>
+        <li>Set a maximum number of active customers allowed inside the transaction area at one time.</li>
+        <li>Place extra customers into a queue instead of allowing everyone to enter at once.</li>
+        <li>Show queue position or estimated waiting status where suitable.</li>
+        <li>Allow customers to enter the transaction area when capacity becomes available.</li>
+        <li>Protect the webshop from overload during high-demand events.</li>
+        <li>Help create a fairer purchase experience for customers.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>6. Waiting Room Mini Game and Rewards</h2>
+      <p>
+        While customers are waiting in the queue, they should be able to interact with a mini game inside the waiting room. This creates engagement instead of making customers wait passively.
+      </p>
+
+      <div class="grid">
+        <div class="feature-box">
+          <span class="tag">Mini Game</span>
+          <h3>Interactive Waiting Room</h3>
+          <p>Customers can play a simple mini game while waiting for their turn to enter the sales area.</p>
+        </div>
+
+        <div class="feature-box">
+          <span class="tag">Reward Coins</span>
+          <h3>Earn Coins</h3>
+          <p>Customers may earn coins from the mini game. These coins can be used for rewards, redemption, or future campaigns.</p>
+        </div>
+
+        <div class="feature-box">
+          <span class="tag">Vouchers</span>
+          <h3>Voucher Rewards</h3>
+          <p>Customers may receive vouchers through game performance, lucky rewards, or participation campaigns.</p>
+        </div>
+
+        <div class="feature-box">
+          <span class="tag">Limited-Time Offers</span>
+          <h3>Special Merchandise</h3>
+          <p>The waiting room can promote limited-time merchandise, flash deals, or exclusive fan items.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>7. Example Customer Journey</h2>
+
+      <div class="flow-step">
+        <strong>Step 1:</strong> Customer visits InfinityKpop website and clicks on an event.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 2:</strong> Customer selects ticket, merchandise, or ticket + merchandise bundle.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 3:</strong> If system traffic is high, the customer enters the queue waiting room.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 4:</strong> While waiting, the customer plays a mini game and may earn coins, vouchers, or rewards.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 5:</strong> When capacity is available, the customer enters the transaction area.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 6:</strong> Customer completes checkout through the existing webshop payment flow.
+      </div>
+
+      <div class="flow-step">
+        <strong>Step 7:</strong> Customer receives order confirmation, ticket details, merchandise order status, and any reward entitlement.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>8. Key Modules Required</h2>
+      <ul>
+        <li>Event Management Module</li>
+        <li>Ticketing Module</li>
+        <li>Merchandise and Bundle Sales Module</li>
+        <li>Fan Engagement / Fan-Site Activity Module</li>
+        <li>Customer Queue and Waiting Room Module</li>
+        <li>Mini Game and Reward Module</li>
+        <li>Voucher / Coin / Redemption Module</li>
+        <li>Webshop Integration Module</li>
+        <li>Admin Dashboard and Reporting Module</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>9. Important Clarification for Ola</h2>
+      <p>
+        This is not only a normal event listing website. The client is asking for an event commerce platform. The system must support event publishing, ticket selling, merchandise selling, campaign bundles, fan engagement, traffic control, and reward-based waiting room experience.
+      </p>
+
+      <div class="highlight">
+        <strong>In simple terms:</strong> InfinityKpop wants to turn every event into a sales and engagement opportunity, while protecting the webshop from traffic overload during high-demand campaigns.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>10. Infographic System Diagram</h2>
+      <p>
+        The engineer should understand the system as one connected event commerce ecosystem, not as separate disconnected modules.
+      </p>
+
+      <div class="diagram">
+        <div class="diagram-row">
+          <div class="diagram-node core">
+            <strong>Event CMS</strong>
+            <span>Upcoming, current, and past events</span>
+          </div>
+          <div class="diagram-node money">
+            <strong>Ticket Sales</strong>
+            <span>Ticket inventory, limits, and checkout</span>
+          </div>
+          <div class="diagram-node money">
+            <strong>Merchandise Sales</strong>
+            <span>Event products, bundles, and limited drops</span>
+          </div>
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="diagram-row">
+          <div class="diagram-node queue">
+            <strong>Queue Control</strong>
+            <span>Limit active customers and protect checkout</span>
+          </div>
+          <div class="diagram-node queue">
+            <strong>Waiting Room</strong>
+            <span>Mini game, engagement, rewards, vouchers</span>
+          </div>
+          <div class="diagram-node core">
+            <strong>Webshop Checkout</strong>
+            <span>Payment, orders, customer account, inventory</span>
+          </div>
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="diagram-row">
+          <div class="diagram-node analytics">
+            <strong>Sales Reporting</strong>
+            <span>Daily, weekly, monthly, and per-campaign revenue</span>
+          </div>
+          <div class="diagram-node analytics">
+            <strong>Operational Analytics</strong>
+            <span>Queue, conversion, traffic, checkout drop-off</span>
+          </div>
+          <div class="diagram-node analytics">
+            <strong>Management Dashboard</strong>
+            <span>Business decisions and campaign optimization</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="danger">
+        <strong>Engineering warning:</strong> If any one layer is built in isolation, the final system will fail during real campaign execution. Ticketing, queue, checkout, rewards, and analytics must be designed as connected flows.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>11. Sales Reporting and Analytics Requirement</h2>
+      <p>
+        Reporting and analytics are mandatory because the client needs to know whether each event campaign is profitable, which products are performing, where customers drop off, and how the queue affects conversion.
+      </p>
+
+      <h3>Required Reporting Periods</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Report Type</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Daily Report</td>
+            <td>Track daily ticket sales, merchandise sales, voucher usage, queue traffic, and transaction count.</td>
+          </tr>
+          <tr>
+            <td>Weekly Report</td>
+            <td>Review weekly campaign performance, sales trend, and customer behavior.</td>
+          </tr>
+          <tr>
+            <td>Monthly Report</td>
+            <td>Review monthly revenue, top events, top products, customer growth, and campaign comparison.</td>
+          </tr>
+          <tr>
+            <td>Total Revenue Per Event Campaign</td>
+            <td>Show full revenue generated by each event, including tickets, merchandise, bundles, vouchers, and refunds.</td>
+          </tr>
+          <tr>
+            <td>Real-Time Launch Dashboard</td>
+            <td>Monitor live traffic, queue size, transactions, payment success, and sales volume during launches.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Minimum Analytics KPIs</h3>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Total Revenue</div>
+          <div class="kpi-desc">Total amount collected per campaign, event, and date range.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Ticket Revenue</div>
+          <div class="kpi-desc">Revenue generated from event tickets only.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Merchandise Revenue</div>
+          <div class="kpi-desc">Revenue generated from event merchandise and limited drops.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Bundle Revenue</div>
+          <div class="kpi-desc">Revenue from ticket and merchandise bundle purchases.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Average Order Value</div>
+          <div class="kpi-desc">Average customer spend per successful order.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Conversion Rate</div>
+          <div class="kpi-desc">Visitors or queue users compared against completed purchases.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Queue Completion Rate</div>
+          <div class="kpi-desc">Percentage of queued users who successfully enter checkout.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Voucher and Coin Usage</div>
+          <div class="kpi-desc">Track rewards issued, redeemed, expired, and remaining.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Checkout Drop-Off</div>
+          <div class="kpi-desc">Identify customers who abandon cart, payment, or checkout.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Top Products</div>
+          <div class="kpi-desc">Best-selling tickets, merchandise, bundles, and campaign offers.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>12. 10 Must-Have Capabilities for Prototype / Initial Delivery</h2>
+      <p>
+        These capabilities must be included in the prototype or first production-ready delivery. Without these, the platform will not meet the core client requirement.
+      </p>
+
+      <div class="priority-grid">
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">1</span>Event Management Module</h3><p>Create and manage upcoming, current, and past events with event details, images, dates, status, and publishing controls.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">2</span>Ticketing System</h3><p>Sell event tickets with inventory, purchase limit, availability status, and ticket confirmation.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">3</span>Merchandise Sales Integration</h3><p>Connect event merchandise to the webshop so customers can buy official products linked to events.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">4</span>Ticket + Merchandise Bundle</h3><p>Allow customers to purchase bundled packages combining tickets and selected event merchandise.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">5</span>Queue and Waiting Room</h3><p>Limit how many customers can access the transaction area at one time and place extra customers in a controlled waiting room.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">6</span>Concurrent Access Control</h3><p>Prevent overselling, checkout overload, payment conflict, and unstable traffic spikes during launches.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">7</span>Payment and Order Integration</h3><p>Use the existing webshop payment and order flow where possible, including confirmation and purchase history.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">8</span>Reward, Voucher, and Coin System</h3><p>Support rewards from waiting room mini games, campaign vouchers, and customer redemption logic.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">9</span>Event Sales Reporting</h3><p>Provide daily, weekly, monthly, and total revenue reporting per event campaign.</p></div>
+        <div class="priority-card"><span class="phase-label prototype">Must Have</span><h3><span class="number">10</span>Analytics Dashboard</h3><p>Show campaign performance, sales breakdown, queue performance, conversion rate, and customer behavior indicators.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>13. 20 Good-to-Have Capabilities After Prototype</h2>
+      <p>
+        These are recommended for Phase 2 after the prototype is validated. They improve scalability, marketing power, automation, and user experience.
+      </p>
+
+      <div class="priority-grid">
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">1</span>Seat Selection</h3><p>Allow customers to choose seats for concerts, fan meetings, or premium events.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">2</span>QR Code Check-In</h3><p>Generate QR tickets and support event entry scanning.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">3</span>VIP / Fan Club Priority Queue</h3><p>Allow selected user groups to receive priority access.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">4</span>Bot Protection</h3><p>Reduce scalping, fake traffic, and automated checkout abuse.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">5</span>Flash Sale Engine</h3><p>Configure timed offers, countdown campaigns, and limited-quantity promotions.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">6</span>Limited Edition Drop Engine</h3><p>Manage high-demand merchandise drops with inventory rules and queue protection.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">7</span>Loyalty Tier System</h3><p>Create fan levels based on spend, participation, or purchase history.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">8</span>Advanced Gamification</h3><p>Add missions, badges, levels, streaks, leaderboards, and reward progression.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">9</span>AI Product Recommendation</h3><p>Recommend merchandise, bundles, or campaigns based on customer behavior.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">10</span>Push Notification Campaigns</h3><p>Notify users about queue updates, sales opening, vouchers, and limited merchandise.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">11</span>Multi-Language Support</h3><p>Support international fans with multiple language options.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">12</span>Multi-Currency Support</h3><p>Enable regional or international payment expansion.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">13</span>Live Stream Commerce</h3><p>Sell products during online live events or hybrid fan experiences.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">14</span>Influencer / Affiliate Tracking</h3><p>Track sales from creators, fan pages, promoters, and referral links.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">15</span>Social Sharing Rewards</h3><p>Reward customers for sharing campaigns or inviting friends.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">16</span>Inventory Reservation</h3><p>Temporarily reserve items during checkout to reduce overselling risk.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">17</span>Predictive Demand Analytics</h3><p>Forecast event demand, expected traffic, and product sell-through.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">18</span>Customer Journey Heatmap</h3><p>Analyze where users click, wait, abandon, or convert.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">19</span>Admin Campaign Builder</h3><p>Allow marketing/admin team to create campaigns without developer support.</p></div>
+        <div class="priority-card"><span class="phase-label phase2">Phase 2</span><h3><span class="number">20</span>Refund and Cancellation Workflow</h3><p>Manage ticket cancellation, partial refund, merchandise refund, and campaign policy rules.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>14. Hostile Review and Ambiguity Elimination</h2>
+
+      <div class="highlight">
+        <strong>Important:</strong> The current requirement can easily be misunderstood if assumptions are made. The engineering team must NOT interpret this as a simple event website or basic e-commerce add-on.
+      </div>
+
+      <h3>Critical Clarifications</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Potential Wrong Assumption</th>
+            <th>Actual Requirement</th>
+            <th>Engineering Expectation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>This is only an event listing website.</td>
+            <td>No. This is an event commerce ecosystem integrated into the webshop.</td>
+            <td>Design system architecture for commerce, traffic spikes, campaigns, rewards, and fan engagement.</td>
+          </tr>
+          <tr>
+            <td>Tickets are just normal products.</td>
+            <td>Tickets may contain inventory limits, purchase limits, timed release, queue protection, QR validation, and bundled logic.</td>
+            <td>Ticketing logic must be treated differently from normal merchandise SKU handling.</td>
+          </tr>
+          <tr>
+            <td>Queue system is optional UI decoration.</td>
+            <td>No. Queue system is a core operational requirement for high traffic launches.</td>
+            <td>Must support concurrency control, session management, anti-overload protection, and controlled transaction entry.</td>
+          </tr>
+          <tr>
+            <td>Mini game is just for entertainment.</td>
+            <td>No. The mini game is part of the engagement and reward ecosystem.</td>
+            <td>Game rewards may connect with vouchers, rewards, coins, campaigns, and limited offers.</td>
+          </tr>
+          <tr>
+            <td>Waiting room users are inactive users.</td>
+            <td>No. Waiting room users are active monetizable users.</td>
+            <td>Waiting room should display campaigns, promotions, engagement mechanics, and upsell opportunities.</td>
+          </tr>
+          <tr>
+            <td>Bundle products are simple product grouping.</td>
+            <td>No. Bundles may include inventory dependencies and conditional availability.</td>
+            <td>Bundle logic must support mixed inventory and promotional rules.</td>
+          </tr>
+          <tr>
+            <td>Any webshop can handle this automatically.</td>
+            <td>No. Existing webshop capability may be insufficient.</td>
+            <td>Team must evaluate scalability, concurrency, payment flow, and API extensibility.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Non-Negotiable Functional Expectations</h3>
+
+      <ul>
+        <li>The system must support very high traffic during ticket launches and merchandise drops.</li>
+        <li>The queue system must prevent server overload and checkout abuse.</li>
+        <li>Customers inside the waiting room must remain engaged instead of abandoning the platform.</li>
+        <li>The platform must support monetization even before customers enter checkout.</li>
+        <li>The reward system must be configurable by campaign.</li>
+        <li>Admin users must be able to configure event campaigns without developer intervention for every small change.</li>
+        <li>The system must support mobile-first customer experience.</li>
+        <li>The platform must support future campaign expansion, not just current requirements.</li>
+      </ul>
+
+      <h3>Engineering Risks If Misunderstood</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Risk</th>
+            <th>Consequence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Using standard e-commerce checkout flow without queue protection</td>
+            <td>Website crash during ticket launch or flash sales.</td>
+          </tr>
+          <tr>
+            <td>Designing ticketing as normal products only</td>
+            <td>Cannot manage ticket inventory, access rules, or launch timing properly.</td>
+          </tr>
+          <tr>
+            <td>Ignoring concurrent transaction handling</td>
+            <td>Overselling inventory or payment conflicts.</td>
+          </tr>
+          <tr>
+            <td>Treating waiting room as static page</td>
+            <td>Loss of engagement and monetization opportunity.</td>
+          </tr>
+          <tr>
+            <td>No configurable reward engine</td>
+            <td>Future campaigns become hardcoded and expensive to maintain.</td>
+          </tr>
+          <tr>
+            <td>No scalable architecture planning</td>
+            <td>System becomes unstable during major events.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>15. Proposed Next Step</h2>
+      <p>
+        The team should confirm the existing webshop platform, payment flow, customer account structure, product management process, and inventory system before finalizing the technical solution.
+      </p>
+
+      <ul>
+        <li>What platform is the current webshop using?</li>
+        <li>Does the webshop already support vouchers, customer accounts, and reward points?</li>
+        <li>Does the client require seat selection or general admission tickets?</li>
+        <li>How many concurrent customers should be allowed during high-traffic sales?</li>
+        <li>Should the mini game rewards be guaranteed, random, or based on performance?</li>
+        <li>Should coins and vouchers be usable immediately or only after the event campaign?</li>
+      </ul>
+
+      <p class="footer-note">
+        Prepared for internal requirement clarification and project discussion.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

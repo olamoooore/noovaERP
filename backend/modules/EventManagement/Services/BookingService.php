@@ -67,7 +67,7 @@ class BookingService
     public function createBooking(array $bookingData): Booking
     {
         return DB::transaction(function () use ($bookingData) {
-            $tenantId = $bookingData['tenant_id'] ?? 'default';
+            $tenantId = $this->resolveTenantId($bookingData['tenant_id'] ?? null);
             
             // Step 1: Fraud Detection and Anti-Abuse Checks
             $fraudAnalysis = $this->performFraudChecks($tenantId, $bookingData);
@@ -606,7 +606,7 @@ class BookingService
     public function canCreateBooking(int $eventId, int $requestedTickets, ?int $customerId = null, ?string $tenantId = null, array $fraudContext = []): array
     {
         $event = Event::findOrFail($eventId);
-        $tenantId = $tenantId ?? 'default';
+        $tenantId = $this->resolveTenantId($tenantId);
         
         $result = [
             'can_book' => false,
@@ -1050,5 +1050,24 @@ class BookingService
             'required_level' => $requiredLevel,
             'verification_status' => $verification ? $verification->verification_status : 'none',
         ];
+    }
+
+    /**
+     * Resolve tenant context for booking operations.
+     *
+     * Accept explicit tenant IDs for trusted internal jobs, otherwise require
+     * canonical tenancy context from middleware.
+     */
+    private function resolveTenantId(?string $tenantId = null): string
+    {
+        if (is_string($tenantId) && trim($tenantId) !== '') {
+            return trim($tenantId);
+        }
+
+        if (tenancy()->initialized) {
+            return (string) tenant()->id;
+        }
+
+        throw new \RuntimeException('Tenant context not initialized for BookingService');
     }
 }

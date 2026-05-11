@@ -152,6 +152,7 @@ export function ProductEditPage() {
     track_inventory: true,
     is_preorder: false,
     is_new_arrival: false,
+    is_merchandise: false,
     show_on_website: false,
     preorder_available_at: '',
     stock_quantity: '',
@@ -317,6 +318,7 @@ export function ProductEditPage() {
       track_inventory: !!product.track_inventory,
       is_preorder: !!product.is_preorder,
       is_new_arrival: !!product.is_new_arrival,
+      is_merchandise: !!product.is_merchandise,
       show_on_website: !!product.show_on_website,
       preorder_available_at: product.preorder_available_at ? String(product.preorder_available_at).slice(0, 10) : '',
       stock_quantity: product.stock_quantity != null ? String(product.stock_quantity) : '',
@@ -560,6 +562,7 @@ export function ProductEditPage() {
       track_inventory: !!formData.track_inventory,
       is_preorder: !!formData.is_preorder,
       is_new_arrival: !!formData.is_new_arrival,
+      is_merchandise: !!formData.is_merchandise,
       show_on_website: !!formData.show_on_website,
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
       stock_quantity: formData.track_inventory ? parseInt(formData.stock_quantity) : null,
@@ -1050,6 +1053,26 @@ export function ProductEditPage() {
                   >
                     Mark as New Arrival
                   </Label>
+                </div>
+
+                <div className="flex items-start gap-2 h-fit">
+                  <Checkbox
+                    checked={formData.is_merchandise}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, is_merchandise: checked === true })
+                    }
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      className="cursor-pointer"
+                      onClick={() => setFormData({ ...formData, is_merchandise: !formData.is_merchandise })}
+                    >
+                      Include in Merchandise View
+                    </Label>
+                    <div className="text-xs text-muted-foreground">
+                      Products marked here appear in the storefront merchandise category.
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 h-fit">

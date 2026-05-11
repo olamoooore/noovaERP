@@ -15,6 +15,7 @@ export interface Product {
   collection: string;
   price: number;
   memberPrice?: number;
+  isMerchandise?: boolean;
   image: string;
   images?: string[];
   tags: ('limited' | 'preorder' | 'new' | 'bestseller')[];
@@ -28,6 +29,18 @@ export interface Product {
   inStock?: boolean;
   stockQuantity?: number;
   specs?: { label: string; value: string }[];
+  isBundle?: boolean;
+  bundleType?: 'fixed' | 'dynamic' | 'customizable' | null;
+  bundleComponents?: Array<{
+    id: string;
+    quantity: number;
+    componentProduct: {
+      id: string;
+      title: string;
+      price: number;
+      image: string | null;
+    } | null;
+  }>;
 }
 
 export const PRODUCTS: Product[] = [

@@ -190,42 +190,52 @@ export const FilterPanel = ({
 
       {/* Shop by Category */}
       <div>
-        <h4 className="font-medium mb-3">Shop by Category</h4>
-        <div className="grid grid-cols-1 gap-2">
-          {categoryItems.map((item) => {
-            const isActive = selectedTypes.includes(item.type);
-            return (
-              <button
-                key={item.type}
-                onClick={() => toggleType(item.type)}
-                className={cn(
-                  "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
-                  isActive
-                    ? "border-primary bg-primary/5 text-foreground"
-                    : "border-border bg-background hover:bg-muted/40"
-                )}
-              >
-                <span
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h4 className="font-medium">Shop by Category</h4>
+          <span className="text-xs text-muted-foreground">{categoryItems.length} categories</span>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-background/70 p-2">
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {categoriesLoading ? (
+              <div className="flex items-center gap-2 rounded-xl px-3 py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading categories...
+              </div>
+            ) : categoryItems.map((item) => {
+              const isActive = selectedTypes.includes(item.type);
+              return (
+                <button
+                  key={item.type}
+                  onClick={() => toggleType(item.type)}
                   className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-lg border bg-muted/30",
-                    isActive ? "border-primary/30" : "border-border"
+                    "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
+                    isActive
+                      ? "border-primary bg-primary/5 text-foreground"
+                      : "border-border bg-background hover:bg-muted/40"
                   )}
-                  aria-hidden="true"
                 >
-                  <Icon
-                    className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground")}
-                    icon={item.icon}
-                  />
-                </span>
-                <span className="flex-1">
-                  <span className="block text-sm font-medium">{item.label}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    Browse {item.label.toLowerCase()}
+                  <span
+                    className={cn(
+                      "flex h-10 w-10 items-center justify-center rounded-lg border bg-muted/30",
+                      isActive ? "border-primary/30" : "border-border"
+                    )}
+                    aria-hidden="true"
+                  >
+                    <Icon
+                      className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground")}
+                      icon={item.icon}
+                    />
                   </span>
-                </span>
-              </button>
-            );
-          })}
+                  <span className="flex-1 overflow-hidden">
+                    <span className="block truncate text-sm font-medium">{item.label}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Browse {item.label.toLowerCase()}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

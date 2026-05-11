@@ -22,8 +22,11 @@ class WebsiteProductController extends Controller
     {
         $query = Product::query()
             ->where('is_active', true)
-            ->with(['category', 'brand'])
+            ->withSum('stockLevels as aggregated_stock_quantity', 'quantity')
+            ->with(['category', 'brand', 'bundleComponents.componentProduct'])
             ->orderBy('created_at', 'desc');
+
+        $supportsEventProductLinks = Schema::hasTable('event_product_links');
 
         $this->applyWebsiteVisibilityFilter($query);
 
@@ -40,6 +43,29 @@ class WebsiteProductController extends Controller
         // Filter by new arrivals
         if ($request->filled('is_new_arrival')) {
             $query->where('is_new_arrival', true);
+        }
+
+        if ($supportsEventProductLinks && $request->filled('event_id')) {
+            $eventId = (int) $request->input('event_id');
+            $relationType = (string) $request->input('event_relation_type', '');
+
+            if (in_array($relationType, ['merchandise', 'bundle'], true)) {
+                $relation = $relationType === 'bundle' ? 'bundleEvents' : 'merchandiseEvents';
+                $query->whereHas($relation, function (Builder $relationQuery) use ($eventId) {
+                    $relationQuery->where('events.id', $eventId);
+                });
+            } else {
+                $query->whereHas('linkedEvents', function (Builder $relationQuery) use ($eventId) {
+                    $relationQuery->where('events.id', $eventId);
+                });
+            }
+        }
+
+        if ($request->filled('is_bundle')) {
+            $isBundle = filter_var($request->input('is_bundle'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($isBundle !== null) {
+                $query->where('is_bundle', $isBundle);
+            }
         }
 
         // Filter by price range
@@ -84,6 +110,10 @@ class WebsiteProductController extends Controller
 
         // Transform for public API (hide sensitive fields)
         $products->getCollection()->transform(function ($product) {
+            $effectiveStockQuantity = $product->track_inventory
+                ? (int) ($product->aggregated_stock_quantity ?? 0)
+                : (int) ($product->stock_quantity ?? 0);
+
             // Convert image path to absolute URL if it's a relative path
             $imageUrl = $this->getAbsoluteImageUrl($product->image);
             
@@ -117,10 +147,27 @@ class WebsiteProductController extends Controller
                     : [],
                 'is_new_arrival' => (bool) $product->is_new_arrival,
                 'is_preorder' => (bool) $product->is_preorder,
-                'in_stock' => $product->stock_quantity > 0,
-                'stock_quantity' => $product->stock_quantity,
+                'in_stock' => $effectiveStockQuantity > 0,
+                'stock_quantity' => $effectiveStockQuantity,
                 'unit' => $product->unit,
                 'manufacturer' => $product->manufacturer,
+                'is_merchandise' => (bool) $product->is_merchandise,
+                'is_bundle' => (bool) $product->is_bundle,
+                'bundle_type' => $product->bundle_type,
+                'bundle_components' => $product->is_bundle
+                    ? $product->bundleComponents->map(function ($component) {
+                        return [
+                            'id' => $component->id,
+                            'quantity' => (int) $component->quantity,
+                            'component_product' => $component->componentProduct ? [
+                                'id' => $component->componentProduct->id,
+                                'name' => $component->componentProduct->name,
+                                'price' => (float) $component->componentProduct->price,
+                                'image' => $this->getAbsoluteImageUrl($component->componentProduct->image),
+                            ] : null,
+                        ];
+                    })->values()->all()
+                    : [],
             ];
         });
 
@@ -134,7 +181,8 @@ class WebsiteProductController extends Controller
     {
         $query = Product::query()
             ->where('is_active', true)
-            ->with(['category', 'brand', 'variants']);
+            ->withSum('stockLevels as aggregated_stock_quantity', 'quantity')
+            ->with(['category', 'brand', 'variants', 'bundleComponents.componentProduct']);
 
         $this->applyWebsiteVisibilityFilter($query);
         
@@ -148,6 +196,10 @@ class WebsiteProductController extends Controller
         if (is_array($gallery)) {
             $gallery = array_map(fn($img) => $this->getAbsoluteImageUrl($img), $gallery);
         }
+
+        $effectiveStockQuantity = $product->track_inventory
+            ? (int) ($product->aggregated_stock_quantity ?? 0)
+            : (int) ($product->stock_quantity ?? 0);
 
         return response()->json([
             'id' => $product->id,
@@ -173,10 +225,27 @@ class WebsiteProductController extends Controller
                 : [],
             'is_new_arrival' => (bool) $product->is_new_arrival,
             'is_preorder' => (bool) $product->is_preorder,
-            'in_stock' => $product->stock_quantity > 0,
-            'stock_quantity' => $product->stock_quantity,
+            'in_stock' => $effectiveStockQuantity > 0,
+            'stock_quantity' => $effectiveStockQuantity,
             'unit' => $product->unit,
             'manufacturer' => $product->manufacturer,
+            'is_merchandise' => (bool) $product->is_merchandise,
+            'is_bundle' => (bool) $product->is_bundle,
+            'bundle_type' => $product->bundle_type,
+            'bundle_components' => $product->is_bundle
+                ? $product->bundleComponents->map(function ($component) {
+                    return [
+                        'id' => $component->id,
+                        'quantity' => (int) $component->quantity,
+                        'component_product' => $component->componentProduct ? [
+                            'id' => $component->componentProduct->id,
+                            'name' => $component->componentProduct->name,
+                            'price' => (float) $component->componentProduct->price,
+                            'image' => $this->getAbsoluteImageUrl($component->componentProduct->image),
+                        ] : null,
+                    ];
+                })->values()->all()
+                : [],
             'attributes' => $product->attributes ?? [],
             'variants' => $product->variants ? $product->variants->map(function ($variant) {
                 return [
@@ -261,7 +330,7 @@ class WebsiteProductController extends Controller
 
     /**
      * Convert a relative image path to an absolute URL.
-     * Uses the Origin header to generate URLs that work in preview context.
+     * Uses APP_URL from config to ensure URLs always point to the backend storage.
      */
     private function getAbsoluteImageUrl(?string $imagePath): ?string
     {
@@ -289,58 +358,8 @@ class WebsiteProductController extends Controller
         // Remove leading slash if present
         $imagePath = ltrim($imagePath, '/');
         
-        // Get the base URL from request headers
-        // Priority: Origin > X-Forwarded-Host > Referer > Request Host
-        $request = request();
-        $baseUrl = null;
-        
-        // 1. Try Origin header (best for CORS requests)
-        $origin = $request->header('Origin');
-        if ($origin && !str_contains($origin, 'blob:')) {
-            $baseUrl = rtrim($origin, '/');
-        }
-        
-        // 2. Try X-Forwarded-Host (for proxy scenarios)
-        if (!$baseUrl) {
-            $forwardedHost = $request->header('X-Forwarded-Host');
-            $forwardedProto = $request->header('X-Forwarded-Proto', 'http');
-            if ($forwardedHost) {
-                $baseUrl = $forwardedProto . '://' . $forwardedHost;
-            }
-        }
-        
-        // 3. Try Referer header
-        if (!$baseUrl) {
-            $referer = $request->header('Referer');
-            if ($referer && !str_contains($referer, 'blob:')) {
-                $parsed = parse_url($referer);
-                if (isset($parsed['scheme']) && isset($parsed['host'])) {
-                    $baseUrl = $parsed['scheme'] . '://' . $parsed['host'];
-                    if (isset($parsed['port'])) {
-                        $baseUrl .= ':' . $parsed['port'];
-                    }
-                }
-            }
-        }
-        
-        // 4. Fallback to localhost:5173 for development (Vite dev server)
-        if (!$baseUrl) {
-            // Check if we're in development mode
-            $appEnv = config('app.env', 'production');
-            if ($appEnv === 'local' || $appEnv === 'development') {
-                $baseUrl = 'http://localhost:5173';
-            } else {
-                // Production fallback
-                $scheme = $request->secure() ? 'https' : 'http';
-                $host = $request->getHost();
-                $port = $request->getPort();
-                
-                $baseUrl = $scheme . '://' . $host;
-                if (($scheme === 'http' && $port != 80) || ($scheme === 'https' && $port != 443)) {
-                    $baseUrl .= ':' . $port;
-                }
-            }
-        }
+        // Always use APP_URL from config for consistent storage URLs
+        $baseUrl = rtrim(config('app.url'), '/');
         
         // Handle various storage path formats
         if (str_starts_with($imagePath, 'storage/')) {

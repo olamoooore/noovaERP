@@ -8,6 +8,8 @@ use Illuminate\Routing\Controller;
 use Modules\EventManagement\Services\TicketStatusService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 
 /**
@@ -29,18 +31,42 @@ class CustomerHubController extends Controller
 
     /**
      * Get customer hub dashboard
-     * Shows all event bookings across the tenant so admins can review them.
-     * Results are sorted with upcoming events first.
+        * Shows only the authenticated customer's bookings for this tenant.
+        * Results are sorted with upcoming events first.
      */
     public function getDashboard(Request $request): JsonResponse
     {
         try {
             $now = now();
+            $user = $request->user();
+
+            $bookingStates = ['confirmed', 'booked'];
+            $eventSelects = [
+                'e.title as event_title',
+                'e.venue as event_venue',
+                'e.status as event_status',
+            ];
+
+            $eventSelects[] = Schema::hasColumn('events', 'start_date')
+                ? 'e.start_date as event_start'
+                : (Schema::hasColumn('events', 'event_date') ? 'e.event_date as event_start' : DB::raw('NULL as event_start'));
+
+            $eventSelects[] = Schema::hasColumn('events', 'end_date')
+                ? 'e.end_date as event_end'
+                : DB::raw('NULL as event_end');
+
+            $eventSelects[] = Schema::hasColumn('events', 'image_url')
+                ? 'e.image_url as event_image'
+                : DB::raw('NULL as event_image');
+
+            $eventSelects[] = Schema::hasColumn('events', 'price')
+                ? 'e.price as event_price'
+                : DB::raw('NULL as event_price');
 
             // Fetch all confirmed bookings, joining event data
-            $bookings = DB::table('bookings as b')
+            $query = DB::table('bookings as b')
                 ->leftJoin('events as e', 'b.event_id', '=', 'e.id')
-                ->whereIn('b.state', ['confirmed', 'paid', 'attended'])
+                ->whereIn('b.state', $bookingStates)
                 ->select(
                     'b.id',
                     'b.booking_reference',
@@ -51,16 +77,18 @@ class CustomerHubController extends Controller
                     'b.total_amount',
                     'b.currency',
                     'b.created_at',
-                    'e.title as event_title',
-                    'e.start_date as event_start',
-                    'e.end_date as event_end',
-                    'e.venue as event_venue',
-                    'e.image_url as event_image',
-                    'e.price as event_price',
-                    'e.status as event_status'
+                    ...$eventSelects
                 )
-                ->orderBy('e.start_date', 'asc')
-                ->get();
+                ->orderBy('event_start', 'asc');
+
+            // Customer dashboard must only return current customer's bookings.
+            if (Schema::hasColumn('bookings', 'customer_id')) {
+                $query->where('b.customer_id', $user->id);
+            } elseif (!empty($user->email) && Schema::hasColumn('bookings', 'buyer_email')) {
+                $query->where('b.buyer_email', $user->email);
+            }
+
+            $bookings = $query->get();
 
             // Split into upcoming / past
             $upcoming = $bookings->filter(function ($b) use ($now) {
@@ -105,6 +133,11 @@ class CustomerHubController extends Controller
             ]);
 
         } catch (Exception $e) {
+            Log::error('CustomerHubController@getDashboard failed', [
+                'user_id' => optional($request->user())->id,
+                'message' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'error'   => 'Failed to load dashboard',

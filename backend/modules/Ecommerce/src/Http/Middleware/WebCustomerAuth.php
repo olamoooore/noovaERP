@@ -31,6 +31,15 @@ class WebCustomerAuth
             'search_path' => DB::select("SHOW search_path")[0]->search_path ?? 'unknown',
         ]);
 
+        if (!tenancy()->initialized || !tenancy()->tenant?->id) {
+            Log::warning('WebCustomerAuth: Missing tenant context');
+
+            return response()->json([
+                'error' => 'Tenant context required',
+                'message' => 'Unable to resolve tenant for this request',
+            ], 403);
+        }
+
         $session = WebCustomerSession::with('customer')
             ->where('token', $token)
             ->where('expires_at', '>', now())

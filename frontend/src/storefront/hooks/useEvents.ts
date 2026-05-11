@@ -1,22 +1,35 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchPublicEvents, ApiEvent } from '@/storefront/lib/api';
-import { Event, EVENTS } from '@/storefront/data/events';
+import { Event, EVENTS, buildEventCommerce } from '@/storefront/data/events';
 
 /**
  * Map a backend ApiEvent to the storefront Event interface.
  * Keeps all existing UI components working without changes.
  */
 export function mapApiEvent(apiEvent: ApiEvent): Event {
+  const description = apiEvent.description || '';
+  const venue = apiEvent.venue || 'TBA';
+
   return {
     id: String(apiEvent.id),
     title: apiEvent.title,
-    description: apiEvent.description || '',
+    description,
     date: new Date(apiEvent.start_date),
+    endDate: apiEvent.end_date ? new Date(apiEvent.end_date) : undefined,
     image: apiEvent.image_url || 'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800&q=80',
-    venue: apiEvent.venue || 'TBA',
+    venue,
     price: apiEvent.price,
     spotsLeft: apiEvent.available_capacity,
     totalSpots: apiEvent.total_capacity,
+    commerce: buildEventCommerce({
+      title: apiEvent.title,
+      description,
+      venue,
+      commerce: {
+        merchProductIds: (apiEvent.merchandise_products || []).map((product) => String(product.id)),
+        bundleProductIds: (apiEvent.bundle_products || []).map((product) => String(product.id)),
+      },
+    }),
   };
 }
 

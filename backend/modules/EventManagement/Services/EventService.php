@@ -88,6 +88,8 @@ class EventService
                 }
             }
 
+            $this->syncLinkedProducts($event, $eventData);
+
             // Log the event creation
             $this->auditService->logActivity(
                 'event_created',
@@ -106,7 +108,7 @@ class EventService
                 'tenant_id' => tenant('id')
             ]);
 
-            return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group']);
+            return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
         });
     }
 
@@ -193,7 +195,7 @@ class EventService
     {
         $query = Event::where('status', 'published')
             ->where('start_date', '>', Carbon::now())
-            ->with(['ticketTypes', 'artistEvents.artist', 'artistEvents.group']);
+            ->with(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
 
         // Apply artist filter
         if (!empty($filters['artist_id'])) {
@@ -253,6 +255,8 @@ class EventService
             'ticketTypes', 
             'artistEvents.artist', 
             'artistEvents.group',
+            'merchandiseProducts',
+            'bundleProducts',
             'artistEvents' => function ($query) {
                 $query->orderBy('performance_order', 'asc');
             }
@@ -293,6 +297,8 @@ class EventService
                 $this->updateEventGroups($eventId, $eventData['groups']);
             }
 
+            $this->syncLinkedProducts($event, $eventData);
+
             // Log the event update
             $this->auditService->logActivity(
                 'event_updated',
@@ -310,8 +316,38 @@ class EventService
                 'tenant_id' => tenant('id')
             ]);
 
-            return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group']);
+            return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
         });
+    }
+
+    private function syncLinkedProducts(Event $event, array $eventData): void
+    {
+        if (array_key_exists('merchandise_product_ids', $eventData)) {
+            $event->merchandiseProducts()->sync(
+                $this->buildLinkedProductSyncPayload($eventData['merchandise_product_ids'], 'merchandise')
+            );
+        }
+
+        if (array_key_exists('bundle_product_ids', $eventData)) {
+            $event->bundleProducts()->sync(
+                $this->buildLinkedProductSyncPayload($eventData['bundle_product_ids'], 'bundle')
+            );
+        }
+    }
+
+    private function buildLinkedProductSyncPayload(array $productIds, string $relationType): array
+    {
+        $payload = [];
+
+        foreach (array_values(array_unique($productIds)) as $index => $productId) {
+            $payload[(int) $productId] = [
+                'relation_type' => $relationType,
+                'sort_order' => $index + 1,
+                'is_featured' => $index === 0,
+            ];
+        }
+
+        return $payload;
     }
 
     /**

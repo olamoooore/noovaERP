@@ -40,6 +40,10 @@ class TenantGuardrailsCommand extends Command
         $issues += $issuesDefault;
         $fixed += $fixedDefault;
 
+        [$issuesMultiTenantUsers, $fixedMultiTenantUsers] = $this->auditMultiTenantUsers($applyFixes);
+        $issues += $issuesMultiTenantUsers;
+        $fixed += $fixedMultiTenantUsers;
+
         [$issuesEntitlements, $fixedEntitlements] = $this->syncTenantEntitlements($applyFixes);
         $issues += $issuesEntitlements;
         $fixed += $fixedEntitlements;
@@ -47,6 +51,34 @@ class TenantGuardrailsCommand extends Command
         [$issuesGateways, $fixedGateways] = $this->syncPaymentGatewayBaseline($applyFixes);
         $issues += $issuesGateways;
         $fixed += $fixedGateways;
+
+        $this->newLine();
+        // --- Tenant Core Data Integrity Check ---
+        $this->info('Tenant Core Data Integrity Check');
+        $tenantIds = DB::table('public.tenants')->pluck('id');
+        foreach ($tenantIds as $tenantId) {
+            DB::statement("SET search_path TO '" . $tenantId . "', public");
+            $productCount = DB::table('products')->count();
+            $warehouseCount = DB::table('warehouses')->count();
+            $company = DB::table('company_settings')->first();
+            $companyName = $company->company_name ?? '[none]';
+            $companyEmail = $company->email ?? '[none]';
+            $this->line("Tenant {$tenantId}: Products={$productCount}, Warehouses={$warehouseCount}, Company={$companyName} <{$companyEmail}>");
+            // Flag anomalies
+            if ($productCount === 0) {
+                $this->warn("  [!] No products found");
+                $issues++;
+            }
+            if ($warehouseCount === 0) {
+                $this->warn("  [!] No warehouses found");
+                $issues++;
+            }
+            if ($companyName === '[none]') {
+                $this->warn("  [!] Company name missing");
+                $issues++;
+            }
+        }
+        DB::statement('SET search_path TO public');
 
         $this->newLine();
         $this->info('Guardrail Summary');
@@ -119,6 +151,64 @@ class TenantGuardrailsCommand extends Command
 
             $fixed++;
             $this->info("  fixed user_id={$row->user_id}, kept tenant_id={$keep->tenant_id} as default");
+        }
+
+        return [$issues, $fixed];
+    }
+
+    /**
+     * Flag central users linked to multiple tenants because signup reuse can silently
+     * switch their default tenant to an empty schema.
+     */
+    private function auditMultiTenantUsers(bool $applyFixes): array
+    {
+        $issues = 0;
+        $fixed = 0;
+
+        $rows = DB::table('public.user_company_access as uca')
+            ->join('public.users as u', 'u.id', '=', 'uca.user_id')
+            ->select(
+                'uca.user_id',
+                'u.email',
+                DB::raw('count(*) as tenant_rows'),
+                DB::raw('sum(case when uca.is_default = true then 1 else 0 end) as default_rows')
+            )
+            ->groupBy('uca.user_id', 'u.email')
+            ->havingRaw('count(*) > 1')
+            ->orderBy('u.email')
+            ->get();
+
+        foreach ($rows as $row) {
+            $issues++;
+
+            $tenantRows = DB::table('public.user_company_access as uca')
+                ->join('public.tenants as t', 't.id', '=', 'uca.tenant_id')
+                ->where('uca.user_id', $row->user_id)
+                ->orderByDesc('uca.is_default')
+                ->orderBy('t.name')
+                ->get([
+                    'uca.tenant_id',
+                    'uca.is_default',
+                    'uca.role',
+                    't.name as tenant_name',
+                ]);
+
+            $tenantSummary = $tenantRows
+                ->map(fn ($tenantRow) => sprintf(
+                    '%s%s (%s)',
+                    $tenantRow->tenant_name,
+                    $tenantRow->is_default ? ' [default]' : '',
+                    $tenantRow->tenant_id
+                ))
+                ->implode(', ');
+
+            $this->warn("user_id={$row->user_id} email={$row->email} is linked to {$row->tenant_rows} tenants: {$tenantSummary}");
+
+            if (!$applyFixes) {
+                continue;
+            }
+
+            $this->line('  no automatic fix applied; review and prune unintended tenant links manually.');
         }
 
         return [$issues, $fixed];

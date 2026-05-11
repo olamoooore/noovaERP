@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import { loadAceStripe } from '@/lib/stripe'
+import { persistCheckoutQueueContext, resolveCheckoutQueueContext } from '@/lib/checkout-queue'
 
 // ============================================================
 // Types
@@ -242,6 +243,63 @@ function StripePaymentForm({
 }
 
 // ============================================================
+// Product Image Display Component (handles broken external URLs)
+// ============================================================
+
+function ProductImageDisplay({ product }: { product: Product }) {
+  const [imageError, setImageError] = useState(false)
+  const initials = product.name.split(' ').slice(0, 3).map((w) => w[0]).join('').toUpperCase()
+
+  if (product.image && !imageError) {
+    return (
+      <div className="bg-gray-50 rounded-xl p-6 flex items-center justify-center">
+        <img
+          src={product.image}
+          alt={product.name}
+          className="max-w-full max-h-[400px] object-contain"
+          onError={() => setImageError(true)}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl p-8 flex flex-col items-center justify-center min-h-[300px]">
+      <div className="w-24 h-24 rounded-full bg-white/80 flex items-center justify-center mb-4">
+        <span className="text-3xl font-bold text-gray-400">{initials}</span>
+      </div>
+      <p className="text-sm text-gray-400">No image available</p>
+    </div>
+  )
+}
+
+// ============================================================
+// Cart Item Image Component (handles broken external URLs)
+// ============================================================
+
+function CartItemImage({ item }: { item: CartItem }) {
+  const [imageError, setImageError] = useState(false)
+  const initials = item.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+
+  if (item.image && !imageError) {
+    return (
+      <img
+        src={item.image}
+        alt={item.name}
+        className="w-20 h-20 object-cover rounded-lg"
+        onError={() => setImageError(true)}
+      />
+    )
+  }
+
+  return (
+    <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shrink-0">
+      <span className="text-sm font-bold text-gray-400">{initials}</span>
+    </div>
+  )
+}
+
+// ============================================================
 // Product Card Component
 // ============================================================
 
@@ -254,22 +312,28 @@ function ProductCard({
   onAddToCart: (product: Product) => void
   onViewProduct: (product: Product) => void
 }) {
+  const [imageError, setImageError] = useState(false)
+  const initials = product.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+
   return (
     <div
       className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all cursor-pointer"
       onClick={() => onViewProduct(product)}
     >
       <div className="relative aspect-square bg-gray-50 overflow-hidden">
-        {product.image ? (
+        {product.image && !imageError ? (
           <img
             src={product.image}
             alt={product.name}
             className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Image' }}
+            onError={() => setImageError(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Icon icon="solar:box-bold-duotone" className="h-16 w-16 text-gray-300" />
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+            <div className="w-16 h-16 rounded-full bg-white/80 flex items-center justify-center mb-2">
+              <span className="text-xl font-bold text-gray-400">{initials}</span>
+            </div>
+            <span className="text-xs text-gray-400">No image</span>
           </div>
         )}
         {product.is_new_arrival && (
@@ -321,6 +385,7 @@ export function EcommerceStorefront() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('name')
+  const [categorySearch, setCategorySearch] = useState('')
 
   // Determine which view to show
   const currentView = pageType || 'shop'
@@ -430,6 +495,11 @@ export function EcommerceStorefront() {
   const products: Product[] = productsData?.data || []
   const categories: Category[] = categoriesData || []
 
+  // Filter categories based on search
+  const filteredCategories = categorySearch
+    ? categories.filter((c) => c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+    : categories
+
   // ========================================
   // RENDER: Shop / Product Listing
   // ========================================
@@ -482,27 +552,42 @@ export function EcommerceStorefront() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold uppercase text-gray-500">Categories</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1 p-3 pt-0">
-                  <Button
-                    variant={selectedCategory === null ? 'default' : 'ghost'}
-                    className="w-full justify-start"
-                    size="sm"
-                    onClick={() => setSelectedCategory(null)}
-                  >
-                    All Products
-                  </Button>
-                  {categories.map((cat) => (
+                <CardContent className="p-3 pt-0 space-y-2">
+                  <div className="relative">
+                    <Icon icon="solar:magnifer-bold" className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                    <Input
+                      placeholder="Search categories..."
+                      className="pl-8 h-8 text-sm"
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-h-[calc(100vh-280px)] overflow-y-auto space-y-0.5 pr-1 scrollbar-thin">
                     <Button
-                      key={cat.id}
-                      variant={selectedCategory === cat.id ? 'default' : 'ghost'}
-                      className="w-full justify-between"
+                      variant={selectedCategory === null ? 'default' : 'ghost'}
+                      className="w-full justify-start text-sm"
                       size="sm"
-                      onClick={() => setSelectedCategory(cat.id)}
+                      onClick={() => setSelectedCategory(null)}
                     >
-                      <span>{cat.name}</span>
-                      <Badge variant="secondary" className="text-xs">{cat.product_count}</Badge>
+                      All Products
+                      <Badge variant="secondary" className="ml-auto text-xs">{categories.reduce((sum, c) => sum + c.product_count, 0)}</Badge>
                     </Button>
-                  ))}
+                    {filteredCategories.length === 0 && (
+                      <p className="text-xs text-gray-400 py-2 text-center">No categories found</p>
+                    )}
+                    {filteredCategories.map((cat) => (
+                      <Button
+                        key={cat.id}
+                        variant={selectedCategory === cat.id ? 'default' : 'ghost'}
+                        className="w-full justify-between text-sm"
+                        size="sm"
+                        onClick={() => setSelectedCategory(cat.id)}
+                      >
+                        <span className="truncate">{cat.name}</span>
+                        <Badge variant="secondary" className="ml-2 text-xs shrink-0">{cat.product_count}</Badge>
+                      </Button>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -533,6 +618,34 @@ export function EcommerceStorefront() {
 
             {/* Product Grid */}
             <main className="flex-1">
+              {/* Mobile category filter */}
+              <div className="lg:hidden mb-4">
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  <Button
+                    variant={selectedCategory === null ? 'default' : 'outline'}
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setSelectedCategory(null)}
+                  >
+                    All
+                  </Button>
+                  {categories.slice(0, 20).map((cat) => (
+                    <Button
+                      key={cat.id}
+                      variant={selectedCategory === cat.id ? 'default' : 'outline'}
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => setSelectedCategory(cat.id)}
+                    >
+                      {cat.name}
+                    </Button>
+                  ))}
+                  {categories.length > 20 && (
+                    <span className="text-xs text-gray-400 self-center shrink-0">+{categories.length - 20} more</span>
+                  )}
+                </div>
+              </div>
+
               <div className="flex items-center justify-between mb-6">
                 <p className="text-sm text-gray-500">
                   Showing {products.length} product{products.length !== 1 ? 's' : ''}
@@ -603,14 +716,7 @@ export function EcommerceStorefront() {
             </div>
           ) : singleProduct ? (
             <div className="grid md:grid-cols-2 gap-10 bg-white rounded-2xl p-8 shadow-sm">
-              <div className="bg-gray-50 rounded-xl p-6 flex items-center justify-center">
-                <img
-                  src={singleProduct.image || 'https://placehold.co/500x500?text=No+Image'}
-                  alt={singleProduct.name}
-                  className="max-w-full max-h-[400px] object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/500x500?text=No+Image' }}
-                />
-              </div>
+              <ProductImageDisplay product={singleProduct} />
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <Badge variant={singleProduct.in_stock ? 'default' : 'destructive'}>
@@ -720,11 +826,7 @@ export function EcommerceStorefront() {
                 {cart.map((item) => (
                   <Card key={item.productId}>
                     <CardContent className="p-4 flex gap-4">
-                      <img
-                        src={item.image || 'https://placehold.co/100x100?text=No+Image'}
-                        alt={item.name}
-                        className="w-20 h-20 object-cover rounded-lg"
-                      />
+                      <CartItemImage item={item} />
                       <div className="flex-1">
                         <h4 className="font-medium text-gray-900">{item.name}</h4>
                         <p className="text-primary font-bold mt-1">${item.price.toFixed(2)}</p>
@@ -936,8 +1038,11 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
   const handleProceedToPayment = async () => {
     if (!validate()) return
 
+    const queueContext = resolveCheckoutQueueContext()
     setIsLoading(true)
     try {
+      persistCheckoutQueueContext(queueContext)
+
       const items = cart.map((item) => ({
         product_id: item.productId,
         quantity: item.quantity,
@@ -958,6 +1063,9 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
         },
         notes: formData.notes || undefined,
         gateway_id: selectedGatewayId,
+        queue_required: queueContext?.queue_required,
+        campaign_key: queueContext?.campaign_key,
+        queue_token: queueContext?.queue_token,
       })
 
       const data = response.data
@@ -1000,10 +1108,23 @@ function EcommerceCheckout({ cart, onClearCart }: { cart: CartItem[]; onClearCar
       setStripePromise(loadAceStripe(data.payment_intent?.publishable_key || data.publishable_key))
       setStep('payment')
     } catch (err: any) {
+      const errData = err.response?.data
+      const queueRequired = err.response?.status === 429 || errData?.error === 'QUEUE_ADMISSION_REQUIRED'
+
+      if (queueRequired) {
+        const campaignKey = errData?.campaign_key || queueContext?.campaign_key
+        const params = new URLSearchParams({ return_to: '/shop/checkout' })
+        if (campaignKey) {
+          params.set('campaign_key', campaignKey)
+        }
+        navigate(`/web-shop/waiting-room?${params.toString()}`)
+        return
+      }
+
       toast({
         variant: 'destructive',
         title: 'Checkout Failed',
-        description: err.response?.data?.message || err.response?.data?.error || 'Failed to create order.',
+        description: errData?.message || errData?.error || 'Failed to create order.',
       })
     } finally {
       setIsLoading(false)

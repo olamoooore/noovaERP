@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AccessibleButton } from '@/components/ui/AccessibleButton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ResponsiveText, Heading1, Heading3, BodyText } from '@/components/ui/responsive-text';
 import { EnhancedCard, EnhancedCardContent, EnhancedCardHeader, EnhancedCardTitle } from '@/components/ui/enhanced-card';
 import { EnhancedBadge, getSemanticColor } from '@/components/ui/EnhancedBadge';
@@ -14,13 +15,47 @@ import {
   Share2, 
   Ticket,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  Plus,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useCustomerDashboard, useDownloadTicket } from '@/hooks/queries';
+import { useCreateEvent, useCustomerDashboard, useDeleteEvent, useDownloadTicket, useEvents, useUpdateEvent } from '@/hooks/queries';
+import type { Event } from '@/lib/event-management-api';
 import { LoadingSpinner } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { storefrontRoutes } from '@/storefront/lib/paths';
+
+type EventFormState = {
+  name: string;
+  description: string;
+  start_date: string;
+  end_date: string;
+  venue: string;
+  capacity: string;
+  status: Event['status'];
+};
+
+const makeDefaultEventForm = (): EventFormState => ({
+  name: '',
+  description: '',
+  start_date: '',
+  end_date: '',
+  venue: '',
+  capacity: '',
+  status: 'draft',
+});
+
+const toDateTimeLocalValue = (value?: string): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const tzOffsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+};
 
 /**
  * MyEventsDashboard Component
@@ -33,6 +68,9 @@ import { storefrontRoutes } from '@/storefront/lib/paths';
 const MyEventsDashboard: React.FC = () => {
   // UI state only - server data now managed by React Query
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [isEventDialogOpen, setIsEventDialogOpen] = useState(true);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [eventForm, setEventForm] = useState<EventFormState>(makeDefaultEventForm());
   const { toast } = useToast();
   
   // React Query hooks for server state
@@ -41,9 +79,19 @@ const MyEventsDashboard: React.FC = () => {
     isLoading, 
     error 
   } = useCustomerDashboard();
+
+  const {
+    data: managedEvents = [],
+    isLoading: isManagedEventsLoading,
+  } = useEvents();
   
   // Mutations
   const downloadTicketMutation = useDownloadTicket();
+  const createEventMutation = useCreateEvent();
+  const updateEventMutation = useUpdateEvent();
+  const deleteEventMutation = useDeleteEvent();
+
+  const isSavingEvent = createEventMutation.isPending || updateEventMutation.isPending;
 
   // Handle ticket download with React Query mutation
   const handleDownloadTicket = async (bookingId: number) => {
@@ -90,6 +138,111 @@ const MyEventsDashboard: React.FC = () => {
         title: "Error",
         description: "Failed to share event. Please try again.",
         variant: "destructive",
+      });
+    }
+  };
+
+  const openCreateEventDialog = () => {
+    setEditingEvent(null);
+    setEventForm(makeDefaultEventForm());
+    setIsEventDialogOpen(true);
+  };
+
+  const openEditEventDialog = (event: Event) => {
+    setEditingEvent(event);
+    setEventForm({
+      title: event.title ?? '',
+      description: event.description ?? '',
+      eventDate: toDateTimeLocalValue(event.start_date),
+      endDate: toDateTimeLocalValue(event.end_date),
+      venue: event.venue ?? '',
+      totalCapacity: event.capacity != null ? String(event.capacity) : '',
+      status: event.status,
+    });
+    setIsEventDialogOpen(true);
+  };
+
+  const handleEventFieldChange = (field: keyof EventFormState, value: string) => {
+    setEventForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!eventForm.name.trim() || !eventForm.start_date || !eventForm.end_date) {
+      toast({
+        title: 'Missing required fields',
+        description: 'Event name, start date, and end date are required.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizedCapacity = eventForm.capacity.trim() ? Number(eventForm.capacity) : undefined;
+    if (normalizedCapacity !== undefined && (!Number.isFinite(normalizedCapacity) || normalizedCapacity < 1)) {
+      toast({
+        title: 'Invalid capacity',
+        description: 'Capacity must be a positive number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const payload = {
+      name: eventForm.name.trim(),
+      description: eventForm.description.trim() || undefined,
+      start_date: new Date(eventForm.start_date).toISOString(),
+      end_date: new Date(eventForm.end_date).toISOString(),
+      status: eventForm.status,
+      venue: eventForm.venue.trim() || undefined,
+      capacity: normalizedCapacity,
+    };
+
+    try {
+      if (editingEvent) {
+        await updateEventMutation.mutateAsync({
+          eventId: editingEvent.id,
+          data: payload,
+        });
+        toast({
+          title: 'Event updated',
+          description: `${payload.name} was updated successfully.`,
+        });
+      } else {
+        await createEventMutation.mutateAsync(payload);
+        toast({
+          title: 'Event created',
+          description: `${payload.name} was added to your events.`,
+        });
+      }
+
+      setIsEventDialogOpen(false);
+      setEditingEvent(null);
+      setEventForm(makeDefaultEventForm());
+    } catch (error: any) {
+      toast({
+        title: 'Failed to save event',
+        description: error?.response?.data?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteEvent = async (event: Event) => {
+    const confirmed = window.confirm(`Delete event \"${event.name}\"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await deleteEventMutation.mutateAsync(event.id);
+      toast({
+        title: 'Event deleted',
+        description: `${event.name} was removed.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Failed to delete event',
+        description: error?.response?.data?.message || 'Please try again.',
+        variant: 'destructive',
       });
     }
   };
@@ -193,9 +346,10 @@ const MyEventsDashboard: React.FC = () => {
 
       {/* Main Content Tabs - Simplified to match API */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="upcoming">Upcoming Events</TabsTrigger>
           <TabsTrigger value="bookings">My Bookings</TabsTrigger>
+          <TabsTrigger value="manage">Manage Events</TabsTrigger>
         </TabsList>
 
         {/* Upcoming Events Tab */}
@@ -351,7 +505,238 @@ const MyEventsDashboard: React.FC = () => {
             </div>
           )}
         </TabsContent>
+
+        {/* Manage Events Tab */}
+        <TabsContent value="manage" className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <Heading3 className="mb-1">My Event Management</Heading3>
+              <BodyText variant="muted">Create, edit, and delete your events.</BodyText>
+            </div>
+            <AccessibleButton
+              onClick={openCreateEventDialog}
+              ariaLabel="Add event"
+              screenReaderText="Open create event form"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Event
+            </AccessibleButton>
+          </div>
+
+          {isManagedEventsLoading ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-center py-10 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Loading your events...
+                </div>
+              </CardContent>
+            </Card>
+          ) : managedEvents.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <Calendar className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <Heading3 className="mb-2">No Events Yet</Heading3>
+                  <BodyText variant="muted" className="mb-4">Start by creating your first event.</BodyText>
+                  <AccessibleButton
+                    onClick={openCreateEventDialog}
+                    ariaLabel="Create first event"
+                  >
+                    Create Event
+                  </AccessibleButton>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {managedEvents.map((event) => (
+                <Card key={event.id} className="overflow-hidden">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="min-w-0 mr-3">
+                        <h3 className="text-lg font-semibold text-gray-900 truncate">{event.name}</h3>
+                        <BodyText variant="muted" className="text-sm">
+                          {event.venue || 'Venue TBD'}
+                        </BodyText>
+                      </div>
+                      <EnhancedBadge variant="status" color={getSemanticColor(event.status, 'status')} size="sm">
+                        {event.status}
+                      </EnhancedBadge>
+                    </div>
+
+                    <div className="space-y-2 mb-5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Start:</span>
+                        <span className="font-medium">
+                          {event.start_date ? format(new Date(event.start_date), 'PPp') : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">End:</span>
+                        <span className="font-medium">
+                          {event.end_date ? format(new Date(event.end_date), 'PPp') : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Capacity:</span>
+                        <span className="font-medium">{event.capacity ?? '—'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <AccessibleButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditEventDialog(event)}
+                        ariaLabel={`Edit ${event.name}`}
+                        className="flex-1"
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </AccessibleButton>
+                      <AccessibleButton
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeleteEvent(event)}
+                        ariaLabel={`Delete ${event.name}`}
+                        loading={deleteEventMutation.isPending}
+                        className="flex-1"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </AccessibleButton>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingEvent ? 'Edit Event' : 'Create Event'}</DialogTitle>
+            <DialogDescription>
+              Fill the details below to {editingEvent ? 'update your event' : 'add a new event'}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveEvent} className="space-y-4">
+            <div>
+              <label htmlFor="event-name" className="block text-sm font-medium mb-1">Event Name</label>
+              <input
+                id="event-name"
+                type="text"
+                value={eventForm.name}
+                onChange={(e) => handleEventFieldChange('name', e.target.value)}
+                className="w-full rounded-md border px-3 py-2"
+                placeholder="Enter event name"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="event-description" className="block text-sm font-medium mb-1">Description</label>
+              <textarea
+                id="event-description"
+                value={eventForm.description}
+                onChange={(e) => handleEventFieldChange('description', e.target.value)}
+                className="w-full rounded-md border px-3 py-2 min-h-24"
+                placeholder="Add event description"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="event-start" className="block text-sm font-medium mb-1">Start Date</label>
+                <input
+                  id="event-start"
+                  type="datetime-local"
+                  value={eventForm.start_date}
+                  onChange={(e) => handleEventFieldChange('start_date', e.target.value)}
+                  className="w-full rounded-md border px-3 py-2"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="event-end" className="block text-sm font-medium mb-1">End Date</label>
+                <input
+                  id="event-end"
+                  type="datetime-local"
+                  value={eventForm.end_date}
+                  onChange={(e) => handleEventFieldChange('end_date', e.target.value)}
+                  className="w-full rounded-md border px-3 py-2"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="event-venue" className="block text-sm font-medium mb-1">Venue</label>
+                <input
+                  id="event-venue"
+                  type="text"
+                  value={eventForm.venue}
+                  onChange={(e) => handleEventFieldChange('venue', e.target.value)}
+                  className="w-full rounded-md border px-3 py-2"
+                  placeholder="Venue"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="event-capacity" className="block text-sm font-medium mb-1">Capacity</label>
+                <input
+                  id="event-capacity"
+                  type="number"
+                  min={1}
+                  value={eventForm.capacity}
+                  onChange={(e) => handleEventFieldChange('capacity', e.target.value)}
+                  className="w-full rounded-md border px-3 py-2"
+                  placeholder="Maximum attendees"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="event-status" className="block text-sm font-medium mb-1">Status</label>
+              <select
+                id="event-status"
+                value={eventForm.status}
+                onChange={(e) => handleEventFieldChange('status', e.target.value)}
+                className="w-full rounded-md border px-3 py-2"
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <DialogFooter>
+              <AccessibleButton
+                type="button"
+                variant="outline"
+                onClick={() => setIsEventDialogOpen(false)}
+              >
+                Cancel
+              </AccessibleButton>
+              <AccessibleButton
+                type="submit"
+                loading={isSavingEvent}
+                loadingText={editingEvent ? 'Saving...' : 'Creating...'}
+              >
+                {editingEvent ? 'Save Changes' : 'Create Event'}
+              </AccessibleButton>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

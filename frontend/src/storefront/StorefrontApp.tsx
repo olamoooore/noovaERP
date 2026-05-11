@@ -15,6 +15,7 @@ const StorefrontShop = lazy(() => import('@/storefront/pages/Shop'));
 const StorefrontEvents = lazy(() => import('@/storefront/pages/Events'));
 const StorefrontMembership = lazy(() => import('@/storefront/pages/Membership'));
 const StorefrontCheckout = lazy(() => import('@/storefront/pages/Checkout'));
+const StorefrontWaitingRoom = lazy(() => import('@/storefront/pages/WaitingRoom'));
 const StorefrontAccount = lazy(() => import('@/storefront/pages/Account'));
 const StorefrontLogin = lazy(() => import('@/storefront/pages/Login'));
 const StorefrontNotFound = lazy(() => import('@/storefront/pages/NotFound'));
@@ -48,6 +49,7 @@ export default function StorefrontApp() {
                   <Route path="/events" element={<StorefrontEvents />} />
                   <Route path="/membership" element={<StorefrontMembership />} />
                   <Route path="/checkout" element={<StorefrontCheckout />} />
+                  <Route path="/waiting-room" element={<StorefrontWaitingRoom />} />
                   <Route path="/account" element={<StorefrontAccount />} />
                   <Route path="/login" element={<StorefrontLogin />} />
                   <Route path="/faq" element={<StorefrontFAQ />} />

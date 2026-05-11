@@ -180,6 +180,7 @@ export function ProductCreatePage() {
     track_inventory: true,
     is_preorder: false,
     is_new_arrival: false,
+    is_merchandise: false,
     show_on_website: false,
     preorder_available_at: '',
     stock_quantity: '',
@@ -678,6 +679,7 @@ export function ProductCreatePage() {
       track_inventory: !!formData.track_inventory,
       is_preorder: !!formData.is_preorder,
       is_new_arrival: !!formData.is_new_arrival,
+      is_merchandise: !!formData.is_merchandise,
       show_on_website: !!formData.show_on_website,
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
       stock_quantity: baseStock,
@@ -2611,6 +2613,24 @@ export function ProductCreatePage() {
                         >
                           Mark as New Arrival
                         </Label>
+                      </div>
+
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          checked={formData.is_merchandise}
+                          onCheckedChange={(checked) =>
+                            setFormData({ ...formData, is_merchandise: checked === true })
+                          }
+                        />
+                        <div className="space-y-1">
+                          <Label
+                            className="cursor-pointer"
+                            onClick={() => setFormData({ ...formData, is_merchandise: !formData.is_merchandise })}
+                          >
+                            Include in Merchandise View
+                          </Label>
+                          <div className="text-xs text-muted-foreground">Products marked here appear in the storefront merchandise category.</div>
+                        </div>
                       </div>
 
                       <div className="space-y-2">

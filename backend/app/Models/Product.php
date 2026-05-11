@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Modules\EventManagement\Models\Event as EventManagementEvent;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\Supplier;
@@ -137,6 +138,7 @@ class Product extends Model
         'is_active',
         'is_preorder',
         'is_new_arrival',
+        'is_merchandise',
         'show_on_website',
         'preorder_available_at',
         
@@ -171,6 +173,7 @@ class Product extends Model
         'is_active' => 'boolean',
         'is_preorder' => 'boolean',
         'is_new_arrival' => 'boolean',
+        'is_merchandise' => 'boolean',
         'show_on_website' => 'boolean',
         'is_hazmat' => 'boolean',
         'is_fragile' => 'boolean',
@@ -298,6 +301,23 @@ class Product extends Model
     public function partOfBundles(): HasMany
     {
         return $this->hasMany(ProductBundle::class, 'component_product_id');
+    }
+
+    public function linkedEvents(): BelongsToMany
+    {
+        return $this->belongsToMany(EventManagementEvent::class, 'event_product_links')
+            ->withPivot(['relation_type', 'sort_order', 'is_featured'])
+            ->withTimestamps();
+    }
+
+    public function merchandiseEvents(): BelongsToMany
+    {
+        return $this->linkedEvents()->wherePivot('relation_type', 'merchandise');
+    }
+
+    public function bundleEvents(): BelongsToMany
+    {
+        return $this->linkedEvents()->wherePivot('relation_type', 'bundle');
     }
 
     // Relationships (cross-sell, up-sell, etc.)

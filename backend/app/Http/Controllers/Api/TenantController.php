@@ -48,6 +48,32 @@ class TenantController extends Controller
         try {
             DB::statement('SET search_path TO public');
 
+            $existingUser = User::where('email', $validated['email'])->first();
+
+            if ($existingUser) {
+                $existingAccess = DB::table('public.user_company_access')
+                    ->join('public.tenants', 'tenants.id', '=', 'user_company_access.tenant_id')
+                    ->where('user_company_access.user_id', $existingUser->id)
+                    ->orderByDesc('user_company_access.is_default')
+                    ->orderBy('tenants.name')
+                    ->get([
+                        'user_company_access.tenant_id',
+                        'user_company_access.is_default',
+                        'tenants.name as tenant_name',
+                    ]);
+
+                if ($existingAccess->isNotEmpty()) {
+                    return response()->json([
+                        'message' => 'A user with this email already belongs to an existing tenant. Use tenant switching or a different email instead of creating a new tenant.',
+                        'existing_tenants' => $existingAccess->map(fn ($access) => [
+                            'tenant_id' => $access->tenant_id,
+                            'tenant_name' => $access->tenant_name,
+                            'is_default' => (bool) $access->is_default,
+                        ])->values(),
+                    ], 409);
+                }
+            }
+
             $tenant = Tenant::create([
                 'id' => Str::uuid(),
                 'name' => $validated['company'],

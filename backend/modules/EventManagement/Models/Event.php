@@ -2,8 +2,10 @@
 
 namespace Modules\EventManagement\Models;
 
+use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -80,6 +82,24 @@ class Event extends Model
     public function artistEvents(): HasMany
     {
         return $this->hasMany(ArtistEvent::class);
+    }
+
+    public function linkedProducts(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'event_product_links')
+            ->withPivot(['relation_type', 'sort_order', 'is_featured'])
+            ->withTimestamps()
+            ->orderByPivot('sort_order');
+    }
+
+    public function merchandiseProducts(): BelongsToMany
+    {
+        return $this->linkedProducts()->wherePivot('relation_type', 'merchandise');
+    }
+
+    public function bundleProducts(): BelongsToMany
+    {
+        return $this->linkedProducts()->wherePivot('relation_type', 'bundle');
     }
 
     /**

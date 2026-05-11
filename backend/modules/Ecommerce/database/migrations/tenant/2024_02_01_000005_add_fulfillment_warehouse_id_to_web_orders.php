@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('web_orders') || !Schema::hasTable('warehouses') || Schema::hasColumn('web_orders', 'fulfillment_warehouse_id')) {
+            return;
+        }
+
         Schema::table('web_orders', function (Blueprint $table) {
             $table->foreignId('fulfillment_warehouse_id')
                 ->nullable()
@@ -21,10 +25,12 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('web_orders') || !Schema::hasColumn('web_orders', 'fulfillment_warehouse_id')) {
+            return;
+        }
+
         Schema::table('web_orders', function (Blueprint $table) {
-            $table->dropForeign(['fulfillment_warehouse_id']);
-            $table->dropIndex(['fulfillment_warehouse_id']);
-            $table->dropColumn('fulfillment_warehouse_id');
+            $table->dropConstrainedForeignId('fulfillment_warehouse_id');
         });
     }
 };

@@ -22,6 +22,7 @@ use App\Models\Warehouse;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
+use Modules\Ecommerce\Services\CheckoutQueueAdmissionService;
 
 class WebCheckoutController extends Controller
 {
@@ -30,6 +31,7 @@ class WebCheckoutController extends Controller
         private PaymentTransactionCompletionService $completionService,
         private InventoryService $inventoryService,
         private StockReservationService $stockReservationService,
+        private CheckoutQueueAdmissionService $queueAdmissionService,
     ) {}
 
     /**
@@ -39,6 +41,20 @@ class WebCheckoutController extends Controller
     public function guestCheckout(Request $request): JsonResponse
     {
         return DB::transaction(function () use ($request) {
+            if ($request->boolean('queue_required', false)) {
+                $campaignKey = (string) $request->input('campaign_key', 'default');
+                $queueToken = (string) $request->input('queue_token', '');
+
+                if ($queueToken === '' || !$this->queueAdmissionService->canProceedToCheckout($campaignKey, $queueToken)) {
+                    return response()->json([
+                        'error' => 'QUEUE_ADMISSION_REQUIRED',
+                        'message' => 'You must hold an active queue slot before checkout.',
+                        'campaign_key' => $campaignKey,
+                        'join_endpoint' => '/api/v1/web-shop/queue/join',
+                    ], 429);
+                }
+            }
+
             $webCustomer = $request->attributes->get('web_customer');
 
             $validationRules = [

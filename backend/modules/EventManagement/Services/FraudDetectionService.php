@@ -18,7 +18,7 @@ class FraudDetectionService
      */
     public function analyzeBookingAttempt(array $bookingData): array
     {
-        $tenantId = $bookingData['tenant_id'] ?? 'default';
+        $tenantId = $this->resolveTenantIdFromPayload($bookingData);
         
         // Log the booking attempt
         $this->logBookingVelocity($bookingData);
@@ -297,7 +297,7 @@ class FraudDetectionService
         $entityId = $this->getEntityId($bookingData, $entityType);
 
         return FraudAlert::create([
-            'tenant_id' => $bookingData['tenant_id'] ?? 'default',
+            'tenant_id' => $this->resolveTenantIdFromPayload($bookingData),
             'fraud_detection_rule_id' => $rule->id,
             'alert_type' => $rule->rule_type,
             'severity' => $severity,
@@ -316,7 +316,7 @@ class FraudDetectionService
     private function logBookingVelocity(array $bookingData): void
     {
         BookingVelocityLog::create([
-            'tenant_id' => $bookingData['tenant_id'] ?? 'default',
+            'tenant_id' => $this->resolveTenantIdFromPayload($bookingData),
             'customer_id' => $bookingData['customer_id'] ?? null,
             'ip_address' => $bookingData['ip_address'] ?? '0.0.0.0',
             'user_agent' => $bookingData['user_agent'] ?? null,
@@ -327,6 +327,24 @@ class FraudDetectionService
             'request_metadata' => $bookingData['metadata'] ?? [],
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * Resolve tenant context for fraud operations.
+     */
+    private function resolveTenantIdFromPayload(array $payload): string
+    {
+        $tenantId = $payload['tenant_id'] ?? null;
+
+        if (is_string($tenantId) && trim($tenantId) !== '') {
+            return trim($tenantId);
+        }
+
+        if (tenancy()->initialized) {
+            return (string) tenant()->id;
+        }
+
+        throw new \RuntimeException('Tenant context not initialized for FraudDetectionService');
     }
 
     /**

@@ -136,7 +136,7 @@ const PayrollPage = lazy(() => import('@/pages/HRM').then(m => ({ default: m.Pay
 const StaffManagementPage = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.StaffManagementPage })))
 const LiveOperationsDashboard = lazy(() => import('@/pages/EventManagement').then(m => ({ default: m.LiveOperationsDashboard })))
 const BrowseEventsPage = lazy(() => import('@/pages/EventManagement/BrowseEventsPage'))
-const MyEventsDashboard = lazy(() => import('@/pages/EventManagement/MyEventsDashboard'))
+const MyEventsDashboard = lazy(() => import('@/pages/EventManagement/EventsWorkspacePage'))
 const MyBookingsPage = lazy(() => import('@/pages/EventManagement/MyBookingsPage'))
 const MyTicketsPage = lazy(() => import('@/pages/EventManagement/MyTicketsPage'))
 const FeedbackSystem = lazy(() => import('@/pages/EventManagement/FeedbackSystem'))
@@ -154,6 +154,7 @@ const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ de
 const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
 const WebShopCartPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCartPage })))
 const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.OrderSuccessPage })))
+const WebShopWaitingRoomPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopWaitingRoomPage })))
 const PaymentCallbackPage = lazy(() => import('@/pages/PaymentCallbackPage'))
 
 // Web Shop Customer Portal
@@ -441,6 +442,7 @@ function App() {
             {/* Web Shop Cart & Checkout - public, accessible from storefront */}
             <Route path="/web-shop/cart" element={<WebShopCartPage />} />
             <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
+            <Route path="/web-shop/waiting-room" element={<WebShopWaitingRoomPage />} />
             <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
 
             {/* Web Shop Auth - No layout, no admin auth required */}

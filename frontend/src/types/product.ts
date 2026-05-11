@@ -626,6 +626,7 @@ export interface ProductFormData {
   is_active: boolean;
   is_preorder: boolean;
   is_new_arrival: boolean;
+  is_merchandise: boolean;
   show_on_website: boolean;
   is_hazmat?: boolean;
   is_fragile?: boolean;

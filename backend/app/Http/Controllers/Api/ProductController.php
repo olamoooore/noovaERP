@@ -195,6 +195,7 @@ class ProductController extends Controller
             'custom_field_values.*.value' => 'nullable|string',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
+            'is_merchandise' => 'boolean',
             'variants' => 'nullable|array',
             'variants.*.name' => 'required|string',
             'variants.*.sku' => 'required|string',
@@ -627,6 +628,7 @@ class ProductController extends Controller
             'suppliers' => 'nullable|array',
             'is_active' => 'boolean',
             'is_new_arrival' => 'boolean',
+            'is_merchandise' => 'boolean',
         ]);
 
         $featureValues = $validated['feature_values'] ?? null;

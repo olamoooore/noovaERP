@@ -38,6 +38,10 @@ class CreateEventRequest extends FormRequest
             'ticket_acquisition_mode' => ['required', 'string', 'in:buy,bid'],
             'sale_start_date' => ['required', 'date', 'before:sale_end_date'],
             'sale_end_date' => ['required', 'date', 'after:sale_start_date'],
+            'merchandise_product_ids' => ['sometimes', 'array'],
+            'merchandise_product_ids.*' => ['integer', 'exists:products,id'],
+            'bundle_product_ids' => ['sometimes', 'array'],
+            'bundle_product_ids.*' => ['integer', 'exists:products,id'],
         ];
     }
 
@@ -72,6 +76,8 @@ class CreateEventRequest extends FormRequest
             'sale_start_date.before' => 'Sale start date must be before the sale end date.',
             'sale_end_date.required' => 'Sale end date is required. Please specify when ticket sales should end.',
             'sale_end_date.after' => 'Sale end date must be after the sale start date.',
+            'merchandise_product_ids.*.exists' => 'One or more selected merchandise products are invalid.',
+            'bundle_product_ids.*.exists' => 'One or more selected bundle products are invalid.',
         ];
     }
 
@@ -90,6 +96,8 @@ class CreateEventRequest extends FormRequest
             'ticket_types.*.price' => 'ticket type price',
             'ticket_types.*.capacity' => 'ticket type capacity',
             'ticket_types.*.description' => 'ticket type description',
+            'merchandise_product_ids' => 'linked merchandise products',
+            'bundle_product_ids' => 'linked bundle products',
         ];
     }
 

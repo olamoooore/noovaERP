@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchProducts, fetchCategories, fetchTags, ApiProduct } from '@/storefront/lib/api';
+import { fetchProducts, fetchCategories, fetchTags, ApiProduct, storefrontApi } from '@/storefront/lib/api';
 import { Product } from '@/storefront/data/products';
 import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 
@@ -75,6 +75,21 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     sku: apiProduct.sku || undefined,
     inStock: apiProduct.in_stock,
     stockQuantity: apiProduct.stock_quantity,
+    isMerchandise: apiProduct.is_merchandise,
+    isBundle: apiProduct.is_bundle,
+    bundleType: apiProduct.bundle_type,
+    bundleComponents: apiProduct.bundle_components.map((component) => ({
+      id: String(component.id),
+      quantity: component.quantity,
+      componentProduct: component.component_product
+        ? {
+            id: String(component.component_product.id),
+            title: component.component_product.name,
+            price: component.component_product.price,
+            image: component.component_product.image,
+          }
+        : null,
+    })),
   };
 }
 
@@ -82,6 +97,12 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
  * Fetch products from the backend API.
  * Falls back to hardcoded data if API fails.
  */
+/**
+ * Always force Infiniti Kpop tenant for storefront product queries.
+ * This ensures /shop always shows Infiniti's products, not admin's.
+ */
+const INFINITI_TENANT_ID = '147b57e9-be37-4478-a55e-a382816cf7ec'; // Infiniti Kpop tenant UUID
+
 export function useProducts(params?: {
   category_id?: number;
   brand_id?: number;
@@ -91,19 +112,36 @@ export function useProducts(params?: {
   tag?: string;
   sort_by?: string;
   sort_dir?: string;
+  event_id?: number;
+  event_relation_type?: 'merchandise' | 'bundle';
+  is_bundle?: boolean;
   per_page?: number;
   page?: number;
 }) {
   return useQuery({
-    queryKey: ['storefront-products', params],
+    queryKey: ['storefront-products', { ...params, tenant_id: INFINITI_TENANT_ID }],
     queryFn: async () => {
-      const response = await fetchProducts({ ...params, per_page: params?.per_page || 30 });
-      return {
-        products: response.data.map(mapApiProduct),
-        total: response.total,
-        currentPage: response.current_page,
-        lastPage: response.last_page,
-      };
+      // Always send X-Tenant-ID header for Infiniti
+      const prevTenantId = localStorage.getItem('tenant_id');
+      localStorage.setItem('tenant_id', INFINITI_TENANT_ID);
+      try {
+        const response = await storefrontApi.get('/website-public/products', {
+          params: { ...params, per_page: params?.per_page || 30 },
+          headers: { 'X-Tenant-ID': INFINITI_TENANT_ID },
+        });
+        return {
+          products: response.data.data.map(mapApiProduct),
+          total: response.data.total,
+          currentPage: response.data.current_page,
+          lastPage: response.data.last_page,
+        };
+      } finally {
+        if (prevTenantId) {
+          localStorage.setItem('tenant_id', prevTenantId);
+        } else {
+          localStorage.removeItem('tenant_id');
+        }
+      }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

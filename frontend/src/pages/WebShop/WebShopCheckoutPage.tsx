@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { CheckoutLoyaltyWidget } from './components/CheckoutLoyaltyWidget'
+import { persistCheckoutQueueContext, resolveCheckoutQueueContext } from '@/lib/checkout-queue'
 import { loadAceStripe } from '@/lib/stripe'
 
 interface CartItem {
@@ -406,9 +407,12 @@ export function WebShopCheckoutPage() {
       return
     }
 
+    const queueContext = resolveCheckoutQueueContext()
     setIsLoading(true)
 
     try {
+      persistCheckoutQueueContext(queueContext)
+
       const items = cartItems.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
@@ -421,6 +425,9 @@ export function WebShopCheckoutPage() {
         shipping_address: formData.shipping_address,
         notes: formData.notes || undefined,
         loyalty_points_to_redeem: loyaltyRedemption.points > 0 ? loyaltyRedemption.points : undefined,
+        queue_required: queueContext?.queue_required,
+        campaign_key: queueContext?.campaign_key,
+        queue_token: queueContext?.queue_token,
       })
 
       const data = response.data
@@ -450,10 +457,23 @@ export function WebShopCheckoutPage() {
       setStripePromise(loadAceStripe(publishable_key))
     } catch (err: any) {
       console.error('Checkout error:', err)
+      const errData = err.response?.data
+      const queueRequired = err.response?.status === 429 || errData?.error === 'QUEUE_ADMISSION_REQUIRED'
+
+      if (queueRequired) {
+        const campaignKey = errData?.campaign_key || queueContext?.campaign_key
+        const params = new URLSearchParams({ return_to: '/web-shop/checkout' })
+        if (campaignKey) {
+          params.set('campaign_key', campaignKey)
+        }
+        navigate(`/web-shop/waiting-room?${params.toString()}`)
+        return
+      }
+
       toast({
         variant: 'destructive',
         title: 'Checkout Failed',
-        description: err.response?.data?.message || 'Failed to create order. Please try again.',
+        description: errData?.message || 'Failed to create order. Please try again.',
       })
     } finally {
       setIsLoading(false)

@@ -69,7 +69,7 @@ class ProgressiveFrictionService
     {
         try {
             $riskLevel = $riskAssessment['risk_level'];
-            $tenantId = $context['tenant_id'] ?? 'default';
+            $tenantId = $this->resolveTenantId($context['tenant_id'] ?? null);
             
             // Check if user is in cooling period
             $coolingPeriodCheck = $this->checkCoolingPeriod($context);
@@ -263,7 +263,7 @@ class ProgressiveFrictionService
     private function checkRateLimits(string $riskLevel, array $context): array
     {
         $trackingKey = $this->getTrackingKey($context);
-        $rateLimits = $this->getRateLimits($riskLevel, $context['tenant_id'] ?? 'default');
+        $rateLimits = $this->getRateLimits($riskLevel, $this->resolveTenantId($context['tenant_id'] ?? null));
         
         foreach ($rateLimits as $window => $limit) {
             $cacheKey = self::CACHE_PREFIX . "rate_limit:{$trackingKey}:{$window}";
@@ -761,6 +761,17 @@ class ProgressiveFrictionService
             $verifications[] = $verificationType;
             Cache::put($cacheKey, $verifications, self::VERIFICATION_CACHE_TTL);
         }
+    }
+
+    private function resolveTenantId(?string $tenantId = null): string
+    {
+        $resolvedTenantId = $tenantId ?? tenant('id');
+
+        if (!is_string($resolvedTenantId) || trim($resolvedTenantId) === '') {
+            throw new \RuntimeException('Tenant context is required for progressive friction controls');
+        }
+
+        return $resolvedTenantId;
     }
 
     private function checkVerificationCompletion(array $context): array

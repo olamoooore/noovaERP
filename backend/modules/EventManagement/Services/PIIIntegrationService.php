@@ -365,10 +365,12 @@ class PIIIntegrationService
 
     private function createBookingRecord(array $cleanBookingData): object
     {
+        $tenantId = $this->resolveTenantId($cleanBookingData['tenant_id'] ?? null);
+
         // This would integrate with the existing BookingService
         // For now, create a basic booking record
         $bookingId = DB::table('bookings')->insertGetId([
-            'tenant_id' => $cleanBookingData['tenant_id'] ?? tenant('id'),
+            'tenant_id' => $tenantId,
             'event_id' => $cleanBookingData['event_id'],
             'customer_id' => $cleanBookingData['customer_id'] ?? null,
             'booking_reference' => $cleanBookingData['booking_reference'] ?? 'BK-' . strtoupper(uniqid()),
@@ -440,5 +442,16 @@ class PIIIntegrationService
             ],
             'pii_fields_migrated' => array_keys(self::PII_FIELD_MAPPINGS['attendee']),
         ];
+    }
+
+    private function resolveTenantId(?string $tenantId = null): string
+    {
+        $resolvedTenantId = $tenantId ?? tenant('id');
+
+        if (!is_string($resolvedTenantId) || trim($resolvedTenantId) === '') {
+            throw new \RuntimeException('Tenant context is required for PII booking writes');
+        }
+
+        return $resolvedTenantId;
     }
 }
