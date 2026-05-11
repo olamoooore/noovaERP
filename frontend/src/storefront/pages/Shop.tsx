@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X, Search, Ticket, Package2 } from 'lucide-react';
+import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X, Search, Ticket, Package2, Store, Sparkles, Tag, Boxes } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { ProductCard } from '@/storefront/components/products/ProductCard';
 import { QuickViewModal } from '@/storefront/components/products/QuickViewModal';
@@ -466,107 +466,130 @@ const Shop = () => {
 
   return (
     <Layout>
-      <div className="container py-8 md:py-12">
-        <div className="mb-6 rounded-[24px] border border-border/60 bg-card/80 p-4 shadow-sm md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-display font-bold md:text-3xl">
-                  {headerTitle}
-                </h1>
-                <span className="rounded-full border border-border/60 bg-background px-3 py-1 text-sm text-muted-foreground">
-                  {resultSummary}
-                </span>
+      <div className="container py-6 md:py-10">
+        {/* Hero header */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-primary/15 via-accent/10 to-background mb-6 shadow-sm">
+          <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/20 blur-3xl" aria-hidden />
+          <div className="absolute -bottom-28 -left-16 h-72 w-72 rounded-full bg-accent/20 blur-3xl" aria-hidden />
+
+          <div className="relative px-5 py-6 md:px-8 md:py-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-background/80 text-primary shadow-sm backdrop-blur">
+                    <Store className="h-5 w-5" />
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Storefront
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <h1 className="text-3xl font-display font-bold md:text-4xl">
+                    {headerTitle}
+                  </h1>
+                  <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-sm text-muted-foreground backdrop-blur">
+                    {resultSummary}
+                  </span>
+                </div>
+
+                {eventCampaign ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 font-medium text-foreground">
+                      <Ticket className="h-3.5 w-3.5 text-primary" />
+                      Campaign: {eventCampaign}
+                    </span>
+                    <Link to={storefrontRoutes.events} className="font-medium text-primary hover:underline">
+                      ← Back to Events
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                    Merchandise, limited drops, and bundles — curated across campaigns.
+                  </p>
+                )}
               </div>
 
-              {eventCampaign ? (
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                  <span className="rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 font-medium text-foreground">
-                    Campaign: {eventCampaign}
-                  </span>
-                  <Link to={storefrontRoutes.events} className="font-medium text-primary hover:underline">
-                    Back to Events
-                  </Link>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Merchandise, limited drops, and bundles.
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to={storefrontRoutes.events} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+                  <Ticket className="h-4 w-4 mr-1.5" />
+                  Events
+                </Link>
+                {searchQuery && (
+                  <Button variant="ghost" size="sm" onClick={clearSearch}>
+                    <X className="mr-1.5 h-3.5 w-3.5" />
+                    Clear search
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {searchQuery && (
-              <Button
-                variant="link"
-                className="h-auto shrink-0 px-0 text-primary"
-                onClick={clearSearch}
-              >
-                <X className="mr-1 h-3 w-3" />
-                Clear search
-              </Button>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {SHOP_VIEWS.map((view) => (
-              <button
-                key={view.value}
-                type="button"
-                onClick={() => setShopViewParam(view.value)}
-                className={cn(
-                  'rounded-full border px-4 py-2 text-sm transition',
-                  shopView === view.value
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-border bg-background hover:border-primary/40 hover:text-foreground'
-                )}
-              >
-                {view.label}
-                <span className="ml-2 text-xs opacity-80">{shopViewCounts[view.value]}</span>
-              </button>
-            ))}
+            {/* View pills */}
+            <div className="mt-5 flex flex-wrap gap-2">
+              {SHOP_VIEWS.map((view) => {
+                const ViewIcon = view.value === 'all' ? Boxes : view.value === 'merchandise' ? Package2 : view.value === 'limited' ? Sparkles : Tag;
+                const isActive = shopView === view.value;
+                return (
+                  <button
+                    key={view.value}
+                    type="button"
+                    onClick={() => setShopViewParam(view.value)}
+                    className={cn(
+                      'group inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-all',
+                      isActive
+                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                        : 'border-border/60 bg-background/70 backdrop-blur hover:border-primary/40 hover:text-foreground'
+                    )}
+                  >
+                    <ViewIcon className="h-3.5 w-3.5" />
+                    <span className="font-medium">{view.label}</span>
+                    <span className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                      isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
+                    )}>
+                      {shopViewCounts[view.value]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-8">
+        <div className="flex gap-6 lg:gap-8">
           {/* Desktop Filters */}
-          <aside className="hidden lg:block w-64 shrink-0">
-            <div className="sticky top-24 glass max-h-[calc(100vh-7rem)] overflow-y-auto rounded-xl p-6">
-              <FilterPanel
-                selectedBrands={selectedBrands}
-                selectedTypes={selectedTypes}
-                selectedCollections={selectedCollections}
-                selectedTags={selectedTags}
-                onBrandChange={setSelectedBrands}
-                onTypeChange={setSelectedTypes}
-                onCollectionChange={setSelectedCollections}
-                onTagChange={setSelectedTags}
-                onClearAll={clearAllFilters}
-                availableBrands={availableBrands}
-              />
+          <aside className="hidden lg:block w-72 shrink-0">
+            <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between border-b border-border/60 bg-gradient-to-r from-primary/10 to-transparent px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-background/80 text-primary shadow-sm">
+                    <Filter className="h-4 w-4" />
+                  </span>
+                  <h3 className="font-semibold">Filters</h3>
+                </div>
+                <span className="text-xs text-muted-foreground">{resultSummary}</span>
+              </div>
+              <div className="max-h-[calc(100vh-13rem)] overflow-y-auto p-5">
+                <FilterPanel
+                  selectedBrands={selectedBrands}
+                  selectedTypes={selectedTypes}
+                  selectedCollections={selectedCollections}
+                  selectedTags={selectedTags}
+                  onBrandChange={setSelectedBrands}
+                  onTypeChange={setSelectedTypes}
+                  onCollectionChange={setSelectedCollections}
+                  onTagChange={setSelectedTags}
+                  onClearAll={clearAllFilters}
+                  availableBrands={availableBrands}
+                />
+              </div>
             </div>
           </aside>
 
           {/* Main Content */}
-          <div className="flex-1">
-            <div className="mb-6 rounded-3xl border border-border/60 bg-card/70 p-4 md:p-5">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                <div>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <h2 className="text-xl font-display font-bold text-foreground">{eventAwareTitle}</h2>
-                    <span className="rounded-full border border-border/60 bg-background px-3 py-1 text-sm text-muted-foreground">
-                      {visibleSummary}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 text-sm">
-                  <Link to={storefrontRoutes.events} className="font-medium text-primary hover:underline">
-                    Need tickets? Go to Events
-                  </Link>
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-center">
+          <div className="flex-1 min-w-0">
+            <div className="mb-6 rounded-2xl border border-border/60 bg-card/70 p-3 md:p-4 shadow-sm">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <Button
                   variant="outline"
                   className="h-10 shrink-0 lg:hidden"
@@ -580,13 +603,13 @@ const Shop = () => {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search products..."
+                    placeholder={`Search ${eventAwareTitle.toLowerCase()}...`}
                     value={searchInput}
                     onChange={(e) => {
                       setSearchInput(e.target.value);
                       handleSearch(e.target.value);
                     }}
-                    className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="h-10 w-full rounded-xl border border-input bg-background pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   {searchInput && (
                     <button
@@ -605,7 +628,7 @@ const Shop = () => {
                 <select
                   value={sortBy}
                   onChange={(e) => handleSortChange(e.target.value)}
-                  className="h-11 rounded-xl border border-input bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer xl:min-w-[190px]"
+                  className="h-10 rounded-xl border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer xl:min-w-[180px]"
                 >
                   <option value="name-asc">Name (A-Z)</option>
                   <option value="name-desc">Name (Z-A)</option>
@@ -614,21 +637,21 @@ const Shop = () => {
                   <option value="newest">Newest First</option>
                 </select>
 
-                <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border/60 bg-background px-4 cursor-pointer">
+                <label className="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border/60 bg-background px-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={showOutOfStock}
                     onChange={(e) => setShowOutOfStock(e.target.checked)}
                     className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                   />
-                  <span className="text-sm text-muted-foreground">Show out of stock</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Out of stock</span>
                 </label>
 
                 <div className="hidden items-center gap-1 rounded-xl bg-muted p-1 sm:flex">
                   <button
                     onClick={() => setGridSize('large')}
                     className={cn(
-                      'rounded-md p-2 transition-colors',
+                      'rounded-md p-1.5 transition-colors',
                       gridSize === 'large' ? 'bg-background shadow' : 'hover:bg-background/50'
                     )}
                     aria-label="Large grid"
@@ -638,7 +661,7 @@ const Shop = () => {
                   <button
                     onClick={() => setGridSize('small')}
                     className={cn(
-                      'rounded-md p-2 transition-colors',
+                      'rounded-md p-1.5 transition-colors',
                       gridSize === 'small' ? 'bg-background shadow' : 'hover:bg-background/50'
                     )}
                     aria-label="Small grid"
@@ -646,6 +669,13 @@ const Shop = () => {
                     <Grid className="h-4 w-4" />
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                <span>
+                  Showing <span className="font-semibold text-foreground">{visibleSummary}</span>
+                </span>
+                <span className="hidden sm:inline">{eventAwareTitle}</span>
               </div>
             </div>
 

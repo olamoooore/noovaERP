@@ -125,39 +125,46 @@ export const FilterPanel = ({
   };
 
   const hasFilters = selectedBrands.length > 0 || selectedTypes.length > 0 || selectedCollections.length > 0 || selectedTags.length > 0;
+  const activeCount = selectedBrands.length + selectedTypes.length + selectedCollections.length + selectedTags.length;
 
   return (
     <div className={cn("space-y-6", isMobile && "p-6")}>
       {/* Mobile Header */}
       {isMobile && (
         <div className="flex items-center justify-between pb-4 border-b border-border">
-          <h3 className="font-display font-bold text-lg">Filters</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-display font-bold text-lg">Filters</h3>
+            {activeCount > 0 && (
+              <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
+                {activeCount}
+              </span>
+            )}
+          </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
       )}
 
-      {/* Desktop Title - Aligned with search bar */}
-      {!isMobile && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-lg leading-10">Filters</h3>
-        </div>
-      )}
-
-      {/* Clear All */}
+      {/* Active filters summary + clear (desktop & mobile) */}
       {hasFilters && (
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" onClick={onClearAll}>
-            Clear All
+        <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
+          <span className="text-xs font-medium text-foreground">
+            <span className="text-primary">{activeCount}</span> active filter{activeCount === 1 ? '' : 's'}
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClearAll}>
+            Clear all
           </Button>
         </div>
       )}
 
       {/* Sort by Tag/Status */}
       <div>
-        <h4 className="font-medium mb-3">Sort by Tag</h4>
-        <div className="grid grid-cols-1 gap-2">
+        <div className="mb-3 flex items-center gap-2">
+          <Icon icon="solar:tag-horizontal-bold-duotone" className="h-4 w-4 text-primary" />
+          <h4 className="font-semibold text-sm uppercase tracking-wide">Status</h4>
+        </div>
+        <div className="grid grid-cols-1 gap-1.5">
           {[
             { value: 'preorder', label: 'Pre-Order', icon: 'solar:clock-circle-bold' },
             { value: 'new', label: 'New Arrival', icon: 'solar:star-bold' },
@@ -171,17 +178,20 @@ export const FilterPanel = ({
                 key={tag.value}
                 onClick={() => toggleTag(tag.value)}
                 className={cn(
-                  "w-full flex items-center gap-3 rounded-lg border p-2.5 text-left transition-all",
+                  "w-full flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-all",
                   isActive
-                    ? "border-primary bg-primary/5 text-foreground"
-                    : "border-border bg-background hover:bg-muted/40"
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-transparent bg-background hover:bg-muted/40 hover:border-border"
                 )}
               >
                 <Icon
-                  className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")}
+                  className={cn("h-4 w-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")}
                   icon={tag.icon}
                 />
-                <span className="text-sm font-medium">{tag.label}</span>
+                <span className="text-sm font-medium flex-1">{tag.label}</span>
+                {isActive && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                )}
               </button>
             );
           })}
@@ -191,67 +201,66 @@ export const FilterPanel = ({
       {/* Shop by Category */}
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h4 className="font-medium">Shop by Category</h4>
-          <span className="text-xs text-muted-foreground">{categoryItems.length} categories</span>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-background/70 p-2">
-          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-            {categoriesLoading ? (
-              <div className="flex items-center gap-2 rounded-xl px-3 py-4 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading categories...
-              </div>
-            ) : categoryItems.map((item) => {
-              const isActive = selectedTypes.includes(item.type);
-              return (
-                <button
-                  key={item.type}
-                  onClick={() => toggleType(item.type)}
-                  className={cn(
-                    "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
-                    isActive
-                      ? "border-primary bg-primary/5 text-foreground"
-                      : "border-border bg-background hover:bg-muted/40"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-lg border bg-muted/30",
-                      isActive ? "border-primary/30" : "border-border"
-                    )}
-                    aria-hidden="true"
-                  >
-                    <Icon
-                      className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground")}
-                      icon={item.icon}
-                    />
-                  </span>
-                  <span className="flex-1 overflow-hidden">
-                    <span className="block truncate text-sm font-medium">{item.label}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Browse {item.label.toLowerCase()}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <Icon icon="solar:widget-bold-duotone" className="h-4 w-4 text-primary" />
+            <h4 className="font-semibold text-sm uppercase tracking-wide">Category</h4>
           </div>
+          <span className="text-[10px] font-medium text-muted-foreground">{categoryItems.length}</span>
+        </div>
+        <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+          {categoriesLoading ? (
+            <div className="flex items-center gap-2 rounded-xl px-3 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading...
+            </div>
+          ) : categoryItems.map((item) => {
+            const isActive = selectedTypes.includes(item.type);
+            return (
+              <button
+                key={item.type}
+                onClick={() => toggleType(item.type)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-all",
+                  isActive
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-transparent bg-background hover:bg-muted/40 hover:border-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-md shrink-0",
+                    isActive ? "bg-primary/15 text-primary" : "bg-muted/60 text-muted-foreground"
+                  )}
+                  aria-hidden="true"
+                >
+                  <Icon className="h-4 w-4" icon={item.icon} />
+                </span>
+                <span className="block truncate text-sm font-medium flex-1">{item.label}</span>
+                {isActive && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Collections */}
       <div>
-        <h4 className="font-medium mb-3">Collection</h4>
-        <div className="flex flex-wrap gap-2">
+        <div className="mb-3 flex items-center gap-2">
+          <Icon icon="solar:bookmark-bold-duotone" className="h-4 w-4 text-primary" />
+          <h4 className="font-semibold text-sm uppercase tracking-wide">Collection</h4>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
           {COLLECTIONS.map((collection) => (
             <button
               key={collection}
               onClick={() => toggleCollection(collection)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200",
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-all border",
                 selectedCollections.includes(collection)
-                  ? "bg-secondary text-secondary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
               )}
             >
               {collection}
@@ -263,17 +272,20 @@ export const FilterPanel = ({
       {/* Brands / Artists */}
       {availableBrands && availableBrands.length > 0 && (
       <div>
-        <h4 className="font-medium mb-3">Artists</h4>
-        <div className="flex flex-wrap gap-2">
+        <div className="mb-3 flex items-center gap-2">
+          <Icon icon="solar:microphone-bold-duotone" className="h-4 w-4 text-primary" />
+          <h4 className="font-semibold text-sm uppercase tracking-wide">Artists</h4>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
           {availableBrands.map((brand) => (
             <button
               key={brand}
               onClick={() => toggleBrand(brand)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200",
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-all border",
                 selectedBrands.includes(brand)
-                  ? "bg-primary text-primary-foreground shadow-neon-magenta"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
               )}
             >
               {brand}
@@ -285,8 +297,8 @@ export const FilterPanel = ({
 
       {/* Mobile Apply Button */}
       {isMobile && (
-        <Button variant="neon" className="w-full mt-6" onClick={onClose}>
-          Apply Filters
+        <Button variant="neon" className="w-full mt-6 sticky bottom-0" onClick={onClose}>
+          Apply Filters{activeCount > 0 ? ` (${activeCount})` : ''}
         </Button>
       )}
     </div>

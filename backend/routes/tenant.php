@@ -38,6 +38,7 @@ Route::middleware([
         Route::get('/events', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'index']);
         Route::get('/events/{id}', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'show']);
         Route::post('/events/{id}/book', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'book']);
+        Route::post('/events/bookings/confirm-payment', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'confirmPayment']);
     });
 
     // Guest checkout (no login required for buying)

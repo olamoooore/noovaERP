@@ -50,6 +50,8 @@ class PaymentService
             'description' => $data['description'] ?? null,
             'metadata' => $data['metadata'] ?? [],
             'email' => $data['email'] ?? null,
+            'redirect_url' => $data['redirect_url'] ?? null,
+            'payment_methods' => $data['payment_methods'] ?? null,
         ]);
 
         if (!($result['success'] ?? false)) {

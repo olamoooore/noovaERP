@@ -192,6 +192,14 @@ export interface BookEventResponse {
   queue_number: string;
   event_title: string;
   email: string;
+  payment_required?: boolean;
+  gateway_name?: string | null;
+  payment_intent?: {
+    transaction_id?: string | null;
+    payment_url?: string | null;
+    client_secret?: string | null;
+    publishable_key?: string | null;
+  };
 }
 
 export async function fetchPublicEvents(): Promise<ApiEvent[]> {
@@ -200,13 +208,21 @@ export async function fetchPublicEvents(): Promise<ApiEvent[]> {
   return Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
 }
 
-export async function fetchPublicEvent(id: number): Promise<ApiEvent> {
+export async function fetchPublicEvent(id: string | number): Promise<ApiEvent> {
   const { data } = await storefrontApi.get(`/website-public/events/${id}`);
   return data.data ?? data;
 }
 
-export async function bookPublicEvent(eventId: number, payload: BookEventPayload): Promise<BookEventResponse> {
+export async function bookPublicEvent(eventId: string | number, payload: BookEventPayload): Promise<BookEventResponse> {
   const { data } = await storefrontApi.post(`/website-public/events/${eventId}/book`, payload);
+  return data.data ?? data;
+}
+
+export async function confirmPublicEventPayment(payload: {
+  booking_reference: string;
+  payment_intent_id: string;
+}): Promise<BookEventResponse> {
+  const { data } = await storefrontApi.post('/website-public/events/bookings/confirm-payment', payload);
   return data.data ?? data;
 }
 

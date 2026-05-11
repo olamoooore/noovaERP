@@ -21,6 +21,7 @@ export function mapApiEvent(apiEvent: ApiEvent): Event {
     price: apiEvent.price,
     spotsLeft: apiEvent.available_capacity,
     totalSpots: apiEvent.total_capacity,
+    isBookable: true,
     commerce: buildEventCommerce({
       title: apiEvent.title,
       description,

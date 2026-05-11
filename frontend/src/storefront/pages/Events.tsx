@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, MapPin, Users, Ticket } from 'lucide-react';
+import { Calendar, MapPin, Users, Ticket, Radio, Sparkles, Archive } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { Event, buildEventCommerce, getEventTimelineStatus, resolveEventEnd, type EventTimelineStatus } from '@/storefront/data/events';
 import { Button, buttonVariants } from '@/storefront/components/ui/button';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useStorefrontEvents } from '@/storefront/hooks/useEvents';
-import { bookPublicEvent } from '@/storefront/lib/api';
+import { bookPublicEvent, confirmPublicEventPayment } from '@/storefront/lib/api';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 import { cn } from '@/lib/utils';
 
@@ -46,23 +46,23 @@ const Countdown = ({ targetDate, large }: CountdownProps) => {
   }, [targetDate]);
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2">
       {Object.entries(timeLeft).map(([unit, value]) => (
-        <div key={unit} className="text-center">
+        <div key={unit} className="text-center flex-1">
           <div
-            className={`rounded-xl bg-muted flex items-center justify-center ${
-              large ? 'w-16 h-16 md:w-20 md:h-20' : 'w-14 h-14'
+            className={`rounded-lg bg-muted flex items-center justify-center ${
+              large ? 'w-16 h-16 md:w-20 md:h-20' : 'h-10'
             }`}
           >
             <span
               className={`font-display font-bold text-primary ${
-                large ? 'text-2xl md:text-3xl' : 'text-xl'
+                large ? 'text-2xl md:text-3xl' : 'text-base'
               }`}
             >
               {value.toString().padStart(2, '0')}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground mt-2 block capitalize">
+          <span className="text-[10px] text-muted-foreground mt-1 block capitalize">
             {unit}
           </span>
         </div>
@@ -135,6 +135,13 @@ const Events = () => {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [queueNumber, setQueueNumber] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<{
+    bookingReference: string;
+    queueNumber: string;
+    paymentUrl: string;
+    paymentIntentId: string;
+  } | null>(null);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const selectedEventCommerce = selectedEvent ? buildEventCommerceLinks(selectedEvent) : null;
 
   const eventSections = useMemo(() => {
@@ -159,10 +166,48 @@ const Events = () => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEvent) return;
+    if (!selectedEvent.isBookable) {
+      toast.error('Booking unavailable', {
+        description: 'This event is a storefront preview. Publish a live event in the backend to enable booking and payment.',
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      const response = await bookPublicEvent(parseInt(selectedEvent.id), formData);
+      const response = await bookPublicEvent(selectedEvent.id, formData);
+      const paymentIntent = response.payment_intent;
+
+      if (response.payment_required && paymentIntent?.payment_url && paymentIntent?.transaction_id) {
+        setPendingPayment({
+          bookingReference: response.booking_reference,
+          queueNumber: response.queue_number,
+          paymentUrl: paymentIntent.payment_url,
+          paymentIntentId: paymentIntent.transaction_id,
+        });
+
+        const width = 520;
+        const height = 760;
+        const left = window.screen.width / 2 - width / 2;
+        const top = window.screen.height / 2 - height / 2;
+        const paymentWindow = window.open(
+          paymentIntent.payment_url,
+          'EventPaymentWindow',
+          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+        );
+
+        if (!paymentWindow) {
+          toast.error('Popup blocked', {
+            description: 'Allow popups for this site, then use the payment link shown in the dialog.',
+          });
+        } else {
+          toast.success('Booking created', {
+            description: 'Complete payment in the payment window to confirm your event slot.',
+          });
+        }
+        return;
+      }
+
       const formatted = response.queue_number
         ? String(response.queue_number).padStart(4, '0')
         : String(Math.floor(Math.random() * 9000) + 1000);
@@ -183,138 +228,182 @@ const Events = () => {
     setSelectedEvent(null);
     setFormData({ name: '', email: '', phone: '' });
     setQueueNumber(null);
+    setPendingPayment(null);
+    setIsConfirmingPayment(false);
   };
+
+  const handleConfirmPayment = async (paymentIntentId?: string) => {
+    if (!pendingPayment) return;
+
+    setIsConfirmingPayment(true);
+    try {
+      const response = await confirmPublicEventPayment({
+        booking_reference: pendingPayment.bookingReference,
+        payment_intent_id: paymentIntentId ?? pendingPayment.paymentIntentId,
+      });
+
+      setQueueNumber(response.queue_number || pendingPayment.queueNumber);
+      setPendingPayment(null);
+      toast.success('Payment confirmed', {
+        description: `Your queue number is #${response.queue_number || pendingPayment.queueNumber}`,
+      });
+    } catch (err: any) {
+      if (err?.response?.status === 402) {
+        toast.message('Payment still processing', {
+          description: 'The gateway has not reported this payment as completed yet. Try again in a few seconds.',
+        });
+      } else {
+        const msg = err?.response?.data?.message || 'Failed to confirm payment.';
+        toast.error('Payment confirmation failed', { description: msg });
+      }
+    } finally {
+      setIsConfirmingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    const handlePaymentMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'hitpay_payment_complete') return;
+      if (!pendingPayment) return;
+
+      const paymentReference = typeof event.data.reference === 'string'
+        ? event.data.reference
+        : pendingPayment.paymentIntentId;
+
+      void handleConfirmPayment(paymentReference);
+    };
+
+    window.addEventListener('message', handlePaymentMessage);
+    return () => window.removeEventListener('message', handlePaymentMessage);
+  }, [pendingPayment]);
 
   const renderEventCard = (event: Event, index: number, timeline: EventTimelineStatus) => {
     const commerce = buildEventCommerceLinks(event);
+    const isBookable = event.isBookable === true;
     const timelineLabel = timeline === 'current' ? 'Live Now' : timeline === 'upcoming' ? 'Upcoming' : 'Archive';
     const countdownTarget = timeline === 'current' ? resolveEventEnd(event) : event.date;
-    const countdownLabel = timeline === 'current' ? 'Event ends in:' : 'Event starts in:';
+    const countdownLabel = timeline === 'current' ? 'Ends in' : 'Starts in';
+    const timelineBadgeClass =
+      timeline === 'current'
+        ? 'bg-emerald-500 text-white border-0'
+        : timeline === 'past'
+          ? 'bg-stone-900 text-white border-0'
+          : 'bg-primary text-primary-foreground border-0';
 
     return (
       <div
         key={event.id}
-        className="group glass-strong rounded-2xl overflow-hidden card-hover animate-fade-in"
-        style={{ animationDelay: `${index * 100}ms` }}
+        className="group glass-strong rounded-2xl overflow-hidden card-hover animate-fade-in flex flex-col h-full"
+        style={{ animationDelay: `${index * 80}ms` }}
       >
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="relative aspect-video md:aspect-auto overflow-hidden">
-            <img
-              src={event.image}
-              alt={event.title}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-background/60 to-transparent md:hidden" />
+        <div className="relative aspect-[16/10] overflow-hidden">
+          <img
+            src={event.image}
+            alt={event.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/10 to-transparent" />
 
-            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-              <Badge className={timeline === 'current' ? 'bg-emerald-500 text-white border-0' : timeline === 'past' ? 'bg-stone-900 text-white border-0' : 'bg-primary text-primary-foreground border-0'}>
-                {timelineLabel}
-              </Badge>
+          <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+            <Badge className={timelineBadgeClass}>{timelineLabel}</Badge>
+          </div>
+          <div className="absolute right-3 top-3">
+            <Badge variant={event.spotsLeft < 50 ? 'limited' : 'default'}>
+              {timeline === 'past' ? 'Closed' : `${event.spotsLeft} left`}
+            </Badge>
+          </div>
+
+          <div className="absolute left-3 right-3 bottom-3">
+            <h2 className="text-lg md:text-xl font-display font-bold text-white drop-shadow-md line-clamp-2 group-hover:text-primary transition-colors">
+              {event.title}
+            </h2>
+          </div>
+        </div>
+
+        <div className="p-5 flex flex-col flex-1">
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+            {event.description}
+          </p>
+
+          {timeline !== 'past' && (
+            <div className="mb-4 rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-2">
+                {countdownLabel}
+              </p>
+              <Countdown targetDate={countdownTarget} />
             </div>
+          )}
 
-            <div className="absolute top-4 right-4">
-              <Badge variant={event.spotsLeft < 50 ? 'limited' : 'default'}>
-                {timeline === 'past' ? 'Campaign Closed' : `${event.spotsLeft} spots left`}
-              </Badge>
+          <div className="space-y-2 text-xs text-muted-foreground mb-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary shrink-0" />
+              <span className="truncate">
+                {event.date.toLocaleDateString('en-SG', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary shrink-0" />
+              <span className="truncate">{event.venue}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary shrink-0" />
+              <span className="truncate">
+                {timeline === 'past'
+                  ? `${event.totalSpots - event.spotsLeft} attendees`
+                  : `${event.spotsLeft} / ${event.totalSpots} spots`}
+              </span>
             </div>
           </div>
 
-          <div className="p-6 md:p-8 flex flex-col">
-            <h2 className="text-2xl md:text-3xl font-display font-bold mb-3 group-hover:text-primary transition-colors">
-              {event.title}
-            </h2>
-            <p className="text-muted-foreground mb-6">
-              {event.description}
-            </p>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Link
+              to={commerce.merchUrl}
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'flex-1 min-w-[120px]')}
+            >
+              Shop Merch
+            </Link>
+            <Link
+              to={commerce.bundleUrl}
+              className={cn(buttonVariants({ variant: 'glass', size: 'sm' }), 'flex-1 min-w-[120px]')}
+            >
+              {commerce.linkedBundleCount > 0 ? 'View Bundles' : 'Build Bundle'}
+            </Link>
+          </div>
 
-            {timeline !== 'past' && (
-              <div className="mb-6">
-                <p className="text-sm text-muted-foreground mb-3">{countdownLabel}</p>
-                <Countdown targetDate={countdownTarget} />
-              </div>
+          <div className="mt-auto flex items-center justify-between gap-3 pt-3 border-t border-border/60">
+            <span className="text-xl font-display font-bold">
+              {event.price === 0 ? 'FREE' : `SGD ${event.price.toFixed(2)}`}
+            </span>
+            {timeline === 'past' ? (
+              <Button variant="outline" size="sm" disabled>
+                Closed
+              </Button>
+            ) : (
+              <Button
+                variant="hero"
+                size="sm"
+                disabled={!isBookable}
+                title={!isBookable ? 'Booking is only available for published backend events.' : undefined}
+                onClick={() => {
+                  if (!isBookable) {
+                    return;
+                  }
+                  setSelectedEvent(event);
+                  setShowRegistration(true);
+                }}
+              >
+                <Ticket className="h-4 w-4 mr-1.5" />
+                {isBookable ? 'Register' : 'Preview Only'}
+              </Button>
             )}
-
-            <div className="space-y-3 text-sm text-muted-foreground mb-6">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-primary" />
-                <span>
-                  {event.date.toLocaleDateString('en-SG', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <MapPin className="h-5 w-5 text-primary" />
-                <span>{event.venue}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <Users className="h-5 w-5 text-primary" />
-                <span>
-                  {timeline === 'past'
-                    ? `${event.totalSpots - event.spotsLeft} attendees recorded`
-                    : `${event.spotsLeft} / ${event.totalSpots} spots available`}
-                </span>
-              </div>
-            </div>
-
-            <div className="mb-6 rounded-2xl border border-border/60 bg-background/60 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Event Commerce</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {commerce.linkedBundleCount > 0
-                      ? `${commerce.linkedBundleCount} linked bundle package${commerce.linkedBundleCount === 1 ? '' : 's'} are already published for this event.`
-                      : commerce.brand
-                        ? `Shop ${commerce.brand} merchandise or open the bundle builder for this event campaign.`
-                        : 'Jump into the merch shop or bundle builder to continue this event journey beyond ticket registration.'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    to={commerce.merchUrl}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'min-w-[140px]')}
-                  >
-                    Shop Merch
-                  </Link>
-                  <Link
-                    to={commerce.bundleUrl}
-                    className={cn(buttonVariants({ variant: 'glass', size: 'sm' }), 'min-w-[140px]')}
-                  >
-                    {commerce.linkedBundleCount > 0 ? 'View Live Bundles' : 'Build Bundle'}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-auto flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <span className="text-3xl font-display font-bold">
-                  {event.price === 0 ? 'FREE' : `SGD ${event.price.toFixed(2)}`}
-                </span>
-              </div>
-              {timeline === 'past' ? (
-                <Button variant="outline" disabled>
-                  Registration Closed
-                </Button>
-              ) : (
-                <Button
-                  variant="hero"
-                  onClick={() => {
-                    setSelectedEvent(event);
-                    setShowRegistration(true);
-                  }}
-                >
-                  <Ticket className="h-5 w-5 mr-2" />
-                  Register Now
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -324,27 +413,71 @@ const Events = () => {
   return (
     <Layout>
       <div className="container py-8 md:py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">
-            Event <span className="gradient-text">Campaigns</span>
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
-            Browse live campaigns, plan for upcoming launches, and revisit past event archives without mixing every event into a single bucket.
-          </p>
+        {/* Hero header */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-primary/15 via-accent/10 to-background mb-10">
+          <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/20 blur-3xl" aria-hidden />
+          <div className="absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-accent/20 blur-3xl" aria-hidden />
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3 text-left">
-            {(['current', 'upcoming', 'past'] as EventTimelineStatus[]).map((timeline) => (
-              <div key={timeline} className="rounded-2xl border border-border/60 bg-card/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  {SECTION_META[timeline].title}
-                </p>
-                <p className="mt-2 text-3xl font-display font-bold text-foreground">
-                  {eventSections[timeline].length}
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">{SECTION_META[timeline].description}</p>
-              </div>
-            ))}
+          <div className="relative px-6 py-10 md:px-12 md:py-14 text-center">
+            <Badge className="mb-4 bg-background/70 text-foreground border border-border/60 backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
+              Campaign Hub
+            </Badge>
+            <h1 className="text-4xl md:text-6xl font-display font-bold mb-4">
+              Event <span className="gradient-text">Campaigns</span>
+            </h1>
+            <p className="text-base md:text-lg text-muted-foreground max-w-3xl mx-auto">
+              Browse live campaigns, plan for upcoming launches, and revisit past event archives — cleanly separated so nothing gets lost in one bucket.
+            </p>
           </div>
+        </div>
+
+        {/* Stat tiles */}
+        <div className="grid gap-4 sm:grid-cols-3 mb-12">
+          {(['current', 'upcoming', 'past'] as EventTimelineStatus[]).map((timeline) => {
+              const meta = {
+                current: { Icon: Radio, accent: 'from-emerald-500/20 to-emerald-500/0', dot: 'bg-emerald-500', text: 'text-emerald-500' },
+                upcoming: { Icon: Sparkles, accent: 'from-primary/20 to-primary/0', dot: 'bg-primary', text: 'text-primary' },
+                past: { Icon: Archive, accent: 'from-stone-500/20 to-stone-500/0', dot: 'bg-stone-500', text: 'text-stone-400' },
+              }[timeline];
+              const IconCmp = meta.Icon;
+              const count = eventSections[timeline].length;
+
+              return (
+                <a
+                  key={timeline}
+                  href={`#section-${timeline}`}
+                  className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-5 text-left transition-all hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5"
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent} opacity-60 group-hover:opacity-100 transition-opacity`} aria-hidden />
+                  <div className="relative">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl bg-background/80 ${meta.text} shadow-sm`}>
+                        <IconCmp className="h-5 w-5" />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`h-2 w-2 rounded-full ${meta.dot} ${timeline === 'current' ? 'animate-pulse' : ''}`} />
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {timeline === 'current' ? 'Live' : timeline === 'upcoming' ? 'Soon' : 'Archived'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-4xl font-display font-bold text-foreground leading-none">{count}</p>
+                      <p className="text-sm text-muted-foreground">event{count === 1 ? '' : 's'}</p>
+                    </div>
+
+                    <p className="mt-2 text-sm font-semibold text-foreground">
+                      {SECTION_META[timeline].title}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                      {SECTION_META[timeline].description}
+                    </p>
+                  </div>
+                </a>
+              );
+            })}
         </div>
 
         <div className="space-y-12">
@@ -356,7 +489,7 @@ const Events = () => {
             </div>
           ) : (
             (['current', 'upcoming', 'past'] as EventTimelineStatus[]).map((timeline) => (
-              <section key={timeline} className="space-y-6">
+              <section key={timeline} id={`section-${timeline}`} className="space-y-6 scroll-mt-24">
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
                     <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">
@@ -372,7 +505,7 @@ const Events = () => {
                 </div>
 
                 {eventSections[timeline].length > 0 ? (
-                  <div className="space-y-8">
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {eventSections[timeline].map((event, index) => renderEventCard(event, index, timeline))}
                   </div>
                 ) : (
@@ -435,6 +568,36 @@ const Events = () => {
                 Done
               </Button>
             </div>
+          ) : pendingPayment ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                <p className="text-sm font-semibold text-foreground">Booking created. Payment required.</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Finish payment in the popup window. When the gateway redirects back, this dialog will confirm the payment automatically.
+                </p>
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    variant="neon"
+                    type="button"
+                    onClick={() => window.open(pendingPayment.paymentUrl, 'EventPaymentWindow', 'width=520,height=760,scrollbars=yes')}
+                  >
+                    Open Payment Window
+                  </Button>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => handleConfirmPayment()}
+                    disabled={isConfirmingPayment}
+                  >
+                    {isConfirmingPayment ? 'Checking payment...' : 'I have completed payment'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+                Queue number reserved for this booking: <span className="font-semibold text-foreground">#{pendingPayment.queueNumber}</span>
+              </div>
+            </div>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
@@ -473,8 +636,8 @@ const Events = () => {
                 <span className="font-display font-bold text-lg">
                   {selectedEvent?.price === 0 ? 'FREE' : `SGD ${selectedEvent?.price.toFixed(2)}`}
                 </span>
-                <Button variant="neon" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Registering...' : 'Complete Registration'}
+                <Button variant="neon" type="submit" disabled={isSubmitting || isConfirmingPayment}>
+                  {isSubmitting ? 'Creating booking...' : 'Continue to Payment'}
                 </Button>
               </div>
             </form>

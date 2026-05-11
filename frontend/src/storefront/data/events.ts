@@ -20,6 +20,7 @@ export interface Event {
   price: number;
   spotsLeft: number;
   totalSpots: number;
+  isBookable?: boolean;
   commerce?: EventCommerce;
 }
 
@@ -71,6 +72,7 @@ export const EVENTS: Event[] = [
     price: 199.00,
     spotsLeft: 127,
     totalSpots: 500,
+    isBookable: false,
     commerce: {
       brand: 'SEVENTEEN',
       merchType: 'Merchandise',
@@ -89,6 +91,7 @@ export const EVENTS: Event[] = [
     price: 15.00,
     spotsLeft: 342,
     totalSpots: 400,
+    isBookable: false,
     commerce: {
       merchType: 'Merchandise',
       merchSearch: 'night market merchandise',
@@ -106,6 +109,7 @@ export const EVENTS: Event[] = [
     price: 0,
     spotsLeft: 18,
     totalSpots: 30,
+    isBookable: false,
     commerce: {
       merchType: 'Photocard',
       merchSearch: 'album unboxing photocard',
