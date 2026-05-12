@@ -55,6 +55,9 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
         Route::get('/adjustment-reasons', [StockController::class, 'adjustmentReasons']);
         Route::get('/low-stock', [StockController::class, 'lowStock']);
         Route::get('/out-of-stock', [StockController::class, 'outOfStock']);
+        Route::post('/in', [StockController::class, 'stockIn']);
+        Route::post('/out', [StockController::class, 'stockOut']);
+        Route::post('/adjust', [StockController::class, 'adjust']);
         Route::post('/check-availability', [StockController::class, 'checkAvailability']);
         Route::put('/level/{productId}/{warehouseId}', [StockController::class, 'updateStockLevel']);
     });

@@ -6,12 +6,20 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Services\WebOrderPostingService;
+use Modules\Ecommerce\Services\WebOrderEventReservationService;
+use Modules\EventManagement\Models\Booking;
 use Modules\PaymentGateway\Services\PaymentService;
 
 class WebOrderController extends Controller
 {
+    public function __construct(
+        private readonly WebOrderEventReservationService $webOrderEventReservationService,
+    ) {
+    }
+
     /**
      * Get order details for guest (by token)
      */
@@ -215,6 +223,7 @@ class WebOrderController extends Controller
         }
         if ($newStatus === 'cancelled') {
             $this->reversePostingForCancellation($order, 'WebOrderController::updateStatus');
+            $this->webOrderEventReservationService->releaseForOrder($order, 'Order cancelled by admin');
             // Could also trigger refund if paid
             if ($order->payment_status === 'paid') {
                 $updateData['payment_status'] = WebOrder::PAYMENT_STATUS_REFUNDED;
@@ -257,6 +266,7 @@ class WebOrderController extends Controller
         }
 
         $this->reversePostingForCancellation($order, 'WebOrderController::cancelOrder');
+        $this->webOrderEventReservationService->releaseForOrder($order, 'Order cancelled by customer');
 
         $order->update([
             'status' => 'cancelled',
@@ -362,6 +372,10 @@ class WebOrderController extends Controller
         ]);
 
         try {
+            $this->webOrderEventReservationService->ensureActiveReservations($order);
+
+            $frontendOrigin = $this->resolveFrontendOrigin($request);
+
             $paymentService = app(PaymentService::class);
 
             $paymentIntent = $paymentService->createIntent([
@@ -370,6 +384,8 @@ class WebOrderController extends Controller
                 'description' => "Web Order {$order->order_number} (retry)",
                 'email' => $order->email,
                 'gateway_id' => $validated['gateway_id'] ?? $request->input('gateway_id'),
+                'redirect_url' => $frontendOrigin . '/payment/callback',
+                'cancel_url' => $frontendOrigin . '/store/checkout',
                 'metadata' => [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
@@ -409,6 +425,25 @@ class WebOrderController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function resolveFrontendOrigin(Request $request): string
+    {
+        $origin = trim((string) $request->headers->get('origin', ''));
+        if ($origin !== '') {
+            return rtrim($origin, '/');
+        }
+
+        $referer = trim((string) $request->headers->get('referer', ''));
+        if ($referer !== '') {
+            $parts = parse_url($referer);
+            if (!empty($parts['scheme']) && !empty($parts['host'])) {
+                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+                return rtrim($parts['scheme'] . '://' . $parts['host'] . $port, '/');
+            }
+        }
+
+        return rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/');
     }
 
     /**
@@ -452,7 +487,52 @@ class WebOrderController extends Controller
             'paid_at' => $order->paid_at?->toISOString(),
             'shipped_at' => $order->shipped_at?->toISOString(),
             'delivered_at' => $order->delivered_at?->toISOString(),
+            'event_bookings' => $this->loadEventBookingsForOrder($order),
         ];
+    }
+
+    private function loadEventBookingsForOrder(WebOrder $order): array
+    {
+        if (!Schema::hasTable('bookings')) {
+            return [];
+        }
+
+        try {
+            $bookings = Booking::with(['event', 'tickets.attendee'])
+                ->where('booking_reference', 'like', sprintf('WEB%dEV%%', $order->id))
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load event bookings for web order', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+
+        return $bookings->map(function (Booking $booking) {
+            $event = $booking->event;
+            $eventDate = $event?->event_date ?? $event?->start_date ?? null;
+
+            return [
+                'id' => $booking->id,
+                'booking_reference' => $booking->booking_reference,
+                'state' => $booking->state,
+                'event' => $event ? [
+                    'id' => $event->id,
+                    'title' => $event->title,
+                    'venue' => $event->venue,
+                    'event_date' => $eventDate ? \Carbon\Carbon::parse($eventDate)->toIso8601String() : null,
+                ] : null,
+                'ticket_count' => $booking->tickets->count(),
+                'tickets' => $booking->tickets->map(fn ($ticket) => [
+                    'id' => $ticket->id,
+                    'ticket_code' => $ticket->ticket_code,
+                    'status' => $ticket->status,
+                    'issued_at' => $ticket->issued_at?->toIso8601String(),
+                    'attendee_name' => $ticket->attendee?->attendee_name,
+                ])->values()->all(),
+            ];
+        })->values()->all();
     }
 
     private function normalizeShippingMethod(mixed $shippingMethod, float $shippingCost): ?array

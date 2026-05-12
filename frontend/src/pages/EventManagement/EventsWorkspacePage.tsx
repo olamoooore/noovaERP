@@ -225,7 +225,7 @@ const EventsWorkspacePage: React.FC = () => {
     managedCount: mergedEvents.length,
     liveCount: mergedEvents.filter((event) => event.inPublicCatalog).length,
     bookingCount: dashboardData?.bookings.length ?? 0,
-    ticketCount: dashboardData?.tickets.length ?? 0,
+    ticketCount: dashboardData?.bookings.reduce((sum, booking: any) => sum + Number(booking.ticket_count ?? booking.tickets?.length ?? 0), 0) ?? 0,
   }), [dashboardData, mergedEvents]);
 
   const merchandiseProductOptions = useMemo(
@@ -528,7 +528,7 @@ const EventsWorkspacePage: React.FC = () => {
           <TabsList className="grid w-full grid-cols-3 bg-white border border-stone-200 rounded-2xl p-1 h-auto">
             <TabsTrigger value="manage" className="rounded-xl py-3">Manage Events</TabsTrigger>
             <TabsTrigger value="upcoming" className="rounded-xl py-3">Upcoming Events</TabsTrigger>
-            <TabsTrigger value="bookings" className="rounded-xl py-3">My Bookings</TabsTrigger>
+            <TabsTrigger value="bookings" className="rounded-xl py-3">Bookings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="manage" className="space-y-6">
@@ -790,6 +790,12 @@ const EventsWorkspacePage: React.FC = () => {
                             <BodyText variant="muted" className="text-sm mt-1">
                               Ref: {detail.booking_reference ?? `#${booking.id}`}
                             </BodyText>
+                            {detail.tickets?.length > 0 && (
+                              <BodyText variant="muted" className="text-xs mt-1 font-mono">
+                                Ticket ID: {detail.tickets[0].ticket_code}
+                                {detail.tickets.length > 1 ? ` +${detail.tickets.length - 1} more` : ''}
+                              </BodyText>
+                            )}
                           </div>
                           <EnhancedBadge variant="status" color={getSemanticColor(booking.status, 'status')} size="sm">
                             {booking.status}
@@ -820,6 +826,10 @@ const EventsWorkspacePage: React.FC = () => {
                             <span className="font-semibold text-stone-900">
                               {booking.total_amount === 0 ? 'FREE' : `SGD ${Number(booking.total_amount).toFixed(2)}`}
                             </span>
+                          </div>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-stone-500">Tickets</span>
+                            <span className="font-semibold text-stone-900">{detail.ticket_count ?? detail.tickets?.length ?? 0}</span>
                           </div>
                         </div>
 

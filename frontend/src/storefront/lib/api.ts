@@ -176,8 +176,21 @@ export interface ApiEvent {
   total_spots: number;
   status: string;
   is_sold_out: boolean;
+  ticket_product_id?: number | null;
   merchandise_products?: ApiLinkedEventProduct[];
   bundle_products?: ApiLinkedEventProduct[];
+}
+
+export interface PrepareEventCheckoutResponse {
+  event_id: number;
+  ticket_product_id: number;
+  checkout_path: string;
+  product: {
+    id: number;
+    name: string;
+    price: number;
+    image: string | null;
+  };
 }
 
 export interface BookEventPayload {
@@ -210,6 +223,11 @@ export async function fetchPublicEvents(): Promise<ApiEvent[]> {
 
 export async function fetchPublicEvent(id: string | number): Promise<ApiEvent> {
   const { data } = await storefrontApi.get(`/website-public/events/${id}`);
+  return data.data ?? data;
+}
+
+export async function preparePublicEventCheckout(id: string | number): Promise<PrepareEventCheckoutResponse> {
+  const { data } = await storefrontApi.post(`/website-public/events/${id}/prepare-checkout`);
   return data.data ?? data;
 }
 

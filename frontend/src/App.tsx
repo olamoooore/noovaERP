@@ -160,6 +160,7 @@ const PaymentCallbackPage = lazy(() => import('@/pages/PaymentCallbackPage'))
 // Web Shop Customer Portal
 const PortalLayout = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.PortalLayout })))
 const CustomerPortalDashboardPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.DashboardPage })))
+const TicketsPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.TicketsPage })))
 const OrdersListPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrdersListPage })))
 const OrderDetailPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrderDetailPage })))
 const ProfilePage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.ProfilePage })))
@@ -452,6 +453,7 @@ function App() {
             {/* Web Shop Customer Portal - uses its own WebCustomerAuth, NOT admin auth */}
             <Route path="/web-shop/account" element={<PortalLayout />}>
               <Route index element={<CustomerPortalDashboardPage />} />
+              <Route path="tickets" element={<TicketsPage />} />
               <Route path="orders" element={<OrdersListPage />} />
               <Route path="orders/:id" element={<OrderDetailPage />} />
               <Route path="profile" element={<ProfilePage />} />

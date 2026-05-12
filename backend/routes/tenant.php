@@ -37,6 +37,7 @@ Route::middleware([
         // Public event routes — no auth required (storefront /store/events)
         Route::get('/events', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'index']);
         Route::get('/events/{id}', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'show']);
+        Route::post('/events/{id}/prepare-checkout', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'prepareCheckout']);
         Route::post('/events/{id}/book', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'book']);
         Route::post('/events/bookings/confirm-payment', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'confirmPayment']);
     });
@@ -82,6 +83,7 @@ Route::middleware([
         Route::post('/orders/{id}/cancel', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'cancelOrder']);
         Route::post('/orders/{id}/retry-payment', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'retryPayment']);
         Route::get('/orders/{id}/invoice', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'getInvoice']);
+        Route::get('/tickets', [\Modules\EventManagement\Http\Controllers\WebCustomerTicketController::class, 'index']);
         
         // Loyalty routes for web shop customers
         Route::get('/loyalty/balance', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'balance']);

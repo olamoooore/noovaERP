@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Ecommerce\Models\WebOrder;
+use Modules\Ecommerce\Services\WebOrderNotificationService;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
@@ -13,6 +15,11 @@ use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 
 class PaymentWebhookController extends Controller
 {
+    public function __construct(
+        private readonly WebOrderNotificationService $webOrderNotificationService,
+    ) {
+    }
+
     /**
      * ResolveTenantFromWebhook must initialize tenant context before any
      * webhook reaches this controller. Fail closed if that canonical
@@ -213,6 +220,14 @@ class PaymentWebhookController extends Controller
                 'processed_at' => $transaction->processed_at ?? now(),
                 'error_message' => null,
             ]);
+
+            $webOrderId = $mergedMetadata['order_id'] ?? null;
+            if ($webOrderId) {
+                $webOrder = WebOrder::find($webOrderId);
+                if ($webOrder) {
+                    $this->webOrderNotificationService->dispatchPaidOrderNotifications($webOrder);
+                }
+            }
 
             // Send payment receipt email
             $this->sendPaymentReceipt($transaction->fresh());

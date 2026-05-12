@@ -51,6 +51,7 @@ class PaymentService
             'metadata' => $data['metadata'] ?? [],
             'email' => $data['email'] ?? null,
             'redirect_url' => $data['redirect_url'] ?? null,
+            'cancel_url' => $data['cancel_url'] ?? null,
             'payment_methods' => $data['payment_methods'] ?? null,
         ]);
 

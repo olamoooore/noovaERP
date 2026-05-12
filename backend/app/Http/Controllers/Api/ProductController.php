@@ -11,11 +11,25 @@ use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Modules\Inventory\Services\InventoryService;
 
 class ProductController extends Controller
 {
+    private function removeUnsupportedProductColumns(array $payload): array
+    {
+        if (!Schema::hasColumn('products', 'is_merchandise')) {
+            unset($payload['is_merchandise']);
+        }
+
+        if (!Schema::hasColumn('products', 'show_on_website')) {
+            unset($payload['show_on_website']);
+        }
+
+        return $payload;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $warehouseFilter = $request->filled('warehouse_id') ? (int) $request->input('warehouse_id') : null;
@@ -209,6 +223,7 @@ class ProductController extends Controller
         $variants = $validated['variants'] ?? null;
 
         unset($validated['feature_values'], $validated['custom_field_values'], $validated['variants'], $validated['stock_quantity']);
+        $validated = $this->removeUnsupportedProductColumns($validated);
 
         $product = DB::transaction(function () use ($validated, $featureValues, $customFieldValues, $variants) {
             $product = Product::create($validated);
@@ -635,6 +650,7 @@ class ProductController extends Controller
         $customFieldValues = $validated['custom_field_values'] ?? null;
         $suppliersData = $validated['suppliers'] ?? null;
         unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers'], $validated['stock_quantity']);
+        $validated = $this->removeUnsupportedProductColumns($validated);
 
         DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData) {
             $product->update($validated);

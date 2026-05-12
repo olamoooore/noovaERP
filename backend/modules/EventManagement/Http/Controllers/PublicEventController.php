@@ -12,6 +12,7 @@ use App\Mail\BookingConfirmation;
 use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\Booking;
 use Modules\EventManagement\Services\BookingService;
+use Modules\EventManagement\Services\EventTicketCheckoutService;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentService;
@@ -25,6 +26,7 @@ class PublicEventController extends Controller
     public function __construct(
         private readonly PaymentService $paymentService,
         private readonly BookingService $bookingService,
+        private readonly EventTicketCheckoutService $eventTicketCheckoutService,
     ) {}
 
     /**
@@ -248,6 +250,49 @@ class PublicEventController extends Controller
     }
 
     /**
+     * POST /api/v1/website-public/events/{id}/prepare-checkout
+     * Ensures the event has a ticket product that can flow through webshop checkout.
+     */
+    public function prepareCheckout(string $id): JsonResponse
+    {
+        try {
+            if (!ctype_digit($id)) {
+                return response()->json(['message' => 'Event not found'], 404);
+            }
+
+            $event = Event::where('status', 'published')->findOrFail((int) $id);
+
+            if ((int) ($event->available_capacity ?? 0) <= 0) {
+                return response()->json(['message' => 'Sorry, this event is sold out.'], 422);
+            }
+
+            $product = $this->eventTicketCheckoutService->prepareCheckoutProduct($event);
+
+            return response()->json([
+                'data' => [
+                    'event_id' => $event->id,
+                    'ticket_product_id' => $product->id,
+                    'checkout_path' => '/checkout',
+                    'product' => [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'price' => (float) $product->price,
+                        'image' => $product->image,
+                    ],
+                ],
+                'message' => 'Event ticket is ready for checkout.',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['message' => 'Event not found'], 404);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to prepare checkout',
+                'error' => config('app.debug') ? $e->getMessage() : 'Server error',
+            ], 500);
+        }
+    }
+
+    /**
      * POST /api/v1/website-public/events/bookings/confirm-payment
      * Confirms a public event booking payment after gateway completion.
      */
@@ -381,6 +426,7 @@ class PublicEventController extends Controller
             'is_sold_out'        => ($event->available_capacity ?? 1) <= 0,
             'merchandise_products' => $supportsEventProductLinks ? $this->formatLinkedProducts($event->merchandiseProducts) : [],
             'bundle_products'      => $supportsEventProductLinks ? $this->formatLinkedProducts($event->bundleProducts) : [],
+            'ticket_product_id'    => $event->ticket_product_id,
         ];
     }
 

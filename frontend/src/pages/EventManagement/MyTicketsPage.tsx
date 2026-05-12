@@ -47,8 +47,8 @@ const MyTicketsPage: React.FC = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <Heading1 className="text-2xl md:text-3xl mb-2">My Tickets</Heading1>
-        <BodyText variant="muted">View your tickets and access QR codes for check-in</BodyText>
+        <Heading1 className="text-2xl md:text-3xl mb-2">Tickets</Heading1>
+        <BodyText variant="muted">View issued ticket IDs, event dates, venues, and QR details for check-in</BodyText>
       </div>
 
       {isLoading && (
@@ -86,7 +86,8 @@ const MyTicketsPage: React.FC = () => {
                   const eventDate = booking.event_date ?? booking.event_start;
                   const amount    = booking.total_amount ?? booking.amount ?? 0;
                   const currency  = booking.currency ?? 'SGD';
-                  const ref       = booking.booking_reference ?? `#${booking.id}`;
+                  const tickets   = Array.isArray(booking.tickets) ? booking.tickets : [];
+                  const ref       = tickets[0]?.ticket_code ?? booking.booking_reference ?? `#${booking.id}`;
 
                   return (
                     <Card
@@ -140,6 +141,7 @@ const MyTicketsPage: React.FC = () => {
                               {amount === 0 ? 'FREE' : `${currency} ${Number(amount).toFixed(2)}`}
                             </p>
                             <p className="text-xs text-muted-foreground">General Admission</p>
+                            <p className="text-xs text-muted-foreground">{tickets.length} issued ticket{tickets.length === 1 ? '' : 's'}</p>
                           </div>
                           <Button size="sm" variant="outline" className="flex items-center gap-2">
                             <QrCode className="h-4 w-4" />
@@ -178,8 +180,18 @@ const MyTicketsPage: React.FC = () => {
               </div>
 
               <p className="font-mono text-sm mb-1 font-bold">
-                {selectedTicket.booking_reference ?? `#${selectedTicket.id}`}
+                {selectedTicket.tickets?.[0]?.ticket_code ?? selectedTicket.booking_reference ?? `#${selectedTicket.id}`}
               </p>
+              {Array.isArray(selectedTicket.tickets) && selectedTicket.tickets.length > 1 && (
+                <div className="mb-4 rounded-lg border p-3 text-left space-y-2">
+                  {selectedTicket.tickets.map((ticket: any) => (
+                    <div key={ticket.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-mono font-semibold">{ticket.ticket_code}</span>
+                      <span className="text-muted-foreground">{ticket.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {selectedTicket.event_date && (
                 <p className="text-xs text-muted-foreground mb-4">
                   {format(new Date(selectedTicket.event_date), 'PPP p')}

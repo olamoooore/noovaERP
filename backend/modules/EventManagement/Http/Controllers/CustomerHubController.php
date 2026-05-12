@@ -81,14 +81,39 @@ class CustomerHubController extends Controller
                 )
                 ->orderBy('event_start', 'asc');
 
-            // Customer dashboard must only return current customer's bookings.
-            if (Schema::hasColumn('bookings', 'customer_id')) {
-                $query->where('b.customer_id', $user->id);
-            } elseif (!empty($user->email) && Schema::hasColumn('bookings', 'buyer_email')) {
-                $query->where('b.buyer_email', $user->email);
+            if ($this->shouldScopeToCustomer($user)) {
+                $query->where(function ($scope) use ($user) {
+                    if (Schema::hasColumn('bookings', 'customer_id')) {
+                        $scope->where('b.customer_id', $user->id);
+                    }
+
+                    if (!empty($user->email) && Schema::hasColumn('bookings', 'buyer_email')) {
+                        $scope->orWhere('b.buyer_email', $user->email);
+                    }
+                });
             }
 
             $bookings = $query->get();
+            $bookingIds = $bookings->pluck('id')->all();
+            $ticketsByBooking = collect();
+
+            if (!empty($bookingIds)) {
+                $ticketsByBooking = DB::table('tickets as t')
+                    ->leftJoin('booking_attendees as a', 't.attendee_id', '=', 'a.id')
+                    ->whereIn('t.booking_id', $bookingIds)
+                    ->select(
+                        't.id',
+                        't.booking_id',
+                        't.ticket_code',
+                        't.status',
+                        't.issued_at',
+                        'a.attendee_name',
+                        'a.attendee_email'
+                    )
+                    ->orderBy('t.id')
+                    ->get()
+                    ->groupBy('booking_id');
+            }
 
             // Split into upcoming / past
             $upcoming = $bookings->filter(function ($b) use ($now) {
@@ -99,7 +124,16 @@ class CustomerHubController extends Controller
                 return !$b->event_start || \Carbon\Carbon::parse($b->event_start)->lte($now);
             })->values();
 
-            $formatBooking = function ($b) {
+            $formatBooking = function ($b) use ($ticketsByBooking) {
+                $tickets = $ticketsByBooking->get($b->id, collect())->map(fn ($ticket) => [
+                    'id' => $ticket->id,
+                    'ticket_code' => $ticket->ticket_code,
+                    'status' => $ticket->status,
+                    'issued_at' => $ticket->issued_at,
+                    'attendee_name' => $ticket->attendee_name,
+                    'attendee_email' => $ticket->attendee_email,
+                ])->values();
+
                 return [
                     'id'                => $b->id,
                     'booking_reference' => $b->booking_reference,
@@ -114,8 +148,12 @@ class CustomerHubController extends Controller
                     'currency'          => $b->currency ?? 'SGD',
                     'state'             => $b->state,
                     'created_at'        => $b->created_at,
+                    'ticket_count'       => $tickets->count(),
+                    'tickets'            => $tickets->all(),
                 ];
             };
+
+            $totalTickets = $ticketsByBooking->flatten(1)->count();
 
             return response()->json([
                 'success'     => true,
@@ -127,7 +165,7 @@ class CustomerHubController extends Controller
                     'stats'           => [
                         'upcoming_count' => $upcoming->count(),
                         'total_bookings' => $bookings->count(),
-                        'total_tickets'  => $bookings->count(),
+                        'total_tickets'  => $totalTickets,
                     ],
                 ],
             ]);
@@ -144,6 +182,25 @@ class CustomerHubController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function shouldScopeToCustomer($user): bool
+    {
+        if (!$user) {
+            return true;
+        }
+
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return false;
+        }
+
+        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['admin', 'tenant_admin', 'manager', 'event_manager'])) {
+            return false;
+        }
+
+        $role = strtolower((string) ($user->role ?? ''));
+
+        return !str_contains($role, 'admin') && !str_contains($role, 'manager');
     }
 
     /**

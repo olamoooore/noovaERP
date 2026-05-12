@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, Users, Ticket, Radio, Sparkles, Archive } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { Event, buildEventCommerce, getEventTimelineStatus, resolveEventEnd, type EventTimelineStatus } from '@/storefront/data/events';
@@ -15,7 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useStorefrontEvents } from '@/storefront/hooks/useEvents';
-import { bookPublicEvent, confirmPublicEventPayment } from '@/storefront/lib/api';
+import { useCart } from '@/storefront/context/CartContext';
+import { mapApiProduct } from '@/storefront/hooks/useProducts';
+import { bookPublicEvent, fetchProduct, preparePublicEventCheckout } from '@/storefront/lib/api';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 import { cn } from '@/lib/utils';
 
@@ -129,19 +131,15 @@ const SECTION_META: Record<EventTimelineStatus, {
 };
 
 const Events = () => {
+  const navigate = useNavigate();
+  const { addToCart } = useCart();
   const { data: events = [], isLoading } = useStorefrontEvents();
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showRegistration, setShowRegistration] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [queueNumber, setQueueNumber] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingPayment, setPendingPayment] = useState<{
-    bookingReference: string;
-    queueNumber: string;
-    paymentUrl: string;
-    paymentIntentId: string;
-  } | null>(null);
-  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  const [checkoutEventId, setCheckoutEventId] = useState<string | null>(null);
   const selectedEventCommerce = selectedEvent ? buildEventCommerceLinks(selectedEvent) : null;
 
   const eventSections = useMemo(() => {
@@ -176,38 +174,6 @@ const Events = () => {
     setIsSubmitting(true);
     try {
       const response = await bookPublicEvent(selectedEvent.id, formData);
-      const paymentIntent = response.payment_intent;
-
-      if (response.payment_required && paymentIntent?.payment_url && paymentIntent?.transaction_id) {
-        setPendingPayment({
-          bookingReference: response.booking_reference,
-          queueNumber: response.queue_number,
-          paymentUrl: paymentIntent.payment_url,
-          paymentIntentId: paymentIntent.transaction_id,
-        });
-
-        const width = 520;
-        const height = 760;
-        const left = window.screen.width / 2 - width / 2;
-        const top = window.screen.height / 2 - height / 2;
-        const paymentWindow = window.open(
-          paymentIntent.payment_url,
-          'EventPaymentWindow',
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-        );
-
-        if (!paymentWindow) {
-          toast.error('Popup blocked', {
-            description: 'Allow popups for this site, then use the payment link shown in the dialog.',
-          });
-        } else {
-          toast.success('Booking created', {
-            description: 'Complete payment in the payment window to confirm your event slot.',
-          });
-        }
-        return;
-      }
-
       const formatted = response.queue_number
         ? String(response.queue_number).padStart(4, '0')
         : String(Math.floor(Math.random() * 9000) + 1000);
@@ -228,55 +194,32 @@ const Events = () => {
     setSelectedEvent(null);
     setFormData({ name: '', email: '', phone: '' });
     setQueueNumber(null);
-    setPendingPayment(null);
-    setIsConfirmingPayment(false);
   };
 
-  const handleConfirmPayment = async (paymentIntentId?: string) => {
-    if (!pendingPayment) return;
+  const handleStartCheckout = async (event: Event) => {
+    if (!event.isBookable) {
+      toast.error('Booking unavailable', {
+        description: 'This event is a storefront preview. Publish a live event in the backend to enable ticket checkout.',
+      });
+      return;
+    }
 
-    setIsConfirmingPayment(true);
+    setCheckoutEventId(event.id);
     try {
-      const response = await confirmPublicEventPayment({
-        booking_reference: pendingPayment.bookingReference,
-        payment_intent_id: paymentIntentId ?? pendingPayment.paymentIntentId,
+      const checkout = await preparePublicEventCheckout(event.id);
+      const apiProduct = await fetchProduct(checkout.ticket_product_id);
+      addToCart(mapApiProduct(apiProduct), 1);
+      toast.success('Ticket added to cart', {
+        description: 'Continue through the standard checkout flow to complete payment and generate your invoice.',
       });
-
-      setQueueNumber(response.queue_number || pendingPayment.queueNumber);
-      setPendingPayment(null);
-      toast.success('Payment confirmed', {
-        description: `Your queue number is #${response.queue_number || pendingPayment.queueNumber}`,
-      });
+      navigate(storefrontRoutes.checkout);
     } catch (err: any) {
-      if (err?.response?.status === 402) {
-        toast.message('Payment still processing', {
-          description: 'The gateway has not reported this payment as completed yet. Try again in a few seconds.',
-        });
-      } else {
-        const msg = err?.response?.data?.message || 'Failed to confirm payment.';
-        toast.error('Payment confirmation failed', { description: msg });
-      }
+      const msg = err?.response?.data?.message || 'Failed to start checkout for this event.';
+      toast.error('Checkout unavailable', { description: msg });
     } finally {
-      setIsConfirmingPayment(false);
+      setCheckoutEventId(null);
     }
   };
-
-  useEffect(() => {
-    const handlePaymentMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'hitpay_payment_complete') return;
-      if (!pendingPayment) return;
-
-      const paymentReference = typeof event.data.reference === 'string'
-        ? event.data.reference
-        : pendingPayment.paymentIntentId;
-
-      void handleConfirmPayment(paymentReference);
-    };
-
-    window.addEventListener('message', handlePaymentMessage);
-    return () => window.removeEventListener('message', handlePaymentMessage);
-  }, [pendingPayment]);
 
   const renderEventCard = (event: Event, index: number, timeline: EventTimelineStatus) => {
     const commerce = buildEventCommerceLinks(event);
@@ -390,10 +333,14 @@ const Events = () => {
               <Button
                 variant="hero"
                 size="sm"
-                disabled={!isBookable}
+                disabled={!isBookable || checkoutEventId === event.id}
                 title={!isBookable ? 'Booking is only available for published backend events.' : undefined}
                 onClick={() => {
                   if (!isBookable) {
+                    return;
+                  }
+                  if (event.price > 0) {
+                    void handleStartCheckout(event);
                     return;
                   }
                   setSelectedEvent(event);
@@ -401,7 +348,7 @@ const Events = () => {
                 }}
               >
                 <Ticket className="h-4 w-4 mr-1.5" />
-                {isBookable ? 'Register' : 'Preview Only'}
+                {!isBookable ? 'Preview Only' : checkoutEventId === event.id ? 'Opening Checkout...' : event.price > 0 ? 'Buy Ticket' : 'Register'}
               </Button>
             )}
           </div>
@@ -519,7 +466,7 @@ const Events = () => {
         </div>
       </div>
 
-      {/* Registration Modal */}
+      {/* Free Registration Modal */}
       <Dialog open={showRegistration} onOpenChange={closeModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -568,36 +515,6 @@ const Events = () => {
                 Done
               </Button>
             </div>
-          ) : pendingPayment ? (
-            <div className="space-y-4 py-2">
-              <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                <p className="text-sm font-semibold text-foreground">Booking created. Payment required.</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Finish payment in the popup window. When the gateway redirects back, this dialog will confirm the payment automatically.
-                </p>
-                <div className="mt-4 grid gap-2">
-                  <Button
-                    variant="neon"
-                    type="button"
-                    onClick={() => window.open(pendingPayment.paymentUrl, 'EventPaymentWindow', 'width=520,height=760,scrollbars=yes')}
-                  >
-                    Open Payment Window
-                  </Button>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => handleConfirmPayment()}
-                    disabled={isConfirmingPayment}
-                  >
-                    {isConfirmingPayment ? 'Checking payment...' : 'I have completed payment'}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
-                Queue number reserved for this booking: <span className="font-semibold text-foreground">#{pendingPayment.queueNumber}</span>
-              </div>
-            </div>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
@@ -636,8 +553,8 @@ const Events = () => {
                 <span className="font-display font-bold text-lg">
                   {selectedEvent?.price === 0 ? 'FREE' : `SGD ${selectedEvent?.price.toFixed(2)}`}
                 </span>
-                <Button variant="neon" type="submit" disabled={isSubmitting || isConfirmingPayment}>
-                  {isSubmitting ? 'Creating booking...' : 'Continue to Payment'}
+                <Button variant="neon" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Creating booking...' : 'Complete Registration'}
                 </Button>
               </div>
             </form>

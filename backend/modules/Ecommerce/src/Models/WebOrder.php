@@ -248,8 +248,18 @@ class WebOrder extends Model
         /** @var \Modules\Sales\Services\SalesOrderService $salesOrderService */
         $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
 
+        $resolvedWarehouseId = $this->resolveInventoryWarehouseId();
+        if (!$this->fulfillment_warehouse_id && $resolvedWarehouseId) {
+            $this->forceFill(['fulfillment_warehouse_id' => $resolvedWarehouseId])->saveQuietly();
+        }
+
         // Create SalesOrder (idempotent via SalesChannelReference)
         $salesOrder = $salesOrderService->createFromWebOrder($this);
+
+        if (!$salesOrder->warehouse_id && $resolvedWarehouseId) {
+            $salesOrder->forceFill(['warehouse_id' => $resolvedWarehouseId])->saveQuietly();
+            $salesOrder->refresh();
+        }
 
         // If already invoiced, retrieve existing invoice
         if ($salesOrder->isInvoiced()) {

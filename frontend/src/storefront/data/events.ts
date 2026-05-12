@@ -20,6 +20,7 @@ export interface Event {
   price: number;
   spotsLeft: number;
   totalSpots: number;
+  ticketProductId?: string;
   isBookable?: boolean;
   commerce?: EventCommerce;
 }

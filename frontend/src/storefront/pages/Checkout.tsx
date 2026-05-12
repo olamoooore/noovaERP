@@ -490,7 +490,9 @@ const Checkout = () => {
   // Listen for external payment-window messages (HitPay / PayPal callback)
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type === 'PAYMENT_COMPLETE') {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'PAYMENT_COMPLETE' || event.data?.type === 'hitpay_payment_complete') {
         await doConfirmPayment();
         clearCart();
         setStep('success');
@@ -510,17 +512,27 @@ const Checkout = () => {
     const od = orderDataRef.current;
     if (!od || !od.payment_intent?.transaction_id) return false;
 
-    try {
-      const result = await confirmPayment({
-        order_id: od.order_id,
-        payment_intent_id: od.payment_intent.transaction_id,
-        guest_token: od.guest_token,
-      });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const result = await confirmPayment({
+          order_id: od.order_id,
+          payment_intent_id: od.payment_intent.transaction_id,
+          guest_token: od.guest_token,
+        });
 
-      return Boolean(result?.success);
-    } catch {
-      return false;
+        if (result?.success) {
+          return true;
+        }
+      } catch (error: any) {
+        if (error?.response?.status !== 402 || attempt === 4) {
+          return false;
+        }
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
     }
+
+    return false;
   };
 
   const handlePaymentComplete = async () => {

@@ -8,23 +8,36 @@ import { useEffect } from 'react'
 export default function PaymentCallbackPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const reference = params.get('reference') || params.get('ref') || ''
-    const status = params.get('status') || params.get('payment_status') || ''
+    const reference = params.get('reference') || params.get('ref') || params.get('token') || ''
+    const status = (params.get('status') || params.get('payment_status') || '').toLowerCase()
+    const isSuccessful = ['completed', 'succeeded', 'success'].includes(status) || (!status && !!reference)
 
-    const message = {
+    const primaryMessage = isSuccessful
+      ? {
+          type: 'PAYMENT_COMPLETE',
+          reference,
+          status: status || 'completed',
+        }
+      : {
+          type: 'PAYMENT_FAILED',
+          reference,
+          status: status || 'failed',
+        }
+
+    const legacyHitPayMessage = {
       type: 'hitpay_payment_complete',
       reference,
-      status,
+      status: status || (isSuccessful ? 'completed' : 'failed'),
     }
 
-    // Notify the parent window (the POS terminal that opened this popup)
     if (window.opener) {
-      window.opener.postMessage(message, window.location.origin)
-      // Close this popup after a short delay
+      window.opener.postMessage(primaryMessage, window.location.origin)
+      if (isSuccessful) {
+        window.opener.postMessage(legacyHitPayMessage, window.location.origin)
+      }
       setTimeout(() => window.close(), 500)
     } else {
-      // Not opened as popup — redirect to POS
-      window.location.href = '/pos/terminal'
+      window.location.href = isSuccessful ? '/payment/success?ref=' + encodeURIComponent(reference) : '/store/checkout'
     }
   }, [])
 

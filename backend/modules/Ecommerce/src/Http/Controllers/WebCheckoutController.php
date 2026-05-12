@@ -4,7 +4,6 @@ namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -14,15 +13,14 @@ use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Models\WebOrderItem;
 use Modules\PaymentGateway\Services\PaymentService;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
-use App\Notifications\AdminOrderAlert;
-use App\Notifications\CustomerOrderConfirmation;
-use Illuminate\Support\Facades\Notification;
-use App\Models\User;
 use App\Models\Warehouse;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
 use Modules\Ecommerce\Services\CheckoutQueueAdmissionService;
+use Modules\Ecommerce\Services\WebOrderEventReservationService;
+use Modules\Ecommerce\Services\WebOrderNotificationService;
+use Modules\EventManagement\Services\WebOrderTicketFulfillmentService;
 
 class WebCheckoutController extends Controller
 {
@@ -32,6 +30,9 @@ class WebCheckoutController extends Controller
         private InventoryService $inventoryService,
         private StockReservationService $stockReservationService,
         private CheckoutQueueAdmissionService $queueAdmissionService,
+        private WebOrderEventReservationService $webOrderEventReservationService,
+        private WebOrderNotificationService $webOrderNotificationService,
+        private WebOrderTicketFulfillmentService $webOrderTicketFulfillmentService,
     ) {}
 
     /**
@@ -448,6 +449,10 @@ class WebCheckoutController extends Controller
                 }
             }
 
+            $this->webOrderEventReservationService->reserveForOrder($order, collect($orderItems));
+
+            $frontendOrigin = $this->resolveFrontendOrigin($request);
+
             // ── Create payment intent ────────────────────────────────────
             try {
                 $paymentIntent = $this->paymentService->createIntent([
@@ -457,6 +462,8 @@ class WebCheckoutController extends Controller
                     'email' => $email,
                     'gateway_id' => $request->input('gateway_id'),
                     'customer_id' => $customerId,
+                    'redirect_url' => $frontendOrigin . '/payment/callback',
+                    'cancel_url' => $frontendOrigin . '/store/checkout',
                     'metadata' => [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -564,6 +571,8 @@ class WebCheckoutController extends Controller
                         throw new \RuntimeException('Payment transaction not found for confirmed web order payment.');
                     }
 
+                    $alreadyProcessed = $transaction->processed_at !== null;
+
                     $recoveryApplied = false;
                     $transactionErrorMessage = null;
 
@@ -597,42 +606,11 @@ class WebCheckoutController extends Controller
 
                     $workingOrder = $order->fresh(['invoice', 'items']);
 
-                    // Notifications
-                    try {
-                        // 1. Notify Customer
-                        // Always use AnonymousNotifiable (Notification::route) instead of
-                        // $customer->notify() because the Customer model lives in the tenant
-                        // schema. When the queue worker deserializes the job, it tries to
-                        // restore the Customer model using the default 'public' search_path,
-                        // fails to find it, and silently discards the notification.
-                        $customerEmail = $workingOrder->email;
-                        if (!$customerEmail && $workingOrder->customer_id) {
-                            $customer = Customer::find($workingOrder->customer_id);
-                            $customerEmail = $customer?->email;
-                        }
-
-                        if ($customerEmail) {
-                            Notification::route('mail', $customerEmail)
-                                        ->notify(new CustomerOrderConfirmation($workingOrder, 'Web'));
-                        }
-
-                        // 2. Notify Admins
-                        $admins = User::whereHas('roles', function($q) {
-                             $q->where('name', 'like', '%admin%');
-                        })->get();
-                         
-                        if ($admins->isEmpty()) {
-                            $admin = User::find(1);
-                            if ($admin) $admins = collect([$admin]);
-                        }
-
-                        if ($admins->isNotEmpty()) {
-                            Notification::send($admins, new AdminOrderAlert($workingOrder, 'Web'));
-                        }
-
-                    } catch (\Exception $e) {
-                         Log::error('Web Notification Failed: ' . $e->getMessage());
+                    if (!$alreadyProcessed) {
+                        $this->webOrderNotificationService->dispatchPaidOrderNotifications($workingOrder);
                     }
+
+                    $this->webOrderTicketFulfillmentService->syncPaidWebOrder($workingOrder->fresh('items'));
 
                     return response()->json([
                         'success' => true,
@@ -806,5 +784,24 @@ class WebCheckoutController extends Controller
                 ? (float) ($shippingMethod['price'] ?? 0)
                 : $shippingCost,
         ];
+    }
+
+    private function resolveFrontendOrigin(Request $request): string
+    {
+        $origin = trim((string) $request->headers->get('origin', ''));
+        if ($origin !== '') {
+            return rtrim($origin, '/');
+        }
+
+        $referer = trim((string) $request->headers->get('referer', ''));
+        if ($referer !== '') {
+            $parts = parse_url($referer);
+            if (!empty($parts['scheme']) && !empty($parts['host'])) {
+                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+                return rtrim($parts['scheme'] . '://' . $parts['host'] . $port, '/');
+            }
+        }
+
+        return rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/');
     }
 }

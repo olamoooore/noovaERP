@@ -37,6 +37,28 @@ interface ShippingMethod {
   label?: string | null
 }
 
+interface EventTicket {
+  id: number
+  ticket_code: string
+  status: string
+  issued_at?: string | null
+  attendee_name?: string | null
+}
+
+interface EventBooking {
+  id: number
+  booking_reference: string
+  state: string
+  ticket_count: number
+  tickets: EventTicket[]
+  event: {
+    id: number
+    title: string
+    venue: string | null
+    event_date: string | null
+  } | null
+}
+
 interface Order {
   id: number
   order_number: string
@@ -57,6 +79,7 @@ interface Order {
   currency: string
   notes: string | null
   items: OrderItem[]
+  event_bookings?: EventBooking[]
   created_at: string
   paid_at: string | null
   shipped_at: string | null
@@ -162,6 +185,23 @@ export function OrderDetailPage() {
         </Badge>
       </div>
 
+      {order.payment_status !== 'paid' && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Icon icon="solar:clock-circle-bold-duotone" className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-900">Payment {order.payment_status || 'pending'}</p>
+              <p className="text-amber-800">
+                Tickets and bookings are issued only after payment is confirmed. Complete payment to receive your tickets.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="default">
+            <Link to={`/web-shop/checkout?order=${order.id}`}>Complete Payment</Link>
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
@@ -256,6 +296,70 @@ export function OrderDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {order.event_bookings && order.event_bookings.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Icon icon="solar:ticket-bold-duotone" className="h-5 w-5" />
+                  Event Tickets ({order.event_bookings.reduce((sum, b) => sum + b.ticket_count, 0)})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {order.event_bookings.map((booking) => (
+                    <div key={booking.id} className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">{booking.event?.title || `Event #${booking.event?.id ?? '?'}`}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Booking <span className="font-mono">{booking.booking_reference}</span> · {booking.ticket_count} ticket{booking.ticket_count === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className={getStatusColor(booking.state)}>
+                          {booking.state}
+                        </Badge>
+                      </div>
+
+                      <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                        <div className="flex items-center gap-2">
+                          <Icon icon="solar:calendar-bold-duotone" className="h-4 w-4" />
+                          <span>{booking.event?.event_date ? new Date(booking.event.event_date).toLocaleString() : 'Date TBA'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Icon icon="solar:map-point-bold-duotone" className="h-4 w-4" />
+                          <span>{booking.event?.venue || 'Venue TBA'}</span>
+                        </div>
+                      </div>
+
+                      {booking.tickets.length > 0 && (
+                        <div className="rounded-md border bg-white p-3 space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Issued Ticket Codes</p>
+                          {booking.tickets.map((ticket) => (
+                            <div key={ticket.id} className="flex items-center justify-between gap-3 text-sm">
+                              <div>
+                                <p className="font-mono font-medium">{ticket.ticket_code}</p>
+                                <p className="text-xs text-muted-foreground">{ticket.attendee_name || order.first_name}</p>
+                              </div>
+                              <Badge variant="outline" className={getStatusColor(ticket.status)}>
+                                {ticket.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end">
+                        <Button asChild size="sm" variant="outline">
+                          <Link to="/web-shop/account/tickets">View in My Tickets</Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}

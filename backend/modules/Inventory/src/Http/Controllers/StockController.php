@@ -55,23 +55,89 @@ class StockController extends Controller
 
     public function stockIn(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock-in mutations are disabled. Use inventory documents via PostingEngine.',
-        ], 410);
+        $validated = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+            'quantity' => 'required|integer|min:1',
+            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+            'batch_number' => 'nullable|string|max:100',
+            'expiry_date' => 'nullable|date',
+        ]);
+
+        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'in');
+
+        $movement = $this->inventoryService->adjustStock(
+            (int) $validated['product_id'],
+            (int) $validated['warehouse_id'],
+            (int) $validated['quantity'],
+            'in',
+            $validated['reference'] ?? null,
+            'manual_stock_in',
+            null,
+            (int) $validated['adjustment_reason_id'],
+            $validated['notes'] ?? null,
+            $validated['batch_number'] ?? null,
+            isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
+        );
+
+        return response()->json($movement->load('product'));
     }
 
     public function stockOut(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock-out mutations are disabled. Use inventory documents via PostingEngine.',
-        ], 410);
+        $validated = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+            'quantity' => 'required|integer|min:1',
+            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'out');
+
+        $movement = $this->inventoryService->adjustStock(
+            (int) $validated['product_id'],
+            (int) $validated['warehouse_id'],
+            (int) $validated['quantity'],
+            'out',
+            $validated['reference'] ?? null,
+            'manual_stock_out',
+            null,
+            (int) $validated['adjustment_reason_id'],
+            $validated['notes'] ?? null
+        );
+
+        return response()->json($movement->load('product'));
     }
 
     public function adjust(Request $request)
     {
-        return response()->json([
-            'message' => 'Direct stock adjustments are disabled. Use inventory documents via PostingEngine.',
-        ], 410);
+        $validated = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+            'new_quantity' => 'required|integer|min:0',
+            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'both');
+
+        $movement = $this->inventoryService->adjustStock(
+            (int) $validated['product_id'],
+            (int) $validated['warehouse_id'],
+            (int) $validated['new_quantity'],
+            'adjustment',
+            null,
+            'manual_adjustment',
+            null,
+            (int) $validated['adjustment_reason_id'],
+            $validated['notes'] ?? null
+        );
+
+        return response()->json($movement->load('product'));
     }
 
     /**

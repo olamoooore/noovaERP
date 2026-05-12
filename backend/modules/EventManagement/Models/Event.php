@@ -30,6 +30,7 @@ class Event extends Model
         'terms_conditions',
         'event_type_id',
         'ticket_acquisition_mode',
+        'ticket_product_id',
         'sale_start_date',
         'sale_end_date',
     ];
@@ -100,6 +101,11 @@ class Event extends Model
     public function bundleProducts(): BelongsToMany
     {
         return $this->linkedProducts()->wherePivot('relation_type', 'bundle');
+    }
+
+    public function ticketProduct(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'ticket_product_id');
     }
 
     /**

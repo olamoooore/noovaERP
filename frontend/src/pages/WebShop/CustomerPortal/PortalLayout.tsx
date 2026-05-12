@@ -6,6 +6,7 @@ import { useWebShopAuth } from '@/pages/WebShop/hooks/useWebShopAuth'
 
 const navItems = [
   { path: '/web-shop/account', label: 'Dashboard', icon: 'solar:home-bold-duotone' },
+  { path: '/web-shop/account/tickets', label: 'Tickets', icon: 'solar:ticket-bold-duotone' },
   { path: '/web-shop/account/orders', label: 'My Orders', icon: 'solar:box-bold-duotone' },
   { path: '/web-shop/account/loyalty', label: 'Loyalty Points', icon: 'solar:gift-bold-duotone' },
   { path: '/web-shop/account/addresses', label: 'Addresses', icon: 'solar:map-point-bold-duotone' },

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\Ecommerce\Services\WebOrderNotificationService;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 use Modules\PaymentGateway\Services\PaymentService;
@@ -17,6 +18,7 @@ class FixStuckWebOrders extends Command
     public function __construct(
         private readonly PaymentTransactionCompletionService $completionService,
         private readonly PaymentService $paymentService,
+        private readonly WebOrderNotificationService $webOrderNotificationService,
     ) {
         parent::__construct();
     }
@@ -160,12 +162,20 @@ class FixStuckWebOrders extends Command
         }
         
         try {
+            $wasOperationallyIncomplete = $order->payment_status !== WebOrder::PAYMENT_STATUS_PAID
+                || $order->status === WebOrder::STATUS_PENDING
+                || !$order->invoice_id;
+
             $this->completionService->complete(
                 $transaction,
                 $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
             );
 
             $order->refresh();
+
+            if ($wasOperationallyIncomplete) {
+                $this->webOrderNotificationService->dispatchPaidOrderNotifications($order);
+            }
 
             $this->info("  Canonical completion repaired the order");
             if ($order->invoice_id) {
@@ -218,6 +228,7 @@ class FixStuckWebOrders extends Command
         });
 
         $order->refresh();
+        $this->webOrderNotificationService->dispatchPaidOrderNotifications($order);
 
         $this->info('  Operational payment recovery completed.');
         $this->info("  Order status: {$order->status}, payment_status: {$order->payment_status}");

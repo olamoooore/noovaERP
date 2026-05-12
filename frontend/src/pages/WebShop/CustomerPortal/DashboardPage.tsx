@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { useWebShopAuth } from '@/pages/WebShop/hooks/useWebShopAuth'
 import api from '@/lib/api'
 
@@ -16,41 +18,63 @@ interface Order {
   items: { quantity: number }[]
 }
 
+interface TicketSummary {
+  id: number
+  booking_reference: string
+  status: string
+  event_title?: string
+  event_date?: string
+  event_venue?: string
+  ticket_count: number
+}
+
 interface DashboardStats {
   totalOrders: number
   totalSpent: number
   loyaltyPoints: number
+  ticketCount: number
 }
 
 export function DashboardPage() {
   const { customer, getAuthHeaders } = useWebShopAuth()
   const [orders, setOrders] = useState<Order[]>([])
+  const [tickets, setTickets] = useState<TicketSummary[]>([])
   const [stats, setStats] = useState<DashboardStats>({
     totalOrders: 0,
     totalSpent: 0,
     loyaltyPoints: 0,
+    ticketCount: 0,
   })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await api.get('/web-shop/orders', {
-          headers: getAuthHeaders(),
-          params: { per_page: 5 },
-        })
+        const [ordersRes, ticketsRes] = await Promise.all([
+          api.get('/web-shop/orders', {
+            headers: getAuthHeaders(),
+            params: { per_page: 5 },
+          }),
+          api.get('/web-shop/tickets', {
+            headers: getAuthHeaders(),
+          }).catch(() => ({ data: { tickets: [] } })),
+        ])
 
-        const ordersData = response.data.orders || []
+        const ordersData = ordersRes.data.orders || []
         setOrders(ordersData)
 
-        // Calculate stats
-        const totalOrders = response.data.pagination?.total || 0
+        const ticketBookings: TicketSummary[] = ticketsRes.data.tickets || []
+        setTickets(ticketBookings)
+
+        const totalOrders = ordersRes.data.pagination?.total || 0
         const totalSpent = ordersData.reduce((sum: number, order: Order) => sum + (order.total || 0), 0)
-        
+        const ticketCount = ticketBookings.reduce((sum, b) => sum + (b.ticket_count || 0), 0)
+
         setStats({
           totalOrders,
           totalSpent,
           loyaltyPoints: customer?.loyalty_points || 0,
+          ticketCount,
         })
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
@@ -101,7 +125,7 @@ export function DashboardPage() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -139,6 +163,20 @@ export function DashboardPage() {
               </div>
               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center">
                 <Icon icon="solar:gift-bold-duotone" className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Event Tickets</p>
+                <p className="text-3xl font-bold">{stats.ticketCount}</p>
+              </div>
+              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <Icon icon="solar:ticket-bold-duotone" className="h-6 w-6 text-amber-600" />
               </div>
             </div>
           </CardContent>
@@ -184,6 +222,59 @@ export function DashboardPage() {
                     </Badge>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* My Event Tickets */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Icon icon="solar:ticket-bold-duotone" className="h-5 w-5" />
+            My Event Tickets
+          </CardTitle>
+          {tickets.length > 0 && (
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/web-shop/account/tickets">View all</Link>
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {tickets.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Icon icon="solar:ticket-bold-duotone" className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No event tickets yet</p>
+              <p className="text-xs mt-1">Purchased event tickets will appear here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tickets.slice(0, 4).map((booking) => (
+                <Link
+                  key={booking.id}
+                  to="/web-shop/account/tickets"
+                  className="flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                      <Icon icon="solar:ticket-bold-duotone" className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{booking.event_title || `Event #${booking.id}`}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {booking.event_date ? new Date(booking.event_date).toLocaleString() : 'Date TBA'}
+                        {booking.event_venue ? ` • ${booking.event_venue}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1 font-mono">
+                        {booking.booking_reference} · {booking.ticket_count} ticket{booking.ticket_count === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={getStatusColor(booking.status)}>
+                    {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                  </Badge>
+                </Link>
               ))}
             </div>
           )}

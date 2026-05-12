@@ -232,6 +232,8 @@ export const useCustomerDashboard = () => {
         event_date:        b.event_date ?? b.event_start,
         buyer_name:        b.buyer_name,
         buyer_email:       b.buyer_email,
+        ticket_count:      b.ticket_count ?? (Array.isArray(b.tickets) ? b.tickets.length : 0),
+        tickets:           Array.isArray(b.tickets) ? b.tickets : [],
       })
 
       const upcomingRaw: any[] = inner?.upcoming_events ?? []

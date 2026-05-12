@@ -79,6 +79,7 @@ class PaymentTransactionCompletionService
             $transaction->update([
                 'customer_id' => $transaction->customer_id ?? $invoice->customer_id,
                 'processed_at' => $transaction->processed_at ?? now(),
+                'error_message' => null,
             ]);
 
             return $transaction->fresh();
@@ -102,6 +103,7 @@ class PaymentTransactionCompletionService
             'invoice_id' => $invoice?->id,
             'customer_id' => $invoice?->customer_id,
             'processed_at' => $transaction->processed_at ?? now(),
+            'error_message' => null,
         ]);
     }
 
@@ -140,10 +142,16 @@ class PaymentTransactionCompletionService
         $this->updateWebOrderCustomerStats($webOrder->fresh());
         $this->awardWebOrderLoyaltyPoints($webOrder->fresh());
 
+        if (class_exists(\Modules\EventManagement\Services\WebOrderTicketFulfillmentService::class)) {
+            app(\Modules\EventManagement\Services\WebOrderTicketFulfillmentService::class)
+                ->syncPaidWebOrder($webOrder->fresh(['items']));
+        }
+
         $transaction->update([
             'invoice_id' => $invoice->id,
             'customer_id' => $webOrder->customer_id,
             'processed_at' => $transaction->processed_at ?? now(),
+            'error_message' => null,
         ]);
 
         Log::info('Completed web order payment via canonical transaction completion service', [

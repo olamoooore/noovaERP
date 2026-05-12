@@ -171,8 +171,8 @@ const MyBookingsPage: React.FC = () => {
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       {/* Header */}
       <div className="mb-8">
-        <Heading1 className="text-2xl md:text-3xl mb-1">My Bookings</Heading1>
-        <BodyText variant="muted">View and manage your event bookings</BodyText>
+        <Heading1 className="text-2xl md:text-3xl mb-1">Bookings</Heading1>
+        <BodyText variant="muted">View customer event bookings and issued ticket IDs</BodyText>
       </div>
 
       {isLoading && (
@@ -266,6 +266,12 @@ const MyBookingsPage: React.FC = () => {
                               <span className="font-mono">{booking.booking_reference ?? `#${booking.id}`}</span>
                               {bookedAt && <span> · Booked {fmtDate(bookedAt)}</span>}
                             </p>
+                            {Array.isArray(booking.tickets) && booking.tickets.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Ticket ID <span className="font-mono">{booking.tickets[0].ticket_code}</span>
+                                {booking.tickets.length > 1 ? ` +${booking.tickets.length - 1} more` : ''}
+                              </p>
+                            )}
                           </div>
 
                           {/* Right: action buttons */}

@@ -128,9 +128,15 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order) {
-            $order->loadMissing('lines');
+            $order->loadMissing('lines.product');
 
-            $stockTrackedLines = $order->lines->filter(fn ($line) => (bool) $line->product_id);
+            $stockTrackedLines = $order->lines->filter(function ($line) {
+                if (!$line->product_id) {
+                    return false;
+                }
+
+                return (bool) ($line->product?->track_inventory ?? true);
+            });
             $warehouseId = null;
 
             if ($stockTrackedLines->isNotEmpty()) {
@@ -139,11 +145,7 @@ class SalesOrderService
 
             // Deduct stock for each line item
             foreach ($order->lines as $line) {
-                if ($line->product_id) {
-                    // Update fulfillment quantity
-                    $line->update(['quantity_fulfilled' => $line->quantity]);
-                    
-                    // Deduct stock through canonical InventoryService
+                if ($line->product_id && (bool) ($line->product?->track_inventory ?? true)) {
                     $this->inventoryService->adjustStock(
                         productId: $line->product_id,
                         warehouseId: $warehouseId,
@@ -155,6 +157,8 @@ class SalesOrderService
                         notes: "Stock deducted for sales order fulfillment"
                     );
                 }
+
+                $line->update(['quantity_fulfilled' => $line->quantity]);
             }
 
             $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
@@ -353,7 +357,7 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $webOrder->customer_id,
             'channel' => 'ecommerce',
-            'warehouse_id' => $webOrder->fulfillment_warehouse_id,
+            'warehouse_id' => $webOrder->fulfillment_warehouse_id ?: $webOrder->resolveInventoryWarehouseId(),
             'accounting_status' => $this->resolveSourceAccountingStatus('WebOrder', $webOrder->id),
             'source_document_type' => 'WebOrder',
             'source_document_id' => $webOrder->id,

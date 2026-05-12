@@ -366,12 +366,12 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:monitor-bold-duotone',
       },
       {
-        title: 'My Bookings',
+        title: 'Bookings',
         href: '/event-management/bookings',
         icon: 'solar:bookmark-bold-duotone',
       },
       {
-        title: 'My Tickets',
+        title: 'Tickets',
         href: '/event-management/tickets',
         icon: 'solar:ticket-bold-duotone',
       },
