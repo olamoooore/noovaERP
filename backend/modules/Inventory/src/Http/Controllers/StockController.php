@@ -5,6 +5,7 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\StockMovement;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\StockAdjustmentReason;
 use Modules\Inventory\Models\StockLevel;
@@ -18,6 +19,12 @@ class StockController extends Controller
 
     private function resolveReasonForType(int $reasonId, string $expectedType): StockAdjustmentReason
     {
+        if (!Schema::hasTable('stock_adjustment_reasons')) {
+            throw ValidationException::withMessages([
+                'adjustment_reason_id' => ['Stock adjustment reasons table is not available. Run tenant migrations on the server.'],
+            ]);
+        }
+
         $reason = StockAdjustmentReason::findOrFail($reasonId);
 
         $allowedTypes = $expectedType === 'both' ? ['both'] : [$expectedType, 'both'];
@@ -59,30 +66,38 @@ class StockController extends Controller
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
-            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'adjustment_reason_id' => 'required|integer',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
             'batch_number' => 'nullable|string|max:100',
             'expiry_date' => 'nullable|date',
         ]);
 
-        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'in');
+        try {
+            $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'in');
 
-        $movement = $this->inventoryService->adjustStock(
-            (int) $validated['product_id'],
-            (int) $validated['warehouse_id'],
-            (int) $validated['quantity'],
-            'in',
-            $validated['reference'] ?? null,
-            'manual_stock_in',
-            null,
-            (int) $validated['adjustment_reason_id'],
-            $validated['notes'] ?? null,
-            $validated['batch_number'] ?? null,
-            isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
-        );
+            $movement = $this->inventoryService->adjustStock(
+                (int) $validated['product_id'],
+                (int) $validated['warehouse_id'],
+                (int) $validated['quantity'],
+                'in',
+                $validated['reference'] ?? null,
+                'manual_stock_in',
+                null,
+                (int) $validated['adjustment_reason_id'],
+                $validated['notes'] ?? null,
+                $validated['batch_number'] ?? null,
+                isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
+            );
 
-        return response()->json($movement->load('product'));
+            return response()->json($movement->load('product'));
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function stockOut(Request $request)
@@ -91,26 +106,34 @@ class StockController extends Controller
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
-            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'adjustment_reason_id' => 'required|integer',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
         ]);
 
-        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'out');
+        try {
+            $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'out');
 
-        $movement = $this->inventoryService->adjustStock(
-            (int) $validated['product_id'],
-            (int) $validated['warehouse_id'],
-            (int) $validated['quantity'],
-            'out',
-            $validated['reference'] ?? null,
-            'manual_stock_out',
-            null,
-            (int) $validated['adjustment_reason_id'],
-            $validated['notes'] ?? null
-        );
+            $movement = $this->inventoryService->adjustStock(
+                (int) $validated['product_id'],
+                (int) $validated['warehouse_id'],
+                (int) $validated['quantity'],
+                'out',
+                $validated['reference'] ?? null,
+                'manual_stock_out',
+                null,
+                (int) $validated['adjustment_reason_id'],
+                $validated['notes'] ?? null
+            );
 
-        return response()->json($movement->load('product'));
+            return response()->json($movement->load('product'));
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function adjust(Request $request)
@@ -119,25 +142,33 @@ class StockController extends Controller
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
             'new_quantity' => 'required|integer|min:0',
-            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
+            'adjustment_reason_id' => 'required|integer',
             'notes' => 'nullable|string|max:500',
         ]);
 
-        $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'both');
+        try {
+            $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'both');
 
-        $movement = $this->inventoryService->adjustStock(
-            (int) $validated['product_id'],
-            (int) $validated['warehouse_id'],
-            (int) $validated['new_quantity'],
-            'adjustment',
-            null,
-            'manual_adjustment',
-            null,
-            (int) $validated['adjustment_reason_id'],
-            $validated['notes'] ?? null
-        );
+            $movement = $this->inventoryService->adjustStock(
+                (int) $validated['product_id'],
+                (int) $validated['warehouse_id'],
+                (int) $validated['new_quantity'],
+                'adjustment',
+                null,
+                'manual_adjustment',
+                null,
+                (int) $validated['adjustment_reason_id'],
+                $validated['notes'] ?? null
+            );
 
-        return response()->json($movement->load('product'));
+            return response()->json($movement->load('product'));
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     /**
