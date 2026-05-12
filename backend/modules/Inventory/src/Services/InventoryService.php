@@ -7,6 +7,7 @@ use App\Models\StockMovement;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\Inventory\Models\InventorySettings;
 use Modules\Inventory\Models\StockLevel;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -175,8 +176,8 @@ class InventoryService
             // Update product's total stock quantity
             $this->updateProductTotalStock($productId);
 
-            // Create stock movement record
-            return StockMovement::create([
+            // Build payload defensively for tenants that may be missing newer columns.
+            $movementPayload = [
                 'product_id' => $productId,
                 'warehouse_id' => $warehouseId,
                 'type' => $type,
@@ -186,13 +187,19 @@ class InventoryService
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
-                'idempotency_key' => $idempotencyKey,
                 'adjustment_reason_id' => $adjustmentReasonId,
                 'notes' => $notes,
                 'batch_number' => $batchNumber,
                 'expiry_date' => $expiryDate,
                 'created_by' => TenantUserHelper::requireTenantUserId(),
-            ]);
+            ];
+
+            if ($idempotencyKey !== null && Schema::hasColumn('stock_movements', 'idempotency_key')) {
+                $movementPayload['idempotency_key'] = $idempotencyKey;
+            }
+
+            // Create stock movement record
+            return StockMovement::create($movementPayload);
         });
     }
 
