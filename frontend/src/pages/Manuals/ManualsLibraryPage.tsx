@@ -1,5 +1,7 @@
 import { Icon } from '@iconify/react'
 
+const manualsBasePath = `${import.meta.env.BASE_URL}manuals/`
+
 type ManualCard = {
   title: string
   description: string
@@ -14,7 +16,7 @@ const liveManuals: ManualCard[] = [
   {
     title: 'Inventory Module',
     description: 'Stock management, stock operations, purchase orders, warehouse transfers, warehouses, suppliers, and inventory settings.',
-    href: '/manuals/inventory-manual.html',
+    href: `${manualsBasePath}inventory-manual.html`,
     icon: 'solar:box-bold-duotone',
     accent: 'inventory',
     status: 'live',
@@ -26,7 +28,7 @@ const liveManuals: ManualCard[] = [
   {
     title: 'POS Module',
     description: 'POS landing flow, register opening, live terminal layout, payments, receipts, barcode labels, reports, offline queue, and settings.',
-    href: '/manuals/pos-manual.html',
+    href: `${manualsBasePath}pos-manual.html`,
     icon: 'solar:shop-bold-duotone',
     accent: 'pos',
     status: 'live',
@@ -185,7 +187,7 @@ export function ManualsLibraryPage() {
           <div className="space-y-2">
             <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Available Manuals</h2>
             <p className="text-sm leading-6 text-slate-600">
-              These are ready now and open directly from the same host under the <span className="font-semibold text-slate-800">/manuals</span> path.
+              These are ready now and open directly from the same host under the <span className="font-semibold text-slate-800">{manualsBasePath}</span> path.
             </p>
           </div>
 
@@ -211,7 +213,7 @@ export function ManualsLibraryPage() {
           </div>
 
           <p className="mt-6 text-sm text-slate-600">
-            Recommended customer URL: <span className="font-semibold text-slate-900">/manuals</span>
+            Recommended customer URL: <span className="font-semibold text-slate-900">{manualsBasePath}</span>
           </p>
         </section>
       </div>
