@@ -334,6 +334,49 @@
             margin-bottom: 0;
         }
 
+        .manual-figure {
+            margin: 18px 0 24px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        }
+
+        .manual-figure img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: #edf1f7;
+        }
+
+        .manual-figure figcaption {
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.55;
+        }
+
+        .annotated-points {
+            margin-top: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(190, 24, 93, 0.14);
+            background: rgba(190, 24, 93, 0.05);
+        }
+
+        .annotated-points h4 {
+            margin: 0 0 10px;
+            font-size: 0.96rem;
+            letter-spacing: -0.01em;
+        }
+
+        .annotated-points ul {
+            margin: 0;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -549,6 +592,19 @@
                         <li>Terminal name</li>
                         <li>Warehouse</li>
                     </ul>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-landing.png" alt="POS landing page showing configured terminals, Orders button, and Barcodes shortcut">
+                        <figcaption>Real tenant screenshot: the POS landing page with configured terminal cards, the Orders quick action, and the Barcodes shortcut visible at the top.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>Each terminal card shows whether the terminal is ready to open or resume.</li>
+                                <li>The Orders and Barcodes actions are global shortcuts and do not require opening a terminal first.</li>
+                                <li>The Add New Terminal tile stays in the same grid as the real configured devices.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="register">
@@ -591,6 +647,19 @@
 
                     <h3>How Sessions Open</h3>
                     <p>When confirmed, the page posts to the session-open endpoint, stores the session in the POS session store, and then navigates to <code>/pos/terminal</code>.</p>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-open-register.png" alt="Open Register dialog showing terminal summary, staff assignment, and opening cash fields">
+                        <figcaption>Real tenant screenshot: the Open Register dialog with terminal context, staff assignment, opening cash input, and optional opening notes.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The dialog shows the chosen terminal and warehouse before the session is opened.</li>
+                                <li>Staff assignment is mandatory in the current flow before the register can start.</li>
+                                <li>The cash-in-drawer field and the count-notes-and-coins action are part of the opening workflow, not a later closeout step.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="terminal">
@@ -627,6 +696,19 @@
                         <li>The page also listens for very fast scanner-style keyboard bursts globally and turns them into barcode lookups.</li>
                         <li>If multiple barcode matches are returned, the current UI shows a message instead of opening a selection screen.</li>
                     </ul>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-terminal-cart.png" alt="Live POS terminal showing product discovery on the right and an item already added to the current order on the left">
+                        <figcaption>Real tenant screenshot: the live POS terminal with product discovery on the right, a cart item already added on the left, discount controls, totals, and the PAY action visible in one full-screen cashier view.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The cashier works from one full-screen layout where product search and the active order stay visible at the same time.</li>
+                                <li>The active warehouse and terminal badges are shown directly beside the product discovery header.</li>
+                                <li>This is a real in-progress order state from the shared tenant session, not an empty terminal mockup.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="customer-order">
@@ -643,6 +725,19 @@
                         <li><strong>Clear Cart</strong>: clears items and resets discounts, loyalty redemptions, and draft identifiers.</li>
                         <li><strong>View Pending Orders</strong>: opens the pending-order drawer and shows a badge if draft orders exist.</li>
                     </ul>
+
+                        <figure class="manual-figure">
+                            <img src="./assets/pos/pos-terminal-orders-sidebar.png" alt="Live POS terminal showing the pending orders sidebar with draft orders, totals, and receipt actions">
+                            <figcaption>Real tenant screenshot: the live POS terminal with the Orders drawer open from the Current Order panel, showing saved drafts, totals, and the available receipt and order actions for each entry.</figcaption>
+                            <div class="annotated-points">
+                                <h4>What To Notice In This Screen</h4>
+                                <ul>
+                                    <li>The pending-order drawer is opened directly from the cashier terminal without leaving the sale screen.</li>
+                                    <li>Each draft row exposes operational actions such as load, cancel, void, receipt PDF, and print receipt.</li>
+                                    <li>The drawer gives the cashier a fast way to recover paused sales while keeping the active terminal context visible in the background.</li>
+                                </ul>
+                            </div>
+                        </figure>
 
                     <h3>Customer Handling</h3>
                     <ul>
@@ -726,6 +821,19 @@
                             <p>The current terminal code and payment selector inspected here do not expose a cashier split-tender workflow. This manual therefore does not document split payments as a current operator feature.</p>
                         </div>
                     </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-payment-selector.png" alt="POS payment dialog showing cash and card payment options for the current order total">
+                        <figcaption>Real tenant screenshot: the Complete Payment dialog showing the real method groups available in this tenant session, including Cash and configured card gateway options.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The payment step begins with a selector dialog, not inline buttons in the cart itself.</li>
+                                <li>Methods are grouped by category, with the current order amount repeated in the dialog header for confirmation.</li>
+                                <li>The live session shows both cash and test-mode card gateway options, which is the actual payment surface currently exposed to the cashier.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="receipts">
@@ -754,6 +862,27 @@
                         <li>IoT label printing when a label printer is configured for the active terminal</li>
                         <li>Web print preview fallback when direct label printing is unavailable</li>
                     </ul>
+
+                    <div class="callout note">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Receipt Actions Are Available From Orders</h3>
+                            <p>This revision keeps the live terminal screenshots focused on cashier order handling. Receipt PDF generation and receipt printing actions are visible from the terminal order drawer and POS order surfaces, but a separate print-preview interface screenshot is intentionally not included here.</p>
+                        </div>
+                    </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-barcodes.png" alt="Product barcodes page showing product search, quantity controls, and print actions">
+                        <figcaption>Real tenant screenshot: the Product Barcodes page with searchable product rows, per-product quantities, preview values, and the Generate All and Print Selected actions.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The page is product-driven, with barcode data shown per row instead of a separate label-design wizard.</li>
+                                <li>Quantity per product is controlled directly in the listing, which is how batch label generation is staged.</li>
+                                <li>The current tenant dataset provides real product names, SKUs, barcodes, and prices for label printing.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="orders-reports">
@@ -771,6 +900,19 @@
                         <li>Order details load on demand when a record is opened</li>
                     </ul>
 
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-orders.png" alt="POS orders page showing order table, filters, and new sale button">
+                        <figcaption>Real tenant screenshot: the Orders page with the real order table, search and filter controls, summary cards, and the New Sale action.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The list combines POS and Web order sources in one page, which is why source badges matter in the table.</li>
+                                <li>The page includes operational filters first, then the transaction table beneath them.</li>
+                                <li>In this tenant session, the visible rows are real paid and draft orders, but opening detail currently fails for some records.</li>
+                            </ul>
+                        </div>
+                    </figure>
+
                     <h3>Reports Page</h3>
                     <ul>
                         <li>Summary cards: Today&apos;s Sales, This Month, Period Total, Average Order</li>
@@ -787,6 +929,19 @@
                         <li>Per-item status badges for <code>pending</code>, <code>syncing</code>, <code>synced</code>, <code>failed</code>, and <code>conflict</code></li>
                         <li>Per-item retry and conflict resolution actions</li>
                     </ul>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-reports.png" alt="POS reports page showing KPI cards, filters, sales trend, breakdown table, and recent orders">
+                        <figcaption>Real tenant screenshot: the POS Reports page with KPI cards, date filters, the sales trend panel, the detailed breakdown table, and the recent orders section.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The KPI cards at the top summarize today, month, period total, and average order in one row.</li>
+                                <li>The report controls combine a report type selector with start and end date fields and quick-range buttons.</li>
+                                <li>The bottom half of the page is split between trend, aggregated breakdown, and recent transaction detail.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="settings">
@@ -851,6 +1006,32 @@
 
                     <h3>Customer Display</h3>
                     <p>The settings model also includes customer-display controls, and dedicated customer-display routes exist. Use them only when the display feature is enabled for the terminal environment.</p>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-settings.png" alt="POS settings page showing general settings, terminal options, payment methods, receipt settings, and display controls">
+                        <figcaption>Real tenant screenshot: the POS Settings page with general order settings, behavior toggles, and display-related controls visible in the live configuration UI.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The settings page is tabbed and combines order numbering, receipt behavior, payment methods, and barcode configuration in one area.</li>
+                                <li>The live General tab already includes display-related options, including customer-display settings.</li>
+                                <li>The default warehouse and checkout behavior are configured here, which directly affects live terminal behavior.</li>
+                            </ul>
+                        </div>
+                    </figure>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/pos/pos-customer-display-full.png" alt="Customer display screen showing the live order summary and focus item for the current terminal session">
+                        <figcaption>Real tenant screenshot: the full customer-display screen linked to the active POS session, showing the focus item, quantity, line total, and grand total for the current live order.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The customer display is a dedicated presentation screen, not just a mirrored copy of the cashier terminal.</li>
+                                <li>The layout emphasizes the latest line item and simplified totals so the customer can follow the sale clearly.</li>
+                                <li>This capture came from the same live order session as the terminal cart screenshot, so the item and total match.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="limits">

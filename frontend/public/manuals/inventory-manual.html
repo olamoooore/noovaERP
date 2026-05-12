@@ -343,6 +343,49 @@
             margin-bottom: 0;
         }
 
+        .manual-figure {
+            margin: 18px 0 24px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        }
+
+        .manual-figure img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: #e5edf6;
+        }
+
+        .manual-figure figcaption {
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.55;
+        }
+
+        .annotated-points {
+            margin-top: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(37, 99, 235, 0.14);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .annotated-points h4 {
+            margin: 0 0 10px;
+            font-size: 0.96rem;
+            letter-spacing: -0.01em;
+        }
+
+        .annotated-points ul {
+            margin: 0;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -460,6 +503,7 @@
                 <li><a href="#routes"><svg><use href="#i-route"></use></svg><span>Routes</span></a></li>
                 <li><a href="#dashboard"><svg><use href="#i-grid"></use></svg><span>Inventory Overview</span></a></li>
                 <li><a href="#stock-management"><svg><use href="#i-stock"></use></svg><span>Stock Management</span></a></li>
+                <li><a href="#stock-movements"><svg><use href="#i-stock"></use></svg><span>Stock Movements</span></a></li>
                 <li><a href="#stock-operations"><svg><use href="#i-clipboard"></use></svg><span>Stock Operations</span></a></li>
                 <li><a href="#purchase-orders"><svg><use href="#i-book"></use></svg><span>Purchase Orders</span></a></li>
                 <li><a href="#transfers"><svg><use href="#i-transfer"></use></svg><span>Warehouse Transfers</span></a></li>
@@ -523,6 +567,7 @@
                     <div class="route-grid">
                         <div class="mini-card"><h3><code>/inventory</code></h3><p>Inventory overview dashboard with KPI cards, quick actions, low-stock preview, and recent stock movements.</p></div>
                         <div class="mini-card"><h3><code>/inventory/stock</code></h3><p>Stock Management page with the Products, Movements, Low Stock, and Out of Stock tabs.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/movements</code></h3><p>Dedicated movement history page with type, warehouse, and date filters for audit-style stock review.</p></div>
                         <div class="mini-card"><h3><code>/inventory/operations</code></h3><p>Dedicated Stock Operations page for Receive Stock, Remove Stock, and Count Stock.</p></div>
                         <div class="mini-card"><h3><code>/inventory/purchase-orders</code></h3><p>Purchase order list with search, status filter, and document navigation.</p></div>
                         <div class="mini-card"><h3><code>/inventory/purchase-orders/new</code></h3><p>Create a new purchase order with supplier, warehouse, dates, notes, and item rows.</p></div>
@@ -563,6 +608,19 @@
                         <li><strong>Recent Stock Movements</strong> shows the latest inventory changes and their movement type badges.</li>
                         <li><strong>Module Navigation</strong> gives quick access to suppliers, warehouses, and other inventory pages.</li>
                     </ul>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/inventory-overview.png" alt="Inventory overview dashboard with KPI cards, quick actions, and low stock panel">
+                        <figcaption>Real tenant screenshot: the Inventory Overview page with the summary KPI cards, stock value blocks, quick actions, and the low-stock preview list visible in one view.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The KPI row is the fastest way to see total products, warehouse count, low-stock count, and out-of-stock count.</li>
+                                <li>The quick-action cards route straight into stock, transfer, and purchasing flows without opening a separate launcher.</li>
+                                <li>The low-stock panel at the bottom is a preview list, not the full working page for replenishment.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="stock-management">
@@ -648,6 +706,50 @@
                             <p>The current UI describes Adjust as reconciling the recorded quantity to the counted quantity. Use it when the system balance must be reset to a verified physical count.</p>
                         </div>
                     </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/stock-management.png" alt="Stock management page showing products tab, KPI cards, stock action buttons, and product table">
+                        <figcaption>Real tenant screenshot: the Stock Management page showing the action buttons, the products tab, and the live stock table used for review and quick stock actions.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The Receive Stock, Remove Stock, and Reconcile Count buttons sit above the tab set and are always visible.</li>
+                                <li>The tab bar separates product review from movement history and alert-focused views.</li>
+                                <li>The products table is the operational review surface where users search stock records and then branch into the right action.</li>
+                            </ul>
+                        </div>
+                    </figure>
+                </section>
+
+                <section id="stock-movements">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-stock"></use></svg></div>
+                        <h2>Stock Movements</h2>
+                    </div>
+                    <p>The Stock Movements page at <code>/inventory/movements</code> is the dedicated audit-style history screen for stock changes already posted into the system.</p>
+
+                    <h3>What the Page Shows</h3>
+                    <ul>
+                        <li>Quick action buttons for <strong>Stock Out</strong> and <strong>Stock In</strong>.</li>
+                        <li>Filter controls for movement type and warehouse.</li>
+                        <li>A chronological table of stock events with product, type, quantity, before, after, reference, notes, and operator context.</li>
+                    </ul>
+
+                    <h3>How To Use It</h3>
+                    <p>Use this page when you need to answer what changed, when it changed, and who recorded it. It is the review surface for movement history, not the main page for creating counted-balance adjustments.</p>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/stock-movements.png" alt="Stock movements page showing movement filters, stock action buttons, and movement history table">
+                        <figcaption>Real tenant screenshot: the Stock Movements page with its stock action shortcuts, movement filters, and a live transaction table listing recent stock changes.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The top row combines creation shortcuts with review filters, so operators can both post and inspect stock changes from one screen.</li>
+                                <li>The table records before and after balances, which makes it the clearest audit trail in the current inventory UI.</li>
+                                <li>The current tenant data shows real outbound movements and product-linked entries instead of a mock empty state.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="stock-operations">
@@ -690,6 +792,19 @@
 
                     <h3>Product Selection</h3>
                     <p>The forms use a product search combobox and show the currently known stock for the selected product so the operator can see the existing balance before posting the new movement.</p>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/stock-operations.png" alt="Stock operations page showing receive stock tab and direct stock entry form fields">
+                        <figcaption>Real tenant screenshot: the Stock Operations page with the Receive Stock tab active, including product search, warehouse selection, quantity, business reason, and traceability fields.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The page is structured around business-event forms, not summary cards or stock tables.</li>
+                                <li>The Receive Stock tab includes batch and expiry fields, which reflects the settings-controlled traceability model described later in this manual.</li>
+                                <li>Warehouse choice is explicit on the form, reinforcing that warehouse-level stock is the operational stock source.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="purchase-orders">
@@ -722,6 +837,19 @@
                             <p>The backend routes support submit, approve, mark ordered, receive, and cancel transitions. The current frontend list page explicitly exposes view, edit for draft, and cancel where permitted.</p>
                         </div>
                     </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/purchase-orders.png" alt="Purchase orders page showing list table, search, status filter, and new purchase order button">
+                        <figcaption>Real tenant screenshot: the Purchase Orders list with its search box, status filter, and the primary New Purchase Order action used to start procurement.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The top-right New Purchase Order button is the entry point for creating vendor orders.</li>
+                                <li>The list screen is built around PO number and supplier search, with a status filter beside it.</li>
+                                <li>In this tenant, the empty-state table still proves the real list structure and action layout documented above.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="transfers">
@@ -761,6 +889,19 @@
                             <tr><td><strong>cancelled</strong></td><td>Transfer is closed without completion.</td></tr>
                         </tbody>
                     </table>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/warehouse-transfers.png" alt="Warehouse transfers page showing transfer list, status filter, and new transfer button">
+                        <figcaption>Real tenant screenshot: the Warehouse Transfers list page with transfer records, the status filter, and the New Transfer entry point for inter-warehouse stock movement.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The transfer list is document-based, with one row per transfer rather than one row per product movement.</li>
+                                <li>The From and To warehouse columns make cross-location intent visible before a transfer is opened.</li>
+                                <li>The current tenant has draft transfers already present, so this capture shows a live working state rather than an empty list.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="warehouses">
@@ -808,6 +949,19 @@
                             <p>The current page already handles backend failures when a warehouse cannot be deleted because it still has stock or is in use. If delete fails, treat the warehouse as operationally linked and resolve usage first.</p>
                         </div>
                     </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/warehouses.png" alt="Warehouses page showing warehouse summary cards and warehouse location cards">
+                        <figcaption>Real tenant screenshot: the Warehouses page with summary cards, the Add Warehouse action, and the current warehouse card layout including default and active indicators.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The KPI cards at the top summarize total, active, and default warehouse state before you inspect individual locations.</li>
+                                <li>The warehouse cards expose operational metadata directly on the page, including address and default status.</li>
+                                <li>This tenant currently shows both the default Infiniti store and a Main Warehouse record, which makes the list state meaningful for training.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="suppliers">
@@ -847,6 +1001,19 @@
                             </tr>
                         </tbody>
                     </table>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/suppliers.png" alt="Suppliers page showing supplier list, search controls, and add supplier button">
+                        <figcaption>Real tenant screenshot: the Suppliers page showing the supplier table, contact information, lead-time columns, and the Add Supplier action.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>The list emphasizes vendor management fields first, especially contact details and lead time.</li>
+                                <li>The rating columns are present in the live table even when some records have no rating values yet.</li>
+                                <li>The current tenant contains real supplier rows, so this screenshot captures an actual working supplier roster.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="settings">
@@ -880,6 +1047,19 @@
                             <p>The current page explicitly falls back to safe defaults and disables real saving if the inventory settings API returns an error. Resolve the backend issue first before relying on what you see in the form.</p>
                         </div>
                     </div>
+
+                    <figure class="manual-figure">
+                        <img src="./assets/inventory/inventory-settings.png" alt="Inventory settings page showing SME mode, stock behaviour toggles, and SKU generation settings">
+                        <figcaption>Real tenant screenshot: the Inventory Settings page with SME Mode highlighted first, followed by stock-behaviour toggles and SKU generation controls.</figcaption>
+                        <div class="annotated-points">
+                            <h4>What To Notice In This Screen</h4>
+                            <ul>
+                                <li>SME Mode is the most prominent control because it changes whether direct stock entry is available in operations screens.</li>
+                                <li>The stock-behaviour switches are grouped together, which makes this page the policy surface for warehouse stock handling.</li>
+                                <li>The warning on direct stock entries and accounting impact is visible on the live page, not added only in this manual.</li>
+                            </ul>
+                        </div>
+                    </figure>
                 </section>
 
                 <section id="rules">
