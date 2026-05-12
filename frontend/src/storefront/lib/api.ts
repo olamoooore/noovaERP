@@ -377,6 +377,48 @@ export interface CustomerOrder {
   paid_at?: string;
   shipped_at?: string;
   delivered_at?: string;
+  event_bookings?: Array<{
+    id: number;
+    booking_reference: string;
+    state: string;
+    event?: {
+      id: number;
+      title: string;
+      venue?: string | null;
+      event_date?: string | null;
+    } | null;
+    ticket_count: number;
+    tickets: Array<{
+      id: number;
+      ticket_code: string;
+      status: string;
+      issued_at?: string | null;
+      attendee_name?: string | null;
+    }>;
+  }>;
+}
+
+export interface CustomerTicket {
+  id: number;
+  booking_reference: string;
+  status: string;
+  total_amount: number;
+  currency: string;
+  buyer_name?: string | null;
+  buyer_email?: string | null;
+  event_id?: number | null;
+  event_title?: string | null;
+  event_date?: string | null;
+  event_venue?: string | null;
+  ticket_count: number;
+  tickets: Array<{
+    id: number;
+    ticket_code: string;
+    status: string;
+    issued_at?: string | null;
+    attendee_name?: string | null;
+  }>;
+  created_at?: string;
 }
 
 export interface OrderItem {
@@ -435,6 +477,14 @@ export async function getCustomerOrder(token: string, orderId: number): Promise<
     headers: { Authorization: `Bearer ${token}` }
   });
   return data.order || data;
+}
+
+export async function getCustomerTickets(token: string): Promise<CustomerTicket[]> {
+  const { data } = await storefrontApi.get('/web-shop/tickets', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  return data.tickets || data || [];
 }
 
 export async function cancelOrder(token: string, orderId: number): Promise<{ success: boolean; message: string; order: CustomerOrder }> {

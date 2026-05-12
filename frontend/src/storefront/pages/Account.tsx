@@ -13,6 +13,7 @@ import {
   Trash2,
   Star,
   ChevronRight,
+  Ticket,
   FileText,
   Download,
   Eye,
@@ -29,6 +30,7 @@ import { useWishlist } from '@/storefront/context/WishlistContext';
 import {
   getCustomerOrders,
   getCustomerOrder,
+  getCustomerTickets,
   getCustomerAddresses,
   addCustomerAddress,
   updateCustomerAddress,
@@ -40,6 +42,7 @@ import {
   getPaymentGateways,
   getOrderInvoice,
   CustomerOrder,
+  CustomerTicket,
   CustomerAddress,
   CheckoutResponse,
   WebInvoice,
@@ -52,7 +55,7 @@ import { PLACEHOLDER_PRODUCT_URL } from '@/storefront/lib/assets';
 import { CreditCard, AlertTriangle, XCircle } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────
-type Tab = 'profile' | 'orders' | 'addresses' | 'wishlist';
+type Tab = 'profile' | 'orders' | 'tickets' | 'addresses' | 'wishlist';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-500/20 text-yellow-500',
@@ -88,6 +91,25 @@ function effectiveOrderStatus(order: CustomerOrder): string {
   return order.status;
 }
 
+function getCountdownText(dateValue?: string | null): string {
+  if (!dateValue) return 'Date TBA';
+
+  const target = new Date(dateValue);
+  if (Number.isNaN(target.getTime())) return 'Date TBA';
+
+  const diffMs = target.getTime() - Date.now();
+  if (diffMs <= 0) return 'Happening now';
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `Starts in ${days}d ${hours}h`;
+  if (hours > 0) return `Starts in ${hours}h ${minutes}m`;
+  return `Starts in ${Math.max(minutes, 1)}m`;
+}
+
 // ── Main Component ─────────────────────────────────────────────
 const Account = () => {
   const navigate = useNavigate();
@@ -108,6 +130,8 @@ const Account = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<WebInvoice | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [tickets, setTickets] = useState<CustomerTicket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
 
   // Addresses
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -137,7 +161,7 @@ const Account = () => {
 
   // ── URL sync ────────────────────────────────────────────────
   useEffect(() => {
-    if (tabFromUrl && ['profile', 'orders', 'addresses', 'wishlist'].includes(tabFromUrl)) {
+    if (tabFromUrl && ['profile', 'orders', 'tickets', 'addresses', 'wishlist'].includes(tabFromUrl)) {
       setActiveTab(tabFromUrl);
     }
   }, [tabFromUrl]);
@@ -169,6 +193,36 @@ const Account = () => {
     }
   }, [activeTab, token, orders.length, loadOrders]);
 
+  const loadTickets = useCallback(async () => {
+    if (!token) return;
+    setTicketsLoading(true);
+    try {
+      const data = await getCustomerTickets(token);
+      setTickets(data);
+    } catch {
+      toast.error('Failed to load tickets');
+    } finally {
+      setTicketsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'tickets' && token && tickets.length === 0) {
+      loadTickets();
+    }
+  }, [activeTab, token, tickets.length, loadTickets]);
+
+  useEffect(() => {
+    if (activeTab === 'profile' && token) {
+      if (orders.length === 0) {
+        loadOrders();
+      }
+      if (tickets.length === 0) {
+        loadTickets();
+      }
+    }
+  }, [activeTab, token, orders.length, tickets.length, loadOrders, loadTickets]);
+
   // ── Load addresses ──────────────────────────────────────────
   const loadAddresses = useCallback(async () => {
     if (!token) return;
@@ -189,7 +243,6 @@ const Account = () => {
     }
   }, [activeTab, token, addresses.length, loadAddresses]);
 
-  // ── Order detail ────────────────────────────────────────────
   const viewOrderDetail = async (order: CustomerOrder) => {
     if (!token) return;
     setOrderDetailLoading(true);
@@ -392,6 +445,12 @@ const Account = () => {
     ? [
         { id: 'profile' as Tab, label: 'Profile', icon: User },
         { id: 'orders' as Tab, label: 'Orders', icon: Package },
+        {
+          id: 'tickets' as Tab,
+          label: 'Tickets',
+          icon: Ticket,
+          count: tickets.reduce((sum, booking) => sum + (booking.ticket_count || 0), 0),
+        },
         { id: 'addresses' as Tab, label: 'Addresses', icon: MapPin },
         { id: 'wishlist' as Tab, label: 'Wishlist', icon: Heart, count: wishlistItems.length },
       ]
@@ -574,6 +633,29 @@ const Account = () => {
                   </form>
                 ) : (
                   <div className="space-y-4">
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <p className="text-xs text-muted-foreground">Total Orders</p>
+                        <p className="text-2xl font-display font-bold">{orders.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <p className="text-xs text-muted-foreground">Total Spent</p>
+                        <p className="text-2xl font-display font-bold">
+                          SGD {orders.reduce((sum, order) => sum + (order.total || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <p className="text-xs text-muted-foreground">Wishlist</p>
+                        <p className="text-2xl font-display font-bold">{wishlistItems.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <p className="text-xs text-muted-foreground">Event Tickets</p>
+                        <p className="text-2xl font-display font-bold">
+                          {tickets.reduce((sum, booking) => sum + (booking.ticket_count || 0), 0)}
+                        </p>
+                      </div>
+                    </div>
+
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm text-muted-foreground">Name</label>
@@ -614,6 +696,58 @@ const Account = () => {
                         </p>
                       </div>
                     )}
+
+                    <div className="mt-4 p-4 rounded-xl border border-border bg-muted/20">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <h3 className="text-sm font-medium flex items-center gap-2">
+                          <Ticket className="h-4 w-4 text-primary" />
+                          My Event Tickets
+                        </h3>
+                        <Button size="sm" variant="outline" onClick={() => setActiveTab('tickets')}>
+                          View all
+                        </Button>
+                      </div>
+
+                      {ticketsLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading tickets...
+                        </div>
+                      ) : tickets.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          No event tickets yet. Your confirmed event purchases will appear here.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {tickets.slice(0, 5).map((booking) => (
+                            <div
+                              key={booking.id}
+                              className="p-3 rounded-lg bg-background/60 border border-border/70"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-sm">{booking.event_title || 'Event Ticket'}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {booking.event_date
+                                      ? new Date(booking.event_date).toLocaleDateString('en-SG', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                        })
+                                      : 'Date TBA'}
+                                    {booking.event_venue ? ` • ${booking.event_venue}` : ''}
+                                  </p>
+                                </div>
+                                {statusBadge(booking.status)}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Ref: {booking.booking_reference} • {booking.ticket_count} ticket{booking.ticket_count > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -742,6 +876,52 @@ const Account = () => {
                               <p className="font-medium text-sm">
                                 SGD {item.line_total.toFixed(2)}
                               </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Event Bookings */}
+                    {selectedOrder.event_bookings && selectedOrder.event_bookings.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-medium mb-3">Event Tickets</h3>
+                        <div className="space-y-3">
+                          {selectedOrder.event_bookings.map((booking) => (
+                            <div key={booking.id} className="p-3 rounded-lg bg-muted/20 border border-border/70">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-sm">
+                                    {booking.event?.title || 'Event Ticket'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {booking.event?.event_date
+                                      ? new Date(booking.event.event_date).toLocaleDateString('en-SG', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                        })
+                                      : 'Date TBA'}
+                                    {booking.event?.venue ? ` • ${booking.event.venue}` : ''}
+                                  </p>
+                                </div>
+                                {statusBadge(booking.state)}
+                              </div>
+
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Ref: {booking.booking_reference} • {booking.ticket_count} ticket{booking.ticket_count > 1 ? 's' : ''}
+                              </p>
+
+                              {booking.tickets?.length > 0 && (
+                                <div className="mt-2 rounded-lg bg-background/60 border border-border/60 p-2 space-y-1">
+                                  {booking.tickets.map((ticket) => (
+                                    <div key={ticket.id} className="flex items-center justify-between text-xs">
+                                      <span className="font-mono">{ticket.ticket_code}</span>
+                                      <span className="text-muted-foreground capitalize">{ticket.status}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1029,6 +1209,96 @@ const Account = () => {
                       </div>
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* ━━━ TICKETS TAB ━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {activeTab === 'tickets' && (
+              <div className="glass-strong rounded-2xl p-6">
+                <h2 className="text-xl font-display font-bold mb-6 flex items-center gap-2">
+                  <Ticket className="h-5 w-5 text-primary" />
+                  My Event Tickets
+                </h2>
+
+                {ticketsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                ) : tickets.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No event tickets yet</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Tickets from your confirmed event purchases will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {tickets.map((booking) => (
+                      <div
+                        key={booking.id}
+                        className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background p-4 shadow-sm space-y-3"
+                      >
+                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-fuchsia-500 to-amber-400" />
+
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">My Event Tickets</p>
+                            <p className="mt-1 font-display text-lg font-bold leading-tight">
+                              {booking.event_title || 'Event Ticket'}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {booking.event_date
+                                ? new Date(booking.event_date).toLocaleDateString('en-SG', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })
+                                : 'Date TBA'}
+                              {booking.event_venue ? ` • ${booking.event_venue}` : ''}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            {statusBadge(booking.status)}
+                            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">
+                              {getCountdownText(booking.event_date)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                          <div className="rounded-xl bg-background/70 border border-border/70 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Booking Ref</p>
+                            <p className="mt-1 font-mono text-sm font-semibold">{booking.booking_reference}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {booking.ticket_count} ticket{booking.ticket_count > 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-primary/10 border border-primary/20 p-3 text-right sm:min-w-[120px]">
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-primary/80">Countdown</p>
+                            <p className="mt-1 text-sm font-bold text-primary">
+                              {getCountdownText(booking.event_date)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {booking.tickets?.length > 0 && (
+                          <div className="rounded-xl bg-background/70 border border-border/70 p-3">
+                            <p className="text-xs font-medium mb-2 uppercase tracking-[0.2em] text-muted-foreground">Issued Ticket IDs</p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {booking.tickets.map((ticket) => (
+                                <div key={ticket.id} className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
+                                  <span className="font-mono font-semibold tracking-wide">{ticket.ticket_code}</span>
+                                  <span className="text-muted-foreground capitalize">{ticket.status}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

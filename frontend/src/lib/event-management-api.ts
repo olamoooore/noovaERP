@@ -177,6 +177,25 @@ class EventManagementAPI {
     return apiClient.get('/customer/dashboard')
   }
 
+  // Admin booking actions
+  async cancelBooking(bookingId: number, reason: string): Promise<APIResponse<any>> {
+    return apiClient.post(`/event-management/bookings/${bookingId}/cancel`, { reason })
+  }
+
+  async refundBooking(bookingId: number, reason: string): Promise<APIResponse<any>> {
+    // Cancelling triggers refund eligibility evaluation server-side
+    return apiClient.post(`/event-management/bookings/${bookingId}/cancel`, {
+      reason: `REFUND: ${reason}`,
+    })
+  }
+
+  async resendTicketAdmin(ticketId: number): Promise<APIResponse<any>> {
+    return apiClient.post(`/customer/tickets/${ticketId}/resend`, {
+      delivery_method: 'email',
+      reason: 'Admin resend',
+    })
+  }
+
   async downloadTicket(bookingId: number): Promise<APIResponse<Blob>> {
     const response = await apiClient.get(`/customer/bookings/${bookingId}/ticket`, {
       responseType: 'blob'
@@ -236,11 +255,11 @@ class EventManagementAPI {
   }
 
   async getEventFeedback(eventId: number): Promise<APIResponse<FeedbackData[]>> {
-    return apiClient.get(`/events/${eventId}/feedback`)
+    return apiClient.get(`/customer/feedback?event_id=${eventId}`)
   }
 
   async getEventFeedbackStats(eventId: number): Promise<APIResponse<any>> {
-    return apiClient.get(`/events/${eventId}/feedback/stats`)
+    return apiClient.get(`/customer/feedback/stats/${eventId}`)
   }
 
   // Event Management endpoints

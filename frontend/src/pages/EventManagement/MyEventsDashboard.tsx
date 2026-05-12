@@ -301,7 +301,7 @@ const MyEventsDashboard: React.FC = () => {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <Heading1 className="text-2xl md:text-3xl mb-2">My Events</Heading1>
+        <Heading1 className="text-2xl md:text-3xl mb-2">Events</Heading1>
         <BodyText variant="muted">Manage your bookings, discover new events, and track your experience</BodyText>
       </div>
 

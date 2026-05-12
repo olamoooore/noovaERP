@@ -5,6 +5,7 @@ namespace Modules\EventManagement\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Ecommerce\Models\WebOrder;
 use Modules\EventManagement\Models\Booking;
 
 class WebCustomerTicketController extends Controller
@@ -17,13 +18,22 @@ class WebCustomerTicketController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
+        $orderIds = WebOrder::query()
+            ->where('customer_id', $customer->id)
+            ->pluck('id')
+            ->all();
+
         $bookings = Booking::query()
             ->with(['event', 'tickets.attendee'])
-            ->where(function ($query) use ($customer) {
+            ->where(function ($query) use ($customer, $orderIds) {
                 $query->where('customer_id', $customer->id);
 
                 if (!empty($customer->email)) {
                     $query->orWhere('buyer_email', $customer->email);
+                }
+
+                foreach ($orderIds as $orderId) {
+                    $query->orWhere('booking_reference', 'like', sprintf('WEB%dEV%%', (int) $orderId));
                 }
             })
             ->orderByDesc('created_at')

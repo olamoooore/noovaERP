@@ -9,9 +9,10 @@ import {
 } from '@/components/ui/dialog';
 import {
   Calendar, MapPin, CreditCard, Download, Eye, XCircle, Loader2,
-  User, Mail, Hash, Clock, CheckCircle2, Ticket,
+  User, Mail, Hash, Clock, CheckCircle2, Ticket, RefreshCcw,
 } from 'lucide-react';
-import { useCustomerDashboard } from '@/hooks/queries/useEventManagement';
+import { useCustomerDashboard, useCancelBooking, useRefundBooking } from '@/hooks/queries/useEventManagement';
+import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
 /* ─── Status style map ──────────────────────────────────────────────── */
@@ -153,9 +154,54 @@ const BookingDetailModal: React.FC<{ booking: any; open: boolean; onClose: () =>
 const MyBookingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [viewBooking, setViewBooking] = useState<any>(null);
+  const { toast } = useToast();
+  const cancelMutation = useCancelBooking();
+  const refundMutation = useRefundBooking();
 
   const { data: dashboardData, isLoading, isError } = useCustomerDashboard();
   const allBookings = (dashboardData?.bookings ?? []) as any[];
+
+  const handleCancel = (booking: any) => {
+    const reason = window.prompt(
+      `Cancel booking ${booking.booking_reference ?? `#${booking.id}`}?\n\nEnter cancellation reason:`,
+      'Admin cancellation'
+    );
+    if (!reason) return;
+    cancelMutation.mutate(
+      { bookingId: booking.id, reason },
+      {
+        onSuccess: () => toast({ title: 'Booking cancelled', description: booking.booking_reference ?? `#${booking.id}` }),
+        onError: (e: any) =>
+          toast({
+            title: 'Cancellation failed',
+            description: e?.response?.data?.error?.message ?? e?.message ?? 'Please try again',
+            variant: 'destructive',
+          }),
+      }
+    );
+  };
+
+  const handleRefund = (booking: any) => {
+    const reason = window.prompt(
+      `Refund booking ${booking.booking_reference ?? `#${booking.id}`}?\n\nEnter refund reason:`,
+      'Customer refund requested'
+    );
+    if (!reason) return;
+    if (!window.confirm('This will cancel the booking and mark it for refund. Continue?')) return;
+    refundMutation.mutate(
+      { bookingId: booking.id, reason },
+      {
+        onSuccess: () =>
+          toast({ title: 'Refund initiated', description: booking.booking_reference ?? `#${booking.id}` }),
+        onError: (e: any) =>
+          toast({
+            title: 'Refund failed',
+            description: e?.response?.data?.error?.message ?? e?.message ?? 'Please try again',
+            variant: 'destructive',
+          }),
+      }
+    );
+  };
 
   const filteredBookings = activeTab === 'all'
     ? allBookings
@@ -168,7 +214,7 @@ const MyBookingsPage: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
         <Heading1 className="text-2xl md:text-3xl mb-1">Bookings</Heading1>
@@ -293,15 +339,29 @@ const MyBookingsPage: React.FC = () => {
                               <Download className="h-3.5 w-3.5" />
                               Ticket
                             </Button>
-                            {status !== 'cancelled' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex items-center gap-1.5 min-w-[90px] text-destructive hover:bg-destructive/10"
-                              >
-                                <XCircle className="h-3.5 w-3.5" />
-                                Cancel
-                              </Button>
+                            {status !== 'cancelled' && status !== 'refunded' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-1.5 min-w-[90px] text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handleRefund(booking)}
+                                  disabled={refundMutation.isPending}
+                                >
+                                  <RefreshCcw className="h-3.5 w-3.5" />
+                                  Refund
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-1.5 min-w-[90px] text-destructive hover:bg-destructive/10"
+                                  onClick={() => handleCancel(booking)}
+                                  disabled={cancelMutation.isPending}
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Cancel
+                                </Button>
+                              </>
                             )}
                           </div>
                         </div>

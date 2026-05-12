@@ -346,7 +346,7 @@ const baseNavItems: NavItem[] = [
     featureKey: 'event_management',
     children: [
       {
-        title: 'My Events',
+        title: 'Events',
         href: '/event-management/dashboard',
         icon: 'solar:calendar-mark-bold-duotone',
       },
@@ -379,11 +379,6 @@ const baseNavItems: NavItem[] = [
         title: 'Feedback',
         href: '/event-management/feedback',
         icon: 'solar:chat-round-bold-duotone',
-      },
-      {
-        title: 'Event Portal',
-        href: '/event-portal',
-        icon: 'solar:global-bold-duotone',
       },
     ],
   },

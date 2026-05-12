@@ -153,14 +153,22 @@ const StaffManagementPage: React.FC = () => {
     });
   };
 
+  const selectedEventObj = events.find((e) => e.id === selectedEvent);
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <Heading1 className="text-2xl md:text-3xl">Staff Management</Heading1>
-          <BodyText variant="muted">Manage event staff assignments, scheduling, and performance</BodyText>
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-start">
+        <div className="flex items-start gap-3">
+          <div className="p-3 bg-primary/10 rounded-xl shrink-0">
+            <StaffRoleIcon name="manager" size="lg" className="text-primary" />
+          </div>
+          <div>
+            <Heading1 className="text-2xl md:text-3xl">Staff Operations</Heading1>
+            <BodyText variant="muted">Assignments, scheduling, performance & shift handover</BodyText>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <AccessibleButton 
             onClick={generateSchedulingReport} 
             variant="outline" 
@@ -230,41 +238,76 @@ const StaffManagementPage: React.FC = () => {
 
       {/* Event Selection */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <SystemIcon name="search" size="md" />
-            <ResponsiveText size="lg" weight="semibold">Select Event</ResponsiveText>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {eventsLoading ? (
-            <div className="flex items-center justify-center p-4">
-              <LoadingSpinner size="md" />
-            </div>
-          ) : eventsError ? (
-            <div className="text-center p-4">
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4 gap-2">
+            <Label className="text-sm font-medium md:w-32 shrink-0">Select Event</Label>
+            {eventsLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <LoadingSpinner size="sm" /> Loading events…
+              </div>
+            ) : eventsError ? (
               <ResponsiveText size="sm" variant="muted">
                 Failed to load events. Please refresh the page.
               </ResponsiveText>
-            </div>
-          ) : (
-            <Select value={selectedEvent?.toString()} onValueChange={(value) => setSelectedEvent(parseInt(value))}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select an event to manage staff" />
-              </SelectTrigger>
-              <SelectContent>
-                {events.map((event) => (
-                  <SelectItem key={event.id} value={event.id.toString()}>
-                    <ResponsiveText size="sm">
-                      {event.name} - {new Date(event.start_date).toLocaleDateString()}
-                    </ResponsiveText>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+            ) : (
+              <Select value={selectedEvent?.toString()} onValueChange={(value) => setSelectedEvent(parseInt(value))}>
+                <SelectTrigger className="w-full md:max-w-md">
+                  <SelectValue placeholder="Select an event to manage staff" />
+                </SelectTrigger>
+                <SelectContent>
+                  {events.map((event) => (
+                    <SelectItem key={event.id} value={event.id.toString()}>
+                      <ResponsiveText size="sm">
+                        {event.name} — {new Date(event.start_date).toLocaleDateString()}
+                      </ResponsiveText>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {selectedEventObj && (
+              <Badge variant="secondary" className="ml-auto hidden md:inline-flex">
+                {staffAssignments.length} staff assigned
+              </Badge>
+            )}
+          </div>
         </CardContent>
       </Card>
+
+      {selectedEvent && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Staff</p>
+              <p className="text-2xl font-bold mt-1">{staffAssignments.length}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Confirmed</p>
+              <p className="text-2xl font-bold mt-1 text-green-600">
+                {staffAssignments.filter((s) => s.status === 'confirmed').length}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Assigned</p>
+              <p className="text-2xl font-bold mt-1 text-amber-600">
+                {staffAssignments.filter((s) => s.status === 'assigned').length}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Completed</p>
+              <p className="text-2xl font-bold mt-1 text-blue-600">
+                {staffAssignments.filter((s) => s.status === 'completed').length}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {selectedEvent && (
         <Tabs defaultValue="assignments" className="space-y-4">

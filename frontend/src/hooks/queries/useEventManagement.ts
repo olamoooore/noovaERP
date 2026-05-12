@@ -266,6 +266,28 @@ export const useDownloadTicket = () => {
   })
 }
 
+export const useCancelBooking = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bookingId, reason }: { bookingId: number; reason: string }) =>
+      eventManagementAPI.cancelBooking(bookingId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventManagementKeys.customerDashboard() })
+    },
+  })
+}
+
+export const useRefundBooking = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bookingId, reason }: { bookingId: number; reason: string }) =>
+      eventManagementAPI.refundBooking(bookingId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventManagementKeys.customerDashboard() })
+    },
+  })
+}
+
 // ============================================================================
 // FEEDBACK SYSTEM HOOKS
 // ============================================================================

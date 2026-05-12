@@ -39,8 +39,13 @@ class CustomerHubController extends Controller
         try {
             $now = now();
             $user = $request->user();
+            $scopeToCustomer = $this->shouldScopeToCustomer($user);
 
-            $bookingStates = ['confirmed', 'booked'];
+            // Customers see only confirmed/booked. Admins/managers see ALL states
+            // (pending, confirmed, booked, paid, cancelled, refunded, attended).
+            $bookingStates = $scopeToCustomer
+                ? ['confirmed', 'booked', 'paid']
+                : ['pending', 'confirmed', 'booked', 'paid', 'attended', 'cancelled', 'refunded', 'no_show'];
             $eventSelects = [
                 'e.title as event_title',
                 'e.venue as event_venue',
@@ -81,7 +86,7 @@ class CustomerHubController extends Controller
                 )
                 ->orderBy('event_start', 'asc');
 
-            if ($this->shouldScopeToCustomer($user)) {
+            if ($scopeToCustomer) {
                 $query->where(function ($scope) use ($user) {
                     if (Schema::hasColumn('bookings', 'customer_id')) {
                         $scope->where('b.customer_id', $user->id);
@@ -190,17 +195,33 @@ class CustomerHubController extends Controller
             return true;
         }
 
+        // Web customers are stored in a separate model; any authenticated tenant
+        // App\Models\User is staff/admin and should see all tenant bookings.
+        $class = is_object($user) ? get_class($user) : '';
+        if ($class === \App\Models\User::class || is_subclass_of($user, \App\Models\User::class)) {
+            // Only scope to themselves if they explicitly hold a customer role.
+            if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['customer', 'web_customer', 'guest_customer'])) {
+                return true;
+            }
+            return false;
+        }
+
         if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
             return false;
         }
 
-        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['admin', 'tenant_admin', 'manager', 'event_manager'])) {
+        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['admin', 'tenant_admin', 'manager', 'event_manager', 'owner', 'Owner'])) {
             return false;
         }
 
         $role = strtolower((string) ($user->role ?? ''));
 
-        return !str_contains($role, 'admin') && !str_contains($role, 'manager');
+        if ($role === '') {
+            // No customer marker → default to admin view for authenticated tenant users.
+            return false;
+        }
+
+        return !str_contains($role, 'admin') && !str_contains($role, 'manager') && !str_contains($role, 'owner');
     }
 
     /**
