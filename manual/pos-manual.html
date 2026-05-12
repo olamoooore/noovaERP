@@ -113,6 +113,24 @@
             font-size: 1rem;
         }
 
+        .hero-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #fff;
+            font-size: 0.86rem;
+        }
+
+        .hero-link:hover {
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.18);
+        }
+
         .hero-meta {
             display: flex;
             flex-wrap: wrap;
@@ -449,6 +467,10 @@
 
         <article class="content">
             <header class="hero">
+                <a class="hero-link" href="/manuals">
+                    <svg><use href="#i-book"></use></svg>
+                    <span>Back to Manuals Library</span>
+                </a>
                 <div class="hero-top">
                     <div class="brand-mark"><svg><use href="#i-terminal"></use></svg></div>
                     <div>

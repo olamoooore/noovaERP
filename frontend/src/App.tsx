@@ -38,6 +38,7 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ defa
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
+const ManualsLibraryPage = lazy(() => import('@/pages/Manuals/ManualsLibraryPage').then(m => ({ default: m.ManualsLibraryPage })))
 const OCRDocumentsPage = lazy(() => import('@/pages/OCRDocumentsPage').then(m => ({ default: m.OCRDocumentsPage })))
 const OCRDocumentReviewPage = lazy(() => import('@/pages/OCRDocumentReviewPage').then(m => ({ default: m.OCRDocumentReviewPage })))
 
@@ -439,6 +440,8 @@ function App() {
             </Route>
 
             {/* ─── PUBLIC ROUTES (no admin auth required) ─────────────── */}
+
+            <Route path="/manuals" element={<ManualsLibraryPage />} />
 
             {/* Web Shop Cart & Checkout - public, accessible from storefront */}
             <Route path="/web-shop/cart" element={<WebShopCartPage />} />

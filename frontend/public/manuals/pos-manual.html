@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoovaERP POS Module Manual</title>
+    <style>
+        :root {
+            --bg: #f4f6fb;
+            --panel: #ffffff;
+            --panel-soft: #fafbff;
+            --ink: #1d2437;
+            --muted: #5f6880;
+            --line: #dde4ef;
+            --brand: #b91c5c;
+            --warn: #b45309;
+            --danger: #be123c;
+            --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+            --radius-lg: 24px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            font-family: Aptos, "Segoe UI", "Helvetica Neue", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(225, 29, 72, 0.12), transparent 24%),
+                radial-gradient(circle at bottom right, rgba(30, 64, 175, 0.10), transparent 28%),
+                linear-gradient(180deg, #fbfbfd 0%, var(--bg) 100%);
+        }
+
+        a {
+            color: var(--brand);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .shell {
+            width: min(1400px, calc(100vw - 32px));
+            margin: 24px auto;
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            gap: 20px;
+        }
+
+        .sidebar,
+        .content {
+            background: rgba(255, 255, 255, 0.93);
+            border: 1px solid rgba(221, 228, 239, 0.92);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 20px;
+            align-self: start;
+            padding: 22px;
+            border-radius: var(--radius-lg);
+        }
+
+        .content {
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        .hero {
+            padding: 34px 36px 28px;
+            background: linear-gradient(135deg, #111827 0%, #7f1d1d 44%, #be123c 100%);
+            color: #fff;
+        }
+
+        .hero-top {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .brand-mark {
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(2rem, 3vw, 2.9rem);
+            line-height: 1.02;
+            letter-spacing: -0.04em;
+        }
+
+        .hero p {
+            margin: 10px 0 0;
+            max-width: 920px;
+            color: rgba(255, 255, 255, 0.83);
+            font-size: 1rem;
+        }
+
+        .hero-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #fff;
+            font-size: 0.86rem;
+        }
+
+        .hero-link:hover {
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #fff;
+            font-size: 0.86rem;
+        }
+
+        .nav-title,
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            font-size: 0.74rem;
+            font-weight: 700;
+        }
+
+        .nav-title {
+            color: var(--muted);
+            margin: 0 0 14px;
+        }
+
+        .eyebrow {
+            color: #fecdd3;
+            margin-bottom: 12px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar li + li {
+            margin-top: 8px;
+        }
+
+        .sidebar a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 12px;
+            border-radius: 12px;
+            color: var(--ink);
+            background: transparent;
+        }
+
+        .sidebar a:hover {
+            background: var(--panel-soft);
+            text-decoration: none;
+        }
+
+        .sidebar-note {
+            margin-top: 18px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--panel-soft);
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .main {
+            padding: 30px 36px 40px;
+        }
+
+        section + section {
+            margin-top: 34px;
+            padding-top: 34px;
+            border-top: 1px solid var(--line);
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .section-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(190, 24, 93, 0.13), rgba(225, 29, 72, 0.05));
+            color: var(--brand);
+            border: 1px solid rgba(225, 29, 72, 0.12);
+            flex: 0 0 auto;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 1.6rem;
+            letter-spacing: -0.03em;
+        }
+
+        h3 {
+            margin: 24px 0 10px;
+            font-size: 1.07rem;
+            letter-spacing: -0.02em;
+        }
+
+        p,
+        li,
+        td,
+        th {
+            font-size: 0.97rem;
+            line-height: 1.62;
+        }
+
+        p {
+            margin: 0 0 12px;
+            color: var(--muted);
+        }
+
+        strong {
+            color: var(--ink);
+        }
+
+        ul,
+        ol {
+            margin: 0 0 14px;
+            padding-left: 20px;
+            color: var(--muted);
+        }
+
+        li + li {
+            margin-top: 7px;
+        }
+
+        .callout {
+            display: grid;
+            grid-template-columns: 40px minmax(0, 1fr);
+            gap: 12px;
+            padding: 15px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: var(--panel-soft);
+            margin: 16px 0;
+        }
+
+        .callout h3 {
+            margin: 0 0 6px;
+            font-size: 1rem;
+        }
+
+        .callout p:last-child {
+            margin-bottom: 0;
+        }
+
+        .callout.info {
+            border-color: rgba(30, 64, 175, 0.16);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .callout.warn {
+            border-color: rgba(180, 83, 9, 0.22);
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .route-grid,
+        .info-grid,
+        .two-col {
+            display: grid;
+            gap: 14px;
+        }
+
+        .route-grid,
+        .two-col {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .info-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .mini-card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .mini-card h3 {
+            margin-top: 0;
+        }
+
+        .mini-card p:last-child {
+            margin-bottom: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        thead {
+            background: #fff1f5;
+        }
+
+        th,
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+            text-align: left;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.9em;
+            background: #eef2ff;
+            padding: 2px 6px;
+            border-radius: 7px;
+            color: #0f172a;
+        }
+
+        .footer {
+            margin-top: 34px;
+            padding-top: 18px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .brand-mark svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .section-icon svg,
+        .sidebar a svg,
+        .pill svg,
+        .callout > div:first-child svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        @media (max-width: 1180px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: static;
+            }
+        }
+
+        @media (max-width: 820px) {
+            .main,
+            .hero {
+                padding-left: 22px;
+                padding-right: 22px;
+            }
+
+            .route-grid,
+            .info-grid,
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+
+            th,
+            td {
+                padding: 10px 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22Z"></path><path d="M8 7h8"></path><path d="M8 11h8"></path></symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></symbol>
+        <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8"></path><path d="M12 16v4"></path></symbol>
+        <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle><path d="M3 4h2l2.2 10.3a1 1 0 0 0 1 .7h8.9a1 1 0 0 0 1-.8L22 7H7"></path></symbol>
+        <symbol id="i-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></symbol>
+        <symbol id="i-report" viewBox="0 0 24 24"><path d="M4 20h16"></path><path d="M7 16V8"></path><path d="M12 16V4"></path><path d="M17 16v-6"></path></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.6Z"></path></symbol>
+        <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"></circle><circle cx="18" cy="6" r="2"></circle><path d="M8 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h1"></path></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"></path><path d="M12 9v5"></path><path d="M12 18h.01"></path></symbol>
+        <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4"></path><rect x="5" y="14" width="14" height="6"></rect><rect x="3" y="8" width="18" height="8" rx="2"></rect></symbol>
+    </svg>
+
+    <div class="shell">
+        <aside class="sidebar">
+            <p class="nav-title">POS Manual</p>
+            <ul>
+                <li><a href="#scope"><svg><use href="#i-book"></use></svg><span>Scope</span></a></li>
+                <li><a href="#routes"><svg><use href="#i-route"></use></svg><span>Routes</span></a></li>
+                <li><a href="#landing"><svg><use href="#i-terminal"></use></svg><span>POS Landing</span></a></li>
+                <li><a href="#register"><svg><use href="#i-card"></use></svg><span>Open Register</span></a></li>
+                <li><a href="#terminal"><svg><use href="#i-grid"></use></svg><span>Terminal Layout</span></a></li>
+                <li><a href="#customer-order"><svg><use href="#i-cart"></use></svg><span>Current Order</span></a></li>
+                <li><a href="#payments"><svg><use href="#i-card"></use></svg><span>Payments</span></a></li>
+                <li><a href="#receipts"><svg><use href="#i-print"></use></svg><span>Receipts and Labels</span></a></li>
+                <li><a href="#orders-reports"><svg><use href="#i-report"></use></svg><span>Orders and Reports</span></a></li>
+                <li><a href="#settings"><svg><use href="#i-gear"></use></svg><span>Settings</span></a></li>
+                <li><a href="#limits"><svg><use href="#i-alert"></use></svg><span>Current Limits</span></a></li>
+            </ul>
+
+            <div class="sidebar-note">
+                This handbook documents the current NoovaERP POS screens exactly as routed today. Unsupported or backend-only actions are called out instead of being presented as cashier workflows.
+            </div>
+        </aside>
+
+        <article class="content">
+            <header class="hero">
+                <a class="hero-link" href="/manuals">
+                    <svg><use href="#i-book"></use></svg>
+                    <span>Back to Manuals Library</span>
+                </a>
+                <div class="hero-top">
+                    <div class="brand-mark"><svg><use href="#i-terminal"></use></svg></div>
+                    <div>
+                        <div class="eyebrow">NoovaERP User Manual</div>
+                        <h1>Point of Sale Module</h1>
+                    </div>
+                </div>
+                <p>This manual is based on the current POS landing page, full-screen terminal, payment selector, settings tabs, barcode page, orders page, reports page, and offline queue. It corrects the earlier generic guidance and matches the current UI layout.</p>
+                <div class="hero-meta">
+                    <span class="pill"><svg><use href="#i-route"></use></svg><span>/pos and /pos/*</span></span>
+                    <span class="pill"><svg><use href="#i-grid"></use></svg><span>Current Order left, Product Discovery right</span></span>
+                    <span class="pill"><svg><use href="#i-alert"></use></svg><span>Documented only for exposed UI workflows</span></span>
+                </div>
+            </header>
+
+            <main class="main">
+                <section id="scope">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-book"></use></svg></div>
+                        <h2>Scope</h2>
+                    </div>
+                    <p>The current POS module covers terminal selection, session opening, selling through the full-screen terminal, barcode label generation, order review, reporting, offline sync monitoring, and POS settings.</p>
+                    <p>The backend also supports returns, voids, refunds, held orders, and payment posting flows. This manual only describes workflows that are currently reachable through the existing frontend screens we inspected.</p>
+
+                    <div class="callout info">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Most Important Correction</h3>
+                            <p>The live terminal layout is not a left-side product grid. In the current <code>/pos/terminal</code> screen, <strong>Product Discovery is on the right</strong> and <strong>Current Order is on the left</strong>.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="routes">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-route"></use></svg></div>
+                        <h2>Current Routes</h2>
+                    </div>
+                    <div class="route-grid">
+                        <div class="mini-card"><h3><code>/pos</code></h3><p>POS landing page for terminal cards, Orders slide-over, Barcodes shortcut, and register opening.</p></div>
+                        <div class="mini-card"><h3><code>/pos/terminal</code></h3><p>Full-screen selling interface inside the POS layout.</p></div>
+                        <div class="mini-card"><h3><code>/pos/orders</code></h3><p>Orders page for POS and web order review.</p></div>
+                        <div class="mini-card"><h3><code>/pos/barcodes</code></h3><p>Barcode label search and print page.</p></div>
+                        <div class="mini-card"><h3><code>/pos/reports</code></h3><p>POS dashboard and date-based reporting page.</p></div>
+                        <div class="mini-card"><h3><code>/pos/offline-queue</code></h3><p>Offline sync queue and conflict management page.</p></div>
+                        <div class="mini-card"><h3><code>/pos/settings</code></h3><p>General, Terminals, Payment Methods, Receipt, and Barcode settings.</p></div>
+                        <div class="mini-card"><h3><code>/pos/customer-display</code></h3><p>Customer-facing display routes used when customer display is enabled.</p></div>
+                    </div>
+                </section>
+
+                <section id="landing">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-terminal"></use></svg></div>
+                        <h2>POS Landing Page</h2>
+                    </div>
+                    <p>The landing page at <code>/pos</code> is where operators choose a terminal and start or resume a register session.</p>
+
+                    <h3>What the Landing Page Shows</h3>
+                    <ul>
+                        <li>A grid of existing terminal cards</li>
+                        <li>An <strong>Orders</strong> button that opens an order-review slide-over</li>
+                        <li>A <strong>Barcodes</strong> shortcut to the barcode page</li>
+                        <li>An <strong>Add New Terminal</strong> card for creating a new POS station</li>
+                    </ul>
+
+                    <h3>Terminal Card States</h3>
+                    <ul>
+                        <li><strong>Active</strong>: the terminal matches the session store and is ready to resume.</li>
+                        <li><strong>Session in progress</strong>: the terminal has an open session and can be resumed.</li>
+                        <li><strong>Click to open session</strong>: the terminal has no open session and will launch the register-opening dialog.</li>
+                    </ul>
+
+                    <h3>Create or Edit Terminal</h3>
+                    <p>The current landing page create/edit dialogs capture:</p>
+                    <ul>
+                        <li>Terminal name</li>
+                        <li>Warehouse</li>
+                    </ul>
+                </section>
+
+                <section id="register">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-card"></use></svg></div>
+                        <h2>Open Register</h2>
+                    </div>
+                    <p>If a terminal does not already have an open session, clicking it opens the <strong>Open Register</strong> dialog.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Area</th>
+                                <th>Current behavior</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Terminal and warehouse summary</strong></td>
+                                <td>Shows the terminal name and warehouse selected for the session.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Staff assignment</strong></td>
+                                <td>Requires choosing a staff member before the register can open.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Opening balance</strong></td>
+                                <td>Accepts a direct amount entry and can also be auto-calculated from denomination counts.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cash counting panel</strong></td>
+                                <td>Optional calculator-like panel for notes and coins. It updates the opening balance automatically.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Notes</strong></td>
+                                <td>Optional text entry for opening-cash comments.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3>How Sessions Open</h3>
+                    <p>When confirmed, the page posts to the session-open endpoint, stores the session in the POS session store, and then navigates to <code>/pos/terminal</code>.</p>
+                </section>
+
+                <section id="terminal">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-grid"></use></svg></div>
+                        <h2>Terminal Layout</h2>
+                    </div>
+                    <p>The terminal runs inside the full-screen POS layout, not the normal sidebar layout. This is the live screen arrangement.</p>
+
+                    <div class="two-col">
+                        <div class="mini-card">
+                            <h3>Left Side: Current Order</h3>
+                            <p>This column contains the draft order reference, customer selector, cart items, discount tools, totals, and the final PAY action.</p>
+                        </div>
+                        <div class="mini-card">
+                            <h3>Right Side: Product Discovery</h3>
+                            <p>This column contains search, manual barcode entry, category chips, warehouse and terminal badges, the product grid, and product pagination.</p>
+                        </div>
+                    </div>
+
+                    <h3>Product Discovery Panel</h3>
+                    <ul>
+                        <li>Header label: <strong>Product Discovery</strong></li>
+                        <li>Context badges: selected category, catalog item count, in-stock count, low-stock count, active warehouse, active terminal</li>
+                        <li>Search input placeholder: <strong>Search products or scan barcode...</strong></li>
+                        <li>Category chips: <strong>All</strong> plus up to ten categories in the current chip row</li>
+                        <li>Product cards show category badge, stock state, image, name, SKU, and price</li>
+                        <li>Out-of-stock products are visually disabled</li>
+                    </ul>
+
+                    <h3>Barcode Entry Behavior</h3>
+                    <ul>
+                        <li>If the search box contains a numeric code of six or more digits and the user presses Enter, the terminal tries a POS product lookup.</li>
+                        <li>The page also listens for very fast scanner-style keyboard bursts globally and turns them into barcode lookups.</li>
+                        <li>If multiple barcode matches are returned, the current UI shows a message instead of opening a selection screen.</li>
+                    </ul>
+                </section>
+
+                <section id="customer-order">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-cart"></use></svg></div>
+                        <h2>Current Order Panel</h2>
+                    </div>
+                    <p>The left panel is the order workspace and is labeled <strong>Current Order</strong>.</p>
+
+                    <h3>Order Header Controls</h3>
+                    <ul>
+                        <li><strong>Draft reference</strong>: shows the current order number or an in-progress draft reference.</li>
+                        <li><strong>Save Draft</strong>: stores the order as draft.</li>
+                        <li><strong>Clear Cart</strong>: clears items and resets discounts, loyalty redemptions, and draft identifiers.</li>
+                        <li><strong>View Pending Orders</strong>: opens the pending-order drawer and shows a badge if draft orders exist.</li>
+                    </ul>
+
+                    <h3>Customer Handling</h3>
+                    <ul>
+                        <li>The current order can stay as <strong>Walk-in</strong>.</li>
+                        <li>The customer dialog lets the cashier search customers or open the <strong>Add New Customer</strong> dialog.</li>
+                        <li>When a customer is selected, the panel shows phone number and loyalty details if the customer is enrolled.</li>
+                    </ul>
+
+                    <h3>Cart Items</h3>
+                    <ul>
+                        <li>Each line shows image, name, unit price, quantity controls, line total, and remove action.</li>
+                        <li>The terminal blocks quantity increases above available stock.</li>
+                    </ul>
+
+                    <h3>Discount Tools</h3>
+                    <p>The live UI uses three tabs above the totals block:</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tab</th>
+                                <th>Current behavior</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Discount</strong></td>
+                                <td>Supports fixed-amount or percentage discount entry.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Loyalty</strong></td>
+                                <td>Available only when a selected customer is enrolled and can redeem points under the returned loyalty rules.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Coupon</strong></td>
+                                <td>Validates a coupon code through the POS coupon validation endpoint and applies the returned fixed or percent discount.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3>Totals Block</h3>
+                    <p>The totals area currently shows subtotal, tax, regular discount, coupon discount, loyalty discount, and final grand total.</p>
+
+                    <h3>Primary Checkout Action</h3>
+                    <p>The large bottom action is <strong>PAY</strong>, and it opens the payment selector dialog.</p>
+                </section>
+
+                <section id="payments">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-card"></use></svg></div>
+                        <h2>Payments</h2>
+                    </div>
+                    <p>The terminal uses a payment selector component rather than hard-coded payment buttons.</p>
+
+                    <h3>How Payment Methods Are Shown</h3>
+                    <ul>
+                        <li>Methods are fetched dynamically from <code>/pos-payments/methods</code>.</li>
+                        <li>They are grouped by category labels such as <strong>Cash Payment</strong>, <strong>Card Payments</strong>, and <strong>Bank Transfer / Offline</strong>.</li>
+                        <li>Each method card shows its icon and name.</li>
+                    </ul>
+
+                    <h3>Reference-Based Methods</h3>
+                    <p>If a payment method requires a reference, the selector changes to a confirmation form showing:</p>
+                    <ul>
+                        <li>Method name</li>
+                        <li>Amount</li>
+                        <li>Optional instructions from method config</li>
+                        <li>Optional account details from method config</li>
+                        <li>Reference number input</li>
+                    </ul>
+
+                    <h3>Online Gateways</h3>
+                    <ul>
+                        <li>If the selected method is configured as an online gateway, the terminal creates the order first and then routes into the appropriate payment dialog.</li>
+                        <li>The current code explicitly supports <strong>HitPay</strong> and Stripe-style gateway dialogs when those methods are configured.</li>
+                    </ul>
+
+                    <div class="callout warn">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Do Not Assume Split Tender</h3>
+                            <p>The current terminal code and payment selector inspected here do not expose a cashier split-tender workflow. This manual therefore does not document split payments as a current operator feature.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="receipts">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-print"></use></svg></div>
+                        <h2>Receipts and Labels</h2>
+                    </div>
+                    <p>The current POS terminal supports receipt preview/download and direct printing when terminal IoT settings are configured.</p>
+
+                    <h3>Receipt Flow</h3>
+                    <ul>
+                        <li>The terminal builds a receipt object after successful payment.</li>
+                        <li>If terminal settings are configured for direct receipt printing, the terminal attempts IoT receipt printing first.</li>
+                        <li>If direct printing is not available or fails, the terminal falls back to a web print preview.</li>
+                        <li>Receipt PDF download uses the order receipt endpoint.</li>
+                        <li>Auto-print behavior depends on the POS runtime settings.</li>
+                    </ul>
+
+                    <h3>Barcode Labels</h3>
+                    <p>The barcode page at <code>/pos/barcodes</code> currently provides:</p>
+                    <ul>
+                        <li>Product search by name, SKU, or barcode</li>
+                        <li>Select-all and per-product selection</li>
+                        <li>Quantity per product</li>
+                        <li>Generate All and Print Selected actions</li>
+                        <li>IoT label printing when a label printer is configured for the active terminal</li>
+                        <li>Web print preview fallback when direct label printing is unavailable</li>
+                    </ul>
+                </section>
+
+                <section id="orders-reports">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-report"></use></svg></div>
+                        <h2>Orders, Reports, and Offline Queue</h2>
+                    </div>
+
+                    <h3>Orders Page</h3>
+                    <ul>
+                        <li>Page title: <strong>Orders</strong></li>
+                        <li>Scope: both <strong>POS</strong> and <strong>Web</strong> orders</li>
+                        <li>Stats cards: Total Orders, POS Orders, Web Orders, Total Revenue</li>
+                        <li>Filters: search, source, status, and date</li>
+                        <li>Order details load on demand when a record is opened</li>
+                    </ul>
+
+                    <h3>Reports Page</h3>
+                    <ul>
+                        <li>Summary cards: Today&apos;s Sales, This Month, Period Total, Average Order</li>
+                        <li>Report type toggle: <strong>Daily</strong> or <strong>Monthly</strong></li>
+                        <li>Date filters: start date, end date, quick last-30-days, quick last-90-days</li>
+                        <li>Main content: sales trend chart, detailed breakdown table, recent orders table</li>
+                    </ul>
+
+                    <h3>Offline Queue</h3>
+                    <ul>
+                        <li>Stats cards: Total, Pending, Synced, Failed, Conflicts</li>
+                        <li>Auto-refresh toggle</li>
+                        <li>Refresh and Sync All controls</li>
+                        <li>Per-item status badges for <code>pending</code>, <code>syncing</code>, <code>synced</code>, <code>failed</code>, and <code>conflict</code></li>
+                        <li>Per-item retry and conflict resolution actions</li>
+                    </ul>
+                </section>
+
+                <section id="settings">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-gear"></use></svg></div>
+                        <h2>POS Settings</h2>
+                    </div>
+                    <p>The current settings page has five tabs: <strong>General</strong>, <strong>Terminals</strong>, <strong>Payment Methods</strong>, <strong>Receipt</strong>, and <strong>Barcode</strong>.</p>
+
+                    <h3>General</h3>
+                    <ul>
+                        <li>Order Number Prefix</li>
+                        <li>Default Warehouse</li>
+                        <li>Tax Mode</li>
+                        <li>Rounding Method</li>
+                        <li>Rounding Precision</li>
+                        <li>Idle Timeout</li>
+                        <li>Product listing and customer display settings, including Products Per Page, Default Product View, Enable Customer Display, and Customer Display Welcome Message</li>
+                    </ul>
+
+                    <h3>Terminals</h3>
+                    <ul>
+                        <li>Terminal Name</li>
+                        <li>Warehouse</li>
+                        <li>Receipt Print Mode</li>
+                        <li>Receipt Header</li>
+                        <li>Receipt Footer</li>
+                        <li>Linked Agent</li>
+                        <li>Receipt Printer (IoT)</li>
+                        <li>Label / Barcode Printer (IoT)</li>
+                        <li>Active / inactive state</li>
+                    </ul>
+
+                    <h3>Payment Methods</h3>
+                    <ul>
+                        <li>Name</li>
+                        <li>Code</li>
+                        <li>Type</li>
+                        <li>Icon (Iconify name)</li>
+                        <li>Surcharge percent</li>
+                        <li>Surcharge fixed</li>
+                        <li>Sort order</li>
+                    </ul>
+
+                    <h3>Receipt</h3>
+                    <ul>
+                        <li>Receipt Header</li>
+                        <li>Receipt Footer</li>
+                        <li>Logo URL</li>
+                        <li>Paper Size</li>
+                        <li>Receipt visibility toggles defined in the settings shape, including logo, tax breakdown, cashier display, and auto-print behavior</li>
+                    </ul>
+
+                    <h3>Barcode</h3>
+                    <ul>
+                        <li>Barcode Type</li>
+                        <li>Render Format</li>
+                        <li>Bar Width</li>
+                        <li>Bar Height</li>
+                        <li>Barcode label display flags defined in the settings shape, including price, name, and SKU visibility</li>
+                    </ul>
+
+                    <h3>Customer Display</h3>
+                    <p>The settings model also includes customer-display controls, and dedicated customer-display routes exist. Use them only when the display feature is enabled for the terminal environment.</p>
+                </section>
+
+                <section id="limits">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <h2>Current Limits and Safe Notes</h2>
+                    </div>
+
+                    <div class="callout warn">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Returns, Refunds, and Voids</h3>
+                            <p>The backend exposes POS return, refund, and void endpoints, but the current cashier-facing pages inspected for this manual are centered on selling, order viewing, settings, reporting, and queue handling. This manual does not present a fake refund workflow that is not visibly wired into the current operator screens.</p>
+                        </div>
+                    </div>
+
+                    <div class="callout info">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Session Close Exists</h3>
+                            <p>The current POS layout includes a close-session workflow with expected-versus-counted payment totals and optional cash denomination counting. Operators should use the built-in close-session flow rather than closing outside the module.</p>
+                        </div>
+                    </div>
+
+                    <h3>Backend Business Rule That Matters</h3>
+                    <p>On successful POS payment completion, the current backend is designed to keep stock deduction and GL posting together in one transaction boundary. This matters because payment completion is not only a cashier event; it is also a stock and accounting event.</p>
+                </section>
+
+                <div class="footer">
+                    NoovaERP POS Module Manual. Built against the current routed POS pages and POS backend behavior in the NoovaERP workspace on May 12, 2026.
+                </div>
+            </main>
+        </article>
+    </div>
+</body>
+</html>
