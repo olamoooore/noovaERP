@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoovaERP Inventory Module Manual</title>
+    <style>
+        :root {
+            --bg: #eef4f8;
+            --panel: #ffffff;
+            --panel-soft: #f7fafc;
+            --ink: #172033;
+            --muted: #5b6780;
+            --line: #dbe4ef;
+            --brand: #1e40af;
+            --brand-2: #2563eb;
+            --warn: #b45309;
+            --danger: #be123c;
+            --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+            --radius-lg: 24px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            font-family: Aptos, "Segoe UI", "Helvetica Neue", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(30, 64, 175, 0.10), transparent 24%),
+                linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
+        }
+
+        a {
+            color: var(--brand);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .shell {
+            width: min(1400px, calc(100vw - 32px));
+            margin: 24px auto;
+            display: grid;
+            grid-template-columns: 310px minmax(0, 1fr);
+            gap: 20px;
+        }
+
+        .sidebar,
+        .content {
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(219, 228, 239, 0.9);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 20px;
+            align-self: start;
+            padding: 22px;
+            border-radius: var(--radius-lg);
+        }
+
+        .content {
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        .hero {
+            padding: 34px 36px 28px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 58%, #2563eb 100%);
+            color: #fff;
+        }
+
+        .hero-top {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .brand-mark {
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(2rem, 3vw, 2.9rem);
+            line-height: 1.02;
+            letter-spacing: -0.04em;
+        }
+
+        .hero p {
+            margin: 10px 0 0;
+            max-width: 920px;
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 1rem;
+        }
+
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #fff;
+            font-size: 0.86rem;
+        }
+
+        .nav-title,
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            font-size: 0.74rem;
+            font-weight: 700;
+        }
+
+        .nav-title {
+            color: var(--muted);
+            margin: 0 0 14px;
+        }
+
+        .eyebrow {
+            color: var(--brand);
+            margin-bottom: 12px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar li + li {
+            margin-top: 8px;
+        }
+
+        .sidebar a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 12px;
+            border-radius: 12px;
+            color: var(--ink);
+            background: transparent;
+        }
+
+        .sidebar a:hover {
+            background: var(--panel-soft);
+            text-decoration: none;
+        }
+
+        .sidebar-note {
+            margin-top: 18px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--panel-soft);
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .main {
+            padding: 30px 36px 40px;
+        }
+
+        section + section {
+            margin-top: 34px;
+            padding-top: 34px;
+            border-top: 1px solid var(--line);
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .section-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(30, 64, 175, 0.12), rgba(37, 99, 235, 0.04));
+            color: var(--brand);
+            border: 1px solid rgba(37, 99, 235, 0.12);
+            flex: 0 0 auto;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 1.6rem;
+            letter-spacing: -0.03em;
+        }
+
+        h3 {
+            margin: 24px 0 10px;
+            font-size: 1.07rem;
+            letter-spacing: -0.02em;
+        }
+
+        p,
+        li,
+        td,
+        th {
+            font-size: 0.97rem;
+            line-height: 1.62;
+        }
+
+        p {
+            margin: 0 0 12px;
+            color: var(--muted);
+        }
+
+        strong {
+            color: var(--ink);
+        }
+
+        ul,
+        ol {
+            margin: 0 0 14px;
+            padding-left: 20px;
+            color: var(--muted);
+        }
+
+        li + li {
+            margin-top: 7px;
+        }
+
+        .callout {
+            display: grid;
+            grid-template-columns: 40px minmax(0, 1fr);
+            gap: 12px;
+            padding: 15px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: var(--panel-soft);
+            margin: 16px 0;
+        }
+
+        .callout h3 {
+            margin: 0 0 6px;
+            font-size: 1rem;
+        }
+
+        .callout p:last-child {
+            margin-bottom: 0;
+        }
+
+        .callout.info {
+            border-color: rgba(37, 99, 235, 0.18);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .callout.warn {
+            border-color: rgba(180, 83, 9, 0.22);
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .callout.danger {
+            border-color: rgba(190, 18, 60, 0.2);
+            background: rgba(244, 63, 94, 0.07);
+        }
+
+        .route-grid,
+        .info-grid,
+        .two-col {
+            display: grid;
+            gap: 14px;
+        }
+
+        .route-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .info-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .two-col {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .mini-card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .mini-card h3 {
+            margin-top: 0;
+        }
+
+        .mini-card p:last-child {
+            margin-bottom: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        thead {
+            background: #eff6ff;
+        }
+
+        th,
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+            text-align: left;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.9em;
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 7px;
+            color: #0f172a;
+        }
+
+        .footer {
+            margin-top: 34px;
+            padding-top: 18px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .brand-mark svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .section-icon svg,
+        .sidebar a svg,
+        .pill svg,
+        .callout > div:first-child svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        @media (max-width: 1180px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: static;
+            }
+        }
+
+        @media (max-width: 820px) {
+            .main,
+            .hero {
+                padding-left: 22px;
+                padding-right: 22px;
+            }
+
+            .route-grid,
+            .info-grid,
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+
+            th,
+            td {
+                padding: 10px 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22Z"></path><path d="M8 7h8"></path><path d="M8 11h8"></path></symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></symbol>
+        <symbol id="i-stock" viewBox="0 0 24 24"><path d="M4 18 10 12l4 4 6-8"></path><path d="M20 10V4h-6"></path></symbol>
+        <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M7 7h11"></path><path d="m14 4 4 3-4 3"></path><path d="M17 17H6"></path><path d="m10 14-4 3 4 3"></path></symbol>
+        <symbol id="i-warehouse" viewBox="0 0 24 24"><path d="M3 10 12 4l9 6"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.6Z"></path></symbol>
+        <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"></circle><circle cx="18" cy="6" r="2"></circle><path d="M8 18h3a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h1"></path></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"></path><path d="M12 9v5"></path><path d="M12 18h.01"></path></symbol>
+        <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"></rect><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></symbol>
+        <symbol id="i-people" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="9.5" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></symbol>
+    </svg>
+
+    <div class="shell">
+        <aside class="sidebar">
+            <p class="nav-title">Inventory Manual</p>
+            <ul>
+                <li><a href="#scope"><svg><use href="#i-book"></use></svg><span>Scope</span></a></li>
+                <li><a href="#routes"><svg><use href="#i-route"></use></svg><span>Routes</span></a></li>
+                <li><a href="#dashboard"><svg><use href="#i-grid"></use></svg><span>Inventory Overview</span></a></li>
+                <li><a href="#stock-management"><svg><use href="#i-stock"></use></svg><span>Stock Management</span></a></li>
+                <li><a href="#stock-operations"><svg><use href="#i-clipboard"></use></svg><span>Stock Operations</span></a></li>
+                <li><a href="#purchase-orders"><svg><use href="#i-book"></use></svg><span>Purchase Orders</span></a></li>
+                <li><a href="#transfers"><svg><use href="#i-transfer"></use></svg><span>Warehouse Transfers</span></a></li>
+                <li><a href="#warehouses"><svg><use href="#i-warehouse"></use></svg><span>Warehouses</span></a></li>
+                <li><a href="#suppliers"><svg><use href="#i-people"></use></svg><span>Suppliers</span></a></li>
+                <li><a href="#settings"><svg><use href="#i-gear"></use></svg><span>Settings</span></a></li>
+                <li><a href="#rules"><svg><use href="#i-alert"></use></svg><span>Operational Rules</span></a></li>
+            </ul>
+
+            <div class="sidebar-note">
+                This handbook intentionally documents only routes, forms, statuses, and behaviors that are visible in the current NoovaERP inventory module or enforced by its current backend services.
+            </div>
+        </aside>
+
+        <article class="content">
+            <header class="hero">
+                <div class="hero-top">
+                    <div class="brand-mark"><svg><use href="#i-warehouse"></use></svg></div>
+                    <div>
+                        <div class="eyebrow">NoovaERP User Manual</div>
+                        <h1>Inventory Module</h1>
+                    </div>
+                </div>
+                <p>This manual is aligned to the current inventory routes, forms, statuses, and stock rules in the live NoovaERP codebase. It avoids assumed workflows and focuses on what the module actually exposes today.</p>
+                <div class="hero-meta">
+                    <span class="pill"><svg><use href="#i-route"></use></svg><span>/inventory and /inventory/*</span></span>
+                    <span class="pill"><svg><use href="#i-stock"></use></svg><span>Warehouse-based stock control</span></span>
+                    <span class="pill"><svg><use href="#i-alert"></use></svg><span>Direct stock entry depends on SME Mode</span></span>
+                </div>
+            </header>
+
+            <main class="main">
+                <section id="scope">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-book"></use></svg></div>
+                        <h2>Scope</h2>
+                    </div>
+                    <p>The current inventory module is built around these user surfaces: the overview dashboard, stock management, stock operations, purchase orders, warehouse transfers, warehouse setup, supplier setup, and inventory settings.</p>
+                    <p>The module also has backend rules that matter to operators and administrators: warehouse stock is the real operational stock source, stock mutations are funneled through a single inventory service, and formal financial-impact flows must stay aligned with accounting.</p>
+
+                    <div class="callout info">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Read This First</h3>
+                            <p>If you need direct manual stock entry, check <code>/inventory/settings</code> first. When SME Mode is turned off, the separate Stock Operations page intentionally blocks direct stock entry and tells users to use the purchase-order workflow instead.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="routes">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-route"></use></svg></div>
+                        <h2>Current Routes</h2>
+                    </div>
+                    <p>The main app routes currently wired for inventory are listed below.</p>
+
+                    <div class="route-grid">
+                        <div class="mini-card"><h3><code>/inventory</code></h3><p>Inventory overview dashboard with KPI cards, quick actions, low-stock preview, and recent stock movements.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/stock</code></h3><p>Stock Management page with the Products, Movements, Low Stock, and Out of Stock tabs.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/operations</code></h3><p>Dedicated Stock Operations page for Receive Stock, Remove Stock, and Count Stock.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/purchase-orders</code></h3><p>Purchase order list with search, status filter, and document navigation.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/purchase-orders/new</code></h3><p>Create a new purchase order with supplier, warehouse, dates, notes, and item rows.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/transfers</code></h3><p>Warehouse transfer list with search, status filter, and transfer actions.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/transfers/new</code></h3><p>Create a warehouse-to-warehouse transfer request.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/warehouses</code></h3><p>Create, edit, search, and review warehouse cards and warehouse-level metadata.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/suppliers</code></h3><p>Manage supplier records, contact data, commercial details, ratings, and notes.</p></div>
+                        <div class="mini-card"><h3><code>/inventory/settings</code></h3><p>Inventory behavior settings including SME Mode, stock rules, and SKU generation.</p></div>
+                    </div>
+                </section>
+
+                <section id="dashboard">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-grid"></use></svg></div>
+                        <h2>Inventory Overview</h2>
+                    </div>
+                    <p>The overview dashboard is the fastest place to judge stock health before opening the detailed pages.</p>
+
+                    <div class="info-grid">
+                        <div class="mini-card"><h3>Total Products</h3><p>Shows the active inventory item count returned by the inventory dashboard summary.</p></div>
+                        <div class="mini-card"><h3>Warehouses</h3><p>Shows how many warehouse records are currently configured and links into warehouse management.</p></div>
+                        <div class="mini-card"><h3>Low Stock / Out of Stock</h3><p>Shows alert counts from the dashboard summary. These counts are the authoritative card totals used by the current UI.</p></div>
+                    </div>
+
+                    <h3>Value Cards</h3>
+                    <p>The dashboard also shows stock value at cost, retail value, and potential profit. These are overview numbers designed for monitoring, not transaction entry.</p>
+
+                    <h3>Quick Actions</h3>
+                    <ul>
+                        <li><strong>Stock In</strong> and <strong>Stock Out</strong> quick actions currently route users into <code>/inventory/stock</code>.</li>
+                        <li><strong>Transfer Stock</strong> opens <code>/inventory/transfers/new</code>.</li>
+                        <li><strong>Purchase Order</strong> opens <code>/inventory/purchase-orders/new</code>.</li>
+                    </ul>
+
+                    <h3>Preview Areas</h3>
+                    <ul>
+                        <li><strong>Low Stock Alert</strong> shows a short preview list of low-stock items, with a View all link back to stock management.</li>
+                        <li><strong>Recent Stock Movements</strong> shows the latest inventory changes and their movement type badges.</li>
+                        <li><strong>Module Navigation</strong> gives quick access to suppliers, warehouses, and other inventory pages.</li>
+                    </ul>
+                </section>
+
+                <section id="stock-management">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-stock"></use></svg></div>
+                        <h2>Stock Management</h2>
+                    </div>
+                    <p>The Stock Management page at <code>/inventory/stock</code> is the main review page for inventory levels and movement history.</p>
+
+                    <h3>Top Summary Cards</h3>
+                    <ul>
+                        <li><strong>Total Products</strong></li>
+                        <li><strong>Warehouses</strong></li>
+                        <li><strong>Low Stock</strong></li>
+                        <li><strong>Out of Stock</strong></li>
+                    </ul>
+
+                    <h3>Action Buttons</h3>
+                    <p>The page exposes modal actions for <strong>Stock In</strong>, <strong>Stock Out</strong>, and <strong>Adjust</strong>.</p>
+
+                    <h3>Tabs on This Page</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tab</th>
+                                <th>What it is for</th>
+                                <th>What you can do</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Products</strong></td>
+                                <td>Browse product stock levels.</td>
+                                <td>Search products and open Stock In, Stock Out, or Adjust directly from a product row.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Movements</strong></td>
+                                <td>Review change history.</td>
+                                <td>Search movements and filter by movement type and warehouse.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Low Stock</strong></td>
+                                <td>Review products below threshold.</td>
+                                <td>Open replenishment-related actions from the low-stock list.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Out of Stock</strong></td>
+                                <td>Review products with zero inventory.</td>
+                                <td>Open recovery actions for products that need immediate attention.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3>Stock Action Dialog Fields</h3>
+                    <div class="two-col">
+                        <div class="mini-card">
+                            <h3>Stock In / Stock Out</h3>
+                            <ul>
+                                <li>Product</li>
+                                <li>Warehouse</li>
+                                <li>Quantity</li>
+                                <li>Adjustment reason</li>
+                                <li>Reference</li>
+                                <li>Notes</li>
+                            </ul>
+                        </div>
+                        <div class="mini-card">
+                            <h3>Adjust</h3>
+                            <ul>
+                                <li>Product</li>
+                                <li>Warehouse</li>
+                                <li>New quantity</li>
+                                <li>Adjustment reason</li>
+                                <li>Notes</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="callout warn">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>What Adjust Means Here</h3>
+                            <p>The current UI describes Adjust as reconciling the recorded quantity to the counted quantity. Use it when the system balance must be reset to a verified physical count.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="stock-operations">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-clipboard"></use></svg></div>
+                        <h2>Stock Operations</h2>
+                    </div>
+                    <p>The separate Stock Operations page at <code>/inventory/operations</code> is focused on manual stock events rather than stock review.</p>
+
+                    <h3>Tabs on This Page</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tab</th>
+                                <th>Use it for</th>
+                                <th>Key fields</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Receive Stock</strong></td>
+                                <td>Manual receipts such as opening balance, found stock, or return to stock.</td>
+                                <td>Product, warehouse, quantity, reason, reference, notes, batch number, expiry date.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Remove Stock</strong></td>
+                                <td>Manual removals from stock.</td>
+                                <td>Product, warehouse, quantity, reason, reference, notes.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Count Stock</strong></td>
+                                <td>Set the counted balance after reconciliation.</td>
+                                <td>Product, warehouse, new quantity, reason, notes.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3>SME Mode Gate</h3>
+                    <p>If SME Mode is turned off, this page shows a warning banner instead of allowing direct entry. The banner points users to <code>/inventory/settings</code> to enable SME Mode or back to the purchase-order workflow.</p>
+
+                    <h3>Product Selection</h3>
+                    <p>The forms use a product search combobox and show the currently known stock for the selected product so the operator can see the existing balance before posting the new movement.</p>
+                </section>
+
+                <section id="purchase-orders">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-book"></use></svg></div>
+                        <h2>Purchase Orders</h2>
+                    </div>
+                    <p>The current purchase-order experience is centered on the list page and the new-document page.</p>
+
+                    <h3>Purchase Order List</h3>
+                    <ul>
+                        <li>Search box: search by PO number or supplier.</li>
+                        <li>Status filter: <code>draft</code>, <code>pending</code>, <code>approved</code>, <code>ordered</code>, <code>partial</code>, <code>received</code>, <code>cancelled</code>.</li>
+                        <li>Visible columns: PO number, supplier, warehouse, order date, expected date, total, status, and actions.</li>
+                        <li>Available actions from the list: open the document, edit draft POs, and cancel eligible POs.</li>
+                    </ul>
+
+                    <h3>Create Purchase Order</h3>
+                    <p>The new purchase-order form currently captures:</p>
+                    <ul>
+                        <li><strong>Order details</strong>: supplier, warehouse, order date, expected date, notes.</li>
+                        <li><strong>Line items</strong>: product, quantity, unit cost. The form auto-fills unit cost from the selected product when available.</li>
+                        <li><strong>Summary</strong>: running total and submit/cancel controls.</li>
+                    </ul>
+
+                    <div class="callout info">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Status Handling</h3>
+                            <p>The backend routes support submit, approve, mark ordered, receive, and cancel transitions. The current frontend list page explicitly exposes view, edit for draft, and cancel where permitted.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="transfers">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-transfer"></use></svg></div>
+                        <h2>Warehouse Transfers</h2>
+                    </div>
+                    <p>The transfer workflow covers inter-warehouse movement requests and their lifecycle states.</p>
+
+                    <h3>Transfer List</h3>
+                    <ul>
+                        <li>Search field: search by transfer number.</li>
+                        <li>Status filter: <code>draft</code>, <code>pending</code>, <code>in_transit</code>, <code>completed</code>, <code>cancelled</code>.</li>
+                        <li>Visible columns: transfer number, source warehouse, destination warehouse, transfer date, expected date, status, creator, and actions.</li>
+                    </ul>
+
+                    <h3>Create Transfer</h3>
+                    <ul>
+                        <li><strong>Transfer details</strong>: source warehouse, destination warehouse, transfer date, expected date, notes.</li>
+                        <li><strong>Validation</strong>: source and destination must be different.</li>
+                        <li><strong>Items</strong>: product plus quantity requested.</li>
+                        <li><strong>Product picker display</strong>: the product dropdown shows product name, SKU, and current stock quantity in the picker text.</li>
+                    </ul>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Meaning in current workflow</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>draft</strong></td><td>Document exists but is still being prepared.</td></tr>
+                            <tr><td><strong>pending</strong></td><td>Transfer is created and waiting for the next operational step.</td></tr>
+                            <tr><td><strong>in_transit</strong></td><td>Transfer has been shipped and is currently moving between warehouses.</td></tr>
+                            <tr><td><strong>completed</strong></td><td>Transfer is fully received.</td></tr>
+                            <tr><td><strong>cancelled</strong></td><td>Transfer is closed without completion.</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section id="warehouses">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-warehouse"></use></svg></div>
+                        <h2>Warehouses</h2>
+                    </div>
+                    <p>The warehouse page is the maintenance screen for storage locations.</p>
+
+                    <h3>What the Page Shows</h3>
+                    <ul>
+                        <li>Stats cards for Total Warehouses, Active, and Default Warehouse.</li>
+                        <li>A search box that matches warehouse name, code, or address.</li>
+                        <li>A card grid for warehouse records.</li>
+                    </ul>
+
+                    <h3>Warehouse Card Details</h3>
+                    <ul>
+                        <li>Name and code</li>
+                        <li>Default badge where applicable</li>
+                        <li>Active or inactive badge</li>
+                        <li>Address</li>
+                        <li>Manager name</li>
+                        <li>Phone</li>
+                        <li>Email</li>
+                        <li>Edit and delete actions</li>
+                    </ul>
+
+                    <h3>Create / Edit Warehouse Fields</h3>
+                    <ul>
+                        <li>Name</li>
+                        <li>Code</li>
+                        <li>Address</li>
+                        <li>Phone</li>
+                        <li>Email</li>
+                        <li>Manager name</li>
+                        <li>Active switch</li>
+                        <li>Default switch</li>
+                    </ul>
+
+                    <div class="callout danger">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>Delete Behavior</h3>
+                            <p>The current page already handles backend failures when a warehouse cannot be deleted because it still has stock or is in use. If delete fails, treat the warehouse as operationally linked and resolve usage first.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="suppliers">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-people"></use></svg></div>
+                        <h2>Suppliers</h2>
+                    </div>
+                    <p>The supplier page combines list management and a multi-tab create/edit dialog.</p>
+
+                    <h3>List View</h3>
+                    <ul>
+                        <li>Search box for supplier records</li>
+                        <li>Columns: Supplier, Contact, Lead Time, Rating, Products, Status, Actions</li>
+                        <li>Rating badges may show quality and delivery scores where available</li>
+                    </ul>
+
+                    <h3>Dialog Tabs</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tab</th>
+                                <th>Current fields</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Basic Info</strong></td>
+                                <td>Name, code, email, phone, contact person, address, city, country, payment terms, active status.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Business Details</strong></td>
+                                <td>Website, tax number, currency, default lead time days, minimum order value.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ratings and Notes</strong></td>
+                                <td>Quality rating, delivery rating, price rating, notes.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section id="settings">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-gear"></use></svg></div>
+                        <h2>Inventory Settings</h2>
+                    </div>
+                    <p>The settings page is compact but important because it changes how manual stock work behaves.</p>
+
+                    <h3>SME Mode</h3>
+                    <p>SME Mode is presented as the most prominent setting. When it is enabled, direct stock entry becomes available. When it is disabled, users are steered away from direct entry and toward controlled purchase-order workflows.</p>
+
+                    <h3>Stock Behaviour Toggles</h3>
+                    <ul>
+                        <li>Allow Negative Stock</li>
+                        <li>Track Batch Numbers</li>
+                        <li>Track Expiry Dates</li>
+                        <li>Require Adjustment Approval</li>
+                        <li>Enable Barcode Scanning</li>
+                    </ul>
+
+                    <h3>SKU Generation</h3>
+                    <ul>
+                        <li>Auto-generate SKU</li>
+                    </ul>
+
+                    <div class="callout warn">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <div>
+                            <h3>If Settings Fail to Load</h3>
+                            <p>The current page explicitly falls back to safe defaults and disables real saving if the inventory settings API returns an error. Resolve the backend issue first before relying on what you see in the form.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="rules">
+                    <div class="section-head">
+                        <div class="section-icon"><svg><use href="#i-alert"></use></svg></div>
+                        <h2>Operational Rules Behind the Screens</h2>
+                    </div>
+                    <p>These rules come from the current backend implementation and directly affect how the UI should be used.</p>
+
+                    <h3>1. Warehouse Stock Is the Operational Stock Truth</h3>
+                    <p>Per-warehouse quantities live in <code>stock_levels</code>, and stock movement history lives in <code>stock_movements</code>. Treat warehouse stock as the operational source of truth for stock changes.</p>
+
+                    <h3>2. Stock Changes Flow Through One Service</h3>
+                    <p>The inventory backend documents <code>InventoryService::adjustStock()</code> as the only authorized path for stock mutations. This is why stock events in procurement, POS, ecommerce, and transfers must pass through controlled workflows instead of custom direct updates.</p>
+
+                    <h3>3. Low Stock and Out-of-Stock Summary Cards Use Dashboard Summary Counts</h3>
+                    <p>The dashboard summary counts are the card-level truth used in the current UI. Preview lists are previews, not the card source.</p>
+
+                    <h3>4. Financial-Impact Flows Must Stay Aligned with Accounting</h3>
+                    <p>For flows like POS sales and invoice posting, stock mutation and GL posting are designed to stay inside the same transaction boundary. Operational users do not manage that directly, but administrators and implementers should understand why uncontrolled stock shortcuts are risky.</p>
+
+                    <h3>5. Use Only the Screens That Match Your Workflow</h3>
+                    <ul>
+                        <li>Use <code>/inventory/stock</code> for review, quick modal actions, and movement history.</li>
+                        <li>Use <code>/inventory/operations</code> when you need the dedicated manual entry forms.</li>
+                        <li>Use purchase orders for formal vendor procurement.</li>
+                        <li>Use transfers for inter-warehouse movement.</li>
+                    </ul>
+                </section>
+
+                <div class="footer">
+                    NoovaERP Inventory Module Manual. Built against the current routed inventory pages and inventory backend behavior in the NoovaERP workspace on May 12, 2026.
+                </div>
+            </main>
+        </article>
+    </div>
+</body>
+</html>
