@@ -150,6 +150,7 @@ class OcrProcessingService
 
             return [
                 'raw_data' => $result, // Store complete response for audit
+                'raw_text' => $processingDetails['raw_text'] ?? null,
                 'confidence_scores' => $confidenceScores,
                 'vendor_name' => $extractedData['vendor_customer_name'] ?? null,
                 'document_date' => $extractedData['invoice_date'] ?? null,
@@ -222,8 +223,14 @@ class OcrProcessingService
     private function validateExtraction(array $ocrData): bool
     {
         $totalAmount = $ocrData['total_amount'] ?? null;
+        $rawText = trim((string) ($ocrData['raw_text'] ?? ''));
 
         if (!is_numeric($totalAmount) || (float) $totalAmount <= 0) {
+            if ($rawText !== '') {
+                Log::info('OCR validation: allowing manual review despite missing total amount because raw text was extracted');
+                return true;
+            }
+
             Log::warning("OCR validation failed: Invalid total amount");
             return false;
         }

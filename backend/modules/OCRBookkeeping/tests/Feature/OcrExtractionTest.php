@@ -257,6 +257,40 @@ class OcrExtractionTest extends TenantTestCase
     }
 
     /**
+     * Test: Extraction with raw OCR text but missing structured totals still
+     * succeeds so users can complete review manually.
+     */
+    public function test_extraction_with_raw_text_but_missing_total_amount_still_needs_review()
+    {
+        $document = $this->createStoredDocument();
+
+        $this->fakeOcrResponse([
+            'status' => 'success',
+            'extracted_data' => [
+                'vendor_customer_name' => 'Unknown',
+                'invoice_number' => null,
+                'total_amount' => null,
+            ],
+            'processing_details' => [
+                'ocr_confidence' => 72,
+                'raw_text' => 'ACME SUPPLIES\nInvoice\nSubtotal 45.00\nTax 5.00\n',
+            ],
+        ]);
+
+        $this->service->processDocument($document);
+
+        $document->refresh();
+
+        $this->assertEquals('NEEDS_REVIEW', $document->status);
+        $this->assertNull($document->total_amount);
+        $this->assertNotNull($document->ocr_raw_data);
+        $this->assertSame(
+            'ACME SUPPLIES\nInvoice\nSubtotal 45.00\nTax 5.00\n',
+            $document->ocr_raw_data['processing_details']['raw_text'] ?? null
+        );
+    }
+
+    /**
      * Test: Multiple extractions don't duplicate data
      */
     public function test_multiple_extractions_dont_duplicate_data()
