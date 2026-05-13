@@ -44,6 +44,10 @@ class AccountingAccessService
             return true;
         }
 
+        if ($this->isCoreFeature('accounting')) {
+            return true;
+        }
+
         return $this->entitlements->isEntitled((string) $tenantId, 'accounting');
     }
 
@@ -171,5 +175,16 @@ class AccountingAccessService
             ->where('tenant_id', $tenantId)
             ->whereIn('role', $roles)
             ->exists();
+    }
+
+    private function isCoreFeature(string $featureKey): bool
+    {
+        $featureTable = DB::connection()->getDriverName() === 'pgsql'
+            ? 'public.features'
+            : 'features';
+
+        return (bool) DB::table($featureTable)
+            ->where('key', $featureKey)
+            ->value('is_core');
     }
 }
