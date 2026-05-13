@@ -1178,6 +1178,16 @@ export function POSTerminal() {
   const extractErrorMessage = (error: any): string => {
     if (error.response?.data) {
       const data = error.response.data
+
+      if (data.error === 'Missing product cost basis' && typeof data.message === 'string') {
+        const affectedItemsMatch = data.message.match(/Affected items:\s*(.+)$/i)
+        const affectedItems = affectedItemsMatch?.[1]?.trim()
+
+        return affectedItems
+          ? `Cannot complete this sale because these stock-tracked items have no cost set: ${affectedItems}. Update the product cost and retry.`
+          : 'Cannot complete this sale because one or more stock-tracked items have no cost set. Update the product cost and retry.'
+      }
+
       if (data.errors) {
         const messages = Object.values(data.errors).flat()
         return (messages as string[]).join(', ')

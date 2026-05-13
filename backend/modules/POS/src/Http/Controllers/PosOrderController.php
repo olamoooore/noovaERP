@@ -435,6 +435,14 @@ class PosOrderController extends Controller
             } catch (\Exception $e) {
                 // Set payment state to failed
                 $posOrder->update(['payment_state' => 'failed']);
+
+                if (\Modules\POS\Services\PosPostingService::isMissingCostBasisException($e)) {
+                    return response()->json([
+                        'message' => $e->getMessage(),
+                        'error' => 'Missing product cost basis',
+                    ], 422);
+                }
+
                 throw $e;
             }
 

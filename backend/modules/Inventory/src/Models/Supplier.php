@@ -89,10 +89,19 @@ class Supplier extends Model
     {
         $base = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($name, 0, 5)));
         $base = $base ?: 'SUP';
-        
-        $count = static::where('code', 'like', $base . '%')->count();
-        
-        return $base . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
+
+        $highestSequence = static::withTrashed()
+            ->where('code', 'like', $base . '%')
+            ->pluck('code')
+            ->reduce(function (int $highest, ?string $code) use ($base): int {
+                if (!is_string($code) || !preg_match('/^' . preg_quote($base, '/') . '(\d+)$/', $code, $matches)) {
+                    return $highest;
+                }
+
+                return max($highest, (int) $matches[1]);
+            }, 0);
+
+        return $base . str_pad($highestSequence + 1, 4, '0', STR_PAD_LEFT);
     }
 
     /**

@@ -15,6 +15,8 @@ use Modules\POS\Models\PosOrder;
 
 class PosPostingService
 {
+    private const MISSING_COST_BASIS_PREFIX = 'Cannot post stock-tracked POS order without cost basis';
+
     public function __construct(
         private readonly PostingEngineInterface $postingEngine,
     ) {}
@@ -93,8 +95,14 @@ class PosPostingService
         // Entitlement safety / no-silent-no-op guard:
         // If this order contains stock-tracked items, GL must include COGS+inventory lines.
         if ($this->orderHasTrackedInventoryItems($order) && $totalCost <= 0) {
+            $missingCostItems = $this->missingCostBasisItems($order);
+
             throw new \RuntimeException(
-                "Cannot post stock-tracked POS order without cost basis (COGS/inventory lines would be skipped)."
+                sprintf(
+                    '%s (COGS/inventory lines would be skipped). Affected items: %s',
+                    self::MISSING_COST_BASIS_PREFIX,
+                    implode(', ', $missingCostItems)
+                )
             );
         }
 
@@ -150,6 +158,50 @@ class PosPostingService
 
             return false;
         });
+    }
+
+    public static function isMissingCostBasisException(\Throwable $exception): bool
+    {
+        return str_contains($exception->getMessage(), self::MISSING_COST_BASIS_PREFIX);
+    }
+
+    private function missingCostBasisItems(PosOrder $order): array
+    {
+        $items = $order->items
+            ->filter(function ($item) {
+                $trackInventory = $item->product_variant_id && $item->variant
+                    ? (bool) $item->variant->track_inventory
+                    : (bool) ($item->product?->track_inventory ?? false);
+
+                if (! $trackInventory) {
+                    return false;
+                }
+
+                $cost = 0.0;
+                if ($item->product_variant_id && $item->variant) {
+                    $cost = (float) $item->variant->cost;
+                } elseif ($item->product_id && $item->product) {
+                    $cost = (float) $item->product->cost;
+                }
+
+                return $cost <= 0;
+            })
+            ->map(function ($item) {
+                if ($item->product_variant_id && $item->variant) {
+                    return $item->variant->sku ?: $item->variant->name ?: 'variant#' . $item->product_variant_id;
+                }
+
+                if ($item->product_id && $item->product) {
+                    return $item->product->sku ?: $item->product->name ?: 'product#' . $item->product_id;
+                }
+
+                return 'line#' . $item->id;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        return $items === [] ? ['unknown tracked item'] : $items;
     }
 
     /**

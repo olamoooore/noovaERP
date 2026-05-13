@@ -81,10 +81,42 @@ class PosTerminal extends Model
     {
         parent::boot();
         
+        static::saving(function (self $terminal) {
+            static::applyDefaultWarehouseId($terminal);
+        });
+
         static::creating(function ($terminal) {
             if (empty($terminal->code)) {
                 $terminal->code = static::generateCode();
             }
         });
+    }
+
+    private static function applyDefaultWarehouseId(self $terminal): void
+    {
+        if (! empty($terminal->warehouse_id)) {
+            return;
+        }
+
+        $defaultWarehouseId = static::resolveDefaultWarehouseId();
+
+        if ($defaultWarehouseId !== null) {
+            $terminal->warehouse_id = $defaultWarehouseId;
+        }
+    }
+
+    public static function resolveDefaultWarehouseId(): ?int
+    {
+        $configuredWarehouseId = PosSetting::getValue('default_warehouse_id');
+
+        if (! is_numeric($configuredWarehouseId)) {
+            return null;
+        }
+
+        $warehouseId = (int) $configuredWarehouseId;
+
+        return Warehouse::query()->whereKey($warehouseId)->exists()
+            ? $warehouseId
+            : null;
     }
 }
