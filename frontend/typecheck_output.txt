@@ -196,8 +196,8 @@ src/components/ui/interactive-element.tsx(260,18): error TS2430: Interface 'Enha
       Type '"destructive"' is not assignable to type '"scale" | "default" | "none" | "subtle" | "elevated" | "glow" | null | undefined'.
 src/components/ui/typography.tsx(214,18): error TS2320: Interface 'TypographyProps' cannot simultaneously extend types 'HTMLAttributes<HTMLElement>' and 'VariantProps<(props?: (ConfigVariants<{ variant: { h1: string[]; h2: string[]; h3: string[]; h4: string[]; h5: string[]; h6: string[]; body: string[]; bodyLarge: string[]; bodySmall: string[]; caption: string[]; label: string[]; link: string[]; code: string[]; error: string[]; success: string[]; warning: string[]; }...'.
   Named property 'color' of types 'HTMLAttributes<HTMLElement>' and 'VariantProps<(props?: (ConfigVariants<{ variant: { h1: string[]; h2: string[]; h3: string[]; h4: string[]; h5: string[]; h6: string[]; body: string[]; bodyLarge: string[]; bodySmall: string[]; caption: string[]; label: string[]; link: string[]; code: string[]; error: string[]; success: string[]; warning: string[]; }...' are not identical.
-src/components/ui/typography.tsx(265,37): error TS2322: Type 'string | undefined' is not assignable to type '"muted" | "default" | "destructive" | "secondary" | "primary" | "accent" | null | undefined'.
-  Type 'string' is not assignable to type '"muted" | "default" | "destructive" | "secondary" | "primary" | "accent" | null | undefined'.
+src/components/ui/typography.tsx(265,37): error TS2322: Type 'string | undefined' is not assignable to type '"muted" | "default" | "destructive" | "secondary" | "accent" | "primary" | null | undefined'.
+  Type 'string' is not assignable to type '"muted" | "default" | "destructive" | "secondary" | "accent" | "primary" | null | undefined'.
 src/components/ui/typography.tsx(285,8): error TS2322: Type '{ children: (ReactNode | Element)[]; defaultChecked?: boolean | undefined; defaultValue?: string | number | readonly string[] | undefined; suppressContentEditableWarning?: boolean | undefined; ... 259 more ...; className: string; }' is not assignable to type 'SVGProps<SVGSymbolElement>'.
   Types of property 'onCopy' are incompatible.
     Type 'ClipboardEventHandler<HTMLElement> | undefined' is not assignable to type 'ClipboardEventHandler<SVGSymbolElement> | undefined'.
@@ -211,7 +211,7 @@ src/components/website-builder/utils/keyboardShortcuts.ts(58,56): error TS2339: 
 src/hooks/queries/useEventManagement.ts(128,14): error TS2352: Conversion of type '{ event: { id: any; title: any; name: any; status: any; event_date: any; start_date: any; }; active_staff: number; total_attendees: any; incidents: any; metrics: { check_ins: any; check_outs: number; active_sessions: any; }; zone_status: any; queue_status: any; current_operational_status: any; last_updated: any; }' to type 'DashboardData' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
   Types of property 'event' are incompatible.
     Type '{ id: any; title: any; name: any; status: any; event_date: any; start_date: any; }' is missing the following properties from type 'Event': end_date, created_at, updated_at
-src/hooks/queries/useEventManagement.ts(240,14): error TS2352: Conversion of type '{ upcoming_events: { id: any; _eventId: any; name: any; description: string; start_date: any; end_date: any; venue: any; status: any; capacity: null; created_at: any; updated_at: any; }[]; bookings: { id: any; ... 10 more ...; buyer_email: any; }[]; tickets: { id: any; ... 10 more ...; buyer_email: any; }[]; }' to type 'CustomerDashboard' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/hooks/queries/useEventManagement.ts(242,14): error TS2352: Conversion of type '{ upcoming_events: { id: any; _eventId: any; name: any; description: string; start_date: any; end_date: any; venue: any; status: any; capacity: null; created_at: any; updated_at: any; }[]; bookings: { id: any; ... 12 more ...; tickets: any; }[]; tickets: { id: any; ... 12 more ...; tickets: any; }[]; }' to type 'CustomerDashboard' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
   Types of property 'upcoming_events' are incompatible.
     Type '{ id: any; _eventId: any; name: any; description: string; start_date: any; end_date: any; venue: any; status: any; capacity: null; created_at: any; updated_at: any; }[]' is not comparable to type 'Event[]'.
       Type '{ id: any; _eventId: any; name: any; description: string; start_date: any; end_date: any; venue: any; status: any; capacity: null; created_at: any; updated_at: any; }' is not comparable to type 'Event'.
@@ -346,6 +346,11 @@ src/pages/accounting/reports/ProfitLossPage.tsx(248,60): error TS2339: Property 
 src/pages/accounting/reports/TrialBalancePage.tsx(173,69): error TS2339: Property 'difference' does not exist on type 'TrialBalanceData'.
 src/pages/accounting/VendorCreditNotesPage.tsx(4,46): error TS2307: Cannot find module '@/types/vendorCreditNote' or its corresponding type declarations.
 src/pages/accounting/VendorCreditNotesPage.tsx(53,16): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/DashboardPage.tsx(316,23): error TS2322: Type '(v: number) => [string, "Revenue"]' is not assignable to type 'Formatter<number, "Revenue"> & ((value: number, name: "Revenue", item: Payload<number, "Revenue">, index: number, payload: Payload<number, "Revenue">[]) => ReactNode | [...])'.
+  Type '(v: number) => [string, "Revenue"]' is not assignable to type 'Formatter<number, "Revenue">'.
+    Types of parameters 'v' and 'value' are incompatible.
+      Type 'number | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
 src/pages/dashboards/ExecutiveDashboard.tsx(116,76): error TS2339: Property 'total_sales' does not exist on type '{ period: string; invoice_count: number; total_revenue: number; avg_order_value: number; }'.
 src/pages/dashboards/ExecutiveDashboard.tsx(119,37): error TS2339: Property 'total_sales' does not exist on type '{ period: string; invoice_count: number; total_revenue: number; avg_order_value: number; }'.
 src/pages/dashboards/ExecutiveDashboard.tsx(122,68): error TS2339: Property 'total_sales' does not exist on type '{ category_id: number; category_name: string; total_revenue: number; percentage: number; }'.
@@ -368,6 +373,9 @@ src/pages/dashboards/SalesDashboard.tsx(116,21): error TS2339: Property 'product
 src/pages/dashboards/SalesDashboard.tsx(117,32): error TS2339: Property 'quantity_sold' does not exist on type '{ id: number; name: string; sku: string; total_quantity: number; total_revenue: number; total_cost: number; total_profit: number; profit_margin: number; }'.
 src/pages/dashboards/SalesDashboard.tsx(121,28): error TS2339: Property 'total_sales' does not exist on type '{ category_id: number; category_name: string; total_revenue: number; percentage: number; }'.
 src/pages/dashboards/SalesDashboard.tsx(121,45): error TS2339: Property 'revenue' does not exist on type '{ category_id: number; category_name: string; total_revenue: number; percentage: number; }'.
+src/pages/EventManagement/EventsWorkspacePage.tsx(232,61): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/pages/EventManagement/EventsWorkspacePage.tsx(1005,53): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/pages/EventManagement/EventsWorkspacePage.tsx(1039,48): error TS7006: Parameter 'product' implicitly has an 'any' type.
 src/pages/EventManagement/FeedbackSystem.tsx(165,40): error TS2339: Property 'data' does not exist on type 'FeedbackData[]'.
 src/pages/EventManagement/FeedbackSystem.tsx(184,40): error TS2339: Property 'data' does not exist on type 'FeedbackData[]'.
 src/pages/EventManagement/MyEventsDashboard.tsx(154,7): error TS2353: Object literal may only specify known properties, and 'title' does not exist in type 'SetStateAction<EventFormState>'.
@@ -413,3 +421,20 @@ src/pages/WebShop/CustomerPortal/Addresses/AddressesPage.tsx(255,55): error TS23
       The types of 'type' are incompatible between these types.
         Type '"billing" | "shipping"' is not assignable to type '"shipping"'.
           Type '"billing"' is not assignable to type '"shipping"'.
+src/storefront/components/home/FeaturedProducts.tsx(20,5): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/storefront/components/home/FeaturedProducts.tsx(59,34): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/components/home/FeaturedProducts.tsx(59,43): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/storefront/pages/ProductDetail.tsx(209,15): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/storefront/pages/ProductDetail.tsx(853,37): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/storefront/pages/ProductDetail.tsx(853,40): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(249,22): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(256,29): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(267,49): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(291,20): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(298,58): error TS7006: Parameter 'lowest' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(298,66): error TS7006: Parameter 'current' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(314,43): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(330,38): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(341,47): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(702,46): error TS7006: Parameter 'product' implicitly has an 'any' type.
+src/storefront/pages/Shop.tsx(702,55): error TS7006: Parameter 'index' implicitly has an 'any' type.
