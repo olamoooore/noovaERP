@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X, Search, Ticket, Package2, Store, Sparkles, Tag, Boxes } from 'lucide-react';
+import { Filter, Grid, LayoutGrid, Loader2, ChevronLeft, ChevronRight, X, Search, Ticket, Package2, Store } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { ProductCard } from '@/storefront/components/products/ProductCard';
 import { QuickViewModal } from '@/storefront/components/products/QuickViewModal';
@@ -239,7 +239,8 @@ const Shop = () => {
   }, [initialType]);
 
   // Use real products from API, with client-side filtering and sorting
-  const products = data?.products || [];
+  const products: Product[] = data?.products ?? [];
+  const bundleProducts: Product[] = bundleData?.products ?? [];
   const totalProducts = data?.total || 0;
   const lastPage = data?.lastPage || 1;
 
@@ -264,7 +265,7 @@ const Shop = () => {
   }, [products, selectedBrands, selectedTypes, selectedCollections, selectedTags, showOutOfStock]);
 
   const filteredBundleProducts = useMemo(() => {
-    return (bundleData?.products || []).filter((product) => productMatchesControlFilters(
+    return bundleProducts.filter((product) => productMatchesControlFilters(
       product,
       selectedBrands,
       selectedTypes,
@@ -272,7 +273,7 @@ const Shop = () => {
       selectedTags,
       showOutOfStock,
     ));
-  }, [bundleData?.products, selectedBrands, selectedTypes, selectedCollections, selectedTags, showOutOfStock]);
+  }, [bundleProducts, selectedBrands, selectedTypes, selectedCollections, selectedTags, showOutOfStock]);
 
   const bundleOffers = useMemo<BundleOffer[]>(() => {
     const normalizedCampaign = eventCampaign.trim().toLowerCase();
@@ -318,25 +319,6 @@ const Shop = () => {
     ? realBundleProducts.length
     : (realBundleProducts.length > 0 ? realBundleProducts.length : bundleOffers.length);
 
-  const shopViewCounts = useMemo(() => {
-    return SHOP_VIEWS.reduce<Record<ShopView, number>>((acc, view) => {
-      if (view.value === 'all') {
-        acc[view.value] = totalProducts;
-        return acc;
-      }
-
-      acc[view.value] = view.value === 'bundles'
-        ? displayBundleCount
-        : filteredByControls.filter((product) => matchesShopView(product, view.value)).length;
-      return acc;
-    }, {
-      all: 0,
-      merchandise: 0,
-      limited: 0,
-      bundles: 0,
-    });
-  }, [displayBundleCount, filteredByControls, totalProducts]);
-
   const filteredProducts = useMemo(() => {
     let filtered = filteredByControls.filter((product) => matchesShopView(product, shopView));
 
@@ -372,17 +354,6 @@ const Shop = () => {
     ? `${displayBundleCount} ${displayBundleCount === 1 ? 'bundle offer' : 'bundle offers'} visible`
     : `${filteredProducts.length} ${filteredProducts.length === 1 ? 'product' : 'products'} visible`;
   const headerTitle = searchQuery ? `Search: "${searchQuery}"` : 'Shop';
-
-  const setShopViewParam = (nextView: ShopView) => {
-    const params = new URLSearchParams(searchParams);
-    if (nextView === 'all') {
-      params.delete('view');
-    } else {
-      params.set('view', nextView);
-    }
-    params.set('page', '1');
-    setSearchParams(params);
-  };
 
   const clearAllFilters = () => {
     setSelectedBrands([]);
@@ -493,19 +464,27 @@ const Shop = () => {
                   </span>
                 </div>
 
-                {eventCampaign ? (
+                {eventCampaign || shopView !== 'all' ? (
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 font-medium text-foreground">
-                      <Ticket className="h-3.5 w-3.5 text-primary" />
-                      Campaign: {eventCampaign}
-                    </span>
+                    {shopView !== 'all' && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 py-1.5 font-medium text-foreground">
+                        <Store className="h-3.5 w-3.5 text-primary" />
+                        Event Flow: {currentShopView.label}
+                      </span>
+                    )}
+                    {eventCampaign && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 font-medium text-foreground">
+                        <Ticket className="h-3.5 w-3.5 text-primary" />
+                        Campaign: {eventCampaign}
+                      </span>
+                    )}
                     <Link to={storefrontRoutes.events} className="font-medium text-primary hover:underline">
                       ← Back to Events
                     </Link>
                   </div>
                 ) : (
                   <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                    Merchandise, limited drops, and bundles — curated across campaigns.
+                    Browse the full storefront catalog. Event merchandise, limited drops, and bundle flows now start from the Events page.
                   </p>
                 )}
               </div>
@@ -524,35 +503,6 @@ const Shop = () => {
               </div>
             </div>
 
-            {/* View pills */}
-            <div className="mt-5 flex flex-wrap gap-2">
-              {SHOP_VIEWS.map((view) => {
-                const ViewIcon = view.value === 'all' ? Boxes : view.value === 'merchandise' ? Package2 : view.value === 'limited' ? Sparkles : Tag;
-                const isActive = shopView === view.value;
-                return (
-                  <button
-                    key={view.value}
-                    type="button"
-                    onClick={() => setShopViewParam(view.value)}
-                    className={cn(
-                      'group inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-all',
-                      isActive
-                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                        : 'border-border/60 bg-background/70 backdrop-blur hover:border-primary/40 hover:text-foreground'
-                    )}
-                  >
-                    <ViewIcon className="h-3.5 w-3.5" />
-                    <span className="font-medium">{view.label}</span>
-                    <span className={cn(
-                      'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                      isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
-                    )}>
-                      {shopViewCounts[view.value]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         </div>
 

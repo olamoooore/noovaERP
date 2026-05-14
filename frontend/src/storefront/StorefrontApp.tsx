@@ -13,6 +13,8 @@ import { lazy, Suspense } from 'react';
 const StorefrontHome = lazy(() => import('@/storefront/pages/Index'));
 const StorefrontShop = lazy(() => import('@/storefront/pages/Shop'));
 const StorefrontEvents = lazy(() => import('@/storefront/pages/Events'));
+const StorefrontGames = lazy(() => import('@/storefront/pages/Games'));
+const StorefrontGamePlay = lazy(() => import('@/storefront/pages/GamePlay'));
 const StorefrontMembership = lazy(() => import('@/storefront/pages/Membership'));
 const StorefrontCheckout = lazy(() => import('@/storefront/pages/Checkout'));
 const StorefrontWaitingRoom = lazy(() => import('@/storefront/pages/WaitingRoom'));
@@ -47,6 +49,8 @@ export default function StorefrontApp() {
                   <Route path="/shop" element={<StorefrontShop />} />
                   <Route path="/product/:id" element={<StorefrontProductDetail />} />
                   <Route path="/events" element={<StorefrontEvents />} />
+                  <Route path="/games" element={<StorefrontGames />} />
+                  <Route path="/games/:gameId" element={<StorefrontGamePlay />} />
                   <Route path="/membership" element={<StorefrontMembership />} />
                   <Route path="/checkout" element={<StorefrontCheckout />} />
                   <Route path="/waiting-room" element={<StorefrontWaitingRoom />} />

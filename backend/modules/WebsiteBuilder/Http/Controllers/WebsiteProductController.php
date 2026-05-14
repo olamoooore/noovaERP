@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Controller for public website product API.
- * Returns products marked with show_on_website = true for e-commerce websites.
+ * Returns tenant products for e-commerce websites.
  */
 class WebsiteProductController extends Controller
 {
@@ -28,7 +28,7 @@ class WebsiteProductController extends Controller
 
         $supportsEventProductLinks = Schema::hasTable('event_product_links');
 
-        $this->applyWebsiteVisibilityFilter($query);
+        $this->applyWebsiteVisibilityFilter($query, $request);
 
         // Filter by category
         if ($request->filled('category_id')) {
@@ -184,7 +184,7 @@ class WebsiteProductController extends Controller
             ->withSum('stockLevels as aggregated_stock_quantity', 'quantity')
             ->with(['category', 'brand', 'variants', 'bundleComponents.componentProduct']);
 
-        $this->applyWebsiteVisibilityFilter($query);
+        $this->applyWebsiteVisibilityFilter($query, $request);
         
         $product = $query->findOrFail($id);
 
@@ -263,16 +263,16 @@ class WebsiteProductController extends Controller
     /**
      * Get product categories that have website products.
      */
-    public function categories(): JsonResponse
+    public function categories(Request $request): JsonResponse
     {
         $query = \App\Models\ProductCategory::query()
-            ->whereHas('products', function ($q) {
+            ->whereHas('products', function ($q) use ($request) {
                 $q->where('is_active', true);
-                $this->applyWebsiteVisibilityFilter($q);
+                $this->applyWebsiteVisibilityFilter($q, $request);
             })
-            ->withCount(['products' => function ($q) {
+            ->withCount(['products' => function ($q) use ($request) {
                 $q->where('is_active', true);
-                $this->applyWebsiteVisibilityFilter($q);
+                $this->applyWebsiteVisibilityFilter($q, $request);
             }]);
         
         $categories = $query->orderBy('name')
@@ -300,7 +300,7 @@ class WebsiteProductController extends Controller
             ->whereNotNull('meta_keywords')
             ->where('meta_keywords', '!=', '');
 
-        $this->applyWebsiteVisibilityFilter($query);
+        $this->applyWebsiteVisibilityFilter($query, $request);
         
         $products = $query->pluck('meta_keywords');
         
@@ -380,8 +380,12 @@ class WebsiteProductController extends Controller
         return $baseUrl . '/storage/' . $imagePath;
     }
 
-    private function applyWebsiteVisibilityFilter(Builder $query): void
+    private function applyWebsiteVisibilityFilter(Builder $query, ?Request $request = null): void
     {
+        if ($request && $request->boolean('include_all_products')) {
+            return;
+        }
+
         if (!Schema::hasColumn('products', 'show_on_website')) {
             return;
         }

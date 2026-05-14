@@ -19,6 +19,7 @@ export const storefrontRoutes = {
   home: STOREFRONT_BASE,
   shop: `${STOREFRONT_BASE}/shop`,
   events: `${STOREFRONT_BASE}/events`,
+  games: `${STOREFRONT_BASE}/games`,
   membership: `${STOREFRONT_BASE}/membership`,
   checkout: `${STOREFRONT_BASE}/checkout`,
   waitingRoom: `${STOREFRONT_BASE}/waiting-room`,
@@ -36,4 +37,11 @@ export const storefrontRoutes = {
  */
 export function productRoute(id: string | number): string {
   return `${STOREFRONT_BASE}/product/${id}`;
+}
+
+/**
+ * Generate the full URL for an individual arcade game arena.
+ */
+export function gamePlayRoute(gameId: string): string {
+  return `${STOREFRONT_BASE}/games/${gameId}`;
 }

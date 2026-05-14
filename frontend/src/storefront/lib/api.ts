@@ -90,15 +90,18 @@ export async function fetchProducts(params?: {
   event_id?: number;
   event_relation_type?: 'merchandise' | 'bundle';
   is_bundle?: boolean;
+  include_all_products?: boolean;
   per_page?: number;
   page?: number;
 }): Promise<PaginatedResponse<ApiProduct>> {
-  const { data } = await storefrontApi.get('/website-public/products', { params });
+  const { data } = await storefrontApi.get('/website-public/products', {
+    params: { include_all_products: true, ...params },
+  });
   return data;
 }
 
-export async function fetchProduct(id: number): Promise<ApiProduct> {
-  const { data } = await storefrontApi.get(`/website-public/products/${id}`);
+export async function fetchProduct(id: number, params?: { include_all_products?: boolean }): Promise<ApiProduct> {
+  const { data } = await storefrontApi.get(`/website-public/products/${id}`, { params });
   return data;
 }
 

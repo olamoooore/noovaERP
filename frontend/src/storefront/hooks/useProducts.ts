@@ -73,6 +73,7 @@ export function mapApiProduct(apiProduct: ApiProduct): Product {
     description: apiProduct.description || undefined,
     shortDescription: apiProduct.short_description || (apiProduct.description ? apiProduct.description.replace(/<[^>]*>/g, '').split('.')[0] + '.' : undefined),
     sku: apiProduct.sku || undefined,
+    unit: apiProduct.unit,
     inStock: apiProduct.in_stock,
     stockQuantity: apiProduct.stock_quantity,
     isMerchandise: apiProduct.is_merchandise,
@@ -115,18 +116,21 @@ export function useProducts(params?: {
   event_id?: number;
   event_relation_type?: 'merchandise' | 'bundle';
   is_bundle?: boolean;
+  include_all_products?: boolean;
   per_page?: number;
   page?: number;
 }) {
+  const requestParams = { include_all_products: true, ...params, per_page: params?.per_page || 30 };
+
   return useQuery({
-    queryKey: ['storefront-products', { ...params, tenant_id: INFINITI_TENANT_ID }],
+    queryKey: ['storefront-products', { ...requestParams, tenant_id: INFINITI_TENANT_ID }],
     queryFn: async () => {
       // Always send X-Tenant-ID header for Infiniti
       const prevTenantId = localStorage.getItem('tenant_id');
       localStorage.setItem('tenant_id', INFINITI_TENANT_ID);
       try {
         const response = await storefrontApi.get('/website-public/products', {
-          params: { ...params, per_page: params?.per_page || 30 },
+          params: requestParams,
           headers: { 'X-Tenant-ID': INFINITI_TENANT_ID },
         });
         return {

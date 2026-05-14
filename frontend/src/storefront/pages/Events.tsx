@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Users, Ticket, Radio, Sparkles, Archive } from 'lucide-react';
+import { Calendar, MapPin, Users, Ticket, Radio, Sparkles, Archive, Package2, Tag } from 'lucide-react';
 import { Layout } from '@/storefront/components/layout/Layout';
 import { Event, buildEventCommerce, getEventTimelineStatus, resolveEventEnd, type EventTimelineStatus } from '@/storefront/data/events';
 import { Button, buttonVariants } from '@/storefront/components/ui/button';
+import { useProducts } from '@/storefront/hooks/useProducts';
+import type { Product } from '@/storefront/data/products';
 import { Badge } from '@/storefront/components/ui/badge';
 import {
   Dialog,
@@ -108,24 +110,34 @@ const buildEventCommerceLinks = (event: Event) => {
   };
 };
 
+function isMerchandiseProduct(product: Product): boolean {
+  return Boolean(product.isMerchandise);
+}
+
+function isLimitedDropProduct(product: Product): boolean {
+  return Boolean(
+    product.tags?.includes('limited')
+      || product.tags?.includes('preorder')
+      || product.tags?.includes('new')
+      || product.collection === 'Limited Edition'
+      || product.collection === 'Pre-Order'
+  );
+}
+
 const SECTION_META: Record<EventTimelineStatus, {
   title: string;
-  description: string;
   emptyMessage: string;
 }> = {
   current: {
     title: 'Current Events',
-    description: 'Live campaigns, active sales, and in-progress fan experiences.',
     emptyMessage: 'No events are live right now.',
   },
   upcoming: {
     title: 'Upcoming Events',
-    description: 'Future launches, ticket drops, and campaigns you can still plan for.',
     emptyMessage: 'No upcoming events have been published yet.',
   },
   past: {
     title: 'Past Events',
-    description: 'Campaign archive, previous fan activities, and reference events for future promotions.',
     emptyMessage: 'No past events are available yet.',
   },
 };
@@ -134,6 +146,8 @@ const Events = () => {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { data: events = [], isLoading } = useStorefrontEvents();
+  const { data: storefrontProductsData } = useProducts({ per_page: 30, page: 1 });
+  const { data: storefrontBundleData } = useProducts({ per_page: 30, page: 1, is_bundle: true });
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showRegistration, setShowRegistration] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
@@ -160,6 +174,43 @@ const Events = () => {
 
     return buckets;
   }, [events]);
+
+  const eventShopCounts = useMemo(() => {
+    const storefrontProducts = storefrontProductsData?.products || [];
+
+    return {
+      merchandise: storefrontProducts.filter(isMerchandiseProduct).length,
+      limited: storefrontProducts.filter(isLimitedDropProduct).length,
+      bundles: storefrontBundleData?.total ?? storefrontBundleData?.products.length ?? 0,
+    };
+  }, [storefrontBundleData?.products.length, storefrontBundleData?.total, storefrontProductsData?.products]);
+
+  const eventShopTiles = [
+    {
+      title: 'Merchandise',
+      count: eventShopCounts.merchandise,
+      icon: Package2,
+      href: `${storefrontRoutes.shop}?view=merchandise`,
+      subtitle: 'Fan goods',
+      cta: 'Shop now',
+    },
+    {
+      title: 'Limited Drops',
+      count: eventShopCounts.limited,
+      icon: Sparkles,
+      href: `${storefrontRoutes.shop}?view=limited`,
+      subtitle: 'Timed releases',
+      cta: 'View drops',
+    },
+    {
+      title: 'Event Bundles',
+      count: eventShopCounts.bundles,
+      icon: Tag,
+      href: `${storefrontRoutes.shop}?view=bundles`,
+      subtitle: 'Ticket + merch',
+      cta: 'Open bundles',
+    },
+  ];
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,19 +419,77 @@ const Events = () => {
           <div className="relative px-6 py-10 md:px-12 md:py-14 text-center">
             <Badge className="mb-4 bg-background/70 text-foreground border border-border/60 backdrop-blur">
               <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
-              Campaign Hub
+              Event Hub
             </Badge>
             <h1 className="text-4xl md:text-6xl font-display font-bold mb-4">
-              Event <span className="gradient-text">Campaigns</span>
+              Events & <span className="gradient-text">Drops</span>
             </h1>
-            <p className="text-base md:text-lg text-muted-foreground max-w-3xl mx-auto">
-              Browse live campaigns, plan for upcoming launches, and revisit past event archives — cleanly separated so nothing gets lost in one bucket.
+            <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
+              Start with the event flow, then jump into merch, drops, or bundles.
             </p>
           </div>
         </div>
 
+        <section className="mb-12 rounded-3xl border border-border/60 bg-card/70 p-5 shadow-sm md:p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Event Shop
+              </p>
+              <h2 className="mt-2 text-2xl font-display font-bold text-foreground md:text-3xl">
+                Choose a shopping flow
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Pick one path and continue shopping.
+              </p>
+            </div>
+            <Link
+              to={storefrontRoutes.shop}
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-fit')}
+            >
+              Full Shop
+            </Link>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {eventShopTiles.map((tile) => {
+              const IconCmp = tile.icon;
+
+              return (
+                <Link
+                  key={tile.title}
+                  to={tile.href}
+                  className="group rounded-2xl border border-border/60 bg-background/70 p-5 transition-all hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {tile.subtitle}
+                      </p>
+                      <h3 className="mt-2 text-xl font-display font-bold text-foreground">{tile.title}</h3>
+                    </div>
+                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <IconCmp className="h-5 w-5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-end justify-between gap-3 border-t border-border/60 pt-4">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Available</p>
+                      <p className="text-3xl font-display font-bold text-foreground">{tile.count}</p>
+                    </div>
+                    <div className="text-sm font-medium text-primary transition-transform group-hover:translate-x-0.5">
+                      {tile.cta}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Stat tiles */}
-        <div className="grid gap-4 sm:grid-cols-3 mb-12">
+        <div className="grid gap-3 sm:grid-cols-3 mb-12">
           {(['current', 'upcoming', 'past'] as EventTimelineStatus[]).map((timeline) => {
               const meta = {
                 current: { Icon: Radio, accent: 'from-emerald-500/20 to-emerald-500/0', dot: 'bg-emerald-500', text: 'text-emerald-500' },
@@ -394,33 +503,30 @@ const Events = () => {
                 <a
                   key={timeline}
                   href={`#section-${timeline}`}
-                  className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-5 text-left transition-all hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5"
+                  className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-4 text-left transition-all hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5"
                 >
                   <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent} opacity-60 group-hover:opacity-100 transition-opacity`} aria-hidden />
-                  <div className="relative">
-                    <div className="flex items-start justify-between mb-4">
+                  <div className="relative flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl bg-background/80 ${meta.text} shadow-sm`}>
                         <IconCmp className="h-5 w-5" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`h-2 w-2 rounded-full ${meta.dot} ${timeline === 'current' ? 'animate-pulse' : ''}`} />
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          {timeline === 'current' ? 'Live' : timeline === 'upcoming' ? 'Soon' : 'Archived'}
-                        </span>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {SECTION_META[timeline].title}
+                        </p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className={`h-2 w-2 rounded-full ${meta.dot} ${timeline === 'current' ? 'animate-pulse' : ''}`} />
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {timeline === 'current' ? 'Live' : timeline === 'upcoming' ? 'Soon' : 'Archived'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-4xl font-display font-bold text-foreground leading-none">{count}</p>
-                      <p className="text-sm text-muted-foreground">event{count === 1 ? '' : 's'}</p>
+                    <div className="text-right shrink-0">
+                      <p className="text-3xl font-display font-bold text-foreground leading-none">{count}</p>
+                      <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">events</p>
                     </div>
-
-                    <p className="mt-2 text-sm font-semibold text-foreground">
-                      {SECTION_META[timeline].title}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                      {SECTION_META[timeline].description}
-                    </p>
                   </div>
                 </a>
               );
@@ -442,9 +548,6 @@ const Events = () => {
                     <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">
                       {SECTION_META[timeline].title}
                     </h2>
-                    <p className="text-muted-foreground">
-                      {SECTION_META[timeline].description}
-                    </p>
                   </div>
                   <Badge className="w-fit bg-background text-foreground border border-border/60">
                     {eventSections[timeline].length} event{eventSections[timeline].length === 1 ? '' : 's'}

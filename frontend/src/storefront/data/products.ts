@@ -26,6 +26,7 @@ export interface Product {
   reviewCount?: number;
   reviews?: ProductReview[];
   sku?: string;
+  unit?: string | null;
   inStock?: boolean;
   stockQuantity?: number;
   specs?: { label: string; value: string }[];

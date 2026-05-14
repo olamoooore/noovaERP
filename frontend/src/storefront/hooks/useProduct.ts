@@ -17,7 +17,7 @@ export function useProduct(id: string | undefined) {
       const numericId = Number(id);
       if (!isNaN(numericId)) {
         try {
-          const apiProduct = await fetchProduct(numericId);
+          const apiProduct = await fetchProduct(numericId, { include_all_products: true });
           return mapApiProduct(apiProduct);
         } catch {
           // fall through to static lookup below
