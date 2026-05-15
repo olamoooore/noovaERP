@@ -18,6 +18,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('stock_movements') || Schema::hasColumn('stock_movements', 'idempotency_key')) {
+            return;
+        }
+
         Schema::table('stock_movements', function (Blueprint $table) {
             // Nullable so existing rows are unaffected; unique so duplicates are caught at DB level.
             $table->string('idempotency_key', 128)->nullable()->unique()->after('reference_id');
@@ -26,6 +30,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('stock_movements') || !Schema::hasColumn('stock_movements', 'idempotency_key')) {
+            return;
+        }
+
         Schema::table('stock_movements', function (Blueprint $table) {
             $table->dropUnique(['idempotency_key']);
             $table->dropColumn('idempotency_key');
