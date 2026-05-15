@@ -48,11 +48,15 @@ class VendorBillProcurementLineageTest extends TestCase
             database_path('migrations/tenant/2024_01_01_200004_create_payments_table.php'),
             database_path('migrations/tenant/2026_01_05_000001_create_bills_table.php'),
             database_path('migrations/tenant/2026_01_05_000002_create_bill_lines_table.php'),
+            database_path('migrations/tenant/2026_01_06_000004_create_currencies_and_exchange_rates_tables.php'),
+            database_path('migrations/tenant/2026_01_08_000001_create_customer_credit_notes_table.php'),
+            database_path('migrations/tenant/2026_01_08_000003_create_vendor_credit_notes_table.php'),
             database_path('migrations/tenant/2026_03_30_000001_add_partial_status_to_bills.php'),
             database_path('migrations/tenant/2026_04_02_210000_add_enterprise_document_metadata_fields.php'),
             database_path('migrations/tenant/2026_04_14_203813_add_procurement_linkage_and_goods_receipts.php'),
             database_path('migrations/tenant/2026_04_15_000001_add_po_grn_links_to_bill_lines.php'),
-            database_path('migrations/2026_04_19_000001_add_bill_type_to_bills_table.php'),
+            database_path('migrations/tenant/2026_04_19_000001_add_bill_type_to_bills_table.php'),
+            database_path('migrations/tenant/2026_04_21_000001_add_correction_fields_to_documents.php'),
         ] as $migrationPath) {
             Artisan::call('migrate', [
                 '--path' => $migrationPath,
