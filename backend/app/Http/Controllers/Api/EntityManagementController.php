@@ -6,16 +6,17 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class EntityManagementController extends Controller
 {
+    private const GROUPS_TABLE = 'entity_groups';
+
     // ── Groups ──────────────────────────────────────────
 
     public function indexGroups(): JsonResponse
     {
-        $groups = DB::table('groups')->orderBy('name')->get();
+        $groups = DB::table(self::GROUPS_TABLE)->orderBy('name')->get();
         return response()->json($groups);
     }
 
@@ -23,24 +24,24 @@ class EntityManagementController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:groups,code',
+            'code' => 'required|string|max:50|unique:' . self::GROUPS_TABLE . ',code',
             'base_currency' => 'required|string|size:3',
             'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
-        $id = DB::table('groups')->insertGetId(array_merge($data, [
+        $id = DB::table(self::GROUPS_TABLE)->insertGetId(array_merge($data, [
             'fiscal_year_start' => $data['fiscal_year_start'] ?? '01-01',
             'created_by' => TenantUserHelper::resolveTenantUserId(),
             'created_at' => now(),
             'updated_at' => now(),
         ]));
 
-        return response()->json(DB::table('groups')->find($id), 201);
+        return response()->json(DB::table(self::GROUPS_TABLE)->find($id), 201);
     }
 
     public function showGroup(int $id): JsonResponse
     {
-        $group = DB::table('groups')->find($id);
+        $group = DB::table(self::GROUPS_TABLE)->find($id);
         if (!$group) {
             return response()->json(['message' => 'Group not found'], 404);
         }
@@ -58,7 +59,7 @@ class EntityManagementController extends Controller
 
         // Ensure code uniqueness if changing
         if (isset($data['code'])) {
-            $existing = DB::table('groups')
+            $existing = DB::table(self::GROUPS_TABLE)
                 ->where('code', $data['code'])
                 ->where('id', '!=', $id)
                 ->exists();
@@ -67,8 +68,8 @@ class EntityManagementController extends Controller
             }
         }
 
-        DB::table('groups')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
-        return response()->json(DB::table('groups')->find($id));
+        DB::table(self::GROUPS_TABLE)->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+        return response()->json(DB::table(self::GROUPS_TABLE)->find($id));
     }
 
     // ── Legal Entities ──────────────────────────────────
@@ -87,7 +88,7 @@ class EntityManagementController extends Controller
     public function storeEntity(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'group_id' => 'required|integer|exists:groups,id',
+            'group_id' => 'required|integer|exists:' . self::GROUPS_TABLE . ',id',
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50|unique:legal_entities,code',
             'country_code' => 'sometimes|string|size:2',

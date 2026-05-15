@@ -177,7 +177,7 @@ class BankReconciliationController extends Controller
                 'amount' => 'required|numeric|min:0.01',
                 'type' => 'required|string|in:debit,credit',
                 'reference' => 'nullable|string|max:255',
-                'contra_account_id' => 'nullable|integer|exists:chart_of_accounts,id',
+                'contra_account_id' => 'required|integer|exists:chart_of_accounts,id',
             ]);
 
             // Add adjusting entry
@@ -200,6 +200,12 @@ class BankReconciliationController extends Controller
             return response()->json([
                 'message' => 'Validation failed',
                 'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => 'Failed to add adjusting entry',
+                'error' => $e->getMessage(),
             ], 422);
 
         } catch (\Exception $e) {

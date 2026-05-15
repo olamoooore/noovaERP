@@ -102,6 +102,10 @@ export function CloseDashboard() {
   const blocked = myTasks.filter(t => t.status === 'blocked')
   const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
   const attentionAccounts = [...(readiness?.accounts ?? [])].sort(attentionSort).slice(0, 3)
+  const signedOffAccounts = readiness?.signed_off_accounts ?? 0
+  const totalAccounts = readiness?.total_accounts ?? 0
+  const openBlockers = readiness?.open_blockers ?? 0
+  const openFindings = readiness?.open_findings ?? 0
 
   return (
     <div className="space-y-8">
@@ -115,7 +119,7 @@ export function CloseDashboard() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="px-3 py-1">{activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}</Badge>
-                <Badge variant="outline" className="px-3 py-1">{readiness?.open_findings ?? 0} open findings</Badge>
+                <Badge variant="outline" className="px-3 py-1">{openFindings} open findings</Badge>
                 <Badge variant="outline" className="px-3 py-1">{blocked.length} blocked task{blocked.length !== 1 ? 's' : ''}</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -189,15 +193,15 @@ export function CloseDashboard() {
         />
         <KpiCard
           label="Open Blockers"
-          value={readiness?.open_blockers ?? '—'}
+          value={openBlockers}
           icon="solar:danger-bold-duotone"
-          iconClass={(readiness?.open_blockers ?? 0) > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
+          iconClass={openBlockers > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
           hint="Pivot into tasks and approvals"
           onClick={() => navigate('/financial-close/tasks')}
         />
         <KpiCard
           label="Open AI Findings"
-          value={readiness?.open_findings ?? '—'}
+          value={openFindings}
           icon="solar:magic-stick-3-bold-duotone"
           iconClass="bg-yellow-500/10 text-yellow-500"
           hint="Presentation-ready anomaly list"
@@ -205,7 +209,7 @@ export function CloseDashboard() {
         />
         <KpiCard
           label="Accounts Signed Off"
-          value={readiness ? `${readiness.signed_off_accounts} / ${readiness.total_accounts}` : '—'}
+          value={`${signedOffAccounts} / ${totalAccounts}`}
           icon="solar:clipboard-check-bold-duotone"
           iconClass="bg-green-500/10 text-green-500"
           hint="Open account coverage"

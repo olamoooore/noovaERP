@@ -19,11 +19,13 @@
 namespace Tests\Feature;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
+use App\Models\JournalEntryLine;
 use App\Models\LockDate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,6 +107,51 @@ class WS08AccountingPostingTest extends TestCase
             'document_type' => 'test_doc',
             'document_id'   => 9001,
         ]);
+    }
+
+    /** @test */
+    public function posting_engine_create_draft_defaults_currency_fields_for_manual_lines(): void
+    {
+        $engine = app(PostingEngineInterface::class);
+
+        $debitAccount  = ChartOfAccount::factory()->create(['type' => 'expense', 'is_active' => true]);
+        $creditAccount = ChartOfAccount::factory()->create(['type' => 'liability', 'is_active' => true]);
+
+        $request = DraftJournalRequest::fromArray([
+            'entry_date' => now()->addDays(30)->toDateString(),
+            'description' => 'Manual journal without explicit currency fields',
+            'lines' => [
+                [
+                    'account_id' => $debitAccount->id,
+                    'debit' => 125.50,
+                    'credit' => 0,
+                    'description' => 'Debit line',
+                ],
+                [
+                    'account_id' => $creditAccount->id,
+                    'debit' => 0,
+                    'credit' => 125.50,
+                    'description' => 'Credit line',
+                ],
+            ],
+        ]);
+
+        $result = $engine->createDraft($request);
+
+        $this->assertTrue($result->success, "PostingEngine::createDraft() failed: {$result->error}");
+        $this->assertNotNull($result->journalEntry);
+
+        $lines = JournalEntryLine::where('journal_entry_id', $result->journalEntry->id)
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount(2, $lines);
+        $this->assertSame('USD', $lines[0]->currency_code);
+        $this->assertSame('USD', $lines[1]->currency_code);
+        $this->assertEqualsWithDelta(125.50, (float) $lines[0]->original_amount, 0.01);
+        $this->assertEqualsWithDelta(125.50, (float) $lines[1]->original_amount, 0.01);
+        $this->assertEqualsWithDelta(1.0, (float) $lines[0]->exchange_rate, 0.000001);
+        $this->assertEqualsWithDelta(1.0, (float) $lines[1]->exchange_rate, 0.000001);
     }
 
     /** @test */

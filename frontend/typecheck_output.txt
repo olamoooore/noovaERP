@@ -1,7 +1,3 @@
-
-> noovaerp-admin@1.0.0 typecheck
-> tsc --noEmit
-
 src/components/iot/DeviceConfigDialog.tsx(62,21): error TS2345: Argument of type '"display" | "scale" | "terminal" | "printer" | "scanner" | "kiosk" | "biometric" | undefined' is not assignable to parameter of type 'SetStateAction<"terminal" | "printer" | "scanner">'.
   Type 'undefined' is not assignable to type 'SetStateAction<"terminal" | "printer" | "scanner">'.
 src/components/iot/DeviceConfigDialog.tsx(63,21): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'SetStateAction<string>'.
@@ -346,11 +342,6 @@ src/pages/accounting/reports/ProfitLossPage.tsx(248,60): error TS2339: Property 
 src/pages/accounting/reports/TrialBalancePage.tsx(173,69): error TS2339: Property 'difference' does not exist on type 'TrialBalanceData'.
 src/pages/accounting/VendorCreditNotesPage.tsx(4,46): error TS2307: Cannot find module '@/types/vendorCreditNote' or its corresponding type declarations.
 src/pages/accounting/VendorCreditNotesPage.tsx(53,16): error TS7006: Parameter 'prev' implicitly has an 'any' type.
-src/pages/DashboardPage.tsx(316,23): error TS2322: Type '(v: number) => [string, "Revenue"]' is not assignable to type 'Formatter<number, "Revenue"> & ((value: number, name: "Revenue", item: Payload<number, "Revenue">, index: number, payload: Payload<number, "Revenue">[]) => ReactNode | [...])'.
-  Type '(v: number) => [string, "Revenue"]' is not assignable to type 'Formatter<number, "Revenue">'.
-    Types of parameters 'v' and 'value' are incompatible.
-      Type 'number | undefined' is not assignable to type 'number'.
-        Type 'undefined' is not assignable to type 'number'.
 src/pages/dashboards/ExecutiveDashboard.tsx(116,76): error TS2339: Property 'total_sales' does not exist on type '{ period: string; invoice_count: number; total_revenue: number; avg_order_value: number; }'.
 src/pages/dashboards/ExecutiveDashboard.tsx(119,37): error TS2339: Property 'total_sales' does not exist on type '{ period: string; invoice_count: number; total_revenue: number; avg_order_value: number; }'.
 src/pages/dashboards/ExecutiveDashboard.tsx(122,68): error TS2339: Property 'total_sales' does not exist on type '{ category_id: number; category_name: string; total_revenue: number; percentage: number; }'.
@@ -427,14 +418,3 @@ src/storefront/components/home/FeaturedProducts.tsx(59,43): error TS7006: Parame
 src/storefront/pages/ProductDetail.tsx(209,15): error TS7006: Parameter 'p' implicitly has an 'any' type.
 src/storefront/pages/ProductDetail.tsx(853,37): error TS7006: Parameter 'p' implicitly has an 'any' type.
 src/storefront/pages/ProductDetail.tsx(853,40): error TS7006: Parameter 'index' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(249,22): error TS7006: Parameter 'p' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(256,29): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(267,49): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(291,20): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(298,58): error TS7006: Parameter 'lowest' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(298,66): error TS7006: Parameter 'current' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(314,43): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(330,38): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(341,47): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(702,46): error TS7006: Parameter 'product' implicitly has an 'any' type.
-src/storefront/pages/Shop.tsx(702,55): error TS7006: Parameter 'index' implicitly has an 'any' type.

@@ -99,9 +99,15 @@ class FinancialCloseReadinessService
 
         if (!$snapshot) {
             return [
+                'total_accounts'      => 0,
+                'reviewed_accounts'   => 0,
+                'signed_off_accounts' => 0,
+                'open_blockers'       => 0,
+                'open_findings'       => 0,
                 'readiness_score'    => 0,
                 'is_ready'           => false,
                 'snapshot_available' => false,
+                'generated_at'       => null,
                 'accounts'           => [],
             ];
         }

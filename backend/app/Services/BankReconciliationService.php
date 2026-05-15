@@ -261,6 +261,12 @@ class BankReconciliationService
                     "contra_account_id {$contraAccountId} does not exist in the chart of accounts."
                 );
             }
+
+            if ((int) $contraAccountId === (int) $glAccount->id) {
+                throw new \InvalidArgumentException(
+                    'contra_account_id cannot be the same as the bank account GL account.'
+                );
+            }
             
             // Build posting lines
             $lines = [];

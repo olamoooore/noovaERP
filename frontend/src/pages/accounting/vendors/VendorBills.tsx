@@ -62,27 +62,7 @@ export const VendorBills: React.FC = () => {
         }));
       }
 
-      // Fetch OCR documents
-      const ocrParams = new URLSearchParams();
-      ocrParams.append('document_type', 'vendor_bill');
-      if (statusFilter !== 'all') ocrParams.append('status', statusFilter);
-      if (searchQuery) ocrParams.append('search', searchQuery);
-      
-      const ocrResponse = await api.get(`/ocr/documents?${ocrParams.toString()}`);
-      const ocrBills = ocrResponse.data.data || [];
-      
-      // Parse extracted_data if it's a string
-      const parsedOcrBills = ocrBills.map((bill: any) => ({
-        ...bill,
-        source: 'ocr',
-        extracted_data: typeof bill.extracted_data === 'string' 
-          ? JSON.parse(bill.extracted_data) 
-          : bill.extracted_data
-      }));
-
-      // Fetch regular bills from accounting API
-      let regularBills = [];
-      try {
+      const fetchRegularBills = async () => {
         const billsResponse = await accountingApi.get('/accounting/vendor-bills', {
           params: {
             per_page: 1000,
@@ -91,16 +71,19 @@ export const VendorBills: React.FC = () => {
             search: searchQuery || undefined,
           },
         });
+
         const billsData = billsResponse.data.data || [];
-        
-        // Transform regular bills to match OCR bill structure
-        regularBills = billsData.map((bill: any) => ({
-          uuid: bill.id,
+
+        return billsData.map((bill: any) => ({
+          uuid: `bill-${bill.id}`,
           source: 'regular',
+          raw_id: bill.id,
           status: bill.status || 'posted',
           document_date: bill.bill_date,
+          due_date: bill.due_date,
           vendor_name: bill.vendor?.name || 'Unknown Vendor',
           total_amount: bill.total,
+          balance: bill.balance,
           extracted_data: {
             invoice_number: bill.bill_number,
             vendor_name: bill.vendor?.name || 'Unknown Vendor',
@@ -112,11 +95,37 @@ export const VendorBills: React.FC = () => {
           },
           confidence_score: 1.0,
         }));
+      };
+
+      const fetchOcrBills = async () => {
+        const ocrParams = new URLSearchParams();
+        ocrParams.append('document_type', 'vendor_bill');
+        if (statusFilter !== 'all') ocrParams.append('status', statusFilter);
+        if (searchQuery) ocrParams.append('search', searchQuery);
+
+        const ocrResponse = await api.get(`/ocr/documents?${ocrParams.toString()}`);
+        const ocrBills = ocrResponse.data.data || [];
+
+        return ocrBills.map((bill: any) => ({
+          ...bill,
+          uuid: `ocr-${bill.uuid}`,
+          raw_uuid: bill.uuid,
+          source: 'ocr',
+          extracted_data: typeof bill.extracted_data === 'string'
+            ? JSON.parse(bill.extracted_data)
+            : bill.extracted_data,
+        }));
+      };
+
+      const regularBills = await fetchRegularBills();
+      let ocrBills = [];
+      try {
+        ocrBills = await fetchOcrBills();
       } catch (error) {
-        console.error('Failed to fetch regular bills:', error);
+        console.warn('Failed to fetch OCR vendor bills. Falling back to canonical vendor bills only.', error);
       }
 
-      return [...parsedOcrBills, ...regularBills];
+      return [...ocrBills, ...regularBills];
     },
   });
 
@@ -350,9 +359,9 @@ export const VendorBills: React.FC = () => {
                         className="font-medium"
                         onClick={() => {
                           if (bill.source === 'regular') {
-                            navigate(`/accounting/vendors/bills/${bill.uuid}`);
+                            navigate(`/accounting/vendors/bills/${bill.raw_id}`);
                           } else {
-                            navigate(`/ocr/documents/${bill.uuid}`);
+                            navigate(`/ocr/documents/${bill.raw_uuid}`);
                           }
                         }}
                       >

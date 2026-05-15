@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import reportApi from '@/lib/reportApi';
+import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { AddTransactionRequest } from '@/types/reports';
@@ -64,6 +65,11 @@ export function BankReconciliationPage() {
   } = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: () => reportApi.getBankAccounts(),
+  });
+
+  const { data: chartOfAccounts = [] } = useQuery({
+    queryKey: ['chart-of-accounts'],
+    queryFn: () => chartOfAccountsApi.getAccounts({ is_active: true }),
   });
 
   // Fetch transactions for selected account
@@ -128,6 +134,7 @@ export function BankReconciliationPage() {
         description: '',
         amount: 0,
         type: 'debit',
+        contra_account_id: undefined,
       });
       // Refetch transactions
       refetchTransactions();
@@ -266,6 +273,15 @@ export function BankReconciliationPage() {
       return;
     }
 
+    if (!newTransaction.contra_account_id) {
+      toast({
+        title: 'Missing GL Account',
+        description: 'Please select the offsetting GL account for this adjusting entry.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     addAdjustingEntryMutation.mutate({
       ...newTransaction,
       bank_account_id: selectedBankAccount!,
@@ -299,6 +315,9 @@ export function BankReconciliationPage() {
   }, [transactionsData, filters, reconciledTransactions]);
 
   const selectedAccount = bankAccountsData?.data?.find((acc) => acc.id === selectedBankAccount);
+  const contraAccountOptions = chartOfAccounts.filter(
+    (account) => account.is_active && account.id !== selectedAccount?.gl_account_id
+  );
 
   return (
     <div className="space-y-6">
@@ -711,6 +730,36 @@ export function BankReconciliationPage() {
                   <SelectItem value="credit">Credit (Money Out)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="contra-account">Offsetting GL Account</Label>
+              <Select
+                value={newTransaction.contra_account_id?.toString() || 'select'}
+                onValueChange={(value) =>
+                  setNewTransaction((prev) => ({
+                    ...prev,
+                    contra_account_id: value === 'select' ? undefined : parseInt(value, 10),
+                  }))
+                }
+              >
+                <SelectTrigger id="contra-account">
+                  <SelectValue placeholder="Select offsetting account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="select" disabled>
+                    Select offsetting account
+                  </SelectItem>
+                  {contraAccountOptions.map((account) => (
+                    <SelectItem key={account.id} value={account.id.toString()}>
+                      {account.code} - {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Choose the expense, income, or other GL account to offset the bank entry.
+              </p>
             </div>
           </div>
 

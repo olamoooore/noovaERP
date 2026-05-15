@@ -628,15 +628,17 @@ class PostingEngine implements PostingEngineInterface
                 ]);
 
                 foreach ($request->lines as $line) {
+                    $lineAmount = $line->debit > 0 ? $line->debit : $line->credit;
+
                     $entry->lines()->create([
                         'account_id' => $line->accountId,
                         'debit' => $line->debit,
                         'credit' => $line->credit,
                         'description' => $line->description,
                         'reference' => $line->reference,
-                        'currency_code' => $line->currencyCode,
-                        'original_amount' => $line->originalAmount,
-                        'exchange_rate' => $line->exchangeRate,
+                        'currency_code' => $line->currencyCode ?? 'USD',
+                        'original_amount' => $line->originalAmount ?? $lineAmount,
+                        'exchange_rate' => $line->exchangeRate ?? 1.0,
                         'department_id' => $line->departmentId,
                         'project_id' => $line->projectId,
                         'location_id' => $line->locationId,

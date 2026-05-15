@@ -8,8 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('groups')) {
-            Schema::create('groups', function (Blueprint $table) {
+        if (!Schema::hasTable('entity_groups')) {
+            Schema::create('entity_groups', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
                 $table->string('code')->unique();
@@ -23,7 +23,7 @@ return new class extends Migration
         if (!Schema::hasTable('legal_entities')) {
             Schema::create('legal_entities', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('group_id')->constrained('groups')->cascadeOnDelete();
+                $table->foreignId('group_id')->constrained('entity_groups')->cascadeOnDelete();
                 $table->string('name');
                 $table->string('code')->unique();
                 $table->string('country_code', 2)->nullable();
@@ -71,6 +71,6 @@ return new class extends Migration
         Schema::dropIfExists('entity_books');
         Schema::dropIfExists('branches');
         Schema::dropIfExists('legal_entities');
-        Schema::dropIfExists('groups');
+        Schema::dropIfExists('entity_groups');
     }
 };

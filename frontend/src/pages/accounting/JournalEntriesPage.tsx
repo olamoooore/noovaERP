@@ -94,9 +94,11 @@ export default function JournalEntriesPage() {
       resetForm();
     },
     onError: (error: any) => {
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to create entry';
+
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to create entry',
+        description: errorMessage,
         variant: 'destructive',
       });
     },

@@ -205,7 +205,7 @@ class MultiEntityIntegrationTest extends TestCase
 
     protected function seedEntityStructure(): void
     {
-        $this->groupId = DB::table('groups')->insertGetId([
+        $this->groupId = DB::table('entity_groups')->insertGetId([
             'name' => 'Test Group',
             'code' => 'TG',
             'base_currency' => 'SGD',
