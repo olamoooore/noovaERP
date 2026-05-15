@@ -22,18 +22,25 @@ return new class extends Migration
             $decoded = json_decode($rawValue, true);
             if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) {
                 $nestedDecoded = json_decode($decoded, true);
-                $value = json_last_error() === JSON_ERROR_NONE
-                    ? json_encode($nestedDecoded)
-                    : json_encode($decoded);
+                $isNestedJson = json_last_error() === JSON_ERROR_NONE;
+                $value = $isNestedJson ? json_encode($nestedDecoded) : null;
 
-                if ($value === false) {
+                if ($isNestedJson && $value === false) {
                     continue;
                 }
 
                 // It was double-encoded; store a valid JSON value for the JSON column.
-                DB::table('settings')
-                    ->where('id', $setting->id)
-                    ->update(['value' => $value]);
+                if (DB::connection()->getDriverName() === 'pgsql') {
+                    if ($isNestedJson) {
+                        DB::update('UPDATE settings SET value = ?::json WHERE id = ?', [$value, $setting->id]);
+                    } else {
+                        DB::update('UPDATE settings SET value = to_json(?::text) WHERE id = ?', [$decoded, $setting->id]);
+                    }
+                } else {
+                    DB::table('settings')
+                        ->where('id', $setting->id)
+                        ->update(['value' => $isNestedJson ? $value : json_encode($decoded)]);
+                }
             }
         }
     }
