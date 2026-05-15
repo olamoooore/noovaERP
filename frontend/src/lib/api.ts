@@ -23,7 +23,7 @@ export const authApi = axios.create({
 
 // Accounting API (tenant routes with /v1 prefix)
 export const accountingApi = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -59,6 +59,10 @@ accountingApi.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  const tenantId = localStorage.getItem('tenant_id')
+  if (tenantId) {
+    config.headers['X-Tenant-ID'] = tenantId
   }
   return config
 })
@@ -138,7 +142,8 @@ accountingApi.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      const basePath = import.meta.env.VITE_BASE_PATH || ''
+      window.location.href = `${basePath}/login`
     }
     return Promise.reject(error)
   }

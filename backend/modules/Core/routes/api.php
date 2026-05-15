@@ -100,14 +100,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-    // Warehouses
-    Route::apiResource('warehouses', \App\Http\Controllers\Api\WarehouseController::class);
-
-    // Users
-    Route::get('/users', [\App\Http\Controllers\Api\UserController::class, 'index']);
-
-    // Products
-    Route::post('/uploads', [UploadController::class, 'store']);
+    // Vendor Credit Notes
 
     Route::post('/products/import', [ProductController::class, 'import']);
     Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy']);
@@ -117,15 +110,22 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Product categories
     Route::get('/product-categories', [ProductCategoryController::class, 'index']);
 
+    // Vendor AP Transactions
+    Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
+    Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
+
     // Product Settings (Units, Attributes, Features)
     Route::apiResource('product-units', ProductUnitController::class);
     Route::apiResource('product-attributes', ProductAttributeController::class);
     Route::apiResource('product-features', ProductFeatureController::class);
     Route::apiResource('product-custom-fields', ProductCustomFieldController::class);
-    Route::post('/product-categories', [ProductCategoryController::class, 'store']);
-    Route::put('/product-categories/{id}', [ProductCategoryController::class, 'update']);
-    Route::delete('/product-categories/{id}', [ProductCategoryController::class, 'destroy']);
-
+    // Vendors
+    Route::get('/vendors', [VendorsController::class, 'index']);
+    Route::post('/vendors', [VendorsController::class, 'store']);
+    Route::post('/vendors/import', [VendorsController::class, 'import']);
+    Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+    Route::put('/vendors/{id}', [VendorsController::class, 'update']);
+    Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
     // Product variants
     Route::get('/products/{product}/variants', [ProductVariantController::class, 'index']);
     Route::post('/products/{product}/variants', [ProductVariantController::class, 'store']);

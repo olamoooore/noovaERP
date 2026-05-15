@@ -32,7 +32,7 @@ class JournalEntriesController extends Controller
 
     private function getDraftJournalRequest(Request $request): DraftJournalRequest
     {
-        return DraftJournalRequest::fromArray($request->validate([
+        $validated = $request->validate([
             'journal_id' => 'nullable|exists:journals,id',
             'entry_date' => 'required|date',
             'reference' => 'nullable|string|max:100',
@@ -49,7 +49,14 @@ class JournalEntriesController extends Controller
             'lines.*.department_id' => 'nullable|exists:analytic_accounts,id',
             'lines.*.project_id' => 'nullable|exists:analytic_accounts,id',
             'lines.*.location_id' => 'nullable|exists:analytic_accounts,id',
-        ]));
+        ]);
+
+        return DraftJournalRequest::fromArray([
+            ...$validated,
+            'user_id' => $request->user()?->id,
+            'legal_entity_id' => $request->attributes->get('legal_entity_id'),
+            'entity_book_id' => $request->attributes->get('entity_book_id'),
+        ]);
     }
 
     /**
