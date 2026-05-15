@@ -21,10 +21,19 @@ return new class extends Migration
             // Check if it's a JSON-encoded string (double-encoded)
             $decoded = json_decode($rawValue, true);
             if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) {
-                // It was double-encoded, store the decoded value
+                $nestedDecoded = json_decode($decoded, true);
+                $value = json_last_error() === JSON_ERROR_NONE
+                    ? json_encode($nestedDecoded)
+                    : json_encode($decoded);
+
+                if ($value === false) {
+                    continue;
+                }
+
+                // It was double-encoded; store a valid JSON value for the JSON column.
                 DB::table('settings')
-                    ->where('key', $setting->key)
-                    ->update(['value' => $decoded]);
+                    ->where('id', $setting->id)
+                    ->update(['value' => $value]);
             }
         }
     }
