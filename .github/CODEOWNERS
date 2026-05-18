@@ -1,0 +1,9 @@
+# Global owners — require review from engineering lead for all changes
+* @noovaerp
+
+# Safe-lane critical paths
+.github/workflows/ @noovaerp
+.github/CODEOWNERS @noovaerp
+Makefile @noovaerp
+backend/app/Services/ @noovaerp
+backend/modules/Accounting/ @noovaerp
