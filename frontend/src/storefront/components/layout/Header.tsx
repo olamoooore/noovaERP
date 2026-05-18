@@ -17,7 +17,6 @@ const navLinks = [
   { href: `${STOREFRONT_BASE}/`, label: 'Home' },
   { href: `${STOREFRONT_BASE}/shop`, label: 'Shop' },
   { href: `${STOREFRONT_BASE}/events`, label: 'Events' },
-  { href: `${STOREFRONT_BASE}/games`, label: 'Games' },
   { href: `${STOREFRONT_BASE}/membership`, label: 'Membership' },
 ];
 
