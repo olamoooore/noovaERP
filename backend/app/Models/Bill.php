@@ -184,7 +184,7 @@ class Bill extends Model
 
     public static function generateBillNumber(): string
     {
-        $latest = static::orderBy('id', 'desc')->first();
+        $latest = static::withTrashed()->orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->bill_number, -4) + 1 : 1;
         return 'BILL-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
     }

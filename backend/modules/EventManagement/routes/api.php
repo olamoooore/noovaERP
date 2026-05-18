@@ -15,6 +15,8 @@ use Modules\EventManagement\Http\Controllers\IncidentController;
 use Modules\EventManagement\Http\Controllers\IdentityVerificationController;
 use Modules\EventManagement\Http\Controllers\PurchaseController;
 use Modules\EventManagement\Http\Controllers\BiddingController;
+use Modules\EventManagement\Http\Controllers\EventQueueController;
+use Modules\EventManagement\Http\Controllers\WaitingRoomController;
 
 /*
 |--------------------------------------------------------------------------
@@ -548,6 +550,29 @@ Route::prefix('public/event-management')
         Route::prefix('tickets')->group(function () {
             Route::get('/{ticketCode}/qr-code', [TicketController::class, 'qrCode'])
                 ->middleware('rate_limit:ticket_validation');
+        });
+
+        // Public queue management routes (for high-traffic event launches)
+        Route::prefix('queue')->group(function () {
+            Route::post('/join', [EventQueueController::class, 'join']);
+            Route::get('/status', [EventQueueController::class, 'status']);
+            Route::post('/heartbeat', [EventQueueController::class, 'heartbeat']);
+            Route::post('/leave', [EventQueueController::class, 'leave']);
+            Route::get('/check-access', [EventQueueController::class, 'checkAccess']);
+        });
+
+        // Public waiting room routes (mini games, rewards, flash sales)
+        Route::prefix('waiting-room')->group(function () {
+            Route::get('/games', [WaitingRoomController::class, 'getGames']);
+            Route::post('/start-session', [WaitingRoomController::class, 'startSession']);
+            Route::post('/play', [WaitingRoomController::class, 'play']);
+            Route::get('/flash-sales', [WaitingRoomController::class, 'getFlashSales']);
+        });
+
+        // Customer hub routes for logged-in users
+        Route::prefix('customer/waiting-room')->middleware('auth:sanctum')->group(function () {
+            Route::get('/rewards', [WaitingRoomController::class, 'getMyRewards']);
+            Route::post('/rewards/redeem', [WaitingRoomController::class, 'redeemReward']);
         });
     });
 
