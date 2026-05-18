@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             $seeders[] = DepartmentLocationSeeder::class;
             $seeders[] = HRMPermissionSeeder::class;
             $seeders[] = LoyaltyTierSeeder::class;
+            $seeders[] = FiscalPeriodSeeder::class; // Seed fiscal periods for accounting
         }
 
         $this->call($seeders);
