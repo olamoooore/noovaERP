@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,7 @@ import api from '@/lib/api'
 
 export function OCRDocumentsPage() {
   const [showUpload, setShowUpload] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data: documents, refetch } = useQuery({
     queryKey: ['ocr-documents'],
@@ -18,9 +19,14 @@ export function OCRDocumentsPage() {
     },
   })
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['ocr-documents'] })
+    refetch()
+  }
+
   const handleUploadComplete = () => {
     setShowUpload(false)
-    refetch()
+    handleRefresh()
   }
 
   return (
@@ -49,7 +55,7 @@ export function OCRDocumentsPage() {
         </Card>
       )}
 
-      <DocumentList documents={documents || []} onRefresh={refetch} />
+      <DocumentList documents={documents || []} onRefresh={handleRefresh} />
     </div>
   )
 }

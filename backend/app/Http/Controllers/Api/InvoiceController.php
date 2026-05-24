@@ -192,7 +192,30 @@ class InvoiceController extends Controller
                 'invoice' => $posted,
             ]);
 
+        } catch (\RuntimeException $e) {
+            $message = $e->getMessage();
+
+            // Surface account-mapping errors with actionable guidance
+            if (str_contains($message, 'Cannot resolve GL account')) {
+                $message = 'Default accounts not configured. ' .
+                    'Please go to Company Settings > Default Accounts and map the required GL accounts before posting invoices.';
+            }
+
+            \Log::warning('Invoice posting failed', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to post invoice',
+                'error' => $message,
+            ], 422);
         } catch (\Exception $e) {
+            \Log::error('Invoice posting failed unexpectedly', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => 'Failed to post invoice',
                 'error' => $e->getMessage(),

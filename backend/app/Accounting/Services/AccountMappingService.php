@@ -82,7 +82,8 @@ class AccountMappingService
         throw new \RuntimeException(
             "Cannot resolve GL account for mapping key '{$key}'" .
             ($documentType ? " (document type: {$documentType})" : '') .
-            ". Please configure account_mappings or assign an account role."
+            '. Please configure default accounts in Company Settings > Default Accounts, ' .
+            'or ensure account_mappings are seeded for this tenant.'
         );
     }
 

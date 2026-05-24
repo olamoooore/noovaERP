@@ -170,7 +170,7 @@ const baseNavItems: NavItem[] = [
   },
   {
     title: 'Accounting',
-    href: '/accounting',
+    href: '/accounting/dashboard',
     icon: 'solar:chart-2-bold-duotone',
     featureKey: 'accounting',
     children: [
@@ -299,12 +299,6 @@ const baseNavItems: NavItem[] = [
         featureKey: 'ocr-bookkeeping',
       },
     ],
-  },
-  {
-    title: 'OCR Documents',
-    href: '/ocr/documents',
-    icon: 'solar:document-add-bold-duotone',
-    featureKey: 'ocr-bookkeeping',
   },
   {
     title: 'Loyalty',

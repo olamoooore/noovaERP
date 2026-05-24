@@ -132,9 +132,9 @@ export function CloseDashboard() {
                 <Icon icon="solar:shield-check-bold-duotone" className="mr-2 h-4 w-4" />
                 Open Readiness Cockpit
               </Button>
-              <Button variant="outline" onClick={() => navigate('/financial-close/findings')}>
-                <Icon icon="solar:magic-stick-3-bold-duotone" className="mr-2 h-4 w-4" />
-                Open AI Findings
+              <Button variant="outline" onClick={() => navigate('/financial-close/cycles')}>
+                <Icon icon="solar:calendar-bold-duotone" className="mr-2 h-4 w-4" />
+                Close Cycles
               </Button>
             </div>
           </div>
@@ -157,7 +157,7 @@ export function CloseDashboard() {
           icon="solar:alarm-bold-duotone"
           iconClass={overdue.length > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
           hint="Time-sensitive tasks to call out"
-          onClick={() => navigate('/financial-close/tasks')}
+          onClick={() => navigate('/financial-close/tasks?status=overdue')}
         />
         <KpiCard
           label="Blocked Tasks"
@@ -197,7 +197,7 @@ export function CloseDashboard() {
           icon="solar:danger-bold-duotone"
           iconClass={openBlockers > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
           hint="Pivot into tasks and approvals"
-          onClick={() => navigate('/financial-close/tasks')}
+          onClick={() => navigate('/financial-close/tasks?status=blocked')}
         />
         <KpiCard
           label="Open AI Findings"

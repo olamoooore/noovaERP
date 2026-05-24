@@ -82,7 +82,7 @@ class BankReconciliation extends Model
     /**
      * Mark reconciliation as completed
      */
-    public function complete(int $userId): void
+    public function complete(?int $userId): void
     {
         $this->update([
             'status' => 'completed',

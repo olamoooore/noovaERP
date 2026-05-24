@@ -83,7 +83,7 @@ export default function AssetsManagementPage() {
     enabled: !!selectedAssetId,
   });
 
-  const depreciationSchedule = depreciationData?.data || depreciationData?.schedules || depreciationData || [];
+  const depreciationSchedule = depreciationData?.schedule || depreciationData?.data || depreciationData?.schedules || [];
 
   // Calculate depreciation mutation
   const calculateDepreciationMutation = useMutation({
@@ -92,6 +92,10 @@ export default function AssetsManagementPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['depreciation-schedule'] });
       queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+      // Re-fetch the schedule for the currently selected asset so the table updates
+      if (selectedAssetId) {
+        queryClient.refetchQueries({ queryKey: ['depreciation-schedule', selectedAssetId] });
+      }
       toast({ title: 'Success', description: 'Depreciation calculated successfully' });
     },
     onError: (error: any) => {

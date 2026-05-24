@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { closeTasksApi, type CloseTask } from '@/services/closeApi'
+import { closeTasksApi, closeCyclesApi, type CloseTask } from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
@@ -70,11 +70,22 @@ export function MyTasksPage() {
     enabled: !!cycleId,
   })
 
+  const cycleQuery = useQuery({
+    queryKey: ['close-cycle-detail', cycleId],
+    queryFn: () => closeCyclesApi.list('entity-001').then(r => {
+      const cycles = r.data.data
+      return cycles.find((c: { id: string }) => c.id === cycleId) ?? null
+    }),
+    enabled: !!cycleId,
+  })
+
   const displayTasks = cycleId ? (byCycleQuery.data ?? []) : tasks
 
   const filteredTasks = statusFilter === 'all'
     ? displayTasks
-    : displayTasks.filter(t => t.status === statusFilter)
+    : statusFilter === 'overdue'
+      ? displayTasks.filter(t => isOverdue(t))
+      : displayTasks.filter(t => t.status === statusFilter)
 
   function mutationOpts(label: string) {
     return {
@@ -128,14 +139,22 @@ export function MyTasksPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="space-y-1">
+          {cycleId && (
+            <Button variant="ghost" className="px-0 h-auto py-1" onClick={() => navigate('/financial-close/cycles')}>
+              <Icon icon="solar:arrow-left-bold" className="mr-1.5 h-4 w-4" />
+              Back to Cycles
+            </Button>
+          )}
           <h1 className="text-3xl font-bold">My Tasks</h1>
           <p className="text-muted-foreground mt-1">
-            {cycleId ? `Tasks for cycle ${cycleId}` : 'All tasks assigned to you'}
+            {cycleId
+              ? `Tasks for cycle ${cycleQuery.data?.period_id ?? cycleQuery.data?.entity_id ?? cycleId}`
+              : 'All tasks assigned to you'}
           </p>
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <SelectValue placeholder="Filter status" />
           </SelectTrigger>
           <SelectContent>
@@ -143,6 +162,7 @@ export function MyTasksPage() {
             {Object.entries(statusConfig).map(([k, v]) => (
               <SelectItem key={k} value={k}>{v.label}</SelectItem>
             ))}
+            <SelectItem value="overdue">Overdue</SelectItem>
           </SelectContent>
         </Select>
       </div>

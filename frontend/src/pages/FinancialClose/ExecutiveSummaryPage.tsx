@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { forecastApi, type ExecutiveSummary } from '@/services/closeApi'
 
 function StatCard({ label, value, sub, icon, iconClass }: {
@@ -31,6 +32,7 @@ function StatCard({ label, value, sub, icon, iconClass }: {
 }
 
 export function ExecutiveSummaryPage() {
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const entityId = params.get('entityId') ?? 'entity-001'
   const periodId = params.get('periodId') ?? '2026-04'
@@ -45,7 +47,11 @@ export function ExecutiveSummaryPage() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="space-y-1">
+        <Button variant="ghost" className="px-0 h-auto py-1" onClick={() => navigate(-1)}>
+          <Icon icon="solar:arrow-left-bold" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
         <h1 className="text-3xl font-bold">Executive Summary</h1>
         <p className="text-muted-foreground mt-1">
           Close status for {entityId} — {periodId}

@@ -500,7 +500,15 @@ class VendorBillsController extends Controller
             $result = $billService->postBill($bill);
 
             if (!$result->success) {
-                return response()->json(['message' => $result->error], 422);
+                $errorMessage = $result->error;
+
+                // Surface account-mapping errors with actionable guidance
+                if (str_contains($errorMessage, 'Cannot resolve GL account')) {
+                    $errorMessage = 'Default accounts not configured. ' .
+                        'Please go to Company Settings > Default Accounts and map the required GL accounts before posting bills.';
+                }
+
+                return response()->json(['message' => $errorMessage], 422);
             }
 
             return response()->json([
@@ -517,8 +525,67 @@ class VendorBillsController extends Controller
     }
 
     /**
+     * Get eligible vendor bills for recording a payment.
+     * Only posted or partially paid bills with a positive balance are eligible.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function eligibleBills(Request $request)
+    {
+        try {
+            $request->validate([
+                'vendor_id' => 'nullable|integer|exists:vendors,id',
+            ]);
+
+            $query = Bill::with('vendor')
+                ->whereIn('status', ['posted', 'partial', 'overdue'])
+                ->where(function ($q) {
+                    $q->whereNull('balance')
+                      ->orWhere('balance', '>', 0);
+                })
+                ->orderBy('bill_date', 'desc');
+
+            if ($request->has('vendor_id')) {
+                $query->where('vendor_id', $request->vendor_id);
+            }
+
+            $bills = $query->get()->map(function ($bill) {
+                return [
+                    'id' => $bill->id,
+                    'bill_number' => $bill->bill_number,
+                    'bill_date' => $bill->bill_date,
+                    'total' => (float) $bill->total,
+                    'balance' => (float) ($bill->balance ?? $bill->total),
+                    'status' => $bill->status,
+                    'vendor_id' => $bill->vendor_id,
+                    'vendor_name' => $bill->vendor?->name ?? 'Unknown',
+                ];
+            });
+
+            if ($bills->isEmpty()) {
+                return response()->json([
+                    'data' => [],
+                    'message' => 'No eligible bills found. Only posted unpaid bills for the selected vendor can be paid.',
+                ]);
+            }
+
+            return response()->json([
+                'data' => $bills,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch eligible bills: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to fetch eligible bills',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Delete a vendor bill
-     * 
+     *
      * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */

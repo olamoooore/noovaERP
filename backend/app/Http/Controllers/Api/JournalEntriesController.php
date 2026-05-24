@@ -161,6 +161,11 @@ class JournalEntriesController extends Controller
             $result = $this->postingEngine->createDraft($draftRequest);
 
             if (!$result->success) {
+                \Log::warning('JournalEntriesController::store — createDraft failed', [
+                    'error' => $result->error,
+                    'request' => $request->except('password'),
+                ]);
+
                 return response()->json([
                     'message' => 'Error creating journal entry',
                     'error' => $result->error,
@@ -172,11 +177,26 @@ class JournalEntriesController extends Controller
                 'entry' => $result->journalEntry->load('lines.account'),
             ], 201);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Log::error('JournalEntriesController::store — database error', [
+                'error' => $e->getMessage(),
+                'sql' => $e->getSql(),
+            ]);
+
+            return response()->json([
+                'message' => 'Database error while creating journal entry',
+                'error' => $e->getMessage(),
+            ], 500);
         } catch (\Exception $e) {
+            \Log::error('JournalEntriesController::store — unexpected error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'message' => 'Error creating journal entry',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 

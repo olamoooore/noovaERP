@@ -108,6 +108,7 @@ export function BankReconciliationPage() {
       // Refetch data
       queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-history'] });
     },
     onError: (error: any) => {
       toast({

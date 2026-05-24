@@ -164,6 +164,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
             // Payments (no update — PaymentController has no update method)
             Route::get('/payments', [PaymentController::class, 'index']);
+            Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices']);
             Route::post('/payments', [PaymentController::class, 'store']);
             Route::get('/payments/{payment}', [PaymentController::class, 'show']);
             Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
@@ -212,6 +213,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         
         // Vendor Bills (with tenant context)
         Route::get('/vendor-bills', [VendorBillsController::class, 'index']);
+        Route::get('/vendor-bills/eligible', [VendorBillsController::class, 'eligibleBills']);
         Route::get('/vendor-bills/{id}', [VendorBillsController::class, 'show']);
         Route::post('/vendor-bills', [VendorBillsController::class, 'store']);
         Route::put('/vendor-bills/{id}', [VendorBillsController::class, 'update']);
@@ -328,17 +330,21 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/groups', [EntityManagementController::class, 'storeGroup']);
         Route::get('/groups/{id}', [EntityManagementController::class, 'showGroup']);
         Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup']);
+        Route::delete('/groups/{id}', [EntityManagementController::class, 'destroyGroup']);
 
         Route::get('/legal-entities', [EntityManagementController::class, 'indexEntities']);
         Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity']);
         Route::get('/legal-entities/{id}', [EntityManagementController::class, 'showEntity']);
         Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity']);
+        Route::delete('/legal-entities/{id}', [EntityManagementController::class, 'destroyEntity']);
 
         Route::get('/branches', [EntityManagementController::class, 'indexBranches']);
         Route::post('/branches', [EntityManagementController::class, 'storeBranch']);
+        Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch']);
 
         Route::get('/entity-books', [EntityManagementController::class, 'indexBooks']);
         Route::post('/entity-books', [EntityManagementController::class, 'storeBook']);
+        Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook']);
 
         Route::get('/legal-entities/{entityId}/modules', [EntityManagementController::class, 'indexModules']);
         Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule']);

@@ -25,7 +25,7 @@ class EntityManagementController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50|unique:' . self::GROUPS_TABLE . ',code',
-            'base_currency' => 'required|string|size:3',
+            'base_currency' => 'required|string|size:3|exists:currencies,code',
             'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
@@ -53,7 +53,7 @@ class EntityManagementController extends Controller
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|max:50',
-            'base_currency' => 'sometimes|string|size:3',
+            'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
             'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
@@ -70,6 +70,23 @@ class EntityManagementController extends Controller
 
         DB::table(self::GROUPS_TABLE)->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
         return response()->json(DB::table(self::GROUPS_TABLE)->find($id));
+    }
+
+    public function destroyGroup(int $id): JsonResponse
+    {
+        $group = DB::table(self::GROUPS_TABLE)->find($id);
+        if (!$group) {
+            return response()->json(['message' => 'Group not found'], 404);
+        }
+
+        // Block if group has legal entities
+        $hasChildren = DB::table('legal_entities')->where('group_id', $id)->exists();
+        if ($hasChildren) {
+            return response()->json(['message' => 'Cannot delete group that has legal entities. Remove or reassign them first.'], 422);
+        }
+
+        DB::table(self::GROUPS_TABLE)->where('id', $id)->delete();
+        return response()->json(['message' => 'Group deleted successfully']);
     }
 
     // ── Legal Entities ──────────────────────────────────
@@ -92,7 +109,7 @@ class EntityManagementController extends Controller
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50|unique:legal_entities,code',
             'country_code' => 'sometimes|string|size:2',
-            'base_currency' => 'required|string|size:3',
+            'base_currency' => 'required|string|size:3|exists:currencies,code',
             'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
 
@@ -121,7 +138,7 @@ class EntityManagementController extends Controller
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|max:50',
             'country_code' => 'sometimes|string|size:2',
-            'base_currency' => 'sometimes|string|size:3',
+            'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
             'fiscal_year_start' => 'sometimes|string|max:5',
             'status' => 'sometimes|in:active,inactive',
         ]);
@@ -139,6 +156,24 @@ class EntityManagementController extends Controller
 
         DB::table('legal_entities')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
         return response()->json(DB::table('legal_entities')->find($id));
+    }
+
+    public function destroyEntity(int $id): JsonResponse
+    {
+        $entity = DB::table('legal_entities')->find($id);
+        if (!$entity) {
+            return response()->json(['message' => 'Entity not found'], 404);
+        }
+
+        // Block if entity has branches or books
+        $hasBranches = DB::table('branches')->where('legal_entity_id', $id)->exists();
+        $hasBooks = DB::table('entity_books')->where('legal_entity_id', $id)->exists();
+        if ($hasBranches || $hasBooks) {
+            return response()->json(['message' => 'Cannot delete entity that has branches or books. Remove them first.'], 422);
+        }
+
+        DB::table('legal_entities')->where('id', $id)->delete();
+        return response()->json(['message' => 'Entity deleted successfully']);
     }
 
     // ── Branches ────────────────────────────────────────
@@ -171,6 +206,17 @@ class EntityManagementController extends Controller
         return response()->json(DB::table('branches')->find($id), 201);
     }
 
+    public function destroyBranch(int $id): JsonResponse
+    {
+        $branch = DB::table('branches')->find($id);
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        DB::table('branches')->where('id', $id)->delete();
+        return response()->json(['message' => 'Branch deleted successfully']);
+    }
+
     // ── Entity Books ────────────────────────────────────
 
     public function indexBooks(Request $request): JsonResponse
@@ -190,7 +236,7 @@ class EntityManagementController extends Controller
             'legal_entity_id' => 'required|integer|exists:legal_entities,id',
             'name' => 'required|string|max:255',
             'book_type' => 'required|in:general,statutory,management,tax',
-            'currency_code' => 'required|string|size:3',
+            'currency_code' => 'required|string|size:3|exists:currencies,code',
             'is_primary' => 'sometimes|boolean',
         ]);
 
@@ -202,6 +248,17 @@ class EntityManagementController extends Controller
         ]));
 
         return response()->json(DB::table('entity_books')->find($id), 201);
+    }
+
+    public function destroyBook(int $id): JsonResponse
+    {
+        $book = DB::table('entity_books')->find($id);
+        if (!$book) {
+            return response()->json(['message' => 'Entity book not found'], 404);
+        }
+
+        DB::table('entity_books')->where('id', $id)->delete();
+        return response()->json(['message' => 'Entity book deleted successfully']);
     }
 
     // ── Entity Modules ──────────────────────────────────

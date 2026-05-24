@@ -196,7 +196,7 @@ function BankAccountsPage() {
   };
 
   const filteredBankAccounts = bankAccounts.filter((account: BankAccount) =>
-    account.account_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (account.account_name && account.account_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (account.bank_name && account.bank_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (account.account_number && account.account_number.includes(searchQuery))
   );

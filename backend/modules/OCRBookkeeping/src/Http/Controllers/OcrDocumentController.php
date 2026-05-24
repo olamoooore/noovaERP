@@ -220,6 +220,7 @@ class OcrDocumentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = OcrDocument::with(['vendor', 'createdBy', 'journalEntry'])
+            ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc');
 
         // Search filter
@@ -271,13 +272,28 @@ class OcrDocumentController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $document = OcrDocument::with(['vendor', 'createdBy', 'reviewedBy', 'postedBy', 'journalEntry'])
-            ->where('uuid', $uuid)
-            ->firstOrFail();
+        try {
+            $document = OcrDocument::with(['vendor', 'createdBy', 'reviewedBy', 'postedBy', 'journalEntry'])
+                ->where('uuid', $uuid)
+                ->firstOrFail();
 
-        return response()->json([
-            'data' => $document,
-        ]);
+            return response()->json([
+                'data' => $document,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Document not found',
+            ], 404);
+        } catch (\Exception $e) {
+            \Log::error("OCR document show failed for uuid: {$uuid}", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'message' => 'Failed to load document',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -386,8 +402,10 @@ class OcrDocumentController extends Controller
                 $document->unpost();
             }
 
-            // Delete the document
+            // Soft-delete the document
             $document->delete();
+
+            \Log::info("OCR document soft-deleted", ['uuid' => $uuid, 'deleted_at' => now()->toDateTimeString()]);
 
             return response()->json([
                 'message' => 'Document deleted successfully',

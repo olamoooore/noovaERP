@@ -131,16 +131,45 @@ class VendorsController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $vendor = Vendor::create([
-            ...$validated,
-            'payment_terms' => $validated['payment_terms'] ?? 30,
-            'is_active' => $validated['is_active'] ?? true,
-        ]);
+        try {
+            $data = [
+                ...$validated,
+                'payment_terms' => $validated['payment_terms'] ?? 30,
+                'is_active' => $validated['is_active'] ?? true,
+            ];
 
-        return response()->json([
-            'message' => 'Vendor created successfully',
-            'data' => $vendor,
-        ], 201);
+            // Defensive: if company_registration_number column doesn't exist in DB,
+            // remove it to avoid SQL errors on tenants where the migration hasn't run.
+            if (isset($data['company_registration_number']) && !\Illuminate\Support\Facades\Schema::hasColumn('vendors', 'company_registration_number')) {
+                unset($data['company_registration_number']);
+            }
+
+            $vendor = Vendor::create($data);
+
+            return response()->json([
+                'message' => 'Vendor created successfully',
+                'data' => $vendor,
+            ], 201);
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Log::error('Vendor creation failed — SQL error', [
+                'error' => $e->getMessage(),
+                'sql' => $e->getSql(),
+                'bindings' => $e->getBindings(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to create vendor — database error',
+                'error' => $e->getMessage(),
+            ], 500);
+        } catch (\Exception $e) {
+            \Log::error('Vendor creation failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'message' => 'Failed to create vendor — ' . $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

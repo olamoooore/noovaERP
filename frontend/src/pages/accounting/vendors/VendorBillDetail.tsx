@@ -46,6 +46,26 @@ export const VendorBillDetail: React.FC = () => {
     enabled: !!id,
   });
 
+  // Post bill mutation
+  const postMutation = useMutation({
+    mutationFn: async () => {
+      const response = await accountingApi.post(`/accounting/vendor-bills/${id}/post`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-bill', id] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-bills'] });
+      toast({ title: 'Bill posted successfully' });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to post bill',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -147,6 +167,13 @@ export const VendorBillDetail: React.FC = () => {
         <div className="flex gap-2">
           {bill.status === 'draft' && (
             <>
+              <Button
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+              >
+                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                {postMutation.isPending ? 'Posting...' : 'Post Bill'}
+              </Button>
               <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
                 <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-2" />
                 Delete

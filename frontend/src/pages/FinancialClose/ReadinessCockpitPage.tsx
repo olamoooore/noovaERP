@@ -129,7 +129,11 @@ export function ReadinessCockpitPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
+        <div className="space-y-1">
+          <Button variant="ghost" className="px-0 h-auto py-1" onClick={() => navigate(-1)}>
+            <Icon icon="solar:arrow-left-bold" className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
           <h1 className="text-3xl font-bold">Readiness Cockpit</h1>
           <p className="text-muted-foreground mt-1">
             {entityId} — {periodId}
@@ -256,8 +260,8 @@ export function ReadinessCockpitPage() {
               value={readiness.open_blockers}
               icon="solar:lock-keyhole-bold-duotone"
               iconClass={readiness.open_blockers > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}
-              hint="Open the task queue"
-              onClick={() => navigate('/financial-close/tasks')}
+              hint="Open the blocked task queue"
+              onClick={() => navigate('/financial-close/tasks?status=blocked')}
             />
             <StatCard
               label="Open AI Findings"

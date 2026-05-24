@@ -13,7 +13,7 @@ export default function BankReconciliationHistoryPage() {
     queryFn: () => reportApi.getBankAccounts(),
   });
 
-  const { data: historyData, isLoading: isLoadingHistory } = useQuery({
+  const { data: historyData, isLoading: isLoadingHistory, error: historyError } = useQuery({
     queryKey: ['reconciliation-history', selectedBankAccount],
     queryFn: async () => {
       const response = await reportApi.getReconciliationHistory(Number(selectedBankAccount));
@@ -55,6 +55,11 @@ export default function BankReconciliationHistoryPage() {
           <div className="text-sm text-muted-foreground">Select a bank account to view reconciliation history.</div>
         ) : isLoadingHistory ? (
           <div className="text-sm text-muted-foreground">Loading history...</div>
+        ) : historyError ? (
+          <div className="text-sm text-red-600">
+            <Icon icon="solar:danger-triangle-bold" className="inline h-4 w-4 mr-1" />
+            Failed to load history: {historyError instanceof Error ? historyError.message : 'Unknown error'}
+          </div>
         ) : !historyData || historyData.length === 0 ? (
           <div className="text-sm text-muted-foreground">No reconciliation history found for this bank account.</div>
         ) : (

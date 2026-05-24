@@ -36,6 +36,23 @@ class FiscalPeriodValidator
         // Get the period for this date
         $period = FiscalPeriod::getPeriodForDate($date);
 
+        // Auto-provision fiscal periods if none exist for this year
+        if (!$period) {
+            $year = $date->year;
+
+            // Only auto-create if there are NO periods at all for this year
+            // (avoids creating gaps if user intentionally deleted one month)
+            $hasAnyPeriodForYear = FiscalPeriod::forYear($year)->exists();
+
+            if (!$hasAnyPeriodForYear) {
+                Log::info("Auto-creating fiscal periods for year {$year} because none exist.");
+                FiscalPeriod::createMonthlyPeriodsForYear($year);
+
+                // Re-fetch the period now that it exists
+                $period = FiscalPeriod::getPeriodForDate($date);
+            }
+        }
+
         if (!$period) {
             Log::warning("Posting blocked: no fiscal period defined for date: {$date->toDateString()}");
 

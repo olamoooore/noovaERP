@@ -35,6 +35,11 @@ class ChartOfAccount extends Model
         'opening_balance' => 'decimal:2',
     ];
 
+    protected $appends = [
+        'level',
+        'can_be_parent',
+    ];
+
     public function parent(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'parent_id');
@@ -48,6 +53,53 @@ class ChartOfAccount extends Model
     public function journalEntryLines(): HasMany
     {
         return $this->hasMany(JournalEntryLine::class, 'account_id');
+    }
+
+    /**
+     * Compute account level based on code convention and tree position.
+     *
+     * L1 (Category): code ends with 000  — e.g. 1000 Assets, 2000 Liabilities
+     * L2 (Group):    code ends with 00 but not 000  — e.g. 1100 Current Assets
+     * L3 (Posting):  all other codes  — e.g. 1010 Cash, 1020 Bank
+     *
+     * Falls back to structural level (parent/children relationships) when
+     * the code does not follow the convention.
+     */
+    public function getLevelAttribute(): int
+    {
+        $code = (string) $this->code;
+
+        // Convention-based level from code suffix
+        if (str_ends_with($code, '000')) {
+            return 1;
+        }
+        if (str_ends_with($code, '00')) {
+            return 2;
+        }
+
+        // Structural fallback
+        $hasParent = $this->parent_id !== null;
+        $hasChildren = $this->relationLoaded('children')
+            ? $this->children->isNotEmpty()
+            : $this->children()->exists();
+
+        if (!$hasParent && $hasChildren) {
+            return 1;
+        }
+        if ($hasParent && $hasChildren) {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    /**
+     * Can this account be selected as a parent for another account?
+     * Only L1 and L2 accounts (grouping accounts) can be parents.
+     */
+    public function getCanBeParentAttribute(): bool
+    {
+        return $this->level < 3;
     }
 
     public function getBalance(): float

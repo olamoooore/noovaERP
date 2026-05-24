@@ -102,6 +102,7 @@ class InvoiceService
             if ($invoice->status !== 'draft') {
                 throw new \Exception('Only draft invoices can be posted');
             }
+
             // ── Build posting lines ──────────────────────────
             $lines = [];
 

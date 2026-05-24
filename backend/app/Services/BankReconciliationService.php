@@ -131,6 +131,13 @@ class BankReconciliationService
             $statementBalance = (float) $data['statement_balance'];
             $reconciledTransactionIds = $data['reconciled_transaction_ids'] ?? [];
             
+            \Log::info('Starting bank reconciliation', [
+                'bank_account_id' => $bankAccountId,
+                'statement_date' => $statementDate->toDateString(),
+                'statement_balance' => $statementBalance,
+                'transaction_count' => count($reconciledTransactionIds),
+            ]);
+            
             // Get opening balance
             $lastReconciliation = BankReconciliation::where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
@@ -195,6 +202,12 @@ class BankReconciliationService
                 'status' => 'draft',
             ]);
             
+            \Log::info('Bank reconciliation record created', [
+                'reconciliation_id' => $reconciliation->id,
+                'bank_account_id' => $bankAccountId,
+                'status' => $reconciliation->status,
+            ]);
+            
             // Create reconciliation items
             foreach ($reconciledTransactionIds as $transactionId) {
                 ReconciliationItem::create([
@@ -212,9 +225,21 @@ class BankReconciliationService
                 ]);
             
             // Mark as completed since balanced
-            $reconciliation->complete(TenantUserHelper::resolveTenantUserId());
+            $resolvedUserId = TenantUserHelper::resolveTenantUserId();
+            \Log::info('Completing reconciliation', [
+                'reconciliation_id' => $reconciliation->id,
+                'resolved_user_id' => $resolvedUserId,
+            ]);
+            $reconciliation->complete($resolvedUserId);
             
-            return $reconciliation->fresh();
+            $fresh = $reconciliation->fresh();
+            \Log::info('Bank reconciliation completed', [
+                'reconciliation_id' => $fresh->id,
+                'status' => $fresh->status,
+                'bank_account_id' => $fresh->bank_account_id,
+            ]);
+            
+            return $fresh;
         });
     }
     

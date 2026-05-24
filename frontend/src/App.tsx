@@ -280,7 +280,7 @@ function App() {
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/create" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-                <Route path="/accounting" element={<AccountingPage />} />
+                <Route path="/accounting" element={<Navigate to="/accounting/dashboard" replace />} />
                 
                 {/* New Accounting Module Routes */}
                 <Route path="/accounting/dashboard" element={<AccountingDashboard />} />

@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { forecastApi, type Forecast } from '@/services/closeApi'
 
 const riskConfig = {
@@ -48,6 +49,7 @@ function CompletionBar({ rate }: { rate: number }) {
 }
 
 export function ForecastPage() {
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const cycleId = params.get('cycleId') ?? ''
 
@@ -59,7 +61,11 @@ export function ForecastPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-1">
+        <Button variant="ghost" className="px-0 h-auto py-1" onClick={() => navigate(-1)}>
+          <Icon icon="solar:arrow-left-bold" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
         <h1 className="text-3xl font-bold">Cycle Forecast</h1>
         <p className="text-muted-foreground mt-1">
           {cycleId ? `Projected close trajectory for cycle ${cycleId}` : 'Select a cycle to view forecast'}

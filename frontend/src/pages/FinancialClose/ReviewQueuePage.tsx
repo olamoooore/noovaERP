@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,6 +18,7 @@ import { closeTasksApi, escalationsApi, type CloseTask } from '@/services/closeA
 import { useToast } from '@/hooks/use-toast'
 
 export function ReviewQueuePage() {
+  const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
@@ -63,7 +65,11 @@ export function ReviewQueuePage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-1">
+        <Button variant="ghost" className="px-0 h-auto py-1" onClick={() => navigate(-1)}>
+          <Icon icon="solar:arrow-left-bold" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
         <h1 className="text-3xl font-bold">Review Queue</h1>
         <p className="text-muted-foreground mt-1">
           Tasks submitted for review. Approve, return, or escalate.

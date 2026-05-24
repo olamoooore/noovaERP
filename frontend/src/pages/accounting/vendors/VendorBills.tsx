@@ -130,9 +130,16 @@ export const VendorBills: React.FC = () => {
   });
 
   const postBillMutation = useMutation({
-    mutationFn: async (uuid: string) => {
-      const response = await api.post(`/ocr/documents/${uuid}/post`);
-      return response.data;
+    mutationFn: async (bill: any) => {
+      if (bill.source === 'ocr') {
+        // OCR document posting path
+        const response = await api.post(`/ocr/documents/${bill.raw_uuid}/post`);
+        return response.data;
+      } else {
+        // Regular vendor bill posting path
+        const response = await accountingApi.post(`/accounting/vendor-bills/${bill.raw_id}/post`);
+        return response.data;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendor-bills'] });
@@ -176,12 +183,14 @@ export const VendorBills: React.FC = () => {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: any; label: string }> = {
+      draft: { variant: 'secondary', label: 'Draft' },
       pending: { variant: 'secondary', label: 'Pending OCR' },
       extracted: { variant: 'default', label: 'Extracted' },
       review: { variant: 'default', label: 'Review' },
       posted: { variant: 'default', label: 'Posted' },
       paid: { variant: 'default', label: 'Paid' },
       failed: { variant: 'destructive', label: 'Failed' },
+      cancelled: { variant: 'secondary', label: 'Cancelled' },
     };
 
     const config = statusConfig[status] || { variant: 'secondary', label: status };
@@ -413,14 +422,15 @@ export const VendorBills: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          {bill.status === 'review' && (
+                          {(bill.status === 'review' || (bill.source === 'regular' && bill.status === 'draft')) && (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                postBillMutation.mutate(bill.uuid);
+                                postBillMutation.mutate(bill);
                               }}
+                              disabled={postBillMutation.isPending}
                             >
                               <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-1" />
                               Post
@@ -432,9 +442,9 @@ export const VendorBills: React.FC = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               if (bill.source === 'regular') {
-                                navigate(`/accounting/vendors/bills/${bill.uuid}`);
+                                navigate(`/accounting/vendors/bills/${bill.raw_id}`);
                               } else {
-                                navigate(`/ocr/documents/${bill.uuid}`);
+                                navigate(`/ocr/documents/${bill.raw_uuid}`);
                               }
                             }}
                           >

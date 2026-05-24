@@ -270,9 +270,15 @@ class FixedAssetsController extends Controller
             }
         ])->findOrFail($id);
 
+        $schedule = $asset->depreciationSchedules->map(function ($entry) {
+            return array_merge($entry->toArray(), [
+                'beginning_value' => (float) $entry->book_value + (float) $entry->depreciation_amount,
+            ]);
+        });
+
         return response()->json([
             'asset' => $asset,
-            'schedule' => $asset->depreciationSchedules
+            'schedule' => $schedule
         ]);
     }
 
@@ -303,14 +309,37 @@ class FixedAssetsController extends Controller
 
             DB::commit();
 
+            // Determine an accurate response message based on results
+            $successCount = collect($results)->where('status', 'success')->count();
+            $errorCount = collect($results)->where('status', 'error')->count();
+            $skippedCount = collect($results)->where('status', 'skipped')->count();
+            $totalCount = count($results);
+
+            if ($totalCount === 0) {
+                $message = 'No active assets found for the selected period.';
+            } elseif ($successCount === $totalCount) {
+                $message = 'Depreciation calculated successfully.';
+            } elseif ($successCount > 0) {
+                $message = "Depreciation calculated for {$successCount} asset(s). {$skippedCount} skipped, {$errorCount} error(s).";
+            } elseif ($errorCount > 0) {
+                $message = 'Depreciation calculation failed. Check results for details.';
+            } else {
+                $message = 'No depreciation was needed for the selected assets in this period.';
+            }
+
             return response()->json([
-                'message' => 'Depreciation calculated successfully',
+                'success' => $successCount > 0,
+                'message' => $message,
                 'results' => $results
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Failed to calculate depreciation: ' . $e->getMessage()], 500);
+            \Log::error('Depreciation calculation failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to calculate depreciation: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

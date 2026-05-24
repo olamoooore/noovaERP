@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class CompanySettingsController extends Controller
@@ -15,13 +16,18 @@ class CompanySettingsController extends Controller
         try {
             $settings = DB::table('company_settings')->first();
             if (!$settings) {
-                $settings = $this->getDefaultSettings();
+                DB::table('company_settings')->insert([
+                    'base_currency' => 'USD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
             }
             $settings = $this->hydrateStructuredFields($settings);
             return response()->json(['success' => true, 'data' => $settings]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch company settings', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to fetch settings'], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to fetch settings: ' . $e->getMessage()], 500);
         }
     }
 
@@ -176,6 +182,16 @@ class CompanySettingsController extends Controller
     {
         try {
             $settings = DB::table('company_settings')->first();
+
+            if (!$settings) {
+                DB::table('company_settings')->insert([
+                    'base_currency' => 'USD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
+            }
+
             $currencies = [
                 'base_currency' => $settings->base_currency ?? 'USD',
                 'date_format' => $settings->date_format ?? 'MM/DD/YYYY',
@@ -184,16 +200,28 @@ class CompanySettingsController extends Controller
                 'thousand_separator' => $settings->thousand_separator ?? ',',
                 'decimal_separator' => $settings->decimal_separator ?? '.',
             ];
-            return response()->json(['success' => true, 'data' => $currencies]);
+
+            // Include available active currencies from the shared registry
+            $activeCurrencies = DB::table('currencies')
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->get(['code', 'name', 'symbol']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $currencies,
+                'available_currencies' => $activeCurrencies,
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to fetch currency settings'], 500);
+            \Log::error('Failed to fetch currency settings', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to fetch currency settings: ' . $e->getMessage()], 500);
         }
     }
 
     public function updateCurrencies(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'base_currency' => 'required|string|size:3',
+            'base_currency' => 'required|string|size:3|exists:currencies,code',
             'date_format' => 'required|string',
             'number_format' => 'required|string',
             'decimal_places' => 'required|integer|min:0|max:4',
@@ -223,7 +251,7 @@ class CompanySettingsController extends Controller
             return response()->json(['success' => true, 'message' => 'Currency settings updated successfully', 'data' => $data]);
         } catch (\Exception $e) {
             \Log::error('Failed to update currency settings', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to update currency settings'], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to update currency settings: ' . $e->getMessage()], 500);
         }
     }
 
@@ -231,6 +259,17 @@ class CompanySettingsController extends Controller
     {
         try {
             $settings = DB::table('company_settings')->first();
+
+            if (!$settings) {
+                // Auto-create a default row so the frontend has something to bind to
+                DB::table('company_settings')->insert([
+                    'base_currency' => 'USD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
+            }
+
             $accounts = [
                 'accounts_receivable' => $settings->default_receivable_account_id ?? null,
                 'accounts_payable' => $settings->default_payable_account_id ?? null,
@@ -244,15 +283,41 @@ class CompanySettingsController extends Controller
                 'retained_earnings' => $settings->default_retained_earnings_account_id ?? null,
                 'bank_charges' => $settings->default_bank_charges_account_id ?? null,
             ];
+
+            // Defensive: null out extended fields if the DB columns don't exist yet
+            $extendedColumns = ['purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
+            foreach ($extendedColumns as $key) {
+                $dbColumn = match ($key) {
+                    'purchase_tax' => 'default_purchase_tax_account_id',
+                    'inventory' => 'default_inventory_account_id',
+                    'cost_of_goods_sold' => 'default_cogs_account_id',
+                    'retained_earnings' => 'default_retained_earnings_account_id',
+                    'bank_charges' => 'default_bank_charges_account_id',
+                };
+                if (!Schema::hasColumn('company_settings', $dbColumn)) {
+                    $accounts[$key] = null;
+                }
+            }
             return response()->json(['success' => true, 'data' => $accounts]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to fetch default accounts'], 500);
+            \Log::error('Failed to fetch default accounts', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to fetch default accounts: ' . $e->getMessage()], 500);
         }
     }
 
     public function updateAccounts(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        // Normalize empty/blank/0 values to null before validation
+        $normalize = function ($value) {
+            if ($value === '' || $value === '0' || $value === 0) {
+                return null;
+            }
+            return $value;
+        };
+
+        $input = collect($request->all())->map($normalize)->all();
+
+        $validator = Validator::make($input, [
             'accounts_receivable' => 'nullable|integer|exists:chart_of_accounts,id',
             'accounts_payable' => 'nullable|integer|exists:chart_of_accounts,id',
             'sales_revenue' => 'nullable|integer|exists:chart_of_accounts,id',
@@ -265,35 +330,71 @@ class CompanySettingsController extends Controller
             'retained_earnings' => 'nullable|integer|exists:chart_of_accounts,id',
             'bank_charges' => 'nullable|integer|exists:chart_of_accounts,id',
         ]);
+
         if ($validator->fails()) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
+
         try {
             $settings = DB::table('company_settings')->first();
+
             $data = [
-                'default_receivable_account_id' => $request->accounts_receivable,
-                'default_payable_account_id' => $request->accounts_payable,
-                'default_revenue_account_id' => $request->sales_revenue,
-                'shipping_revenue_account_id' => $request->shipping_revenue,
-                'default_expense_account_id' => $request->purchase_expense,
-                'default_tax_account_id' => $request->sales_tax,
-                'default_purchase_tax_account_id' => $request->purchase_tax,
-                'default_inventory_account_id' => $request->inventory,
-                'default_cogs_account_id' => $request->cost_of_goods_sold,
-                'default_retained_earnings_account_id' => $request->retained_earnings,
-                'default_bank_charges_account_id' => $request->bank_charges,
+                'default_receivable_account_id' => $input['accounts_receivable'] ?? null,
+                'default_payable_account_id' => $input['accounts_payable'] ?? null,
+                'default_revenue_account_id' => $input['sales_revenue'] ?? null,
+                'shipping_revenue_account_id' => $input['shipping_revenue'] ?? null,
+                'default_expense_account_id' => $input['purchase_expense'] ?? null,
+                'default_tax_account_id' => $input['sales_tax'] ?? null,
                 'updated_at' => now(),
             ];
+
+            // Defensive: only include extended default-account columns if they exist in DB.
+            // Some tenants may not have run the migration that added these columns.
+            $extendedColumns = [
+                'default_purchase_tax_account_id' => $input['purchase_tax'] ?? null,
+                'default_inventory_account_id' => $input['inventory'] ?? null,
+                'default_cogs_account_id' => $input['cost_of_goods_sold'] ?? null,
+                'default_retained_earnings_account_id' => $input['retained_earnings'] ?? null,
+                'default_bank_charges_account_id' => $input['bank_charges'] ?? null,
+            ];
+
+            foreach ($extendedColumns as $column => $value) {
+                if (Schema::hasColumn('company_settings', $column)) {
+                    $data[$column] = $value;
+                }
+            }
+
             if ($settings) {
                 DB::table('company_settings')->update($data);
             } else {
                 $data['created_at'] = now();
+                $data['company_name'] = $request->company_name ?? null;
+                $data['base_currency'] = $request->base_currency ?? 'USD';
                 DB::table('company_settings')->insert($data);
             }
-            return response()->json(['success' => true, 'message' => 'Default accounts updated successfully']);
+
+            $fresh = DB::table('company_settings')->first();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Default accounts updated successfully',
+                'data' => [
+                    'accounts_receivable' => $fresh->default_receivable_account_id ?? null,
+                    'accounts_payable' => $fresh->default_payable_account_id ?? null,
+                    'sales_revenue' => $fresh->default_revenue_account_id ?? null,
+                    'shipping_revenue' => $fresh->shipping_revenue_account_id ?? null,
+                    'sales_tax' => $fresh->default_tax_account_id ?? null,
+                    'purchase_expense' => $fresh->default_expense_account_id ?? null,
+                    'purchase_tax' => $fresh->default_purchase_tax_account_id ?? null,
+                    'inventory' => $fresh->default_inventory_account_id ?? null,
+                    'cost_of_goods_sold' => $fresh->default_cogs_account_id ?? null,
+                    'retained_earnings' => $fresh->default_retained_earnings_account_id ?? null,
+                    'bank_charges' => $fresh->default_bank_charges_account_id ?? null,
+                ],
+            ]);
         } catch (\Exception $e) {
             \Log::error('Failed to update default accounts', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to update default accounts'], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to update default accounts: ' . $e->getMessage()], 500);
         }
     }
 

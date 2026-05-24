@@ -33,11 +33,13 @@ export const CustomerPayments: React.FC = () => {
     },
   });
 
-  // Fetch unpaid invoices for payment allocation
+  // Fetch unpaid invoices for payment allocation.
+  // Eligible statuses: 'posted' (released to GL, not yet paid), 'sent', 'overdue', 'partial'.
+  // 'draft' invoices are excluded — they have not been released to the GL.
   const { data: unpaidInvoices } = useQuery({
     queryKey: ['unpaid-invoices'],
     queryFn: async () => {
-      const response = await api.get('/invoices?status=sent,overdue,partial');
+      const response = await api.get('/invoices?status=posted,sent,overdue,partial');
       return response.data.data || [];
     },
     enabled: showRecordPayment,
@@ -329,11 +331,17 @@ const RecordPaymentForm: React.FC<{
               <SelectValue placeholder="Select invoice" />
             </SelectTrigger>
             <SelectContent>
-              {unpaidInvoices.map((invoice) => (
-                <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                  {invoice.invoice_number} - {invoice.customer?.name} (${invoice.balance || invoice.total})
-                </SelectItem>
-              ))}
+              {unpaidInvoices.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground text-center">
+                  No eligible invoices found. Only posted, unpaid invoices can be paid.
+                </div>
+              ) : (
+                unpaidInvoices.map((invoice) => (
+                  <SelectItem key={invoice.id} value={invoice.id.toString()}>
+                    {invoice.invoice_number} - {invoice.customer?.name} (${invoice.balance || invoice.total})
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>

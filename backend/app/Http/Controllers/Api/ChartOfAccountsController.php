@@ -57,51 +57,59 @@ class ChartOfAccountsController extends Controller
     }
 
     /**
-     * Get account tree structure (SFRS 3-level hierarchy)
+     * Get account tree structure (parent-child hierarchy)
      */
     public function tree(): JsonResponse
     {
         try {
-            // Get Level 1 parents (X00000)
-            $parents = ChartOfAccount::whereRaw("code LIKE '%00000'")
+            // Load all active accounts with their children
+            $allAccounts = ChartOfAccount::with('children')
+                ->where('is_active', true)
                 ->orderBy('code')
                 ->get();
 
-            // Build hierarchy for each parent
-            foreach ($parents as $parent) {
-                $firstDigit = substr($parent->code, 0, 1);
-                
-                // Get Level 2 groups under this parent (XX0000 but not X00000)
-                $groups = ChartOfAccount::whereRaw("code LIKE '{$firstDigit}_0000'")
-                    ->whereRaw("code NOT LIKE '%00000'")
-                    ->whereRaw("LENGTH(code) = 6")
-                    ->orderBy('code')
-                    ->get();
-                
-                // For each group, get Level 3 accounts
-                foreach ($groups as $group) {
-                    // Get accounts that belong to this group
-                    $accounts = ChartOfAccount::where('account_group', $group->code)
-                        ->whereRaw("code NOT LIKE '%0000'") // Exclude group headers
-                        ->orderBy('code')
-                        ->get();
-                    
-                    // Add balance to each account
-                    $accounts->each(function($account) {
-                        $account->balance = $account->getBalance();
-                    });
-                    
-                    $group->children = $accounts;
+            // Build a lookup map for quick access
+            $accountMap = $allAccounts->keyBy('id');
+
+            // Identify root accounts (no parent, or parent not in active set)
+            $roots = $allAccounts->filter(function ($account) use ($accountMap) {
+                if ($account->parent_id === null) {
+                    return true;
                 }
-                
-                $parent->children = $groups;
-            }
+                // If parent is inactive or doesn't exist, treat as root
+                return !isset($accountMap[$account->parent_id]);
+            })->values();
+
+            // Recursively build tree
+            $buildTree = function ($accounts) use (&$buildTree) {
+                return $accounts->map(function ($account) use ($buildTree) {
+                    $node = [
+                        'id' => $account->id,
+                        'code' => $account->code,
+                        'name' => $account->name,
+                        'type' => $account->type,
+                        'level' => $account->level,
+                        'balance' => $account->getBalance(),
+                        'is_active' => $account->is_active,
+                        'is_system' => $account->is_system,
+                    ];
+
+                    if ($account->relationLoaded('children') && $account->children->isNotEmpty()) {
+                        $node['children'] = $buildTree($account->children->sortBy('code')->values());
+                    } else {
+                        $node['children'] = [];
+                    }
+
+                    return $node;
+                });
+            };
 
             return response()->json([
-                'data' => $parents
+                'data' => $buildTree($roots)
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Failed to fetch account tree', ['error' => $e->getMessage()]);
             return response()->json([
                 'message' => 'Failed to fetch account tree',
                 'error' => $e->getMessage()
@@ -202,6 +210,14 @@ class ChartOfAccountsController extends Controller
                 'description' => 'nullable|string',
                 'is_active' => 'boolean',
             ]);
+
+            // Prevent setting self as parent
+            if (!empty($validated['parent_id']) && (int) $validated['parent_id'] === (int) $id) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'errors' => ['parent_id' => ['An account cannot be its own parent.']]
+                ], 422);
+            }
 
             $account->update($validated);
 

@@ -14,6 +14,9 @@ class PaymentController extends Controller
         private InvoiceService $invoiceService
     ) {}
 
+    /**
+     * List payments.
+     */
     public function index(Request $request)
     {
         $query = Payment::with(['customer', 'invoice', 'journalEntry'])
@@ -37,6 +40,53 @@ class PaymentController extends Controller
         $payments = $query->paginate($request->per_page ?? 20);
 
         return response()->json($payments);
+    }
+
+    /**
+     * Get eligible invoices for recording a customer payment.
+     * Only posted, sent, or partially paid invoices with a positive balance are eligible.
+     */
+    public function eligibleInvoices(Request $request)
+    {
+        $request->validate([
+            'customer_id' => 'nullable|integer|exists:customers,id',
+        ]);
+
+        $query = \App\Models\Invoice::with('customer')
+            ->whereIn('status', ['posted', 'sent', 'partial'])
+            ->where(function ($q) {
+                $q->whereNull('balance')
+                  ->orWhere('balance', '>', 0);
+            })
+            ->orderBy('invoice_date', 'desc');
+
+        if ($request->has('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        $invoices = $query->get()->map(function ($invoice) {
+            return [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'invoice_date' => $invoice->invoice_date,
+                'total' => (float) $invoice->total,
+                'balance' => (float) ($invoice->balance ?? $invoice->total),
+                'status' => $invoice->status,
+                'customer_id' => $invoice->customer_id,
+                'customer_name' => $invoice->customer?->name ?? 'Unknown',
+            ];
+        });
+
+        if ($invoices->isEmpty()) {
+            return response()->json([
+                'data' => [],
+                'message' => 'No eligible invoices found. Only posted unpaid invoices for the selected customer can be paid.',
+            ]);
+        }
+
+        return response()->json([
+            'data' => $invoices,
+        ]);
     }
 
     public function store(Request $request)

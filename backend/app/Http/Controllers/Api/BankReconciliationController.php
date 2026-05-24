@@ -128,8 +128,19 @@ class BankReconciliationController extends Controller
                 'reconciled_transaction_ids.*' => 'integer|exists:journal_entry_lines,id',
             ]);
 
+            \Log::info('Bank reconciliation complete request received', [
+                'bank_account_id' => $validated['bank_account_id'],
+                'statement_date' => $validated['statement_date'],
+                'transaction_count' => count($validated['reconciled_transaction_ids']),
+            ]);
+
             // Complete reconciliation
             $reconciliation = $this->bankReconciliationService->completeReconciliation($validated);
+
+            \Log::info('Bank reconciliation complete request succeeded', [
+                'reconciliation_id' => $reconciliation->id,
+                'status' => $reconciliation->status,
+            ]);
 
             return response()->json([
                 'message' => 'Reconciliation completed successfully',
@@ -153,6 +164,10 @@ class BankReconciliationController extends Controller
             ], 422);
 
         } catch (\Exception $e) {
+            \Log::error('Bank reconciliation complete request failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'message' => 'Failed to complete reconciliation',
                 'error' => $e->getMessage(),
@@ -225,11 +240,30 @@ class BankReconciliationController extends Controller
     public function history(int $bankAccountId): JsonResponse
     {
         try {
+            \Log::info('Fetching reconciliation history', [
+                'bank_account_id' => $bankAccountId,
+                'tenant_connection' => \DB::connection()->getDatabaseName(),
+                'search_path' => \DB::select('SHOW search_path')[0]->search_path ?? 'unknown',
+            ]);
+
+            $allForAccount = BankReconciliation::where('bank_account_id', $bankAccountId)->get();
+            \Log::info('All reconciliations for account', [
+                'bank_account_id' => $bankAccountId,
+                'total_count' => $allForAccount->count(),
+                'statuses' => $allForAccount->pluck('status')->toArray(),
+                'ids' => $allForAccount->pluck('id')->toArray(),
+            ]);
+
             $reconciliations = BankReconciliation::with('bankAccount')
                 ->where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
                 ->orderBy('statement_date', 'desc')
                 ->get();
+
+            \Log::info('Completed reconciliations for account', [
+                'bank_account_id' => $bankAccountId,
+                'completed_count' => $reconciliations->count(),
+            ]);
 
             $data = [];
             foreach ($reconciliations as $reconciliation) {
@@ -253,6 +287,11 @@ class BankReconciliationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Failed to retrieve reconciliation history', [
+                'bank_account_id' => $bankAccountId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'message' => 'Failed to retrieve reconciliation history',
                 'error' => $e->getMessage(),
