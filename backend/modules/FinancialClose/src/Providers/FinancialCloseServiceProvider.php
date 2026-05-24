@@ -5,6 +5,7 @@ namespace Modules\FinancialClose\Providers;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Modules\FinancialClose\Console\Commands\RunAiAnalysisCommand;
 use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
 use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
 use Modules\FinancialClose\Listeners\TriggerReadinessRefreshOnTaskCompletion;
@@ -13,6 +14,10 @@ use Modules\FinancialClose\Listeners\TriggerTaskGenerationOnCycleOpened;
 
 class FinancialCloseServiceProvider extends ServiceProvider
 {
+    protected array $commands = [
+        RunAiAnalysisCommand::class,
+    ];
+
     public function boot(): void
     {
         // Routes — scoped under /api/v1/close with full auth + tenant middleware
@@ -35,6 +40,6 @@ class FinancialCloseServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        // Service bindings can be added here if interfaces are introduced
+        $this->commands($this->commands);
     }
 }

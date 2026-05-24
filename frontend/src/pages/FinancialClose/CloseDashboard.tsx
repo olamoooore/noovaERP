@@ -123,7 +123,7 @@ export function CloseDashboard() {
                 <Badge variant="outline" className="px-3 py-1">{blocked.length} blocked task{blocked.length !== 1 ? 's' : ''}</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                Use this view as the demo launchpad: jump into readiness, walk the queue, and open AI findings from the accounts that need attention most.
+                Financial close command center. Review readiness, manage tasks, and investigate AI-generated findings from accounts that need attention.
               </p>
             </div>
 

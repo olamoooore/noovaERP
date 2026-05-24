@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Services\FinancialCloseReadinessService;
+use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
 use Modules\FinancialClose\Models\JobRunHistory;
 
 /**
@@ -29,7 +30,7 @@ class RefreshReadinessSnapshotJob implements ShouldQueue
         public readonly string  $correlationId = '',
     ) {}
 
-    public function handle(FinancialCloseReadinessService $readinessService): void
+    public function handle(FinancialCloseReadinessService $readinessService, FinancialCloseAiAnalysisService $aiAnalysisService): void
     {
         $startedAt = now();
 
@@ -46,6 +47,21 @@ class RefreshReadinessSnapshotJob implements ShouldQueue
             $this->periodId,
             $this->cycleId,
         );
+
+        // Run AI anomaly analysis automatically after readiness refresh
+        try {
+            $aiResult = $aiAnalysisService->analyze($this->tenantId, $this->entityId, $this->periodId);
+            Log::info('FinancialClose: AI analysis completed during readiness refresh', [
+                'tenant_id'         => $this->tenantId,
+                'findings_created'  => $aiResult['findings_created'],
+                'accounts_analyzed' => $aiResult['accounts_analyzed'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('FinancialClose: AI analysis failed during readiness refresh', [
+                'tenant_id' => $this->tenantId,
+                'error'     => $e->getMessage(),
+            ]);
+        }
 
         JobRunHistory::create([
             'tenant_id'      => $this->tenantId,
