@@ -19,9 +19,9 @@ interface InvoiceLine {
   product_id: string;
   description: string;
   quantity: number;
-  unit_price: number;
-  tax_rate: number;
-  discount_amount: number;
+  unit_price: number | '';
+  tax_rate: number | '';
+  discount_amount: number | '';
 }
 
 interface CustomerAddress {
@@ -96,9 +96,9 @@ const emptyLine = (): InvoiceLine => ({
   product_id: '',
   description: '',
   quantity: 1,
-  unit_price: 0,
-  tax_rate: 0,
-  discount_amount: 0,
+  unit_price: '',
+  tax_rate: '',
+  discount_amount: '',
 });
 
 const initialCustomerForm: CustomerFormState = {
@@ -186,7 +186,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
-  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -365,9 +365,12 @@ export const CreateInvoicePage: React.FC = () => {
   };
 
   const getLineTotal = (line: InvoiceLine) => {
-    const base = line.quantity * line.unit_price;
-    const tax = base * (line.tax_rate / 100);
-    return base + tax - line.discount_amount;
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
+    const discount = line.discount_amount === '' ? 0 : line.discount_amount;
+    const base = line.quantity * unitPrice;
+    const tax = base * (taxRate / 100);
+    return base + tax - discount;
   };
 
   const openCreateCustomerDialog = () => {
@@ -400,12 +403,20 @@ export const CreateInvoicePage: React.FC = () => {
     setCustomerDialogOpen(true);
   };
 
-  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
-  const taxTotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price * (line.tax_rate / 100), 0);
-  const lineDiscounts = lines.reduce((sum, line) => sum + line.discount_amount, 0);
+  const subtotal = lines.reduce((sum, line) => {
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    return sum + line.quantity * unitPrice;
+  }, 0);
+  const taxTotal = lines.reduce((sum, line) => {
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
+    return sum + line.quantity * unitPrice * (taxRate / 100);
+  }, 0);
+  const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
+  const discountAmt = discountAmount === '' ? 0 : discountAmount;
   const documentDiscountAmount = discountMode === 'percentage'
-    ? subtotal * (discountAmount / 100)
-    : discountAmount;
+    ? subtotal * (discountAmt / 100)
+    : discountAmt;
   const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
   const invoiceNumberPreview = `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
 
@@ -450,9 +461,9 @@ export const CreateInvoicePage: React.FC = () => {
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           description: line.description || 'Item',
           quantity: line.quantity,
-          unit_price: line.unit_price,
-          tax_rate: line.tax_rate,
-          discount_amount: line.discount_amount,
+          unit_price: line.unit_price === '' ? 0 : line.unit_price,
+          tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
+          discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
         })),
     };
 
@@ -854,8 +865,9 @@ export const CreateInvoicePage: React.FC = () => {
                             type="number"
                             min="0"
                             step="0.01"
-                            value={line.unit_price}
-                            onChange={(event) => updateLine(index, 'unit_price', parseFloat(event.target.value) || 0)}
+                            placeholder="0.00"
+                            value={line.unit_price === '' ? '' : line.unit_price}
+                            onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                           />
                         </td>
@@ -865,8 +877,9 @@ export const CreateInvoicePage: React.FC = () => {
                             min="0"
                             max="100"
                             step="0.01"
-                            value={line.tax_rate}
-                            onChange={(event) => updateLine(index, 'tax_rate', parseFloat(event.target.value) || 0)}
+                            placeholder="0"
+                            value={line.tax_rate === '' ? '' : line.tax_rate}
+                            onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                           />
                         </td>
@@ -918,8 +931,9 @@ export const CreateInvoicePage: React.FC = () => {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={discountAmount}
-                        onChange={(event) => setDiscountAmount(parseFloat(event.target.value) || 0)}
+                        placeholder="0"
+                        value={discountAmount === '' ? '' : discountAmount}
+                        onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : parseFloat(event.target.value))}
                         className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                       />
                     </div>

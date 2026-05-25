@@ -18,8 +18,8 @@ interface BillLine {
   account_id: string;
   description: string;
   quantity: number;
-  unit_price: number;
-  tax_rate: number;
+  unit_price: number | '';
+  tax_rate: number | '';
 }
 
 interface VendorRecord {
@@ -69,8 +69,8 @@ const emptyLine = (): BillLine => ({
   account_id: '',
   description: '',
   quantity: 1,
-  unit_price: 0,
-  tax_rate: 0,
+  unit_price: '',
+  tax_rate: '',
 });
 
 const initialVendorForm: VendorFormState = {
@@ -114,7 +114,7 @@ export const CreateVendorBillPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
-  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<BillLine[]>([emptyLine()]);
   const [documentSnapshot, setDocumentSnapshot] = useState<VendorDocumentSnapshot>(emptyDocumentSnapshot);
   const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
@@ -280,8 +280,10 @@ export const CreateVendorBillPage: React.FC = () => {
   };
 
   const getLineTotal = (line: BillLine) => {
-    const base = line.quantity * line.unit_price;
-    const tax = base * (line.tax_rate / 100);
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
+    const base = line.quantity * unitPrice;
+    const tax = base * (taxRate / 100);
     return base + tax;
   };
 
@@ -314,11 +316,19 @@ export const CreateVendorBillPage: React.FC = () => {
     setVendorDialogOpen(true);
   };
 
-  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
-  const taxTotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price * (line.tax_rate / 100), 0);
+  const subtotal = lines.reduce((sum, line) => {
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    return sum + line.quantity * unitPrice;
+  }, 0);
+  const taxTotal = lines.reduce((sum, line) => {
+    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
+    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
+    return sum + line.quantity * unitPrice * (taxRate / 100);
+  }, 0);
+  const discountAmt = discountAmount === '' ? 0 : discountAmount;
   const documentDiscountAmount = discountMode === 'percentage'
-    ? subtotal * (discountAmount / 100)
-    : discountAmount;
+    ? subtotal * (discountAmt / 100)
+    : discountAmt;
   const total = subtotal + taxTotal - documentDiscountAmount;
   const billNumberPreview = billNumber || `BILL-${new Date(billDate).getFullYear()}-XXXX`;
 
@@ -344,7 +354,7 @@ export const CreateVendorBillPage: React.FC = () => {
       return;
     }
 
-    const validLines = lines.filter((line) => line.account_id && line.quantity > 0 && line.unit_price > 0);
+    const validLines = lines.filter((line) => line.account_id && line.quantity > 0 && line.unit_price !== '' && line.unit_price > 0);
     if (validLines.length === 0) {
       toast({ variant: 'destructive', title: 'Please add at least one line item with an account, quantity, and price' });
       return;
@@ -363,8 +373,8 @@ export const CreateVendorBillPage: React.FC = () => {
         account_id: parseInt(line.account_id, 10),
         description: line.description || undefined,
         quantity: line.quantity,
-        unit_price: line.unit_price,
-        tax_rate: line.tax_rate,
+        unit_price: line.unit_price === '' ? 0 : line.unit_price,
+        tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
       })),
     };
 
@@ -677,8 +687,9 @@ export const CreateVendorBillPage: React.FC = () => {
                             type="number"
                             min="0"
                             step="0.01"
-                            value={line.unit_price}
-                            onChange={(event) => updateLine(index, 'unit_price', parseFloat(event.target.value) || 0)}
+                            placeholder="0.00"
+                            value={line.unit_price === '' ? '' : line.unit_price}
+                            onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                           />
                         </td>
@@ -688,8 +699,9 @@ export const CreateVendorBillPage: React.FC = () => {
                             min="0"
                             max="100"
                             step="0.01"
-                            value={line.tax_rate}
-                            onChange={(event) => updateLine(index, 'tax_rate', parseFloat(event.target.value) || 0)}
+                            placeholder="0"
+                            value={line.tax_rate === '' ? '' : line.tax_rate}
+                            onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                           />
                         </td>
@@ -741,8 +753,9 @@ export const CreateVendorBillPage: React.FC = () => {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={discountAmount}
-                        onChange={(event) => setDiscountAmount(parseFloat(event.target.value) || 0)}
+                        placeholder="0"
+                        value={discountAmount === '' ? '' : discountAmount}
+                        onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : parseFloat(event.target.value))}
                         className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                       />
                     </div>

@@ -163,7 +163,8 @@ class AccountingDashboardController extends Controller
             $query = DB::table('journal_entry_lines as jel')
                 ->join('journal_entries as je', 'jel.journal_entry_id', '=', 'je.id')
                 ->whereIn('jel.account_id', $bankGlAccountIds)
-                ->where('je.status', 'posted');
+                ->where('je.status', 'posted')
+                ->whereNull('je.deleted_at');
 
             if (Schema::hasColumn('journal_entry_lines', 'reconciliation_id')) {
                 $query->whereNull('jel.reconciliation_id');
@@ -174,6 +175,33 @@ class AccountingDashboardController extends Controller
             }
 
             $count = $query->count();
+
+            // Verification logging: compare with per-account service counts
+            $perAccountCounts = [];
+            foreach ($bankGlAccountIds as $glId) {
+                $accountCount = DB::table('journal_entry_lines as jel')
+                    ->join('journal_entries as je', 'jel.journal_entry_id', '=', 'je.id')
+                    ->where('jel.account_id', $glId)
+                    ->where('je.status', 'posted')
+                    ->whereNull('je.deleted_at')
+                    ->whereNull('jel.reconciliation_id')
+                    ->count();
+                $bankAccount = DB::table('bank_accounts')->where('gl_account_id', $glId)->first();
+                if ($bankAccount) {
+                    $perAccountCounts[] = [
+                        'bank_account_id' => $bankAccount->id,
+                        'bank_name' => $bankAccount->account_name,
+                        'gl_account_id' => $glId,
+                        'unreconciled_count' => $accountCount,
+                    ];
+                }
+            }
+            
+            \Log::debug('AccountingDashboard unreconciled count', [
+                'total_count' => $count,
+                'bank_accounts_considered' => $bankGlAccountIds->count(),
+                'per_account_breakdown' => $perAccountCounts,
+            ]);
         } catch (\Exception $e) {
             \Log::warning('AccountingDashboard: failed to count unreconciled items', [
                 'error' => $e->getMessage(),

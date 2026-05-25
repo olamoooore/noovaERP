@@ -46,15 +46,15 @@ export default function AssetsManagementPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
   const [depreciationPeriod, setDepreciationPeriod] = useState(new Date().toISOString().slice(0, 10));
-  const [formData, setFormData] = useState<CreateAssetRequest>({
+  const [formData, setFormData] = useState<Omit<CreateAssetRequest, 'purchase_cost' | 'salvage_value'> & { purchase_cost: number | ''; salvage_value: number | '' }>({
     asset_number: '',
     name: '',
     category: '',
     purchase_date: '',
-    purchase_cost: 0,
+    purchase_cost: '',
     depreciation_method: 'straight_line',
     useful_life_years: 5,
-    salvage_value: 0,
+    salvage_value: '',
     depreciation_start_date: '',
     asset_account_id: 0,
     depreciation_account_id: 0,
@@ -83,7 +83,30 @@ export default function AssetsManagementPage() {
     enabled: !!selectedAssetId,
   });
 
-  const depreciationSchedule = depreciationData?.schedule || depreciationData?.data || depreciationData?.schedules || [];
+  const depreciationSchedule = (() => {
+    if (!depreciationData) return [];
+    const candidates = [
+      depreciationData.schedule,
+      depreciationData.data?.schedule,
+      Array.isArray(depreciationData.data) ? depreciationData.data : undefined,
+      depreciationData.schedules,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+  })();
+
+  // Debug logging for depreciation schedule data shape
+  if (depreciationData) {
+    console.log('Depreciation data shape:', {
+      keys: Object.keys(depreciationData),
+      scheduleType: typeof depreciationData.schedule,
+      scheduleLength: Array.isArray(depreciationData.schedule) ? depreciationData.schedule.length : 'N/A',
+      dataType: typeof depreciationData.data,
+      dataIsArray: Array.isArray(depreciationData.data),
+    });
+  }
 
   // Calculate depreciation mutation
   const calculateDepreciationMutation = useMutation({
@@ -176,10 +199,10 @@ export default function AssetsManagementPage() {
       name: '',
       category: '',
       purchase_date: '',
-      purchase_cost: 0,
+      purchase_cost: '',
       depreciation_method: 'straight_line',
       useful_life_years: 5,
-      salvage_value: 0,
+      salvage_value: '',
       depreciation_start_date: '',
       asset_account_id: 0,
       depreciation_account_id: 0,
@@ -196,11 +219,11 @@ export default function AssetsManagementPage() {
         name: asset.name,
         category: asset.category,
         purchase_date: asset.purchase_date,
-        purchase_cost: asset.purchase_cost,
-        depreciation_method: asset.depreciation_method,
-        useful_life_years: asset.useful_life_years,
-        useful_life_units: asset.useful_life_units,
-        salvage_value: asset.salvage_value,
+        purchase_cost: asset.purchase_cost ?? '',
+      depreciation_method: asset.depreciation_method,
+      useful_life_years: asset.useful_life_years,
+      useful_life_units: asset.useful_life_units,
+      salvage_value: asset.salvage_value ?? '',
         depreciation_start_date: asset.depreciation_start_date,
         asset_account_id: asset.asset_account_id,
         depreciation_account_id: asset.depreciation_account_id,
@@ -235,10 +258,16 @@ export default function AssetsManagementPage() {
       return;
     }
 
+    const payload: CreateAssetRequest = {
+      ...formData,
+      purchase_cost: formData.purchase_cost === '' ? 0 : formData.purchase_cost,
+      salvage_value: formData.salvage_value === '' ? 0 : formData.salvage_value,
+    };
+
     if (editingAsset) {
-      updateMutation.mutate({ id: editingAsset.id, data: formData });
+      updateMutation.mutate({ id: editingAsset.id, data: payload });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(payload);
     }
   };
 
@@ -526,8 +555,9 @@ export default function AssetsManagementPage() {
                   id="purchase_cost"
                   type="number"
                   step="0.01"
-                  value={formData.purchase_cost}
-                  onChange={(e) => setFormData({ ...formData, purchase_cost: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  value={formData.purchase_cost === '' ? '' : formData.purchase_cost}
+                  onChange={(e) => setFormData({ ...formData, purchase_cost: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                 />
               </div>
             </div>
@@ -563,8 +593,9 @@ export default function AssetsManagementPage() {
                   id="salvage_value"
                   type="number"
                   step="0.01"
-                  value={formData.salvage_value || ''}
-                  onChange={(e) => setFormData({ ...formData, salvage_value: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  value={formData.salvage_value === '' ? '' : formData.salvage_value}
+                  onChange={(e) => setFormData({ ...formData, salvage_value: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                 />
               </div>
             </div>
