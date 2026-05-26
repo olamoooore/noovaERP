@@ -143,7 +143,19 @@ class LockDateValidationService
         }
 
         // Check for explicit lock date override permission or admin role
-        return $user->hasPermissionTo('accounting.lock_date_override')
+        $hasPermission = false;
+        if (method_exists($user, 'hasPermissionTo')) {
+            try {
+                $hasPermission = $user->hasPermissionTo('accounting.lock_date_override');
+            } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
+                \Illuminate\Support\Facades\Log::warning('LockDateValidationService: permission does not exist, falling back to roles', [
+                    'permission' => 'accounting.lock_date_override',
+                    'user_id' => $userId,
+                ]);
+            }
+        }
+
+        return $hasPermission
             || $user->hasRole('admin')
             || $user->hasRole('super-admin');
     }

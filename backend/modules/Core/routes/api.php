@@ -429,12 +429,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/tax-rates/{id}', [TaxRatesController::class, 'destroy']);
         Route::post('/tax-rates/calculate', [TaxRatesController::class, 'calculateTax']);
         
-        // Customers List
-        Route::get('/customers', [CustomersController::class, 'index']);
-        Route::get('/customers/{id}', [CustomersController::class, 'show']);
-        Route::post('/customers/import', [CustomersController::class, 'import']);
-        
-        // Customer Credit Notes
+        // Customer Credit Notes (must be before /customers/{id} to avoid route conflict)
         Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
         Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
         Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store']);
@@ -444,14 +439,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validate']);
         
-        // Vendors List
-        Route::get('/vendors', [VendorsController::class, 'index']);
-        Route::get('/vendors/{id}', [VendorsController::class, 'show']);
-        Route::post('/vendors', [VendorsController::class, 'store']);
-        Route::put('/vendors/{id}', [VendorsController::class, 'update']);
-        Route::post('/vendors/import', [VendorsController::class, 'import']);
+        // Customers List
+        Route::get('/customers', [CustomersController::class, 'index']);
+        Route::get('/customers/{id}', [CustomersController::class, 'show']);
+        Route::post('/customers/import', [CustomersController::class, 'import']);
         
-        // Vendor Credit Notes
+        // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
         Route::get('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'show']);
         Route::post('/vendors/credit-notes', [VendorCreditNotesController::class, 'store']);
@@ -460,6 +453,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/vendors/credit-notes/{creditNote}/post', [VendorCreditNotesController::class, 'post']);
         Route::get('/vendors/bills/{billId}/credit-notes', [VendorCreditNotesController::class, 'getByBill']);
         Route::post('/vendors/credit-notes/validate', [VendorCreditNotesController::class, 'validate']);
+        
+        // Vendors List
+        Route::get('/vendors', [VendorsController::class, 'index']);
+        Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        Route::post('/vendors', [VendorsController::class, 'store']);
+        Route::put('/vendors/{id}', [VendorsController::class, 'update']);
+        Route::post('/vendors/import', [VendorsController::class, 'import']);
         
         // AR Transactions Ledger
         Route::get('/customers/transactions', [ARTransactionsController::class, 'index']);

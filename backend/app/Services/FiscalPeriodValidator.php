@@ -105,7 +105,14 @@ class FiscalPeriodValidator
         // Check if user has the override permission
         // This assumes you're using Spatie Permission or similar
         if (method_exists($user, 'hasPermissionTo')) {
-            return $user->hasPermissionTo(self::OVERRIDE_PERMISSION);
+            try {
+                return $user->hasPermissionTo(self::OVERRIDE_PERMISSION);
+            } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
+                Log::warning('FiscalPeriodValidator: permission does not exist, falling back to roles', [
+                    'permission' => self::OVERRIDE_PERMISSION,
+                    'user_id' => $user->id,
+                ]);
+            }
         }
 
         // Fallback: Check if user has a specific role
