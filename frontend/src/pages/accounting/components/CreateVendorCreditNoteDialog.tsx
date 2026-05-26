@@ -6,6 +6,7 @@ import api from '@/lib/api';
 interface CreateVendorCreditNoteDialogProps {
   onClose: () => void;
   onSuccess: () => void;
+  billId?: number;
 }
 
 interface Bill {
@@ -30,11 +31,11 @@ interface BillLine {
   account_id: number | null;
 }
 
-export default function CreateVendorCreditNoteDialog({ onClose, onSuccess }: CreateVendorCreditNoteDialogProps) {
+export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billId }: CreateVendorCreditNoteDialogProps) {
   const [bills, setBills] = useState<Bill[]>([]);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [formData, setFormData] = useState({
-    bill_id: 0,
+    bill_id: billId ?? 0,
     vendor_id: 0,
     credit_note_date: new Date().toISOString().split('T')[0],
     reason: '',
@@ -49,12 +50,36 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess }: Cre
     api.get('/accounting/vendor-bills', {
       params: { status: 'posted', per_page: 100 }
     })
-      .then(res => setBills(res.data.data || []))
+      .then(res => {
+        const data = res.data.data || [];
+        setBills(data);
+        // If billId is provided, auto-select it
+        if (billId) {
+          const bill = data.find((b: Bill) => b.id === billId);
+          if (bill) {
+            setSelectedBill(bill);
+            setFormData(prev => ({
+              ...prev,
+              bill_id: bill.id,
+              vendor_id: bill.vendor_id,
+              lines: bill.lines.map((line: BillLine) => ({
+                bill_line_id: line.id,
+                product_id: line.product_id,
+                description: line.description,
+                quantity: line.quantity,
+                unit_price: line.unit_price,
+                tax_rate: line.tax_rate,
+                account_id: line.account_id,
+              })),
+            }));
+          }
+        }
+      })
       .catch(err => console.error('Failed to load bills:', err));
-  }, []);
+  }, [billId]);
 
-  const handleBillSelect = (billId: number) => {
-    const bill = bills.find(b => b.id === billId);
+  const handleBillSelect = (selectedId: number) => {
+    const bill = bills.find(b => b.id === selectedId);
     if (bill) {
       setSelectedBill(bill);
       setFormData(prev => ({

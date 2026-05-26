@@ -6,6 +6,7 @@ import api from '@/lib/api';
 interface CreateCreditNoteDialogProps {
   onClose: () => void;
   onSuccess: () => void;
+  invoiceId?: number;
 }
 
 interface Invoice {
@@ -30,11 +31,11 @@ interface InvoiceLine {
   account_id: number | null;
 }
 
-export default function CreateCreditNoteDialog({ onClose, onSuccess }: CreateCreditNoteDialogProps) {
+export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }: CreateCreditNoteDialogProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [formData, setFormData] = useState({
-    invoice_id: 0,
+    invoice_id: invoiceId ?? 0,
     customer_id: 0,
     credit_note_date: new Date().toISOString().split('T')[0],
     reason: '',
@@ -47,14 +48,38 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess }: CreateCre
   useEffect(() => {
     // Fetch posted invoices
     api.get('/invoices', {
-      params: { status: 'sent,overdue', per_page: 100 }
+      params: { status: 'sent,overdue,posted', per_page: 100 }
     })
-      .then(res => setInvoices(res.data.data || []))
+      .then(res => {
+        const data = res.data.data || [];
+        setInvoices(data);
+        // If invoiceId is provided, auto-select it
+        if (invoiceId) {
+          const invoice = data.find((inv: Invoice) => inv.id === invoiceId);
+          if (invoice) {
+            setSelectedInvoice(invoice);
+            setFormData(prev => ({
+              ...prev,
+              invoice_id: invoice.id,
+              customer_id: invoice.customer_id,
+              lines: invoice.lines.map((line: InvoiceLine) => ({
+                invoice_line_id: line.id,
+                product_id: line.product_id,
+                description: line.description,
+                quantity: line.quantity,
+                unit_price: line.unit_price,
+                tax_rate: line.tax_rate,
+                account_id: line.account_id,
+              })),
+            }));
+          }
+        }
+      })
       .catch(err => console.error('Failed to load invoices:', err));
-  }, []);
+  }, [invoiceId]);
 
-  const handleInvoiceSelect = (invoiceId: number) => {
-    const invoice = invoices.find(inv => inv.id === invoiceId);
+  const handleInvoiceSelect = (selectedId: number) => {
+    const invoice = invoices.find(inv => inv.id === selectedId);
     if (invoice) {
       setSelectedInvoice(invoice);
       setFormData(prev => ({

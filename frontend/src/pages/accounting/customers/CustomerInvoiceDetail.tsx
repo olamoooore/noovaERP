@@ -19,6 +19,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { formatDate, resolveImageUrl } from '@/lib/utils';
 import api from '@/lib/api';
+import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
+import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 
 export const CustomerInvoiceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +29,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
@@ -459,6 +462,30 @@ export const CustomerInvoiceDetail: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Credit Notes */}
+      {invoice.status === 'posted' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Credit Notes</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowCreditNoteDialog(true)}
+            >
+              <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-4 w-4" />
+              Create Credit Note
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <InvoiceCreditNotes
+              invoiceId={invoice.id}
+              invoiceTotal={invoice.total}
+              currencyCode={invoice.currency_code}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Journal Entry */}
       {invoice.journal_entry_id && (
         <Card>
@@ -477,6 +504,19 @@ export const CustomerInvoiceDetail: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Credit Note Dialog */}
+      {showCreditNoteDialog && (
+        <CreateCreditNoteDialog
+          invoiceId={invoice.id}
+          onClose={() => setShowCreditNoteDialog(false)}
+          onSuccess={() => {
+            setShowCreditNoteDialog(false);
+            queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
+            queryClient.invalidateQueries({ queryKey: ['invoice-credit-notes', invoice.id] });
+          }}
+        />
       )}
 
       {/* Delete Confirmation Dialog */}

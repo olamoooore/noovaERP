@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import api, { accountingApi } from '@/lib/api';
+import BillCreditNotes from '../components/BillCreditNotes';
+import CreateVendorCreditNoteDialog from '../components/CreateVendorCreditNoteDialog';
 
 export const VendorBillDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +27,7 @@ export const VendorBillDetail: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
 
   // Fetch bill details
   const { data: bill, isLoading } = useQuery({
@@ -437,6 +440,30 @@ export const VendorBillDetail: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Credit Notes */}
+      {bill.status === 'posted' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Credit Notes</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowCreditNoteDialog(true)}
+            >
+              <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-4 w-4" />
+              Create Credit Note
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <BillCreditNotes
+              billId={bill.id}
+              billTotal={bill.total}
+              currencyCode={bill.currency_code}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Journal Entry */}
       {bill.journal_entry_id && (
         <Card>
@@ -455,6 +482,19 @@ export const VendorBillDetail: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Credit Note Dialog */}
+      {showCreditNoteDialog && (
+        <CreateVendorCreditNoteDialog
+          billId={bill.id}
+          onClose={() => setShowCreditNoteDialog(false)}
+          onSuccess={() => {
+            setShowCreditNoteDialog(false);
+            queryClient.invalidateQueries({ queryKey: ['vendor-bill', id] });
+            queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', bill.id] });
+          }}
+        />
       )}
 
       {/* Delete Confirmation Dialog */}
