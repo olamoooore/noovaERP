@@ -40,7 +40,7 @@ class FinancialCloseCycleService
     /**
      * Create a new close cycle
      */
-    public function createCycle(string $tenantId, string $entityId, string $periodId, string $userId): ?CloseCycle
+    public function createCycle(string $tenantId, string $entityId, string $periodId, string $userId, ?string $templateId = null): ?CloseCycle
     {
         $existing = CloseCycle::where('tenant_id', $tenantId)
             ->where('entity_id', $entityId)
@@ -61,6 +61,7 @@ class FinancialCloseCycleService
             'tenant_id' => $tenantId,
             'entity_id' => $entityId,
             'period_id' => $periodId,
+            'template_id' => $templateId,
             'status' => 'draft',
             'created_by' => $userId,
         ]);

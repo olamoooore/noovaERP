@@ -6,12 +6,15 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\FinancialClose\Services\FinancialCloseCycleService;
+use Modules\FinancialClose\Services\FinancialCloseChecklistService;
 use Modules\FinancialClose\Http\Resources\CloseCycleResource;
+use Modules\FinancialClose\Jobs\GenerateTasksFromChecklistJob;
 
 class CloseCycleController extends Controller
 {
     public function __construct(
         private readonly FinancialCloseCycleService $cycleService,
+        private readonly FinancialCloseChecklistService $checklistService,
     ) {}
 
     /** GET /cycles?entity_id= */
@@ -32,8 +35,9 @@ class CloseCycleController extends Controller
         $userId   = $request->user()->id;
 
         $validated = $request->validate([
-            'entity_id' => ['required', 'string'],
-            'period_id' => ['required', 'string'],
+            'entity_id'   => ['required', 'string'],
+            'period_id'   => ['required', 'string'],
+            'template_id' => ['nullable', 'string'],
         ]);
 
         $cycle = $this->cycleService->createCycle(
@@ -41,6 +45,7 @@ class CloseCycleController extends Controller
             $validated['entity_id'],
             $validated['period_id'],
             $userId,
+            $validated['template_id'] ?? null,
         );
 
         if (!$cycle) {
@@ -78,5 +83,38 @@ class CloseCycleController extends Controller
         }
 
         return response()->json(['message' => 'Cycle closed.']);
+    }
+
+    /** POST /cycles/{cycleId}/generate-tasks */
+    public function generateTasks(Request $request, string $cycleId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $cycle    = $this->cycleService->getCycle($tenantId, $cycleId);
+
+        if (!$cycle) {
+            return response()->json(['message' => 'Cycle not found.'], 404);
+        }
+
+        $templateId = $cycle->template_id;
+
+        if (!$templateId) {
+            $validated = $request->validate([
+                'template_id' => ['required', 'string'],
+            ]);
+            $templateId = $validated['template_id'];
+            $cycle->update(['template_id' => $templateId]);
+        }
+
+        $result = $this->checklistService->expandTemplateIntoTasks($tenantId, $cycleId, $templateId);
+
+        if (!$result) {
+            return response()->json(['message' => 'Task generation failed. Ensure the template is active.'], 422);
+        }
+
+        return response()->json([
+            'message' => 'Tasks generated successfully.',
+            'cycle_id' => $cycleId,
+            'template_id' => $templateId,
+        ]);
     }
 }

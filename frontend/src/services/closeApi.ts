@@ -10,11 +10,28 @@ export interface CloseCycle {
   id: string
   entity_id: string
   period_id: string
+  template_id: string | null
   status: 'draft' | 'opened' | 'ready_to_close' | 'closed'
   created_by: string
   opened_at: string | null
   closed_at: string | null
   created_at: string
+}
+
+export interface ChecklistTemplate {
+  id: string
+  tenant_id: string
+  name: string
+  status: 'draft' | 'active' | 'archived'
+  created_by: string
+  task_definitions: Array<{
+    title: string
+    priority?: 'low' | 'medium' | 'high' | 'critical'
+    is_critical?: boolean
+  }>
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CloseTask {
@@ -135,14 +152,37 @@ export const closeCyclesApi = {
   list: (entityId: string) =>
     api.get<{ data: CloseCycle[] }>('/close/cycles', { params: { entity_id: entityId } }),
 
-  create: (entityId: string, periodId: string) =>
-    api.post<{ data: CloseCycle }>('/close/cycles', { entity_id: entityId, period_id: periodId }),
+  create: (entityId: string, periodId: string, templateId?: string) =>
+    api.post<{ data: CloseCycle }>('/close/cycles', { entity_id: entityId, period_id: periodId, template_id: templateId }),
 
   open: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/open`),
 
   close: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/close`),
+
+  generateTasks: (cycleId: string, templateId?: string) =>
+    api.post(`/close/cycles/${cycleId}/generate-tasks`, templateId ? { template_id: templateId } : {}),
+}
+
+export const checklistTemplatesApi = {
+  list: (status?: string) =>
+    api.get<{ data: ChecklistTemplate[] }>('/close/checklist-templates', { params: status ? { status } : undefined }),
+
+  get: (templateId: string) =>
+    api.get<{ data: ChecklistTemplate }>(`/close/checklist-templates/${templateId}`),
+
+  create: (data: { name: string; task_definitions: ChecklistTemplate['task_definitions']; metadata?: Record<string, unknown> }) =>
+    api.post<{ data: ChecklistTemplate }>('/close/checklist-templates', data),
+
+  update: (templateId: string, data: Partial<ChecklistTemplate>) =>
+    api.put<{ data: ChecklistTemplate }>(`/close/checklist-templates/${templateId}`, data),
+
+  destroy: (templateId: string) =>
+    api.delete(`/close/checklist-templates/${templateId}`),
+
+  activate: (templateId: string) =>
+    api.post<{ data: ChecklistTemplate }>(`/close/checklist-templates/${templateId}/activate`),
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────

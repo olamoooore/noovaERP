@@ -16,6 +16,7 @@ class CloseCycle extends Model
         'tenant_id',
         'entity_id',
         'period_id',
+        'template_id',
         'status',
         'created_by',
         'opened_at',

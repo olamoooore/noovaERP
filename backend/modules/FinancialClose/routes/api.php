@@ -7,6 +7,7 @@ use Modules\FinancialClose\Http\Controllers\EscalationController;
 use Modules\FinancialClose\Http\Controllers\FindingController;
 use Modules\FinancialClose\Http\Controllers\ReadinessController;
 use Modules\FinancialClose\Http\Controllers\ForecastController;
+use Modules\FinancialClose\Http\Controllers\ChecklistTemplateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,6 +22,7 @@ Route::get('/cycles',                           [CloseCycleController::class, 'i
 Route::post('/cycles',                          [CloseCycleController::class, 'store']);
 Route::post('/cycles/{cycleId}/open',           [CloseCycleController::class, 'open']);
 Route::post('/cycles/{cycleId}/close',          [CloseCycleController::class, 'close']);
+Route::post('/cycles/{cycleId}/generate-tasks', [CloseCycleController::class, 'generateTasks']);
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 Route::get('/cycles/{cycleId}/tasks',           [TaskController::class, 'index']);
@@ -50,6 +52,14 @@ Route::post('/findings/{findingId}/escalate',           [FindingController::clas
 // ─── Readiness ───────────────────────────────────────────────────────────────
 Route::get('/readiness/{entityId}/{periodId}',          [ReadinessController::class, 'show']);
 Route::post('/readiness/{entityId}/{periodId}/refresh', [ReadinessController::class, 'refresh']);
+
+// ─── Checklist Templates ─────────────────────────────────────────────────────
+Route::get('/checklist-templates',                      [ChecklistTemplateController::class, 'index']);
+Route::post('/checklist-templates',                     [ChecklistTemplateController::class, 'store']);
+Route::get('/checklist-templates/{templateId}',         [ChecklistTemplateController::class, 'show']);
+Route::put('/checklist-templates/{templateId}',         [ChecklistTemplateController::class, 'update']);
+Route::delete('/checklist-templates/{templateId}',      [ChecklistTemplateController::class, 'destroy']);
+Route::post('/checklist-templates/{templateId}/activate', [ChecklistTemplateController::class, 'activate']);
 
 // ─── Forecast ────────────────────────────────────────────────────────────────
 Route::get('/cycles/{cycleId}/forecast',                [ForecastController::class, 'show']);

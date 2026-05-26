@@ -4,9 +4,16 @@ import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { closeCyclesApi, type CloseCycle } from '@/services/closeApi'
+import { closeCyclesApi, checklistTemplatesApi, type CloseCycle, type ChecklistTemplate } from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
 import { useState } from 'react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -32,18 +39,26 @@ export function CloseCyclesPage() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [periodId, setPeriodId] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['close-cycles', ENTITY_ID],
     queryFn: () => closeCyclesApi.list(ENTITY_ID).then(r => r.data.data),
   })
 
+  const { data: templatesData } = useQuery({
+    queryKey: ['checklist-templates'],
+    queryFn: () => checklistTemplatesApi.list('active').then(r => r.data.data),
+  })
+  const templates: ChecklistTemplate[] = templatesData ?? []
+
   const createMutation = useMutation({
-    mutationFn: () => closeCyclesApi.create(ENTITY_ID, periodId),
+    mutationFn: () => closeCyclesApi.create(ENTITY_ID, periodId, selectedTemplateId || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
       setCreateOpen(false)
       setPeriodId('')
+      setSelectedTemplateId('')
       toast({ title: 'Cycle created.' })
     },
     onError: () => toast({ title: 'Failed to create cycle.', variant: 'destructive' }),
@@ -65,6 +80,21 @@ export function CloseCyclesPage() {
       toast({ title: 'Cycle closed.' })
     },
     onError: () => toast({ title: 'Cycle is not ready to close.', variant: 'destructive' }),
+  })
+
+  const generateTasksMutation = useMutation({
+    mutationFn: ({ cycleId, templateId }: { cycleId: string; templateId?: string }) =>
+      closeCyclesApi.generateTasks(cycleId, templateId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
+      queryClient.invalidateQueries({ queryKey: ['close-tasks'] })
+      toast({ title: 'Tasks generated successfully.' })
+    },
+    onError: (error: any) => toast({
+      title: 'Task generation failed.',
+      description: error?.response?.data?.message || 'Ensure a checklist template is selected and active.',
+      variant: 'destructive',
+    }),
   })
 
   const cycles: CloseCycle[] = data ?? []
@@ -149,6 +179,22 @@ export function CloseCyclesPage() {
                             <Icon icon="solar:list-check-bold-duotone" className="mr-1.5 h-4 w-4" />
                             Tasks
                           </Button>
+                          {!cycle.template_id && templates.length > 0 && (
+                            <Select
+                              value={''}
+                              onValueChange={(templateId) => generateTasksMutation.mutate({ cycleId: cycle.id, templateId })}
+                            >
+                              <SelectTrigger className="h-8 w-auto text-xs">
+                                <Icon icon="solar:bolt-bold-duotone" className="mr-1 h-3 w-3" />
+                                <SelectValue placeholder="Generate Tasks" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {templates.map(t => (
+                                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -194,6 +240,23 @@ export function CloseCyclesPage() {
               />
               <p className="text-xs text-muted-foreground">
                 Uniquely identifies this reporting period within the entity.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="template">Checklist Template</Label>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                <SelectTrigger id="template">
+                  <SelectValue placeholder="Select a checklist template (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (manual later)</SelectItem>
+                  {templates.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Tasks will be auto-generated from this template when the cycle is opened.
               </p>
             </div>
           </div>
