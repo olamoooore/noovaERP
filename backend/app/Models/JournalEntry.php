@@ -244,7 +244,16 @@ class JournalEntry extends Model
             ->first();
 
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
-        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+        $candidate = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        // Skip numbers already taken by soft-deleted or other entries
+        // (unique constraint on entry_number means we cannot reuse)
+        while (static::withTrashed()->where('entry_number', $candidate)->exists()) {
+            $number++;
+            $candidate = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+        }
+
+        return $candidate;
     }
 
     /**
