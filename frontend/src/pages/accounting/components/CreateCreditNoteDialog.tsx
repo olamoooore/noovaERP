@@ -98,6 +98,14 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
   useEffect(() => {
     setIsLoading(true);
 
+    // Always fetch customers for the dropdown
+    const customersPromise = api.get('/accounting/customers', {
+      params: { per_page: 1000 },
+    }).then(res => {
+      const customersData = (res.data.data || res.data || []) as Customer[];
+      setCustomers(customersData);
+    }).catch(err => console.error('Failed to load customers:', err));
+
     if (invoiceId) {
       // When opened from an invoice detail page, fetch that specific invoice
       api.get(`/invoices/${invoiceId}`)
@@ -120,23 +128,18 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           }));
         })
         .catch(err => console.error('Failed to load invoice:', err))
-        .finally(() => setIsLoading(false));
+        .finally(() => Promise.all([customersPromise]).then(() => setIsLoading(false)));
     } else {
-      // When opened from the credit notes list page, fetch all posted invoices and customers
-      Promise.all([
-        api.get('/invoices', {
-          params: { status: 'posted,paid,sent,overdue,partial', per_page: 100 },
-        }),
-        api.get('/accounting/customers'),
-      ])
-        .then(([invoicesRes, customersRes]) => {
-          const data = (invoicesRes.data.data || invoicesRes.data || []) as Invoice[];
+      // When opened from the credit notes list page, fetch all posted invoices
+      api.get('/invoices', {
+        params: { status: 'posted,paid,sent,overdue,partial', per_page: 100 },
+      })
+        .then(res => {
+          const data = (res.data.data || res.data || []) as Invoice[];
           setInvoices(data);
-          const customersData = (customersRes.data.data || customersRes.data || []) as Customer[];
-          setCustomers(customersData);
         })
-        .catch(err => console.error('Failed to load data:', err))
-        .finally(() => setIsLoading(false));
+        .catch(err => console.error('Failed to load invoices:', err))
+        .finally(() => Promise.all([customersPromise]).then(() => setIsLoading(false)));
     }
   }, [invoiceId]);
 
