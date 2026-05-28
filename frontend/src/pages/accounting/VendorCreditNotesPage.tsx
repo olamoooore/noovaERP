@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useVendorCreditNotes, useDeleteVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import type { VendorCreditNoteFilters } from '@/types/vendorCreditNote';
 import CreateVendorCreditNoteDialog from './components/CreateVendorCreditNoteDialog';
+import EditVendorCreditNoteDialog from './components/EditVendorCreditNoteDialog';
 import VendorCreditNotePostButton from './components/VendorCreditNotePostButton';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +34,7 @@ export default function VendorCreditNotesPage() {
   });
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingCreditNoteId, setEditingCreditNoteId] = useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useVendorCreditNotes(filters, page);
   const deleteMutation = useDeleteVendorCreditNote();
@@ -175,6 +177,16 @@ export default function VendorCreditNotesPage() {
                         <div className="flex gap-1 justify-end">
                           {creditNote.status === 'draft' && (
                             <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingCreditNoteId(creditNote.id);
+                                }}
+                              >
+                                <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                              </Button>
                               <VendorCreditNotePostButton 
                                 creditNoteId={creditNote.id} 
                                 onSuccess={refetch}
@@ -238,6 +250,17 @@ export default function VendorCreditNotesPage() {
           onClose={() => setShowCreateDialog(false)}
           onSuccess={() => {
             setShowCreateDialog(false);
+            refetch();
+          }}
+        />
+      )}
+
+      {editingCreditNoteId && (
+        <EditVendorCreditNoteDialog
+          creditNoteId={editingCreditNoteId}
+          onClose={() => setEditingCreditNoteId(null)}
+          onSuccess={() => {
+            setEditingCreditNoteId(null);
             refetch();
           }}
         />
