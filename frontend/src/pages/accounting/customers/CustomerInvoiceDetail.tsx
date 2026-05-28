@@ -463,7 +463,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
       </Card>
 
       {/* Credit Notes */}
-      {invoice.status === 'posted' && (
+      {['posted', 'paid', 'partial'].includes(invoice.status) && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Credit Notes</CardTitle>

@@ -200,11 +200,6 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:bill-list-bold-duotone',
       },
       {
-        title: 'Customer Credit Notes',
-        href: '/accounting/customers/credit-notes',
-        icon: 'solar:document-add-bold-duotone',
-      },
-      {
         title: 'Vendors',
         href: '/accounting/vendors',
         icon: 'solar:users-group-two-rounded-bold-duotone',
@@ -213,11 +208,6 @@ const baseNavItems: NavItem[] = [
         title: 'Vendor Bills',
         href: '/accounting/vendors/bills',
         icon: 'solar:clipboard-list-bold-duotone',
-      },
-      {
-        title: 'Vendor Credit Notes',
-        href: '/accounting/vendors/credit-notes',
-        icon: 'solar:document-add-bold-duotone',
       },
       {
         title: 'Bank Accounts',

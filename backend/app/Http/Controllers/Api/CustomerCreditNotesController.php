@@ -107,7 +107,22 @@ class CustomerCreditNotesController extends Controller
 
             return response()->json($creditNote, 201);
 
+        } catch (\RuntimeException $e) {
+            \Log::error('Credit note creation failed (runtime)', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to create credit note',
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
+            \Log::error('Credit note creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'message' => 'Failed to create credit note',
                 'error' => $e->getMessage(),

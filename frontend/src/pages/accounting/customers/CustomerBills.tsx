@@ -160,6 +160,10 @@ export const CustomerBills: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/accounting/customers/credit-notes')}>
+            <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
+            Credit Notes
+          </Button>
           <Button variant="outline" onClick={() => setShowUpload(true)}>
             <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
             Upload Invoice (OCR)

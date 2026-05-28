@@ -134,7 +134,7 @@ export const CustomerCreditNoteDetail: React.FC = () => {
                     <TableCell>{line.account?.name || '-'}</TableCell>
                     <TableCell className="text-right">{line.quantity}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.unit_price, creditNote.currency_code)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.amount, creditNote.currency_code)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(line.line_total, creditNote.currency_code)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

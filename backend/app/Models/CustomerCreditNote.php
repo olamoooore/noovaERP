@@ -40,6 +40,11 @@ class CustomerCreditNote extends Model
         'total_amount' => 'decimal:2',
     ];
 
+    protected $appends = [
+        'customer_name',
+        'invoice_number',
+    ];
+
     protected static function boot()
     {
         parent::boot();
@@ -82,6 +87,17 @@ class CustomerCreditNote extends Model
     public function postedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'posted_by');
+    }
+
+    // Accessors for frontend
+    public function getCustomerNameAttribute(): ?string
+    {
+        return $this->customer?->name;
+    }
+
+    public function getInvoiceNumberAttribute(): ?string
+    {
+        return $this->invoice?->invoice_number;
     }
 
     public static function generateCreditNoteNumber(): string

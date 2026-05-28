@@ -33,10 +33,28 @@ class CustomerCreditNoteService
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
-            $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
             $data['credit_note_date'] = $data['credit_note_date'] ?? now();
             $data['status'] = 'draft';
             $data['currency_code'] = $data['currency_code'] ?? 'USD';
+
+            // Calculate totals from lines BEFORE inserting (columns are NOT NULL)
+            $subtotal = 0;
+            $taxAmount = 0;
+            foreach ($lines as $lineData) {
+                $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
+                $subtotal += $lineTotal;
+                $taxAmount += $lineTotal * ((float) ($lineData['tax_rate'] ?? 0) / 100);
+            }
+            $data['subtotal'] = round($subtotal, 2);
+            $data['tax_amount'] = round($taxAmount, 2);
+            $data['total_amount'] = round($subtotal + $taxAmount, 2);
+
+            // Let the model's creating callback handle created_by attribution
+            if (empty($data['created_by'])) {
+                $data['created_by'] = TenantUserHelper::resolveTenantUserId(Auth::id());
+            } else {
+                $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by']);
+            }
 
             $creditNote = CustomerCreditNote::create($data);
 
@@ -52,9 +70,6 @@ class CustomerCreditNoteService
                     'account_id' => $lineData['account_id'] ?? null,
                 ]);
             }
-
-            $creditNote->refresh();
-            $creditNote->calculateTotals();
 
             DB::commit();
             

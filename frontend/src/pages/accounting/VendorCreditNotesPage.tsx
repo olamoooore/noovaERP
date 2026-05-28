@@ -4,6 +4,7 @@ import { useVendorCreditNotes, useDeleteVendorCreditNote } from '@/hooks/useVend
 import type { VendorCreditNoteFilters } from '@/types/vendorCreditNote';
 import CreateVendorCreditNoteDialog from './components/CreateVendorCreditNoteDialog';
 import VendorCreditNotePostButton from './components/VendorCreditNotePostButton';
+import { useToast } from '@/hooks/use-toast';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -21,6 +22,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function VendorCreditNotesPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filters, setFilters] = useState<VendorCreditNoteFilters>({
@@ -34,17 +36,17 @@ export default function VendorCreditNotesPage() {
 
   const handleDelete = async (id: number, status: string) => {
     if (status === 'posted') {
-      alert('Cannot delete posted credit notes. Posted documents are immutable for compliance.');
+      toast({ variant: 'destructive', title: 'Cannot delete', description: 'Posted credit notes are immutable for compliance.' });
       return;
     }
 
     if (confirm('Are you sure you want to delete this credit note?')) {
       try {
         await deleteMutation.mutateAsync(id);
-        alert('Credit note deleted successfully');
+        toast({ title: 'Deleted', description: 'Credit note deleted successfully.' });
         refetch();
-      } catch (error: any) {
-        alert(error.response?.data?.message || 'Failed to delete credit note');
+      } catch (err: any) {
+        toast({ variant: 'destructive', title: 'Failed to delete', description: err.response?.data?.message || 'Failed to delete credit note.' });
       }
     }
   };

@@ -3,6 +3,7 @@ import { useCreateCreditNote } from '@/hooks/useCustomerCreditNotes';
 import type { CreateCreditNotePayload } from '@/types/creditNote';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import {
   Command,
   CommandEmpty,
@@ -28,12 +29,17 @@ interface CreateCreditNoteDialogProps {
 interface Invoice {
   id: number;
   invoice_number: string;
-  customer_id: number;
+  customer_id: number | null;
   customer: { name: string } | null;
   total: number;
   balance: number;
   status: string;
   lines: InvoiceLine[];
+}
+
+interface Customer {
+  id: number;
+  name: string;
 }
 
 interface InvoiceLine {
@@ -49,10 +55,14 @@ interface InvoiceLine {
 }
 
 export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }: CreateCreditNoteDialogProps) {
+  const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
+  const [customerOpen, setCustomerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     invoice_id: invoiceId ?? 0,
@@ -65,36 +75,13 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
 
   const createMutation = useCreateCreditNote();
 
-  // Fetch posted invoices
-  useEffect(() => {
-    setIsLoading(true);
-    api.get('/invoices', {
-      params: {
-        status: 'posted,sent,overdue,partial',
-        per_page: 100,
-      }
-    })
-      .then(res => {
-        const data = (res.data.data || []) as Invoice[];
-        setInvoices(data);
-        // If invoiceId is provided, auto-select it
-        if (invoiceId) {
-          const invoice = data.find((inv: Invoice) => inv.id === invoiceId);
-          if (invoice) {
-            selectInvoice(invoice);
-          }
-        }
-      })
-      .catch(err => console.error('Failed to load invoices:', err))
-      .finally(() => setIsLoading(false));
-  }, [invoiceId]);
-
   const selectInvoice = useCallback((invoice: Invoice) => {
     setSelectedInvoice(invoice);
+    const customerId = invoice.customer_id || 0;
     setFormData(prev => ({
       ...prev,
       invoice_id: invoice.id,
-      customer_id: invoice.customer_id,
+      customer_id: customerId,
       lines: invoice.lines.map((line: InvoiceLine) => ({
         invoice_line_id: line.id,
         product_id: line.product_id,
@@ -106,6 +93,52 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
       })),
     }));
   }, []);
+
+  // Fetch data
+  useEffect(() => {
+    setIsLoading(true);
+
+    if (invoiceId) {
+      // When opened from an invoice detail page, fetch that specific invoice
+      api.get(`/invoices/${invoiceId}`)
+        .then(res => {
+          const invoice = res.data as Invoice;
+          setSelectedInvoice(invoice);
+          setFormData(prev => ({
+            ...prev,
+            invoice_id: invoice.id,
+            customer_id: invoice.customer_id || 0,
+            lines: invoice.lines.map((line: InvoiceLine) => ({
+              invoice_line_id: line.id,
+              product_id: line.product_id,
+              description: line.description,
+              quantity: line.quantity,
+              unit_price: line.unit_price,
+              tax_rate: line.tax_rate,
+              account_id: line.account_id,
+            })),
+          }));
+        })
+        .catch(err => console.error('Failed to load invoice:', err))
+        .finally(() => setIsLoading(false));
+    } else {
+      // When opened from the credit notes list page, fetch all posted invoices and customers
+      Promise.all([
+        api.get('/invoices', {
+          params: { status: 'posted,paid,sent,overdue,partial', per_page: 100 },
+        }),
+        api.get('/accounting/customers'),
+      ])
+        .then(([invoicesRes, customersRes]) => {
+          const data = (invoicesRes.data.data || invoicesRes.data || []) as Invoice[];
+          setInvoices(data);
+          const customersData = (customersRes.data.data || customersRes.data || []) as Customer[];
+          setCustomers(customersData);
+        })
+        .catch(err => console.error('Failed to load data:', err))
+        .finally(() => setIsLoading(false));
+    }
+  }, [invoiceId]);
 
   const handleSelect = (invoiceIdStr: string) => {
     const id = Number(invoiceIdStr);
@@ -123,13 +156,30 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
     setFormData(prev => ({ ...prev, invoice_id: 0, customer_id: 0, lines: [] }));
   };
 
+  const getCustomerDisplayValue = () => {
+    if (!formData.customer_id) return 'Select a customer...';
+    const customer = customers.find(c => c.id === formData.customer_id);
+    return customer?.name ?? 'Unknown';
+  };
+
+  const handleCustomerSelect = (customerIdStr: string) => {
+    const id = Number(customerIdStr);
+    setFormData(prev => ({ ...prev, customer_id: id }));
+    setCustomerOpen(false);
+    setCustomerSearchQuery('');
+  };
+
+  const filteredCustomers = customerSearchQuery
+    ? customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()))
+    : customers;
+
   const getDisplayValue = () => {
     if (!selectedInvoice) return 'Select an invoice...';
     const customerName = selectedInvoice.customer?.name ?? 'Unknown';
-    return `${selectedInvoice.invoice_number} — ${customerName} ($${selectedInvoice.total?.toFixed(2) ?? '0.00'})`;
+    const total = Number(selectedInvoice.total) || 0;
+    return `${selectedInvoice.invoice_number} — ${customerName} ($${total.toFixed(2)})`;
   };
 
-  // Filter invoices locally by search query
   const filteredInvoices = searchQuery
     ? invoices.filter(inv =>
         inv.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -147,21 +197,27 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
     e.preventDefault();
 
     if (!formData.invoice_id) {
-      alert('Please select an invoice');
+      toast({ variant: 'destructive', title: 'Invoice required', description: 'Please select an invoice for this credit note.' });
+      return;
+    }
+
+    if (!formData.customer_id) {
+      toast({ variant: 'destructive', title: 'Customer required', description: 'Please select a customer for this credit note.' });
       return;
     }
 
     if (formData.lines.length === 0) {
-      alert('Please add at least one line item');
+      toast({ variant: 'destructive', title: 'No line items', description: 'Please add at least one line item.' });
       return;
     }
 
     try {
       await createMutation.mutateAsync(formData as CreateCreditNotePayload);
-      alert('Credit note created successfully');
+      toast({ title: 'Credit note created', description: 'The credit note has been created successfully.' });
       onSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to create credit note');
+      const msg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to create credit note';
+      toast({ variant: 'destructive', title: 'Failed to create credit note', description: msg });
     }
   };
 
@@ -175,86 +231,164 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
     return formData.lines.reduce((sum, line) => sum + calculateLineTotal(line), 0);
   };
 
+  const isPreselected = !!invoiceId && !!selectedInvoice;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Create Customer Credit Note</h2>
-          <p className="text-gray-600 mt-1">Create a credit note for a customer invoice</p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {isPreselected ? `Credit Note for ${selectedInvoice.invoice_number}` : 'Create Customer Credit Note'}
+          </h2>
+          <p className="text-gray-600 mt-1">
+            {isPreselected
+              ? `Customer: ${selectedInvoice.customer?.name ?? 'Unknown'} · Total: $${Number(selectedInvoice.total).toFixed(2)}`
+              : 'Create a credit note for a customer invoice'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {!isPreselected && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Invoice *
+                  </label>
+                  <Popover open={open} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={open}
+                        disabled={isLoading}
+                        className={cn(
+                          'w-full justify-between font-normal',
+                          !selectedInvoice && 'text-muted-foreground'
+                        )}
+                      >
+                        <span className="truncate">{getDisplayValue()}</span>
+                        <div className="flex items-center gap-1 ml-2 shrink-0">
+                          {selectedInvoice && (
+                            <Icon
+                              icon="solar:close-circle-bold"
+                              className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
+                              onClick={handleClear}
+                            />
+                          )}
+                          <Icon
+                            icon="solar:alt-arrow-down-linear"
+                            className={cn('h-4 w-4 transition-transform', open && 'rotate-180')}
+                          />
+                        </div>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Search by invoice number or customer..."
+                          value={searchQuery}
+                          onValueChange={setSearchQuery}
+                        />
+                        <CommandList>
+                          {isLoading ? (
+                            <div className="py-6 text-center text-sm text-muted-foreground">
+                              <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin inline mr-2" />
+                              Loading invoices...
+                            </div>
+                          ) : filteredInvoices.length === 0 ? (
+                            <CommandEmpty>
+                              {searchQuery
+                                ? 'No matching invoices found.'
+                                : 'No posted invoices available.'}
+                            </CommandEmpty>
+                          ) : (
+                            <CommandGroup heading={`Invoices (${filteredInvoices.length})`}>
+                              {filteredInvoices.map((invoice) => (
+                                <CommandItem
+                                  key={invoice.id}
+                                  value={String(invoice.id)}
+                                  onSelect={handleSelect}
+                                  className="flex items-center justify-between py-3"
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{invoice.invoice_number}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {invoice.customer?.name ?? 'Unknown'} · ${(Number(invoice.total) || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground capitalize">{invoice.status}</span>
+                                    {selectedInvoice?.id === invoice.id && (
+                                      <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
+                                    )}
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </>
+            )}
+
+            {isPreselected && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice</label>
+                <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm">
+                  {selectedInvoice.invoice_number} — {selectedInvoice.customer?.name ?? 'Unknown'}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Invoice *
+                Customer *
               </label>
-              <Popover open={open} onOpenChange={setOpen}>
+              <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
-                    aria-expanded={open}
-                    disabled={isLoading}
+                    aria-expanded={customerOpen}
                     className={cn(
                       'w-full justify-between font-normal',
-                      !selectedInvoice && 'text-muted-foreground'
+                      !formData.customer_id && 'text-muted-foreground'
                     )}
                   >
-                    <span className="truncate">{getDisplayValue()}</span>
-                    <div className="flex items-center gap-1 ml-2 shrink-0">
-                      {selectedInvoice && (
-                        <Icon
-                          icon="solar:close-circle-bold"
-                          className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
-                          onClick={handleClear}
-                        />
-                      )}
-                      <Icon
-                        icon="solar:alt-arrow-down-linear"
-                        className={cn('h-4 w-4 transition-transform', open && 'rotate-180')}
-                      />
-                    </div>
+                    <span className="truncate">{getCustomerDisplayValue()}</span>
+                    <Icon
+                      icon="solar:alt-arrow-down-linear"
+                      className={cn('h-4 w-4 transition-transform', customerOpen && 'rotate-180')}
+                    />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[400px] p-0" align="start">
                   <Command shouldFilter={false}>
                     <CommandInput
-                      placeholder="Search by invoice number or customer..."
-                      value={searchQuery}
-                      onValueChange={setSearchQuery}
+                      placeholder="Search customers..."
+                      value={customerSearchQuery}
+                      onValueChange={setCustomerSearchQuery}
                     />
                     <CommandList>
-                      {isLoading ? (
-                        <div className="py-6 text-center text-sm text-muted-foreground">
-                          <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin inline mr-2" />
-                          Loading invoices...
-                        </div>
-                      ) : filteredInvoices.length === 0 ? (
-                        <CommandEmpty>
-                          {searchQuery ? 'No invoices found.' : 'No invoices available.'}
-                        </CommandEmpty>
+                      {filteredCustomers.length === 0 ? (
+                        <CommandEmpty>No customers found.</CommandEmpty>
                       ) : (
-                        <CommandGroup heading={`Invoices (${filteredInvoices.length})`}>
-                          {filteredInvoices.map((invoice) => (
+                        <CommandGroup heading={`Customers (${filteredCustomers.length})`}>
+                          {filteredCustomers.map((customer) => (
                             <CommandItem
-                              key={invoice.id}
-                              value={String(invoice.id)}
-                              onSelect={handleSelect}
+                              key={customer.id}
+                              value={String(customer.id)}
+                              onSelect={handleCustomerSelect}
                               className="flex items-center justify-between py-3"
                             >
-                              <div className="flex flex-col">
-                                <span className="font-medium">{invoice.invoice_number}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {invoice.customer?.name ?? 'Unknown'} · ${invoice.total?.toFixed(2) ?? '0.00'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground capitalize">{invoice.status}</span>
-                                {selectedInvoice?.id === invoice.id && (
-                                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
-                                )}
-                              </div>
+                              <span className="font-medium">{customer.name}</span>
+                              {formData.customer_id === customer.id && (
+                                <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
+                              )}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -304,7 +438,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
             </div>
           </div>
 
-          {selectedInvoice && formData.lines.length > 0 && (
+          {formData.lines.length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Line Items</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -363,20 +497,15 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           )}
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-            >
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              disabled={createMutation.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={createMutation.isPending || isLoading}
             >
               {createMutation.isPending ? 'Creating...' : 'Create Credit Note'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

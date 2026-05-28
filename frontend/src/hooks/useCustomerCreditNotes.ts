@@ -38,8 +38,11 @@ export function useCreateCreditNote() {
       const { data } = await api.post(API_BASE, creditNote);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['customer-credit-notes'] });
+      if (variables.invoice_id) {
+        queryClient.invalidateQueries({ queryKey: ['invoice-credit-notes', variables.invoice_id] });
+      }
     },
   });
 }

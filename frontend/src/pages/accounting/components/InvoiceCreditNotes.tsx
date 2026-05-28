@@ -20,7 +20,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCode }: InvoiceCreditNotesProps) {
+export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCode = 'USD' }: InvoiceCreditNotesProps) {
   const { data: creditNotes, isLoading } = useCreditNotesByInvoice(invoiceId);
 
   if (isLoading) {
@@ -31,11 +31,11 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
     );
   }
 
-  const creditNotesList = creditNotes?.data || [];
+  const creditNotesList = Array.isArray(creditNotes) ? creditNotes : (creditNotes?.data || []);
   const totalCredited = creditNotesList
     .filter((cn: any) => cn.status === 'posted')
-    .reduce((sum: number, cn: any) => sum + cn.total_amount, 0);
-  const remainingBalance = invoiceTotal - totalCredited;
+    .reduce((sum: number, cn: any) => sum + Number(cn.total_amount), 0);
+  const remainingBalance = Number(invoiceTotal) - totalCredited;
 
   return (
     <div className="mt-6">
@@ -45,7 +45,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
           <div className="text-sm text-gray-600">
             <span className="font-medium">Remaining Balance:</span>{' '}
             <span className={remainingBalance < invoiceTotal ? 'text-green-600 font-semibold' : ''}>
-              {currencyCode} {remainingBalance.toFixed(2)}
+              {currencyCode} {(remainingBalance || 0).toFixed(2)}
             </span>
           </div>
         )}
@@ -89,7 +89,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
                     {new Date(creditNote.credit_note_date).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {creditNote.currency_code} {creditNote.total_amount.toFixed(2)}
+                    {creditNote.currency_code} {(Number(creditNote.total_amount) || 0).toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={creditNote.status} />
@@ -106,7 +106,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
                   Total Credited (Posted):
                 </td>
                 <td colSpan={3} className="px-4 py-3 text-sm font-bold text-green-600">
-                  {currencyCode} {totalCredited.toFixed(2)}
+                  {currencyCode} {(totalCredited || 0).toFixed(2)}
                 </td>
               </tr>
             </tfoot>

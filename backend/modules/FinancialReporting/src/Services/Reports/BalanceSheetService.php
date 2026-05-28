@@ -242,7 +242,7 @@ class BalanceSheetService extends BaseReportService
                 'account_id' => $row->id,
                 'code' => $row->code,
                 'name' => $row->name,
-                'balance' => (float) abs($row->balance),
+                'balance' => (float) $row->balance,
             ])
             ->toArray();
     }

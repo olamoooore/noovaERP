@@ -3,6 +3,7 @@ import { useCreateVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import type { CreateVendorCreditNotePayload } from '@/types/vendorCreditNote';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import {
   Command,
   CommandEmpty,
@@ -49,6 +50,7 @@ interface BillLine {
 }
 
 export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billId }: CreateVendorCreditNoteDialogProps) {
+  const { toast } = useToast();
   const [bills, setBills] = useState<Bill[]>([]);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [open, setOpen] = useState(false);
@@ -126,7 +128,8 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
   const getDisplayValue = () => {
     if (!selectedBill) return 'Select a bill...';
     const vendorName = selectedBill.vendor?.name ?? 'Unknown';
-    return `${selectedBill.bill_number} — ${vendorName} ($${selectedBill.total?.toFixed(2) ?? '0.00'})`;
+    const total = Number(selectedBill.total) || 0;
+    return `${selectedBill.bill_number} — ${vendorName} ($${total.toFixed(2)})`;
   };
 
   // Filter bills locally by search query
@@ -147,21 +150,21 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
     e.preventDefault();
 
     if (!formData.bill_id) {
-      alert('Please select a bill');
+      toast({ variant: 'destructive', title: 'Bill required', description: 'Please select a bill for this credit note.' });
       return;
     }
 
     if (formData.lines.length === 0) {
-      alert('Please add at least one line item');
+      toast({ variant: 'destructive', title: 'No line items', description: 'Please add at least one line item.' });
       return;
     }
 
     try {
       await createMutation.mutateAsync(formData as CreateVendorCreditNotePayload);
-      alert('Credit note created successfully');
+      toast({ title: 'Credit note created', description: 'The vendor credit note has been created successfully.' });
       onSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to create credit note');
+      toast({ variant: 'destructive', title: 'Failed to create credit note', description: error.response?.data?.message || 'Failed to create credit note.' });
     }
   };
 
@@ -246,7 +249,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                               <div className="flex flex-col">
                                 <span className="font-medium">{bill.bill_number}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {bill.vendor?.name ?? 'Unknown'} · ${bill.total?.toFixed(2) ?? '0.00'}
+                                  {bill.vendor?.name ?? 'Unknown'} · ${(Number(bill.total) || 0).toFixed(2)}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">

@@ -31,10 +31,23 @@ class VendorCreditNoteService
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
 
-            $data['created_by'] = TenantUserHelper::requireTenantUserId();
             $data['credit_note_date'] = $data['credit_note_date'] ?? now();
             $data['status'] = 'draft';
             $data['currency_code'] = $data['currency_code'] ?? 'USD';
+
+            // Calculate totals from lines BEFORE inserting (columns are NOT NULL)
+            $subtotal = 0;
+            $taxAmount = 0;
+            foreach ($lines as $lineData) {
+                $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
+                $subtotal += $lineTotal;
+                $taxAmount += $lineTotal * ((float) ($lineData['tax_rate'] ?? 0) / 100);
+            }
+            $data['subtotal'] = round($subtotal, 2);
+            $data['tax_amount'] = round($taxAmount, 2);
+            $data['total_amount'] = round($subtotal + $taxAmount, 2);
+
+            $data['created_by'] = TenantUserHelper::resolveTenantUserId();
 
             $creditNote = VendorCreditNote::create($data);
 
@@ -50,9 +63,6 @@ class VendorCreditNoteService
                     'account_id' => $lineData['account_id'] ?? null,
                 ]);
             }
-
-            $creditNote->refresh();
-            $creditNote->calculateTotals();
 
             DB::commit();
             

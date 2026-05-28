@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePostVendorCreditNote } from '@/hooks/useVendorCreditNotes';
+import { useToast } from '@/hooks/use-toast';
 
 interface VendorCreditNotePostButtonProps {
   creditNoteId: number;
@@ -7,17 +8,18 @@ interface VendorCreditNotePostButtonProps {
 }
 
 export default function VendorCreditNotePostButton({ creditNoteId, onSuccess }: VendorCreditNotePostButtonProps) {
+  const { toast } = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const postMutation = usePostVendorCreditNote();
 
   const handlePost = async () => {
     try {
       await postMutation.mutateAsync(creditNoteId);
-      alert('Credit note posted successfully');
+      toast({ title: 'Posted', description: 'Vendor credit note posted successfully.' });
       setShowConfirm(false);
       onSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to post credit note');
+      toast({ variant: 'destructive', title: 'Failed to post', description: error.response?.data?.message || 'Failed to post credit note.' });
     }
   };
 
