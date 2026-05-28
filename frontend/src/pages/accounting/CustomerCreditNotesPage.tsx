@@ -5,19 +5,22 @@ import type { CreditNoteFilters } from '@/types/creditNote';
 import CreateCreditNoteDialog from './components/CreateCreditNoteDialog';
 import CreditNotePostButton from './components/CreditNotePostButton';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Icon } from '@iconify/react';
 
 function StatusBadge({ status }: { status: string }) {
-  const colors = {
-    draft: 'bg-gray-100 text-gray-800',
-    posted: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
+  const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
+    draft: { variant: 'secondary', label: 'Draft' },
+    posted: { variant: 'default', label: 'Posted' },
+    cancelled: { variant: 'destructive', label: 'Cancelled' },
   };
 
-  return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[status as keyof typeof colors]}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
+  const config = statusConfig[status] || { variant: 'secondary', label: status };
+  return <Badge variant={config.variant}>{config.label}</Badge>;
 }
 
 export default function CustomerCreditNotesPage() {
@@ -30,7 +33,6 @@ export default function CustomerCreditNotesPage() {
   });
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedCreditNote, setSelectedCreditNote] = useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useCustomerCreditNotes(filters, page);
   const deleteMutation = useDeleteCreditNote();
@@ -61,168 +63,175 @@ export default function CustomerCreditNotesPage() {
   const pagination = data?.meta || {};
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Customer Credit Notes</h1>
-        <p className="text-gray-600 mt-1">Manage customer credit notes for returns and corrections</p>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Customer Credit Notes</h1>
+          <p className="text-muted-foreground mt-1">Manage customer credit notes for returns and corrections</p>
+        </div>
+        <Button onClick={() => setShowCreateDialog(true)}>
+          <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+          New Credit Note
+        </Button>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="Search credit notes..."
-                value={searchTerm}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchTerm(value);
-                  handleFilterChange('search', value || undefined);
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={filters.status || ''}
-                onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="posted">Posted</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <button
-                onClick={() => setShowCreateDialog(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                + New Credit Note
-              </button>
-            </div>
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
+            <Input
+              type="text"
+              placeholder="Search by credit note number or customer..."
+              value={searchTerm}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSearchTerm(value);
+                handleFilterChange('search', value || undefined);
+              }}
+              className="max-w-sm"
+            />
+            <select
+              value={filters.status || ''}
+              onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
+              className="px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="posted">Posted</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {isLoading ? (
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-gray-600">Loading credit notes...</p>
-          </div>
-        ) : error ? (
-          <div className="p-8 text-center text-red-600">
-            Error loading credit notes. Please try again.
-          </div>
-        ) : creditNotes.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No credit notes found. Create your first credit note to get started.
-          </div>
-        ) : (
-          <>
+      {/* Credit Notes List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Customer Credit Notes</span>
+            {creditNotes.length > 0 && (
+              <span className="text-sm font-normal text-muted-foreground">
+                {creditNotes.length} credit note(s)
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <p className="text-muted-foreground mt-4">Loading credit notes...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Icon icon="solar:danger-triangle-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50 text-destructive" />
+              <p className="text-lg font-medium mb-2">Error loading credit notes</p>
+              <p className="text-sm">Please try again later.</p>
+            </div>
+          ) : creditNotes.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Icon icon="solar:document-add-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">No credit notes found</p>
+              <p className="text-sm mb-4">Create your first credit note to get started.</p>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                Create Credit Note
+              </Button>
+            </div>
+          ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Credit Note #
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Invoice #
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Credit Note #</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {creditNotes.map((creditNote: any) => (
-                    <tr key={creditNote.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <TableRow key={creditNote.id} className="hover:bg-accent/50 cursor-pointer">
+                      <TableCell 
+                        className="font-medium cursor-pointer hover:text-primary"
+                        onClick={() => navigate(`/accounting/customers/credit-notes/${creditNote.id}`)}
+                      >
                         {creditNote.credit_note_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {creditNote.customer_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {creditNote.invoice_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(creditNote.credit_note_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      </TableCell>
+                      <TableCell>{creditNote.customer_name || '-'}</TableCell>
+                      <TableCell>{creditNote.invoice_number || '-'}</TableCell>
+                      <TableCell>{new Date(creditNote.credit_note_date).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right font-medium">
                         {creditNote.currency_code} {parseFloat(creditNote.total_amount).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell>
                         <StatusBadge status={creditNote.status} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
                           {creditNote.status === 'draft' && (
                             <>
                               <CreditNotePostButton 
                                 creditNoteId={creditNote.id} 
                                 onSuccess={refetch}
                               />
-                              <button
+                              <Button
+                                size="sm"
+                                variant="ghost"
                                 onClick={() => handleDelete(creditNote.id, creditNote.status)}
-                                className="text-red-600 hover:text-red-900"
                               >
-                                Delete
-                              </button>
+                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                              </Button>
                             </>
                           )}
-                          <button
-                            className="text-blue-600 hover:text-blue-900"
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => navigate(`/accounting/customers/credit-notes/${creditNote.id}`)}
                           >
-                            View
-                          </button>
+                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
+          )}
 
-            {pagination.last_page > 1 && (
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing {pagination.from} to {pagination.to} of {pagination.total} results
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setPage(page - 1)}
-                    disabled={page === 1}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => setPage(page + 1)}
-                    disabled={page === pagination.last_page}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
+          {/* Pagination */}
+          {pagination.last_page > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {pagination.from} to {pagination.to} of {pagination.total} results
               </div>
-            )}
-          </>
-        )}
-      </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page - 1)}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page + 1)}
+                  disabled={page === pagination.last_page}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {showCreateDialog && (
         <CreateCreditNoteDialog
