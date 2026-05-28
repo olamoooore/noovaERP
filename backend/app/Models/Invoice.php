@@ -192,9 +192,12 @@ class Invoice extends Model
 
     public function calculateTotals(): void
     {
-        $this->subtotal = $this->lines->sum('line_total');
+        // subtotal = sum of net amounts (line_total already includes tax, so subtract tax)
+        $this->subtotal = $this->lines->sum(function ($line) {
+            return $line->line_total - $line->tax_amount;
+        });
         $this->tax_amount = $this->lines->sum('tax_amount');
-        $this->total = $this->subtotal + $this->tax_amount - $this->discount_amount;
+        $this->total = $this->subtotal + $this->tax_amount - ($this->discount_amount ?? 0);
         $this->balance = $this->total - $this->paid_amount;
         $this->save();
     }

@@ -25,6 +25,7 @@ class SalesOrderLine extends Model
         'discount_value',
         'discount_amount',
         'tax_rate',
+        'tax_inclusive',
         'tax_amount',
         'line_total',
         'income_account_id',
@@ -43,6 +44,7 @@ class SalesOrderLine extends Model
         'discount_value' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'tax_rate' => 'decimal:2',
+        'tax_inclusive' => 'boolean',
         'tax_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
     ];
@@ -77,9 +79,20 @@ class SalesOrderLine extends Model
         $baseTotal = $this->quantity * $this->unit_price;
         $this->discount_amount = $this->discount_type === 'percentage'
             ? $baseTotal * ($this->discount_value / 100)
-            : $this->discount_value;
+            : ($this->discount_value ?? 0);
         $netTotal = $baseTotal - $this->discount_amount;
-        $this->tax_amount = $netTotal * ($this->tax_rate / 100);
-        $this->line_total = $netTotal + $this->tax_amount;
+
+        if ($this->tax_inclusive) {
+            $divisor = 1 + ($this->tax_rate / 100);
+            $netBeforeDiscount = $divisor > 0 ? $baseTotal / $divisor : $baseTotal;
+            $taxBeforeDiscount = $baseTotal - $netBeforeDiscount;
+            $discountRatio = $baseTotal > 0 ? $this->discount_amount / $baseTotal : 0;
+            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
+            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
+            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
+        } else {
+            $this->tax_amount = round($netTotal * ($this->tax_rate / 100), 2);
+            $this->line_total = round($netTotal + $this->tax_amount, 2);
+        }
     }
 }

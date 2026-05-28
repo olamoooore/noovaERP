@@ -13,7 +13,12 @@ class FiscalPeriodSeeder extends Seeder
      */
     public function run(): void
     {
-        $userId = 1; // Assuming user ID 1 exists
+        // Get the first user ID or use null if no users exist yet
+        $userId = \App\Models\User::value('id');
+        if (!$userId) {
+            $this->command->warn('No users found in tenant schema. Skipping fiscal period seeding.');
+            return;
+        }
         $currentYear = Carbon::now()->year;
 
         $periods = [];
@@ -28,13 +33,13 @@ class FiscalPeriodSeeder extends Seeder
                 'period_end' => $date->copy()->endOfMonth()->toDateString(),
                 'period_type' => 'monthly',
                 'fiscal_year' => $currentYear - 1,
-                'is_locked' => true,
-                'locked_at' => Carbon::create($currentYear, 1, 15),
+                'is_locked' => $userId ? true : false,
+                'locked_at' => $userId ? Carbon::create($currentYear, 1, 15) : null,
                 'locked_by' => $userId,
-                'status' => 'locked',
+                'status' => $userId ? 'locked' : 'open',
                 'created_by' => $userId,
                 'created_at' => $date,
-                'updated_at' => Carbon::create($currentYear, 1, 15),
+                'updated_at' => $userId ? Carbon::create($currentYear, 1, 15) : $date,
             ];
         }
 
@@ -54,13 +59,13 @@ class FiscalPeriodSeeder extends Seeder
                 'period_end' => $date->copy()->endOfMonth()->toDateString(),
                 'period_type' => 'monthly',
                 'fiscal_year' => $currentYear,
-                'is_locked' => $isLocked,
-                'locked_at' => $isLocked ? $date->copy()->endOfMonth()->addDays(15) : null,
-                'locked_by' => $isLocked ? $userId : null,
+                'is_locked' => $userId ? $isLocked : false,
+                'locked_at' => ($userId && $isLocked) ? $date->copy()->endOfMonth()->addDays(15) : null,
+                'locked_by' => $userId && $isLocked ? $userId : null,
                 'status' => $status,
                 'created_by' => $userId,
                 'created_at' => $date,
-                'updated_at' => $isLocked ? $date->copy()->endOfMonth()->addDays(15) : $date,
+                'updated_at' => ($userId && $isLocked) ? $date->copy()->endOfMonth()->addDays(15) : $date,
             ];
         }
 
@@ -87,13 +92,13 @@ class FiscalPeriodSeeder extends Seeder
                 'period_end' => $endDate->toDateString(),
                 'period_type' => 'quarterly',
                 'fiscal_year' => $currentYear,
-                'is_locked' => $isLocked,
-                'locked_at' => $isLocked ? $endDate->copy()->addDays(15) : null,
-                'locked_by' => $isLocked ? $userId : null,
+                'is_locked' => $userId ? $isLocked : false,
+                'locked_at' => ($userId && $isLocked) ? $endDate->copy()->addDays(15) : null,
+                'locked_by' => $userId && $isLocked ? $userId : null,
                 'status' => $status,
                 'created_by' => $userId,
                 'created_at' => $startDate,
-                'updated_at' => $isLocked ? $endDate->copy()->addDays(15) : $startDate,
+                'updated_at' => ($userId && $isLocked) ? $endDate->copy()->addDays(15) : $startDate,
             ];
         }
 

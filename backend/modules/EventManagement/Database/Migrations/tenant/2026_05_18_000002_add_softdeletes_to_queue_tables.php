@@ -8,13 +8,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('queue_configs', function (Blueprint $table) {
-            $table->softDeletes();
-        });
+        if (!Schema::hasColumn('queue_configs', 'deleted_at')) {
+            Schema::table('queue_configs', function (Blueprint $table) {
+                $table->softDeletes();
+            });
+        }
 
-        Schema::table('queue_sessions', function (Blueprint $table) {
-            $table->softDeletes();
-        });
+        if (!Schema::hasColumn('queue_sessions', 'deleted_at')) {
+            Schema::table('queue_sessions', function (Blueprint $table) {
+                $table->softDeletes();
+            });
+        }
     }
 
     public function down(): void

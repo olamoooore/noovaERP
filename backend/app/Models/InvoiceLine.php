@@ -23,6 +23,7 @@ class InvoiceLine extends Model
         'quantity',
         'unit_price',
         'tax_rate',
+        'tax_inclusive',
         'tax_amount',
         'discount_amount',
         'line_total',
@@ -31,6 +32,7 @@ class InvoiceLine extends Model
     protected $casts = [
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
+        'tax_inclusive' => 'boolean',
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
@@ -57,8 +59,28 @@ class InvoiceLine extends Model
 
     public function calculateTotals(): void
     {
-        $subtotal = $this->quantity * $this->unit_price;
-        $this->tax_amount = $subtotal * ($this->tax_rate / 100);
-        $this->line_total = $subtotal + $this->tax_amount - $this->discount_amount;
+        $gross = $this->quantity * $this->unit_price;
+        $discount = $this->discount_amount ?? 0;
+
+        if ($this->tax_inclusive) {
+            // Tax is included in the gross amount: extract net and tax
+            $divisor = 1 + ($this->tax_rate / 100);
+            $netBeforeDiscount = $divisor > 0 ? $gross / $divisor : $gross;
+            $taxBeforeDiscount = $gross - $netBeforeDiscount;
+
+            // Apply discount proportionally to net and tax
+            $discountRatio = $gross > 0 ? $discount / $gross : 0;
+            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
+            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
+            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
+        } else {
+            // Tax is exclusive: add tax on top of net
+            $netBeforeDiscount = $gross;
+            $this->tax_amount = round($netBeforeDiscount * ($this->tax_rate / 100), 2);
+
+            // Apply discount to net only
+            $netAfterDiscount = $netBeforeDiscount - $discount;
+            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
+        }
     }
 }
