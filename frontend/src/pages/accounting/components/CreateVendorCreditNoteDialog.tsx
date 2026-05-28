@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useCreateVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import type { CreateVendorCreditNotePayload } from '@/types/vendorCreditNote';
+import { Icon } from '@iconify/react';
+import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface CreateVendorCreditNoteDialogProps {
@@ -13,9 +29,10 @@ interface Bill {
   id: number;
   bill_number: string;
   vendor_id: number;
-  vendor_name: string;
-  total_amount: number;
-  currency_code: string;
+  vendor: { name: string } | null;
+  total: number;
+  balance: number;
+  status: string;
   lines: BillLine[];
 }
 
@@ -34,6 +51,9 @@ interface BillLine {
 export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billId }: CreateVendorCreditNoteDialogProps) {
   const [bills, setBills] = useState<Bill[]>([]);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     bill_id: billId ?? 0,
     vendor_id: 0,
@@ -45,59 +65,77 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
 
   const createMutation = useCreateVendorCreditNote();
 
+  // Fetch posted bills
   useEffect(() => {
-    // Fetch posted bills
+    setIsLoading(true);
     api.get('/accounting/vendor-bills', {
-      params: { status: 'posted', per_page: 100 }
+      params: {
+        status: 'posted,partial,unpaid',
+        per_page: 100,
+      }
     })
       .then(res => {
-        const data = res.data.data || [];
+        const data = (res.data.data || res.data || []) as Bill[];
         setBills(data);
         // If billId is provided, auto-select it
         if (billId) {
           const bill = data.find((b: Bill) => b.id === billId);
           if (bill) {
-            setSelectedBill(bill);
-            setFormData(prev => ({
-              ...prev,
-              bill_id: bill.id,
-              vendor_id: bill.vendor_id,
-              lines: bill.lines.map((line: BillLine) => ({
-                bill_line_id: line.id,
-                product_id: line.product_id,
-                description: line.description,
-                quantity: line.quantity,
-                unit_price: line.unit_price,
-                tax_rate: line.tax_rate,
-                account_id: line.account_id,
-              })),
-            }));
+            selectBill(bill);
           }
         }
       })
-      .catch(err => console.error('Failed to load bills:', err));
+      .catch(err => console.error('Failed to load bills:', err))
+      .finally(() => setIsLoading(false));
   }, [billId]);
 
-  const handleBillSelect = (selectedId: number) => {
-    const bill = bills.find(b => b.id === selectedId);
+  const selectBill = useCallback((bill: Bill) => {
+    setSelectedBill(bill);
+    setFormData(prev => ({
+      ...prev,
+      bill_id: bill.id,
+      vendor_id: bill.vendor_id,
+      lines: bill.lines.map((line: BillLine) => ({
+        bill_line_id: line.id,
+        product_id: line.product_id,
+        description: line.description,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        tax_rate: line.tax_rate,
+        account_id: line.account_id,
+      })),
+    }));
+  }, []);
+
+  const handleSelect = (billIdStr: string) => {
+    const id = Number(billIdStr);
+    const bill = bills.find(b => b.id === id);
     if (bill) {
-      setSelectedBill(bill);
-      setFormData(prev => ({
-        ...prev,
-        bill_id: bill.id,
-        vendor_id: bill.vendor_id,
-        lines: bill.lines.map(line => ({
-          bill_line_id: line.id,
-          product_id: line.product_id,
-          description: line.description,
-          quantity: line.quantity,
-          unit_price: line.unit_price,
-          tax_rate: line.tax_rate,
-          account_id: line.account_id,
-        })),
-      }));
+      selectBill(bill);
+      setOpen(false);
+      setSearchQuery('');
     }
   };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedBill(null);
+    setFormData(prev => ({ ...prev, bill_id: 0, vendor_id: 0, lines: [] }));
+  };
+
+  const getDisplayValue = () => {
+    if (!selectedBill) return 'Select a bill...';
+    const vendorName = selectedBill.vendor?.name ?? 'Unknown';
+    return `${selectedBill.bill_number} — ${vendorName} ($${selectedBill.total?.toFixed(2) ?? '0.00'})`;
+  };
+
+  // Filter bills locally by search query
+  const filteredBills = searchQuery
+    ? bills.filter(bill =>
+        bill.bill_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (bill.vendor?.name ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : bills;
 
   const handleLineChange = (index: number, field: string, value: any) => {
     const newLines = [...formData.lines];
@@ -151,19 +189,80 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Select Bill *
               </label>
-              <select
-                value={formData.bill_id}
-                onChange={(e) => handleBillSelect(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">-- Select Bill --</option>
-                {bills.map(bill => (
-                  <option key={bill.id} value={bill.id}>
-                    {bill.bill_number} - {bill.vendor_name} ({bill.currency_code} {bill.total_amount.toFixed(2)})
-                  </option>
-                ))}
-              </select>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    disabled={isLoading}
+                    className={cn(
+                      'w-full justify-between font-normal',
+                      !selectedBill && 'text-muted-foreground'
+                    )}
+                  >
+                    <span className="truncate">{getDisplayValue()}</span>
+                    <div className="flex items-center gap-1 ml-2 shrink-0">
+                      {selectedBill && (
+                        <Icon
+                          icon="solar:close-circle-bold"
+                          className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
+                          onClick={handleClear}
+                        />
+                      )}
+                      <Icon
+                        icon="solar:alt-arrow-down-linear"
+                        className={cn('h-4 w-4 transition-transform', open && 'rotate-180')}
+                      />
+                    </div>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search by bill number or vendor..."
+                      value={searchQuery}
+                      onValueChange={setSearchQuery}
+                    />
+                    <CommandList>
+                      {isLoading ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin inline mr-2" />
+                          Loading bills...
+                        </div>
+                      ) : filteredBills.length === 0 ? (
+                        <CommandEmpty>
+                          {searchQuery ? 'No bills found.' : 'No bills available.'}
+                        </CommandEmpty>
+                      ) : (
+                        <CommandGroup heading={`Bills (${filteredBills.length})`}>
+                          {filteredBills.map((bill) => (
+                            <CommandItem
+                              key={bill.id}
+                              value={String(bill.id)}
+                              onSelect={handleSelect}
+                              className="flex items-center justify-between py-3"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">{bill.bill_number}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {bill.vendor?.name ?? 'Unknown'} · ${bill.total?.toFixed(2) ?? '0.00'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground capitalize">{bill.status}</span>
+                                {selectedBill?.id === bill.id && (
+                                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>
@@ -245,7 +344,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
                         <td className="px-4 py-2 text-sm font-medium">
-                          {selectedBill.currency_code} {calculateLineTotal(line).toFixed(2)}
+                          ${calculateLineTotal(line).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -254,7 +353,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Total:</td>
                       <td className="px-4 py-2 font-bold">
-                        {selectedBill.currency_code} {calculateTotal().toFixed(2)}
+                        ${calculateTotal().toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>

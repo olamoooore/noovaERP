@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useCreateCreditNote } from '@/hooks/useCustomerCreditNotes';
 import type { CreateCreditNotePayload } from '@/types/creditNote';
+import { Icon } from '@iconify/react';
+import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface CreateCreditNoteDialogProps {
@@ -13,9 +29,10 @@ interface Invoice {
   id: number;
   invoice_number: string;
   customer_id: number;
-  customer_name: string;
-  total_amount: number;
-  currency_code: string;
+  customer: { name: string } | null;
+  total: number;
+  balance: number;
+  status: string;
   lines: InvoiceLine[];
 }
 
@@ -34,6 +51,9 @@ interface InvoiceLine {
 export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }: CreateCreditNoteDialogProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     invoice_id: invoiceId ?? 0,
     customer_id: 0,
@@ -45,59 +65,77 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
 
   const createMutation = useCreateCreditNote();
 
+  // Fetch posted invoices
   useEffect(() => {
-    // Fetch posted invoices
+    setIsLoading(true);
     api.get('/invoices', {
-      params: { status: 'sent,overdue,posted', per_page: 100 }
+      params: {
+        status: 'posted,sent,overdue,partial',
+        per_page: 100,
+      }
     })
       .then(res => {
-        const data = res.data.data || [];
+        const data = (res.data.data || []) as Invoice[];
         setInvoices(data);
         // If invoiceId is provided, auto-select it
         if (invoiceId) {
           const invoice = data.find((inv: Invoice) => inv.id === invoiceId);
           if (invoice) {
-            setSelectedInvoice(invoice);
-            setFormData(prev => ({
-              ...prev,
-              invoice_id: invoice.id,
-              customer_id: invoice.customer_id,
-              lines: invoice.lines.map((line: InvoiceLine) => ({
-                invoice_line_id: line.id,
-                product_id: line.product_id,
-                description: line.description,
-                quantity: line.quantity,
-                unit_price: line.unit_price,
-                tax_rate: line.tax_rate,
-                account_id: line.account_id,
-              })),
-            }));
+            selectInvoice(invoice);
           }
         }
       })
-      .catch(err => console.error('Failed to load invoices:', err));
+      .catch(err => console.error('Failed to load invoices:', err))
+      .finally(() => setIsLoading(false));
   }, [invoiceId]);
 
-  const handleInvoiceSelect = (selectedId: number) => {
-    const invoice = invoices.find(inv => inv.id === selectedId);
+  const selectInvoice = useCallback((invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setFormData(prev => ({
+      ...prev,
+      invoice_id: invoice.id,
+      customer_id: invoice.customer_id,
+      lines: invoice.lines.map((line: InvoiceLine) => ({
+        invoice_line_id: line.id,
+        product_id: line.product_id,
+        description: line.description,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        tax_rate: line.tax_rate,
+        account_id: line.account_id,
+      })),
+    }));
+  }, []);
+
+  const handleSelect = (invoiceIdStr: string) => {
+    const id = Number(invoiceIdStr);
+    const invoice = invoices.find(inv => inv.id === id);
     if (invoice) {
-      setSelectedInvoice(invoice);
-      setFormData(prev => ({
-        ...prev,
-        invoice_id: invoice.id,
-        customer_id: invoice.customer_id,
-        lines: invoice.lines.map(line => ({
-          invoice_line_id: line.id,
-          product_id: line.product_id,
-          description: line.description,
-          quantity: line.quantity,
-          unit_price: line.unit_price,
-          tax_rate: line.tax_rate,
-          account_id: line.account_id,
-        })),
-      }));
+      selectInvoice(invoice);
+      setOpen(false);
+      setSearchQuery('');
     }
   };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedInvoice(null);
+    setFormData(prev => ({ ...prev, invoice_id: 0, customer_id: 0, lines: [] }));
+  };
+
+  const getDisplayValue = () => {
+    if (!selectedInvoice) return 'Select an invoice...';
+    const customerName = selectedInvoice.customer?.name ?? 'Unknown';
+    return `${selectedInvoice.invoice_number} — ${customerName} ($${selectedInvoice.total?.toFixed(2) ?? '0.00'})`;
+  };
+
+  // Filter invoices locally by search query
+  const filteredInvoices = searchQuery
+    ? invoices.filter(inv =>
+        inv.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (inv.customer?.name ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : invoices;
 
   const handleLineChange = (index: number, field: string, value: any) => {
     const newLines = [...formData.lines];
@@ -151,19 +189,80 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Select Invoice *
               </label>
-              <select
-                value={formData.invoice_id}
-                onChange={(e) => handleInvoiceSelect(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">-- Select Invoice --</option>
-                {invoices.map(invoice => (
-                  <option key={invoice.id} value={invoice.id}>
-                    {invoice.invoice_number} - {invoice.customer_name} ({invoice.currency_code} {invoice.total_amount.toFixed(2)})
-                  </option>
-                ))}
-              </select>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    disabled={isLoading}
+                    className={cn(
+                      'w-full justify-between font-normal',
+                      !selectedInvoice && 'text-muted-foreground'
+                    )}
+                  >
+                    <span className="truncate">{getDisplayValue()}</span>
+                    <div className="flex items-center gap-1 ml-2 shrink-0">
+                      {selectedInvoice && (
+                        <Icon
+                          icon="solar:close-circle-bold"
+                          className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
+                          onClick={handleClear}
+                        />
+                      )}
+                      <Icon
+                        icon="solar:alt-arrow-down-linear"
+                        className={cn('h-4 w-4 transition-transform', open && 'rotate-180')}
+                      />
+                    </div>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search by invoice number or customer..."
+                      value={searchQuery}
+                      onValueChange={setSearchQuery}
+                    />
+                    <CommandList>
+                      {isLoading ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin inline mr-2" />
+                          Loading invoices...
+                        </div>
+                      ) : filteredInvoices.length === 0 ? (
+                        <CommandEmpty>
+                          {searchQuery ? 'No invoices found.' : 'No invoices available.'}
+                        </CommandEmpty>
+                      ) : (
+                        <CommandGroup heading={`Invoices (${filteredInvoices.length})`}>
+                          {filteredInvoices.map((invoice) => (
+                            <CommandItem
+                              key={invoice.id}
+                              value={String(invoice.id)}
+                              onSelect={handleSelect}
+                              className="flex items-center justify-between py-3"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">{invoice.invoice_number}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {invoice.customer?.name ?? 'Unknown'} · ${invoice.total?.toFixed(2) ?? '0.00'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground capitalize">{invoice.status}</span>
+                                {selectedInvoice?.id === invoice.id && (
+                                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>
@@ -245,7 +344,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
                         <td className="px-4 py-2 text-sm font-medium">
-                          {selectedInvoice.currency_code} {calculateLineTotal(line).toFixed(2)}
+                          ${calculateLineTotal(line).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -254,7 +353,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Total:</td>
                       <td className="px-4 py-2 font-bold">
-                        {selectedInvoice.currency_code} {calculateTotal().toFixed(2)}
+                        ${calculateTotal().toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>

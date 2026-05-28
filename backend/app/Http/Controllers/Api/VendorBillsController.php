@@ -45,6 +45,16 @@ class VendorBillsController extends Controller
                 }
             }
 
+            // Filter by lifecycle_status
+            if ($request->has('lifecycle_status')) {
+                $lifecycleStatuses = array_values(array_filter(array_map('trim', explode(',', (string) $request->lifecycle_status))));
+                if (count($lifecycleStatuses) > 1) {
+                    $query->whereIn('lifecycle_status', $lifecycleStatuses);
+                } else {
+                    $query->where('lifecycle_status', $request->lifecycle_status);
+                }
+            }
+
             // Filter by vendor
             if ($vendorId) {
                 $query->where('vendor_id', $vendorId);

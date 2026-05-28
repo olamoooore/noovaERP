@@ -25,6 +25,11 @@ class InvoiceController extends Controller
             $query->whereIn('status', $statuses);
         }
 
+        if ($request->has('lifecycle_status')) {
+            $lifecycleStatuses = explode(',', $request->lifecycle_status);
+            $query->whereIn('lifecycle_status', $lifecycleStatuses);
+        }
+
         if ($request->has('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
