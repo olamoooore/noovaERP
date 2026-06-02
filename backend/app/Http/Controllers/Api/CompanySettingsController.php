@@ -17,14 +17,14 @@ class CompanySettingsController extends Controller
             $settings = DB::table('company_settings')->first();
             if (!$settings) {
                 DB::table('company_settings')->insert([
-                    'base_currency' => 'USD',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                $settings = DB::table('company_settings')->first();
-            }
-            $settings = $this->hydrateStructuredFields($settings);
-            return response()->json(['success' => true, 'data' => $settings]);
+                'base_currency' => 'SGD',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $settings = DB::table('company_settings')->first();
+        }
+        $settings = $this->hydrateStructuredFields($settings);
+        return response()->json(['success' => true, 'data' => $settings]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch company settings', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Failed to fetch settings: ' . $e->getMessage()], 500);
@@ -185,15 +185,15 @@ class CompanySettingsController extends Controller
 
             if (!$settings) {
                 DB::table('company_settings')->insert([
-                    'base_currency' => 'USD',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                $settings = DB::table('company_settings')->first();
-            }
+                'base_currency' => 'SGD',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $settings = DB::table('company_settings')->first();
+        }
 
-            $currencies = [
-                'base_currency' => $settings->base_currency ?? 'USD',
+        $currencies = [
+            'base_currency' => $settings->base_currency ?? 'SGD',
                 'date_format' => $settings->date_format ?? 'MM/DD/YYYY',
                 'number_format' => $settings->number_format ?? 'en-US',
                 'decimal_places' => $settings->decimal_places ?? 2,
@@ -263,14 +263,14 @@ class CompanySettingsController extends Controller
             if (!$settings) {
                 // Auto-create a default row so the frontend has something to bind to
                 DB::table('company_settings')->insert([
-                    'base_currency' => 'USD',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                $settings = DB::table('company_settings')->first();
-            }
+                'base_currency' => 'SGD',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $settings = DB::table('company_settings')->first();
+        }
 
-            $accounts = [
+        $accounts = [
                 'accounts_receivable' => $settings->default_receivable_account_id ?? null,
                 'accounts_payable' => $settings->default_payable_account_id ?? null,
                 'sales_revenue' => $settings->default_revenue_account_id ?? null,
@@ -369,7 +369,7 @@ class CompanySettingsController extends Controller
             } else {
                 $data['created_at'] = now();
                 $data['company_name'] = $request->company_name ?? null;
-                $data['base_currency'] = $request->base_currency ?? 'USD';
+                $data['base_currency'] = $request->base_currency ?? 'SGD';
                 DB::table('company_settings')->insert($data);
             }
 
@@ -416,7 +416,7 @@ class CompanySettingsController extends Controller
             'fiscal_year_start_day' => 1,
             'fiscal_year_end' => null,
             'lock_date' => null,
-            'base_currency' => 'USD',
+            'base_currency' => 'SGD',
             'date_format' => 'MM/DD/YYYY',
             'number_format' => 'en-US',
             'decimal_places' => 2,

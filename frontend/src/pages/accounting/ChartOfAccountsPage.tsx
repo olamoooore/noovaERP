@@ -59,9 +59,9 @@ export default function ChartOfAccountsPage() {
 
   // Helper function to determine account level based on SFRS code format
   const getAccountLevel = (code: string): number => {
-    if (code.endsWith('00000')) return 1; // Level 1: X00000 (Parents)
-    if (code.endsWith('0000')) return 2; // Level 2: XX0000 (Groups)
-    return 3; // Level 3: XXXXXX (Accounts)
+    if (code.endsWith('000')) return 1; // Level 1: X000 (Parents)
+    if (code.endsWith('00')) return 2; // Level 2: XX00 (Groups)
+    return 3; // Level 3: XXXX (Accounts)
   };
 
   // Toggle node expansion
@@ -476,11 +476,11 @@ export default function ChartOfAccountsPage() {
                     <Icon icon="solar:info-circle-bold" className="w-4 h-4 mr-1" />
                     <strong>Hierarchy Guide:</strong> 
                     <Badge className="bg-purple-100 text-purple-800 font-bold text-xs px-2">L1</Badge>
-                    <span>Parents (X00000) •</span>
+                    <span>Parents (X000) •</span>
                     <Badge className="bg-blue-100 text-blue-800 font-semibold text-xs px-2">L2</Badge>
-                    <span>Groups (XX0000) •</span>
+                    <span>Groups (XX00) •</span>
                     <Badge className="bg-gray-100 text-gray-600 text-xs px-2">L3</Badge>
-                    <span>Accounts (XXXXXX)</span>
+                    <span>Accounts (XXXX)</span>
                   </div>
                 </div>
                 <Table>
@@ -610,30 +610,30 @@ export default function ChartOfAccountsPage() {
                 SFRS 3-Level Hierarchy Guide
               </h3>
               <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="flex items-start gap-2">
-                  <Badge className="bg-purple-100 text-purple-800 font-bold text-xs px-2 mt-0.5">L1</Badge>
-                  <div>
-                    <div className="font-semibold text-purple-900">Level 1: Parents</div>
-                    <div className="text-xs text-gray-600">Main categories (X00000)</div>
-                    <div className="text-xs text-gray-500 mt-1">Example: 100000 - Assets</div>
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-purple-100 text-purple-800 font-bold text-xs px-2 mt-0.5">L1</Badge>
+                    <div>
+                      <div className="font-semibold text-purple-900">Level 1: Parents</div>
+                      <div className="text-xs text-gray-600">Main categories (X000)</div>
+                      <div className="text-xs text-gray-500 mt-1">Example: 1000 - Assets</div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Badge className="bg-blue-100 text-blue-800 font-semibold text-xs px-2 mt-0.5">L2</Badge>
-                  <div>
-                    <div className="font-semibold text-blue-900">Level 2: Groups</div>
-                    <div className="text-xs text-gray-600">Sub-categories (XX0000)</div>
-                    <div className="text-xs text-gray-500 mt-1">Example: 110000 - Cash</div>
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-blue-100 text-blue-800 font-semibold text-xs px-2 mt-0.5">L2</Badge>
+                    <div>
+                      <div className="font-semibold text-blue-900">Level 2: Groups</div>
+                      <div className="text-xs text-gray-600">Sub-categories (XX00)</div>
+                      <div className="text-xs text-gray-500 mt-1">Example: 1100 - Cash</div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Badge className="bg-gray-100 text-gray-600 text-xs px-2 mt-0.5">L3</Badge>
-                  <div>
-                    <div className="font-semibold text-gray-900">Level 3: Accounts</div>
-                    <div className="text-xs text-gray-600">Individual accounts (XXXXXX)</div>
-                    <div className="text-xs text-gray-500 mt-1">Example: 100010 - Petty Cash</div>
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-gray-100 text-gray-600 text-xs px-2 mt-0.5">L3</Badge>
+                    <div>
+                      <div className="font-semibold text-gray-900">Level 3: Accounts</div>
+                      <div className="text-xs text-gray-600">Individual accounts (XXXX)</div>
+                      <div className="text-xs text-gray-500 mt-1">Example: 1010 - Petty Cash</div>
+                    </div>
                   </div>
-                </div>
               </div>
             </div>
 
@@ -665,24 +665,24 @@ export default function ChartOfAccountsPage() {
                 <Label htmlFor="code">Account Code *</Label>
                 <Input
                   id="code"
-                  placeholder="100100"
+                  placeholder="1010"
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use 6-digit SFRS format (e.g., 100100, 120000)
+                  Use 4-digit SFRS format (e.g., 1010, 1200)
                 </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="account_group">Account Group (SFRS Level 2)</Label>
                 <Input
                   id="account_group"
-                  placeholder="120000"
+                  placeholder="1200"
                   value={formData.account_group}
                   onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  SFRS grouping code (e.g., 110000, 120000, 210000)
+                  SFRS grouping code (e.g., 1100, 1200, 2100)
                 </p>
               </div>
             </div>

@@ -26,7 +26,7 @@ export default function CompanySettingsPage() {
 
   // Controlled state for Currency form (Radix Select doesn't reliably emit to FormData)
   const [currencyForm, setCurrencyForm] = useState({
-    base_currency: 'USD',
+    base_currency: 'SGD',
     date_format: 'MM/DD/YYYY',
     number_format: 'en-US',
     decimal_places: '2',
@@ -67,13 +67,16 @@ export default function CompanySettingsPage() {
   });
 
   // Fetch currency settings
-  const { data: currencies } = useQuery({
+  const { data: currenciesResponse } = useQuery({
     queryKey: ['currencies'],
     queryFn: async () => {
       const response = await api.get('/accounting/settings/currencies');
-      return response.data.data;
+      return response.data;
     },
   });
+
+  const currencies = currenciesResponse?.data || {};
+  const availableCurrencies = currenciesResponse?.available_currencies || [];
 
   // Fetch default accounts
   const { data: defaultAccounts } = useQuery({
@@ -95,9 +98,9 @@ export default function CompanySettingsPage() {
 
   // Sync controlled state with fetched data
   useEffect(() => {
-    if (currencies) {
+    if (currencies && Object.keys(currencies).length > 0) {
       setCurrencyForm({
-        base_currency: currencies.base_currency || 'USD',
+        base_currency: currencies.base_currency || 'SGD',
         date_format: currencies.date_format || 'MM/DD/YYYY',
         number_format: currencies.number_format || 'en-US',
         decimal_places: currencies.decimal_places?.toString() || '2',
@@ -461,13 +464,28 @@ export default function CompanySettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                      <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
-                      <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                      <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                      <SelectItem value="INR">INR - Indian Rupee</SelectItem>
+                      {availableCurrencies.length > 0 ? (
+                        availableCurrencies
+                          .filter((c: any) => c.is_active)
+                          .map((c: any) => (
+                            <SelectItem key={c.code} value={c.code}>
+                              {c.code} - {c.name}
+                            </SelectItem>
+                          ))
+                      ) : (
+                        <>
+                          <SelectItem value="SGD">SGD - Singapore Dollar</SelectItem>
+                          <SelectItem value="MYR">MYR - Malaysian Ringgit</SelectItem>
+                          <SelectItem value="USD">USD - US Dollar</SelectItem>
+                          <SelectItem value="EUR">EUR - Euro</SelectItem>
+                          <SelectItem value="GBP">GBP - British Pound</SelectItem>
+                          <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
+                          <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
+                          <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
+                          <SelectItem value="CNY">CNY - Chinese Yuan</SelectItem>
+                          <SelectItem value="THB">THB - Thai Baht</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
