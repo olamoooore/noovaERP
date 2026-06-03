@@ -1,0 +1,173 @@
+﻿RESEARCH
+Task Assigned
+I have been assigned to prepare for system testing of the NoovaERP Accounting Module and Financial Close Module.
+My first task is to understand the project, accounting workflow, financial close workflow, previous QA findings, engineer claimed fixes, required evidence, possible blockers, and questions before actual testing begins.
+Purpose / Objective
+The purpose of this task is to verify whether NoovaERP can correctly support accounting and financial close operations.
+This task is needed because accounting system errors can affect invoices, bills, payments, journal entries, AR, AP, bank balances, tax, dashboards, reports, and period-end close decisions.
+The objective is to confirm whether:
+1. Accounting transactions follow the correct workflow state.
+2. Posting creates correct journal entries.
+3. AR, AP, bank, tax, dashboard, and reports update correctly.
+4. Invalid, duplicate, unauthorized, or interrupted actions are safely blocked.
+5. Financial Close tasks, evidence, AI findings, readiness, escalation, sign-off, audit trail, and security controls work correctly.
+6. Engineer claimed fixes are retested before being accepted as fixed.
+Target Audience
+This work will benefit:
+1. Finance users who create invoices, bills, payments, journals, and reports.
+2. Accounting managers who rely on dashboard and report accuracy.
+3. Financial Close users who manage period-end closing.
+4. QA team members who need evidence-based test results.
+5. Engineers who need clear defect reports for fixing.
+6. Supervisors who need to decide whether testing can proceed and whether the build is ready for further validation.
+Deliverable Scope & Responsibility
+This research and preparation work includes:
+1. Understanding the Accounting Module workflow.
+2. Understanding the Financial Close workflow.
+3. Reviewing previous QA results.
+4. Reviewing engineer claimed fixes.
+5. Understanding negative state testing.
+6. Preparing questions and blockers before testing.
+7. Defining what evidence must be collected.
+8. Preparing to follow the company SOP: Research → Planning → Reporting.
+This stage does not include:
+1. Actual retesting yet.
+2. Fixing code.
+3. Approving the system for release.
+4. Making accounting policy decisions.
+5. Changing database records manually.
+6. Marking engineer fixes as Pass without testing.
+7. Guessing database, ledger, or audit results without access.
+I am responsible for:
+1. Understanding the assigned task before acting.
+2. Following the SOP properly.
+3. Learning the basic accounting and QA terms needed for testing.
+4. Preparing a clear research note.
+5. Asking questions early if anything is unclear.
+6. Collecting proper evidence during testing later.
+7. Reporting Pass, Fail, Blocked, or Not Testable accurately.
+8. Raising defects clearly with steps, evidence, and business impact.
+What I Understand About the Project
+NoovaERP Accounting is used to record and manage accounting transactions such as invoices, bills, payments, journal entries, tax, bank reconciliation, dashboards, and reports.
+The Accounting Module is used for daily accounting work such as customer invoices, customer payments, vendor bills, vendor payments, journal entries, bank reconciliation, tax/GST, fixed assets, dashboard, and reports.
+The Financial Close Module is used to manage period-end closing activities such as close cycles, task generation, task completion, evidence, AI findings, readiness score, sign-off, escalation, audit trail, and security controls.
+The main point I understand is that this project is not only about checking whether pages or buttons work. The system must be tested as an accounting workflow. A success message on the screen is not enough unless the accounting result, document status, API response, journal entry, dashboard, report, and audit/security expectation are also correct where applicable.
+Accounting Workflow Map
+The Accounting Module must be tested as a chain of business workflows. A UI success message is not enough. The test must verify the full accounting impact.
+Workflow
+	Expected Flow
+	Expected Accounting Impact
+	Customer Invoice
+	Customer → Draft Invoice → Posted Invoice → Journal Entry → AR increases → Revenue and tax recorded → Dashboard/reports update
+	Debit AR; Credit Sales Revenue and Output Tax
+	Customer Payment
+	Posted unpaid invoice → Record payment → Invoice balance reduces → AR decreases → Bank/Cash increases → Journal Entry → Reports update
+	Debit Bank/Cash; Credit AR
+	Vendor Bill
+	Vendor → Draft Bill → Posted/Approved Bill → Journal Entry → Expense/Input Tax recorded → AP increases → Reports update
+	Debit Expense/Input Tax; Credit AP
+	Vendor Payment
+	Posted unpaid bill → Record payment → Bill balance reduces → AP decreases → Bank/Cash decreases → Journal Entry → Reports update
+	Debit AP; Credit Bank/Cash
+	Customer Credit Note
+	Posted invoice → Credit note → Post/apply → Invoice outstanding reduces → AR/tax/revenue reversed
+	Debit Revenue Reversal and Output Tax; Credit AR
+	Vendor Debit/Credit Note
+	Posted bill → Vendor debit/credit note → Post/apply → Bill outstanding reduces → AP/tax/expense reversed
+	Debit AP; Credit Expense Reversal and Input Tax
+	Manual Journal
+	Create journal → Validate debit equals credit → Post → Ledger/report updates
+	Total debit must equal total credit
+	Bank Reconciliation
+	Bank transactions → Match/reconcile → Unreconciled count decreases → Bank state/dashboard updates
+	Bank/ledger state should remain consistent
+	Fixed Asset Depreciation
+	Asset → Depreciation schedule → Depreciation entry → Asset register/reports update
+	Debit Depreciation Expense; Credit Accumulated Depreciation
+	Closed Period
+	Period locked → Attempt posting dated in closed period → System blocks or requires authorized reopen
+	No silent posting into locked period
+	Multi-Currency
+	Base currency → Active currency → Rate → Foreign transaction → Base currency and FX gain/loss calculation
+	Reports should show correct base currency values
+	Tax / GST
+	Invoice/bill tax → Tax calculation → Tax posting → Credit/debit note reversal → Tax report
+	Tax must match document, GL, and tax report
+	________________
+
+
+Financial Close Workflow Map
+The Financial Close Module must be tested as a period-end accounting control workflow, not as simple dashboard navigation.
+Stage
+	Expected Behaviour
+	QA Focus
+	Create Close Cycle
+	Cycle created for correct entity/book/period
+	Readable cycle name, correct scope, audit event
+	Generate Tasks
+	Checklist template creates close tasks once
+	No duplicate tasks when generation is repeated
+	Assign Tasks
+	Tasks assigned to preparer/reviewer
+	Owner, due date, status, and checklist items populated
+	Complete Tasks
+	Task status changes through valid lifecycle
+	Start, submit, approve, return, block, complete
+	Attach Evidence
+	Evidence linked to task/review/cycle
+	Upload, view, permission, lock/freeze behaviour
+	AI Findings
+	AI flags issues with structured data
+	Severity, source record, status, recommended action
+	Readiness
+	Readiness score reflects real task/finding/blocker state
+	Score changes logically and is not stale
+	Sign-off
+	Authorized user signs off after conditions are met
+	Dependencies and blockers enforced
+	Ready-to-Close Gate
+	Unsafe close is blocked
+	Backend and UI both enforce the gate
+	Audit / Security
+	Sensitive actions are logged and scoped
+	Tenant/entity/book permission and audit trail
+	
+
+Basic QA Terms I Must Know
+Test Case: A step-by-step check to confirm whether a function works.
+Expected Result: What should happen if the system is correct.
+Actual Result: What actually happens during testing.
+Pass: The actual result matches the expected result with evidence.
+Fail: The feature exists but behaves wrongly.
+Blocked: The test cannot continue because something required is missing or broken.
+Not Testable: The result cannot be verified with the current access, system, or environment.
+Evidence: Proof such as screenshots, API response, document number, journal entry, dashboard value, report result, database record, or audit trail.
+Bug / Defect: A problem where the actual result is different from the expected result.
+Retest: Testing again after the engineer says an issue has been fixed.
+Regression Test: Checking that old working features did not break after a fix.
+Basic System Understanding
+Frontend: What the user sees in the browser.
+Backend: The system logic behind the screen.
+API: The connection between frontend and backend.
+Database: Where system records are stored.
+Ledger / Journal Entry: Accounting record created after posting.
+Dashboard: Summary numbers from system records.
+Report: Formal output such as Trial Balance, General Ledger, AR/AP report, or tax report.
+I understand that a button working on screen does not mean the accounting result is correct. I must check the full workflow with evidence.
+Questions / Blockers Before Moving On
+Before I move to planning or testing, I need to clarify:
+1. Which latest branch or commit should I test?
+2. Is the engineer fix deployed to the test environment?
+3. Should I test locally or on the deployed environment?
+4. What is the correct frontend URL and API base URL?
+5. Which login account and user roles should I use?
+6. Is database or audit trail access available?
+7. Should the database be reset before testing?
+8. What test company, entity, or book should be used?
+9. Are AI findings, evidence upload, readiness score, and sign-off implemented?
+10. Are multiple user roles available for permission testing?
+11. Where should screenshots, reports, and evidence files be uploaded?
+Research Conclusion
+Based on my research, I understand that I should not begin actual retesting immediately.
+Before testing starts, I must confirm the planning, environment, branch/build, login account, user roles, test data, and evidence collection method.
+My next step is Step 2: Planning, where I will prepare the action plan, timeline, and resource requirements before actual testing starts.

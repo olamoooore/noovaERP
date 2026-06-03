@@ -3747,8 +3747,7 @@ Field
 	
 
 	Deployment URL
-	
-
+	https://72.61.126.166/noovaerp/login
 	Browser
 	Chrome
 	Browser Version
@@ -5300,137 +5299,8 @@ Priority
 	This will force the retest to follow the real accounting dependency chain instead of random screen clicking.
 
 
-Priority Retest Order
-
-
-Retest ID
-	Original TC
-	Module
-	Scenario
-	Status
-	Severity
-	Root Cause Area
-	Evidence Link
-	RT-001
-	TC-019
-	Configuration
-	Default accounts save successfully
-	Fail
-	Critical
-	Settings / API / DB
-	
-
-	RT-002
-	TC-008
-	COA
-	Default COA follows hierarchy
-	Fail
-	Major
-	COA structure
-	
-
-	RT-003
-	TC-003
-	Dashboard
-	AR/AP/Cash figures accurate
-	
-
-	Critical
-	Dashboard aggregation
-	
-
-	RT-004
-	TC-005
-	Payments
-	Posted unpaid invoices appear in payment dropdown
-	
-
-	Critical
-	AR / Payment API
-	
-
-	RT-005
-	TC-012
-	Vendor Bills
-	Draft bills do not affect Payables
-	
-
-	Critical
-	AP lifecycle
-	
-
-	RT-006
-	TC-013/015/018
-	Currency
-	Active currencies sync across modules
-	
-
-	Major
-	Shared currency registry
-	
-
-	RT-007
-	TC-017
-	Fixed Assets
-	Depreciation schedule generated and displayed
-	
-
-	Major
-	Depreciation service
-	
-
-	RT-008
-	TC-004
-	Dashboard/Reconciliation
-	Unreconciled count matches reconciliation records
-	
-
-	Major
-	Bank reconciliation aggregation
-	
-
-	RT-009
-	TC-020/021/022/023/024
-	Financial Close
-	Navigation, filters, cycle labels correct
-	
-
-	Minor/Medium
-	Routing / UI state
-	
-
-	
-
-
-
-For every failed or passed test case, the intern must collect this evidence:
-Evidence Type
-	Required
-	Screenshot before action
-	Yes
-	Screenshot after action
-	Yes
-	Test data used
-	Yes
-	User role
-	Yes
-	Browser + environment
-	Yes
-	API request payload
-	Yes, where applicable
-	API response
-	Yes, where applicable
-	Database or ledger record
-	Yes, where accessible
-	Generated journal entry
-	Required for accounting transactions
-	Dashboard/reporting result
-	Required for financial figures
-	Retest result
-	Pass / Fail / Blocked
-	Root-cause hypothesis
-	Required for failed tests
-	Retest Environment Log
+4a.1. Priority Retest Order
+Retest Environment Log
 The intern must complete this before testing.
 Field
 	Entry
@@ -6380,7 +6250,297 @@ focus. Typed value concatenates with existing zero resulting in incorrect displa
 saved to the backend.
 	
 
+RT-013 — Financial Close Retest
+Test Scenario A — Card Routing
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Navigate to Financial Close
+	Dashboard loads
+	Dashboard loads 
+	Pass 
+	  
 
+	2
+	Click My Open Tasks
+	Opens My Tasks filtered to open tasks
+	Opens My Tasks with All Statuses selected (no filter applied) 
+	Fail 
+	  
+
+	3
+	Click Overdue Tasks
+	Opens overdue task view or applies overdue filter
+	Works 
+	Pass 
+	  
+
+	4
+	Click Open Blockers
+	Opens blocked tasks
+	Works 
+	Pass 
+	  
+
+	5
+	Click Accounts Signed Off
+	Opens relevant sign-off view
+	Works 
+	Pass 
+	  
+
+	6
+	Click Readiness Score
+	Opens readiness cockpit
+	Works 
+	Pass 
+	  
+
+	7
+	Click AI Findings
+	Opens AI findings page
+	Works 
+	Pass 
+	  
+
+	8
+	Confirm duplicate cards
+	No duplicated card unless justified
+	Readiness Score, Open Readiness Cockpit, Accounts Signed Off, and the Account Attention and the bottom Readiness nav tab all route to the same Readiness Cockpit page with no differentiation
+	Fail 
+	
+
+	Test Scenario B — Filters
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Open My Tasks
+	Task page loads
+	Task page loads 
+	Pass
+	  
+
+	2
+	Open filter dropdown
+	Includes required statuses
+	All required statuses in dropdown 
+	Pass
+	  
+
+	3
+	Check Overdue filter
+	Overdue filter exists
+	Overdue filter exists 
+	Pass
+	  
+
+	4
+	Apply Blocked filter
+	Blocked tasks shown
+	Blocked filter shows blocked tasks 
+	Pass
+	  
+
+	5
+	Apply Completed filter
+	Completed tasks shown
+	Completed filter shows completed tasks 
+	Pass
+	  
+
+	Test Scenario C — Cycle Display
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Open active close cycle
+	Cycle opens
+	Cycle opens successfully 
+	Pass 
+	  
+
+	2
+	Navigate to Tasks page
+	Page loads
+	Tasks page loads 
+	Pass 
+	  
+
+	3
+	Observe subtitle
+	Shows cycle name or period
+	Subtitle displays cycle name
+	Pass 
+	  
+
+	4
+	Confirm UUID hidden
+	Raw UUID not displayed to user
+	No raw UUID visible to user 
+	Pass 
+	
+
+	Fail Log
+Retest ID: RT-013
+Original TC: TC-020 to TC-024
+Module: Financial Close
+Result: Fail
+
+Dashboard Loads: Yes
+Card Routing - My Open Tasks: Fail - routes to My Tasks page with no filter applied, All Statuses selected by default instead of pre-filtering to open tasks
+Card Routing - Overdue Tasks: Pass
+Card Routing - Open Blockers: Pass
+Card Routing - Accounts Signed Off: Pass
+Card Routing - Readiness Score: Pass
+Card Routing - AI Findings: Pass
+Duplicate Cards: Fail - Readiness Score, Open Readiness Cockpit button, Accounts Signed Off, Account Attention, and bottom Readiness nav tab all route to the same Readiness Cockpit page with no differentiation
+Partial Fix Noted: Open AI Findings duplicate button in top-right header has been removed
+Filter Dropdown - Required Statuses Present: Yes
+Filter - Overdue: Pass
+Filter - Blocked: Pass
+Filter - Completed: Pass
+Cycle Display - Subtitle Shows Name/Period: Yes (entity-001 - 2026-Q1)
+UUID Hidden from User: Yes
+Root-Cause Hypothesis: Dashboard cards are not passing filter parameters on navigation. Multiple entry points route to the same destination without scoping the view to the relevant context.
+	
+
+
+
+4.a.2. 28.5.26 Updated
+Updated Retest 20.5
+
+
+Retest ID
+	Original TC
+	Scenario
+	Severity
+	Previous Result
+	Updated Result
+	Notes
+	RT-001
+	TC-019
+	Default accounts save successfully
+	Critical
+	Fail
+	Fail
+	Same Issues Persist
+	RT-002
+	TC-008
+	Default COA follows hierarchy
+	Major
+	Fail
+	Fail
+	  
+
+Scenario A: Tree view now displays correctly when accounts are structured with proper parent levels. List view still shows all accounts as L3, contradicts hierarchy guide. Scenario B & C: Same issues persist. 
+	RT-003
+	TC-003
+	AR/AP/Cash figures accurate
+	Critical
+	Fail
+	Pass
+	
+
+	RT-004
+	TC-005
+	Posted unpaid invoices appear in payment dropdown
+	Critical
+	Fail
+	Pass
+	
+
+	RT-005
+	TC-012
+	Draft bills do not affect Payables
+	Critical
+	Fail
+	Pass
+	
+
+	RT-006
+	TC-013/015/018
+	Vendor payment dropdown shows posted unpaid bills
+	Critical
+	Blocked
+	Pass
+	
+
+	RT-007
+	TC-003/004
+	Dashboard figures match ledger
+	Critical
+	Fail
+	Pass
+	
+
+	RT-008
+	TC-004
+	Bank account and reconciliation
+	Major
+	Fail
+	Fail
+	Scenario A: GL account dropdown still shows all account types instead of restricting to asset/bank accounts only. Same issue as original test, no fix applied.
+Scenario B: Controls count decreases correctly after reconciliation and last reconciliation date updates. However opening balance incorrectly updates to the reconciled amount ($50) mid-session instead of retaining the previous session closing balance. System also allows completing reconciliation with unresolved difference and no statement ending balance entered.
+  
+
+  
+
+
+
+	RT-009
+	TC-013/015/018
+	Active currencies sync across modules
+	Major
+	Fail
+	Fail
+	Same Issues Persist
+	RT-010
+	--
+	Entity edit/delete works correctly
+	Medium
+	Fail
+	Fail
+	Same Issues Persist
+	RT-011
+	--
+	Depreciation schedule generates correctly
+	Major
+	Fail
+	Fail
+	  
+
+Depreciation schedule still not rendering in UI despite API returning correct data. Additional issues found during negative testing -- duplicate depreciation runs allowed for same period, silent failure when salvage value exceeds purchase cost, inactive asset still visible in UI, false success toast shown on failed calculation. 
+	RT-012
+	--
+	Numeric input no default zero concatenation
+	Medium
+	Fail
+	Partial Fix 
+	  
+
+Qty field on Vendor Bills still affected -- default zero cannot be cleared by typing, only adjustable via up/down spinner which is impractical for reaching the desired value. 
+	RT-013
+	TC-020/021/022/023/024
+	Financial Close navigation, filters, cycle labels
+	Medium
+	Fail
+	Fail
+	Remaining Issues Persist
+  
+
+My Open Tasks card routes to My Tasks page but applies no filter. The dropdown defaults to "All Statuses" meaning completed, blocked, and returned tasks are all mixed in together instead of showing only open/created tasks. 
+	
 
 4b. Negative state test
 Below are the 12 detailed QA test instructions your intern should perform for the Accounting module retest.
@@ -7512,7 +7672,869 @@ Give this directly to the intern:
 Perform the 12 accounting exception tests exactly in sequence. Do not mark any case as Passed unless the UI result, API response, document status, journal entry, ledger balance, dashboard, report, permission rule, and audit trail are all correct. If any transaction affects AR, AP, GL, bank, tax, currency, period close, or financial reports incorrectly, classify it as an accounting integrity defect, not a minor UI issue.
 
 
-Retest: Financial Close
+4b.1
+Test 1 — Negative Validation Testing
+Test Scenarios
+No.
+	Scenario
+	Steps
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1.1
+	Invoice without customer
+	Create invoice, leave customer blank, save/post
+	System blocks save/post
+	Works as intended 
+	Pass
+	  
+
+	1.2
+	Invoice without line item
+	Create invoice with customer but no item
+	System blocks save/post
+	Works as intended 
+	Pass
+	  
+
+	1.3
+	Negative invoice quantity
+	Enter quantity -1
+	Blocked unless credit note workflow supports it
+	Works as intended 
+	Pass
+	
+
+	1.4
+	Negative unit price
+	Enter -100
+	Blocked unless credit note workflow supports it
+	Works as intended 
+	Pass
+	  
+
+	1.5
+	Tax greater than 100%
+	Enter tax 150%
+	Blocked
+	Works as intended 
+	Pass
+	  
+
+	1.6
+	Vendor bill without vendor
+	Create bill without vendor
+	Blocked
+	Works as intended 
+	Pass
+	  
+
+	1.7
+	Vendor bill without expense account
+	Leave account blank
+	Blocked
+	Works as intended 
+	Pass
+	  
+
+	1.8
+	Journal entry debit ≠ credit
+	Create unbalanced journal
+	Blocked
+	Works as intended 
+	Pass
+	  
+
+	1.9
+	Journal with zero amount
+	Debit/Credit as 0
+	Blocked
+	Works as intended 
+	Pass
+	  
+
+	1.10
+	Fixed asset useful life = 0
+	Enter useful life as 0
+	Blocked
+	Works as intended 
+	Pass
+	
+
+	1.11
+	Salvage value > asset cost
+	Cost 1,000, salvage 1,500
+	Blocked
+	No validation triggered - salvage value $200 saved against purchase cost $150 with no error 
+	Fail
+	  
+
+  
+
+	Test 2 — Reversal and Void Testing
+Test Scenarios
+No.
+	Scenario
+	Steps
+	Expected Result
+	Actual Results
+	Status
+	Evidence
+	2.1
+	Edit posted invoice
+	Post invoice, then try changing amount
+	Blocked or requires adjustment/credit note
+	No edit option on posted invoice 
+	Pass
+	  
+
+	2.2
+	Delete posted invoice
+	Try deleting posted invoice
+	Blocked
+	No delete option on posted invoice 
+	Pass
+	
+
+	2.3
+	Void posted invoice
+	Void invoice
+	Reversal journal created
+	No void/cancel/reverse option exists on posted invoice at all 
+	Fail
+	
+
+	2.4
+	Void customer payment
+	Record payment, then void
+	Bank and AR entries reversed
+	No void option on customer payments. 
+	Fail
+	  
+
+	2.5
+	Void vendor bill
+	Post bill, then void
+	AP and expense entries reversed
+	No void/cancel option available on posted vendor bills 
+	Fail
+	  
+
+	2.6
+	Void vendor payment
+	Record payment, then void
+	AP and bank entries reversed
+	No void option available on vendor payments 
+	Fail
+	  
+
+	2.7
+	Reverse manual journal
+	Post journal, reverse it
+	Equal opposite journal created
+	Reversal button present and triggers prompt, but prompt only collects reason and not date. Backend returns error "The reversal date field is required." Reversal cannot be completed. Additional finding: prompt uses native browser dialog instead of in-app modal. 
+	Fail
+	  
+
+  
+
+	2.8
+	Reverse depreciation
+	Run depreciation, reverse it
+	Depreciation journal reversed
+	Blocked - same reversal mechanism as 2.7 is broken, date field missing from prompt 
+	Blocked 
+	
+
+	Test 3 — Closed Period Testing
+No.
+	Scenario
+	Steps
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	3.1
+	Invoice in closed period
+	Create/post invoice dated Jan 2026
+	Blocked
+	Invoice dated Jan 2026 posted successfully despite lock date set to 31/01/2026 
+	Fail 
+	  
+
+  
+
+	3.2
+	Vendor bill in closed period
+	Create/post bill dated Jan 2026
+	Blocked
+	Vendor bill dated Jan 2026 posted successfully despite lock date 
+	Fail 
+	  
+
+
+
+	3.3
+	Customer payment in closed period
+	Record payment dated Jan 2026
+	Blocked
+	Customer payment dated Jan 2026 recorded successfully despite lock date 
+	Fail 
+	  
+
+  
+
+	3.4
+	Vendor payment in closed period
+	Record payment dated Jan 2026
+	Blocked
+	Vendor payment dated Jan 2026 recorded successfully despite lock date 
+	Fail 
+	  
+
+  
+
+	3.5
+	Manual journal in closed period
+	Post journal dated Jan 2026
+	Blocked
+	Manual journal dated Jan 2026 posted successfully despite lock date 
+	Fail 
+	
+
+	3.6
+	Bank reconciliation in closed period
+	Reconcile Jan transaction
+	Blocked or requires reopen
+	Bank reconciliation for Jan transaction not blocked 
+	Fail 
+	
+
+	3.7
+	Depreciation in closed period
+	Run depreciation for Jan
+	Blocked
+	Depreciation for Jan not blocked 
+	Fail 
+	
+
+	3.8
+	Reopen period
+	Reopen as authorized user
+	Allowed with reason and audit log
+	Lock date has no effect so reopening cannot be verified meaningfully 
+	Fail 
+	
+
+	3.9
+	Reopen as junior user
+	Try reopening without permission
+	Blocked
+	Requires junior user account, single account per tenant limitation 
+	Fail 
+	
+
+	Test 4 — Partial Payment and Overpayment Testing
+A. Customer Payment Test
+Steps
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Create and post invoice for 1,000
+	AR increases by 1,000
+	Dashboard Receivables increased from $1,544 to $2,544 after posting 
+	Pass
+	  
+
+  
+
+  
+
+
+
+	2
+	Record payment of 400
+	Invoice becomes partially paid
+	Invoice INV-2026-0008 status changed to Partially Paid 
+	Pass
+	  
+
+	3
+	Check AR
+	AR outstanding = 600
+	Dashboard Receivables decreased to $2,144, invoice balance shows $600 
+	Pass
+	  
+
+  
+
+	4
+	Record payment of 600
+	Invoice becomes fully paid
+	Invoice fully paid, balance $0 
+	Pass
+	  
+
+	5
+	Check AR
+	AR outstanding = 0
+	Receivables decreased by $600 on dashboard 
+	Pass
+	  
+
+	6
+	Try payment of 1,200
+	Blocked or customer credit created
+	Error shown: "Payment amount exceeds invoice balance" - payment blocked 
+	Pass
+	  
+
+	B. Vendor Payment Test
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Create and post vendor bill for 1,000
+	AP increases by 1,000
+	Dashboard Payables increased from $872 to $1,872 after posting 
+	Pass
+	  
+
+  
+
+  
+
+	2
+	Record payment of 400
+	Bill becomes partially paid
+	Bill BILL-2026-0009 status changed to Partially Paid, Payables decreased to $1,472 
+	Pass
+	  
+
+	3
+	Check AP
+	AP outstanding = 600
+	Payables reduced by $400 from $1872 to $1472
+	Pass
+	  
+
+	4
+	Record payment of 600
+	Bill becomes fully paid
+	Bill status changed to fully paid 
+	Pass
+	  
+
+	5
+	Check AP
+	AP outstanding = 0
+	Payables returned to $872, bill fully settled 
+	Pass
+	  
+
+	6
+	Try payment of 1,200
+	Blocked or vendor advance created
+	Error shown: "Payment amount exceeds bill balance" - payment blocked 
+	Pass
+	  
+
+	Test 5 — Credit Note and Debit Note Testing
+A. Customer Credit Note
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Create and post customer invoice
+	AR = 1,090
+	Invoice created and posted, AR updated 
+	Pass
+	  
+
+  
+
+  
+
+	2
+	Create credit note for 327
+	Credit note linked to invoice
+	Credit note created and linked to invoice 
+	Pass
+	  
+
+	3
+	Apply credit note
+	Invoice outstanding reduced
+	Cannot apply credit note, no option to post it, credit note stuck in Draft, 404 on detail page 
+	Fail
+	  
+
+  
+
+	4
+	Check AR
+	AR reduced by 327
+	Cannot verify AR reduction, tax reduction, or GL entry since credit note cannot be posted 
+	Blocked 
+	
+
+	5
+	Check tax
+	Output tax reduced by 27
+	
+
+	Blocked 
+	
+
+	6
+	Check GL
+	Correct reversal entry exists
+	
+
+	Blocked 
+	
+
+	B. Vendor Debit Note
+Steps
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Create and post vendor bill
+	AP = 1,090
+	Vendor bill posted, AP = $1,090 
+	Pass
+	  
+
+  
+
+  
+
+	2
+	Create vendor debit note
+	Linked to bill/vendor
+	System creates a vendor credit note not a debit note, no debit note option exists. Credit note created (VCN-2026-0001) but not visible in UI despite successful API response 
+	Fail
+	  
+
+	3
+	Apply debit note
+	Bill outstanding reduced
+	Debit note not visible in UI, cannot apply, post, or verify AP reduction, tax reduction, or GL reversal entry. 
+	Blocked 
+	
+
+	4
+	Check AP
+	AP reduced by 327
+	
+
+	Blocked 
+	
+
+	5
+	Check tax
+	Input tax reduced by 27
+	
+
+	Blocked 
+	
+
+	6
+	Check GL
+	Correct reversal exists
+	
+
+	Blocked 
+	
+
+	
+
+Test 6 — Duplicate Document Testing
+Test Scenarios
+No.
+	Scenario
+	Steps
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	6.1
+	Duplicate invoice number
+	Create two invoices with same number
+	Blocked or warning
+	Invoice numbers are system-generated sequentially, duplicates not possible by design 
+	Pass 
+	  
+
+	6.2
+	Duplicate vendor bill number
+	Same vendor + same bill number
+	Blocked or warning
+	Failed to create vendor bill 
+	Pass
+	  
+
+	6.3
+	Duplicate customer payment
+	Submit same payment twice
+	Only one payment created
+	UI closes after payment submission, same invoice cannot be selected again once paid 
+	Pass 
+	
+
+	6.4
+	Duplicate vendor payment
+	Submit same payment twice
+	Only one payment created
+	Same as above, UI prevents resubmission by design 
+	Pass 
+	
+
+	6.5
+	Double-click Post Invoice
+	Rapid double-click post button
+	Only one journal entry created
+	Only one journal entry created on posting 
+	Pass 
+	
+
+	6.6
+	Double-click Post Bill
+	Rapid double-click post button
+	Only one journal entry created
+	Only one journal entry created on posting 
+	Pass 
+	
+
+	6.7
+	Duplicate bank transaction import
+	Import same bank file twice
+	Duplicate detected
+	Not testable - no bank statement import functionality found in Bank Reconciliation UI 
+	Not Testable 
+	
+
+	6.8
+	Duplicate journal reference
+	Use same journal reference
+	Warning or blocked
+	Duplicate reference blocked, but raw SQL error exposed to user: "SQLSTATE[23505]: Unique violation - duplicate key value violates unique constraint journal_entries_entry_number_unique" instead of a user-friendly message 
+	Fail 
+	  
+
+	Test 7 — Multi-Currency and FX Testing
+Fail Log
+Test 7A, 7B, 7C: Blocked
+
+Multi-Currency module has currencies list (AUD, CAD, CNY, EUR, GBP, 
+JPY, MYR, SGD, THB, USD all active) but:
+- Exchange Rates tab: "Exchange rate management will be available 
+ in a future update"
+- Currency Converter tab: "Currency converter will be available 
+ in a future update"
+- No currency selection field on invoice or vendor bill creation forms
+
+Currency infrastructure exists but exchange rate and conversion 
+functionality is not yet implemented. FX testing cannot be performed.
+	
+
+Test 8 — Tax / GST / VAT Testing
+No.
+	Scenario
+	Steps
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	8.1
+	Sales invoice with GST
+	Invoice 1,000 + 9%
+	Output tax = 90
+	Tax % field accepts 9%, tax calculated as $90, total $1,090 on $1,000 invoice 
+	Pass
+	  
+
+	8.2
+	Vendor bill with GST
+	Bill 1,000 + 9%
+	Input tax = 90
+	Same calculation confirmed on vendor bill form, tax $90 on $1,000 + 9% 
+	Pass 
+	  
+
+	8.3
+	Tax-inclusive invoice
+	Price includes tax
+	Correct tax split
+	No tax-inclusive toggle or checkbox exists on invoice form 
+	Not Testable 
+	
+
+	8.4
+	Tax-exclusive invoice
+	Tax added on top
+	Correct total
+	Tax added on top of price by default - $1,000 + 9% = $1,090 confirmed 
+	Pass 
+	
+
+	8.5
+	Tax exempt customer
+	Create invoice
+	No tax applied
+	Leaving Tax % as 0 results in no tax applied, total remains $1,000 
+	Pass 
+	
+
+	8.6
+	Invalid tax rate
+	Enter negative or 999%
+	Blocked
+	Already confirmed in Test 1 - negative values and rates over 100% are blocked 
+	Pass 
+	
+
+	8.7
+	Credit note with tax
+	Credit partial amount
+	Output tax reduced
+	Blocked - no credit note functionality in system (from Test 5) 
+	Blocked 
+	
+
+	8.8
+	Debit note with tax
+	Reduce vendor bill
+	Input tax reduced
+	Blocked - no debit note functionality in system (from Test 5) 
+	Blocked 
+	
+
+	8.9
+	Tax report
+	Compare report to transactions
+	Matches GL
+	Sales Tax Payable ($119.20) visible in Trial Balance under account 2200, books balanced. No dedicated tax report exists in Reports section 
+	Partial 
+	
+
+	Test 9 — Permission and Audit Trail Testing
+Fail Log
+Test 9: Blocked
+All scenarios (9.1 - 9.8): Blocked
+
+Only a single Admin account (Demo 4 Admin) was available during 
+testing. No role-based access control or user permission settings 
+were found in the Accounting module or Settings. Audit trail 
+functionality was not identified in any module.
+
+Unable to test permission enforcement or audit trail with current 
+access. To clarify with Mr Ola whether role management and 
+audit logging are implemented elsewhere in the system or are 
+pending development.
+	
+
+Test 10 — API Failure and Duplicate Submit Testing
+No.
+	Scenario
+	Test Method
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	10.1
+	Network disconnect during save
+	Disable network before save
+	No partial/corrupt record
+	Network disconnect during save handled cleanly. No partial or corrupt record created, no duplicates when connection restored. 
+	Pass
+	  
+
+  
+
+	10.2
+	API error during posting
+	Simulate/observe 500 error
+	No journal entry created
+	Not Testable - unable to simulate a 500 API error during posting without backend access 
+	
+
+	
+
+	10.3
+	Slow API response
+	Throttle network
+	Loading state shown
+	UI shows loading state during slow network response (3G throttle). Invoice posted successfully with no errors or data corruption despite increased latency. 
+	Pass
+	  
+
+	10.4
+	Double-click submit
+	Rapidly click Save/Post
+	One record only
+	Already confirmed in Test 6 - only one record created on rapid double-click 
+	Pass 
+	
+
+	10.5
+	Browser refresh during posting
+	Refresh after clicking post
+	No duplicate/half-posted transaction
+	Browser refresh during posting handled cleanly - invoice remained in Draft, no duplicate or corrupt record created.   
+	Pass 
+	
+
+	10.6
+	Session expired during save
+	Submit after session timeout
+	User redirected; no corrupt save
+	
+
+	
+
+	
+
+	10.7
+	Unauthorized API call
+	Wrong role submits request
+	403/access denied
+	
+
+	
+
+	
+
+	10.8
+	Validation API error
+	Submit invalid payload
+	Clear field-level error
+	Already confirmed in Test 1 - invalid inputs are blocked with validation errors 
+	Pass 
+	
+
+	Test 11 — Concurrency Testing
+Test 12 — Reporting and Trial Balance Integrity Testing
+Step
+	Action
+	Expected Result
+	Actual Result
+	Status
+	Evidence
+	1
+	Complete AR transaction flow
+	AR appears correctly
+	AR transaction flow completed - invoices post correctly, payments reduce balance, partially paid and fully paid statuses update correctly 
+	Pass
+	
+
+	2
+	Complete AP transaction flow
+	AP appears correctly
+	AP transaction flow completed - vendor bills post correctly, payments reduce balance, partially paid and fully paid statuses update correctly 
+	Pass
+	
+
+	3
+	Run depreciation
+	Depreciation appears correctly
+	Depreciation posts to GL but system allows duplicate runs for same period - QA Laptop shows $200 accumulated instead of $100. Lamp depreciation fails silently due to salvage value exceeding purchase cost (linked to Test 1.11). Ghost asset (23456 QA Laptop) visible in UI but inactive in backend. 
+	Fail 
+	  
+
+  
+
+  
+
+	4
+	Record bank charge
+	Bank and expense update
+	Bank Fee (JE-2026-0002) exists and is posted, bank and expense accounts updated in Trial Balance 
+	
+
+	
+
+	5
+	Open Trial Balance
+	Debits = credits
+	Trial Balance balanced at $8,368.19, "Books are balanced" confirmed 
+	
+
+	  
+
+	6
+	Open General Ledger
+	All journals visible
+	
+
+	
+
+	
+
+	7
+	Open AR Aging
+	Only unpaid invoice balance appears
+	No AR Aging report available - Customer Invoices list shows 6 unpaid invoices but no total balance figure 
+	
+
+	
+
+	8
+	Open AP Aging
+	Only unpaid bill balance appears
+	
+
+	
+
+	
+
+	9
+	Open P&L
+	Revenue/expenses correct
+	
+
+	
+
+	
+
+	10
+	Open Balance Sheet
+	Assets/liabilities correct
+	
+
+	
+
+	
+
+	11
+	Compare Dashboard
+	Dashboard matches ledger/report values
+	Dashboard AR ($2,524) does not match Trial Balance AR ($2,494) - $30 discrepancy. Dashboard likely including draft invoice in receivables. AP matches at $2,222 on both 
+	Fail 
+	  
+
+  
+
+	
+
+
+
+4.c. Retest: Financial Close
 Day 1: Understand and Map
 Tasks:
                                                    1. Read Financial Close purpose.
@@ -7744,6 +8766,76 @@ Data Object
 	6
 	Journal entry creation fails with server error in some cases
 	RT-003
+	Day 3: Execute Core Workflow Tests
+Tasks:
+                                                   1. Create close cycle.
+                                                   2. Generate tasks.
+                                                   3. Assign tasks.
+                                                   4. Complete tasks.
+                                                   5. Upload evidence.
+                                                   6. Submit review.
+                                                   7. Sign off.
+Deliverable:
+Core Workflow Test Result
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+
+
+Fail Log
+Retest ID: RT-013 (Day 3 Core Workflow)
+Module: Financial Close
+Submodule: Task Management
+
+Task Start: Pass - API returns {"message":"Task started."} ✅
+Task Submit: Pass - API returns {"message":"Task submitted for 
+review."}, task moves to Review Queue ✅
+Task Approve: Pass - API returns {"message":"Task completed."} ✅
+Task Return: Pass ✅
+Task Block: Pass - Block Task modal opens with reason field, API 
+returns {"message":"Task blocked."}, task status updates to 
+Blocked in list ✅
+
+Task Assignment: Fail - all task fields empty including checklist 
+items, evidence items, deliverable, business impact, next step, 
+due date, and assignee. Confirmed via API response showing all 
+fields as null or empty arrays.
+
+Completed Tasks: Fail - after approval, filtering by Completed 
+shows "No tasks with status completed" despite API returning 
+{"message":"Task completed."}
+
+Escalation: Fail - Escalate Task modal opens and accepts reason 
+input, API returns {"message":"Server Error"} on submit. UI shows 
+"Escalation failed" toast. Confirmed via API showing 
+escalations: [].
+
+Evidence Upload: Fail - no evidence upload option available on 
+task detail page.
+
+Sign Off: Fail - no sign off option found, not testable.
+
+Overall Day 3 Result: Partial Fail - core task status transitions 
+(Start, Submit, Approve, Return, Block) all work correctly with 
+accurate API responses. However task details are entirely empty, 
+completed tasks filter is broken, escalation returns server error, 
+evidence upload is not implemented, and sign off is not available.
 	
 
 5. Ola bug fix 20/5
@@ -8940,3 +10032,65 @@ ________________
 Message You Can Send to Your Engineer
 You can send this directly:
 Please do not treat these as UI bugs only. These are accounting integrity defects. For every fix, verify the document status, posting logic, generated journal entry, ledger/subledger balance, dashboard value, report output, and audit trail. Draft documents must not affect AR/AP. Posted documents must generate journal entries. Payments must reduce AR/AP. Dashboard and reports must derive from posted accounting data, not raw draft documents.
+
+
+6. Handover 29.5.26
+Handover Summary: NoovaERP QA Testing
+Module: Accounting and Financial Close
+Last updated: 29 May 2026
+Completed:
+                                                   * Negative Testing Tests 1 to 12 (all attempted)
+                                                   * Retest RT-001 to RT-013 Round 1 and Round 2
+                                                   * Financial Close Day 3 core workflow testing
+Pending / Incomplete:
+Area
+	Status
+	Details
+	Test 3 - Closed Period
+	Fail
+	Lock date has no enforcement effect across all modules. All 9 scenarios fail. Root cause unresolved.
+	Test 5 - Credit/Debit Notes
+	Partial
+	Customer credit note creation works and links to invoice but detail page returns 404, cannot post. Vendor debit note not implemented, vendor credit note created but does not appear in UI.
+	Test 7 - Multi-Currency
+	Blocked
+	Exchange rate management and currency converter not yet implemented.
+	Test 8.7 and 8.8 - Tax on credit/debit notes
+	Blocked
+	Dependent on Test 5 fix.
+	Test 9 - Permissions and Audit Trail
+	Blocked
+	Single account per tenant, no role-based access control found.
+	Test 10.6 and 10.7
+	Not Tested
+	Session expiry and unauthorized API call not tested.
+	Test 11 - Concurrency
+	Blocked
+	System does not support multiple accounts per tenant. Mr Ola advised implementation in progress.
+	Financial Close Day 4 and Day 5
+	Blocked
+	AI findings, readiness snapshot, ready-to-close gate, and security testing not implemented in current build.
+	
+
+
+
+Bug
+	Source
+	Invoice subtotal miscalculation
+	Negative Test, found during Test 5 retesting
+	Journal reversal date field missing
+	Negative Test 2.7
+	Duplicate journal reference exposes raw SQL error
+	Negative Test 6.8
+	Duplicate depreciation entries allowed for same period
+	Negative Test 12, Step 3
+	Inactive asset still visible in UI
+	Negative Test 12, Step 3
+	Dashboard AR vs Trial Balance $30 discrepancy
+	Negative Test 12, Step 11
+	Financial Close escalation server error
+	Retest RT-013, Financial Close Day 3
+	Financial Close completed tasks filter broken
+	Retest RT-013, Financial Close Day 3
+	Financial Close task details all empty
+	Retest RT-013, Financial Close Day 3
