@@ -39,7 +39,7 @@ export function CloseCyclesPage() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [periodId, setPeriodId] = useState('')
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('none')
 
   const { data, isLoading } = useQuery({
     queryKey: ['close-cycles', ENTITY_ID],
@@ -53,12 +53,12 @@ export function CloseCyclesPage() {
   const templates: ChecklistTemplate[] = templatesData ?? []
 
   const createMutation = useMutation({
-    mutationFn: () => closeCyclesApi.create(ENTITY_ID, periodId, selectedTemplateId || undefined),
+    mutationFn: () => closeCyclesApi.create(ENTITY_ID, periodId, selectedTemplateId === 'none' ? undefined : selectedTemplateId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
       setCreateOpen(false)
       setPeriodId('')
-      setSelectedTemplateId('')
+      setSelectedTemplateId('none')
       toast({ title: 'Cycle created.' })
     },
     onError: () => toast({ title: 'Failed to create cycle.', variant: 'destructive' }),
@@ -249,7 +249,7 @@ export function CloseCyclesPage() {
                   <SelectValue placeholder="Select a checklist template (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (manual later)</SelectItem>
+                  <SelectItem value="none">None (manual later)</SelectItem>
                   {templates.map(t => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
