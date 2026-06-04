@@ -105,7 +105,11 @@ class CustomerCreditNotesController extends Controller
         try {
             $creditNote = $this->creditNoteService->createCreditNote($validated);
 
-            return response()->json($creditNote, 201);
+            return response()->json([
+                'message' => 'Credit note created successfully',
+                'id' => $creditNote->id,
+                'data' => $creditNote,
+            ], 201);
 
         } catch (\RuntimeException $e) {
             \Log::error('Credit note creation failed (runtime)', [

@@ -174,6 +174,7 @@ class JournalEntriesController extends Controller
 
             return response()->json([
                 'message' => 'Journal entry created successfully',
+                'id' => $result->journalEntry->id,
                 'entry' => $result->journalEntry->load('lines.account'),
             ], 201);
 

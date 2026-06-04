@@ -1259,6 +1259,92 @@ class AccountingModuleEndToEndTest extends TenantTestCase
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 6. Negative & Security Tests
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @test — NEG-001: Negative quantity invoice rejected */
+    public function negative_quantity_invoice_is_rejected(): void
+    {
+        $payload = [
+            'customer_id' => $this->customerTechCorp->id,
+            'invoice_date' => '2026-02-15',
+            'lines' => [
+                [
+                    'product_id' => $this->productEnterpriseLicense->id,
+                    'description' => 'Negative qty test',
+                    'quantity' => -5,
+                    'unit_price' => 100.00,
+                    'tax_rate' => 10.00,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->accountantUser)
+            ->postJson('/api/v1/invoices', $payload);
+
+        $response->assertUnprocessable();
+    }
+
+    /** @test — NEG-002: Zero total invoice creates but totals zero */
+    public function zero_total_invoice_behavior(): void
+    {
+        $payload = [
+            'customer_id' => $this->customerTechCorp->id,
+            'invoice_date' => '2026-02-15',
+            'lines' => [
+                [
+                    'product_id' => $this->productEnterpriseLicense->id,
+                    'description' => 'Free sample',
+                    'quantity' => 1,
+                    'unit_price' => 0.00,
+                    'tax_rate' => 0.00,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->accountantUser)
+            ->postJson('/api/v1/invoices', $payload);
+
+        $response->assertCreated();
+        $invoiceId = $response->json('id');
+        $invoice = Invoice::find($invoiceId);
+        $this->assertEquals(0.00, (float) $invoice->total);
+    }
+
+    /** @test — NEG-003: Empty description journal rejected */
+    public function empty_description_journal_is_rejected(): void
+    {
+        $payload = [
+            'entry_date' => '2026-02-28',
+            'description' => '',
+            'lines' => [
+                [
+                    'account_id' => $this->accountExpense->id,
+                    'debit' => 500.00,
+                    'credit' => 0.00,
+                ],
+                [
+                    'account_id' => $this->accountAP->id,
+                    'debit' => 0.00,
+                    'credit' => 500.00,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->accountantUser)
+            ->postJson('/api/v1/accounting/journal-entries', $payload);
+
+        $response->assertUnprocessable();
+    }
+
+    /** @test — SEC-005: Unauthenticated API call rejected */
+    public function unauthenticated_api_call_is_rejected(): void
+    {
+        $response = $this->postJson('/api/v1/invoices', []);
+        $response->assertUnauthorized();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Helper: Account Balance Query
     // ──────────────────────────────────────────────────────────────────────────
 

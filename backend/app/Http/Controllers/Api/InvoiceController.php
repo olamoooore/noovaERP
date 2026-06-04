@@ -124,7 +124,11 @@ class InvoiceController extends Controller
                 empty($invoiceOverrides) ? null : $invoiceOverrides
             );
 
-            return response()->json($invoice, 201);
+            return response()->json([
+                'message' => 'Invoice created successfully',
+                'id' => $invoice->id,
+                'data' => $invoice,
+            ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -187,6 +191,14 @@ class InvoiceController extends Controller
 
         if (!$invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        // Idempotent guard: already-posted invoices return success without re-posting
+        if ($invoice->status === 'posted') {
+            return response()->json([
+                'message' => 'Invoice already posted',
+                'invoice' => $invoice->fresh(['journalEntry', 'lines']),
+            ]);
         }
 
         try {

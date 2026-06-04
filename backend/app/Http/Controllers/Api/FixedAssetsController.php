@@ -132,6 +132,7 @@ class FixedAssetsController extends Controller
 
             return response()->json([
                 'message' => 'Fixed asset created successfully',
+                'id' => $asset->id,
                 'asset' => $asset->load([
                     'assetAccount',
                     'depreciationAccount',

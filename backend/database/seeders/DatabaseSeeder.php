@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
         if (function_exists('tenant') && tenant()) {
             $seeders[] = DepartmentLocationSeeder::class;
             $seeders[] = HRMPermissionSeeder::class;
+            $seeders[] = AccountingPermissionSeeder::class;
             $seeders[] = LoyaltyTierSeeder::class;
             $seeders[] = FiscalPeriodSeeder::class; // Seed fiscal periods for accounting
         }

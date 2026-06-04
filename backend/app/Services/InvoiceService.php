@@ -99,8 +99,13 @@ class InvoiceService
             // Re-fetch with lock to prevent concurrent posting
             $invoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
 
+            if ($invoice->status === 'posted' && $invoice->journal_entry_id !== null) {
+                // Idempotent: already posted — return the invoice without duplicate posting
+                return $invoice->fresh(['journalEntry', 'lines']);
+            }
+
             if ($invoice->status !== 'draft') {
-                throw new \Exception('Only draft invoices can be posted');
+                throw new \RuntimeException('Only draft invoices can be posted');
             }
 
             // ── Build posting lines ──────────────────────────
