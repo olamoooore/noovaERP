@@ -118,6 +118,22 @@ class AccountingAccessService
         return $this->hasPermission($user, 'accounting.lock');
     }
 
+    /**
+     * Can the user complete bank reconciliation?
+     */
+    public function canCompleteReconciliation(User $user): bool
+    {
+        if ($user->is_super_admin ?? false) {
+            return true;
+        }
+
+        if ($this->hasRole($user, ['admin', 'super-admin', 'Owner'])) {
+            return true;
+        }
+
+        return $this->hasPermission($user, 'reconciliation.complete');
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private function hasSpatiePermissionOrRole(User $user, string $permission, array $roles): bool

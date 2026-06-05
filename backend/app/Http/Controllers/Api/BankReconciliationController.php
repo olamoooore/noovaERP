@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\BankReconciliationService;
+use App\Services\AccountingAccessService;
 use App\Models\BankAccount;
 use App\Models\BankReconciliation;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Bank Reconciliation Controller
@@ -16,7 +18,8 @@ use Illuminate\Http\JsonResponse;
 class BankReconciliationController extends Controller
 {
     public function __construct(
-        private BankReconciliationService $bankReconciliationService
+        private BankReconciliationService $bankReconciliationService,
+        private AccountingAccessService $accessService,
     ) {}
 
     /**
@@ -117,6 +120,14 @@ class BankReconciliationController extends Controller
      */
     public function complete(Request $request): JsonResponse
     {
+        $user = Auth::user();
+        if (!$user || !$this->accessService->canCompleteReconciliation($user)) {
+            return response()->json([
+                'message' => 'You do not have permission to complete reconciliation.',
+                'required_permission' => 'reconciliation.complete',
+            ], 403);
+        }
+
         try {
             // Validate request
             $validated = $request->validate([
@@ -183,6 +194,14 @@ class BankReconciliationController extends Controller
      */
     public function addTransaction(Request $request): JsonResponse
     {
+        $user = Auth::user();
+        if (!$user || !$this->accessService->canCompleteReconciliation($user)) {
+            return response()->json([
+                'message' => 'You do not have permission to add reconciliation transactions.',
+                'required_permission' => 'reconciliation.complete',
+            ], 403);
+        }
+
         try {
             // Validate request
             $validated = $request->validate([

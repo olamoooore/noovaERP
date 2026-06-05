@@ -65,6 +65,8 @@ class Bill extends Model
         'credit_note_id',
         'version_number',
         'is_active_version',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
@@ -83,6 +85,7 @@ class Bill extends Model
         'credited_at' => 'datetime',
         'superseded_at' => 'datetime',
         'is_active_version' => 'boolean',
+        'approved_at' => 'datetime',
     ];
 
     protected static function boot(): void
@@ -164,6 +167,11 @@ class Bill extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     /**

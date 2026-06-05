@@ -219,6 +219,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::put('/vendor-bills/{id}', [VendorBillsController::class, 'update']);
         Route::delete('/vendor-bills/{id}', [VendorBillsController::class, 'destroy']);
         Route::post('/vendor-bills/{id}/post', [VendorBillsController::class, 'post']);
+        Route::post('/vendor-bills/{id}/approve', [VendorBillsController::class, 'approve']);
+        Route::post('/vendor-bills/{id}/reject', [VendorBillsController::class, 'reject']);
         
         // Accounting-Origin Documents (direct AR/AP creation by accountants)
         Route::post('/origin/invoices', [AccountingOriginController::class, 'storeInvoice']);

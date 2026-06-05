@@ -95,23 +95,46 @@ class PaymentController extends Controller
             'invoice_id' => 'required|exists:invoices,id',
             'payment_date' => 'nullable|date',
             'amount' => 'required|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
             'method' => 'required|in:cash,card,bank_transfer,check,other',
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
         ]);
 
         try {
             $invoice = Invoice::findOrFail($validated['invoice_id']);
+            $discountAmount = $validated['discount_amount'] ?? 0;
+            $totalApplied = $validated['amount'] + $discountAmount;
             
-            if ($validated['amount'] > $invoice->balance) {
+            if ($totalApplied > $invoice->balance) {
                 return response()->json([
                     'message' => 'Payment amount exceeds invoice balance',
                 ], 422);
             }
 
+            // Validate bank balance if paying from a bank account
+            if (!empty($validated['bank_account_id'])) {
+                $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
+                if ($bankAccount) {
+                    $currentBalance = $bankAccount->getCurrentBalance();
+                    if ($validated['amount'] > $currentBalance) {
+                        return response()->json([
+                            'message' => 'Payment amount exceeds bank account balance',
+                            'bank_balance' => $currentBalance,
+                            'requested_amount' => $validated['amount'],
+                        ], 422);
+                    }
+                }
+            }
+
             $payment = $this->invoiceService->recordPayment($invoice, $validated);
 
-            return response()->json($payment, 201);
+            return response()->json([
+                'message' => 'Payment recorded successfully',
+                'id' => $payment->id,
+                'data' => $payment,
+            ], 201);
 
         } catch (\Exception $e) {
             return response()->json([

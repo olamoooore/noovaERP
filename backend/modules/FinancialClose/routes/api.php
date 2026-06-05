@@ -8,6 +8,7 @@ use Modules\FinancialClose\Http\Controllers\FindingController;
 use Modules\FinancialClose\Http\Controllers\ReadinessController;
 use Modules\FinancialClose\Http\Controllers\ForecastController;
 use Modules\FinancialClose\Http\Controllers\ChecklistTemplateController;
+use Modules\FinancialClose\Http\Controllers\SignoffController;
 
 /*
 |--------------------------------------------------------------------------
@@ -60,6 +61,11 @@ Route::get('/checklist-templates/{templateId}',         [ChecklistTemplateContro
 Route::put('/checklist-templates/{templateId}',         [ChecklistTemplateController::class, 'update']);
 Route::delete('/checklist-templates/{templateId}',      [ChecklistTemplateController::class, 'destroy']);
 Route::post('/checklist-templates/{templateId}/activate', [ChecklistTemplateController::class, 'activate']);
+
+// ─── Sign-offs ───────────────────────────────────────────────────────────────
+Route::get('/reviews/{reviewId}/signoffs',              [SignoffController::class, 'index']);
+Route::post('/reviews/{reviewId}/signoffs',             [SignoffController::class, 'store']);
+Route::post('/signoffs/{signoffId}/revoke',             [SignoffController::class, 'revoke']);
 
 // ─── Forecast ────────────────────────────────────────────────────────────────
 Route::get('/cycles/{cycleId}/forecast',                [ForecastController::class, 'show']);

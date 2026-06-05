@@ -75,6 +75,21 @@ class BillPaymentsController extends Controller
         ]);
 
         try {
+            // Validate bank balance if paying from a bank account
+            if (!empty($validated['bank_account_id'])) {
+                $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
+                if ($bankAccount) {
+                    $currentBalance = $bankAccount->getCurrentBalance();
+                    if ($validated['amount'] > $currentBalance) {
+                        return response()->json([
+                            'message' => 'Payment amount exceeds bank account balance',
+                            'bank_balance' => $currentBalance,
+                            'requested_amount' => $validated['amount'],
+                        ], 422);
+                    }
+                }
+            }
+
             $data = array_merge($validated, ['created_by' => Auth::id()]);
             $payment = $this->billPaymentService->recordPayment($data, Auth::id());
 

@@ -10,6 +10,7 @@ use App\Services\BillService;
 use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -529,6 +530,94 @@ class VendorBillsController extends Controller
             Log::error('Failed to post vendor bill: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Failed to post vendor bill',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Approve a vendor bill.
+     * Only draft bills can be approved. Approval is required before posting.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function approve($id)
+    {
+        try {
+            $bill = Bill::find($id);
+
+            if (!$bill) {
+                return response()->json(['message' => 'Vendor bill not found'], 404);
+            }
+
+            if (!is_null($bill->approved_at)) {
+                return response()->json([
+                    'message' => 'This bill has already been approved.',
+                ], 422);
+            }
+
+            if ($bill->status !== 'draft') {
+                return response()->json([
+                    'message' => "Only draft bills can be approved. Current status: {$bill->status}",
+                ], 422);
+            }
+
+            $bill->update([
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Vendor bill approved successfully',
+                'data' => $bill->fresh(['vendor', 'lines', 'approvedBy']),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to approve vendor bill: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to approve vendor bill',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Reject a vendor bill approval.
+     * Resets an approved bill back to draft.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function reject($id)
+    {
+        try {
+            $bill = Bill::find($id);
+
+            if (!$bill) {
+                return response()->json(['message' => 'Vendor bill not found'], 404);
+            }
+
+            if (is_null($bill->approved_at)) {
+                return response()->json([
+                    'message' => 'Only approved bills can be rejected.',
+                ], 422);
+            }
+
+            $bill->update([
+                'approved_by' => null,
+                'approved_at' => null,
+            ]);
+
+            return response()->json([
+                'message' => 'Vendor bill approval rejected',
+                'data' => $bill->fresh(['vendor', 'lines']),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to reject vendor bill: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to reject vendor bill',
                 'error' => $e->getMessage(),
             ], 500);
         }
