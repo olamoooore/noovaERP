@@ -65,12 +65,18 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         JobRunHistory::create([
             'tenant_id'      => $this->tenantId,
-            'job_name'       => 'GenerateTasksFromChecklistJob',
-            'reference_id'   => $this->cycleId,
+            'job_type'       => 'GenerateTasksFromChecklistJob',
+            'status'         => $result ? 'success' : 'failed',
             'started_at'     => $startedAt,
-            'finished_at'    => now(),
-            'result'         => ['success' => $result, 'template_id' => $templateId],
-            'correlation_id' => $this->correlationId,
+            'completed_at'   => now(),
+            'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+            'error_message'  => $result ? null : 'Task expansion returned false',
+            'metadata'       => [
+                'cycle_id'       => $this->cycleId,
+                'template_id'    => $templateId,
+                'result'         => $result,
+                'correlation_id' => $this->correlationId,
+            ],
         ]);
     }
 }

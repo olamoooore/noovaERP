@@ -285,9 +285,10 @@ class CompanySettingsController extends Controller
             ];
 
             // Defensive: null out extended fields if the DB columns don't exist yet
-            $extendedColumns = ['purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
+            $extendedColumns = ['shipping_revenue', 'purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
             foreach ($extendedColumns as $key) {
                 $dbColumn = match ($key) {
+                    'shipping_revenue' => 'shipping_revenue_account_id',
                     'purchase_tax' => 'default_purchase_tax_account_id',
                     'inventory' => 'default_inventory_account_id',
                     'cost_of_goods_sold' => 'default_cogs_account_id',
@@ -342,7 +343,6 @@ class CompanySettingsController extends Controller
                 'default_receivable_account_id' => $input['accounts_receivable'] ?? null,
                 'default_payable_account_id' => $input['accounts_payable'] ?? null,
                 'default_revenue_account_id' => $input['sales_revenue'] ?? null,
-                'shipping_revenue_account_id' => $input['shipping_revenue'] ?? null,
                 'default_expense_account_id' => $input['purchase_expense'] ?? null,
                 'default_tax_account_id' => $input['sales_tax'] ?? null,
                 'updated_at' => now(),
@@ -351,6 +351,7 @@ class CompanySettingsController extends Controller
             // Defensive: only include extended default-account columns if they exist in DB.
             // Some tenants may not have run the migration that added these columns.
             $extendedColumns = [
+                'shipping_revenue_account_id' => $input['shipping_revenue'] ?? null,
                 'default_purchase_tax_account_id' => $input['purchase_tax'] ?? null,
                 'default_inventory_account_id' => $input['inventory'] ?? null,
                 'default_cogs_account_id' => $input['cost_of_goods_sold'] ?? null,

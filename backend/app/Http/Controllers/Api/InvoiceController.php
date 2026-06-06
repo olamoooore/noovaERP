@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Models\Product;
+use App\Models\Warehouse;
 use App\Services\InvoiceService;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesOrderService;
@@ -87,6 +89,24 @@ class InvoiceController extends Controller
                 'discount_amount' => $line['discount_amount'] ?? 0,
             ], $validated['lines']);
 
+            // Resolve warehouse for stock-tracked products
+            $warehouseId = null;
+            $productIds = array_filter(array_column($salesLines, 'product_id'));
+            if (!empty($productIds)) {
+                $hasStockTracked = Product::whereIn('id', $productIds)
+                    ->where('track_inventory', true)
+                    ->exists();
+                if ($hasStockTracked) {
+                    $warehouse = Warehouse::getDefault() ?? Warehouse::first();
+                    if (!$warehouse) {
+                        return response()->json([
+                            'message' => 'Cannot create invoice for stock-tracked products: no warehouse configured. Please set up a warehouse first.',
+                        ], 422);
+                    }
+                    $warehouseId = $warehouse->id;
+                }
+            }
+
             // Create SalesOrder on the admin channel so every manual invoice
             // is tracked by the SalesOrder backbone and has a SalesInvoiceLink.
             $salesOrder = $this->salesOrderService->createOrder([
@@ -94,6 +114,7 @@ class InvoiceController extends Controller
                 'channel'     => 'admin',
                 'notes'       => $validated['notes'] ?? null,
                 'lines'       => $salesLines,
+                'warehouse_id'=> $warehouseId,
             ]);
 
             // Fast-track admin orders through the full lifecycle immediately
