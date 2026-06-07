@@ -1,4 +1,6 @@
 import { useCreditNotesByBill } from '@/hooks/useVendorCreditNotes';
+import VendorCreditNotePostButton from './VendorCreditNotePostButton';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface BillCreditNotesProps {
   billId: number;
@@ -21,6 +23,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function BillCreditNotes({ billId, billTotal, currencyCode }: BillCreditNotesProps) {
+  const queryClient = useQueryClient();
   const { data: creditNotes, isLoading } = useCreditNotesByBill(billId);
 
   if (isLoading) {
@@ -34,8 +37,12 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
   const creditNotesList = creditNotes?.data || [];
   const totalCredited = creditNotesList
     .filter((cn: any) => cn.status === 'posted')
-    .reduce((sum: number, cn: any) => sum + cn.total_amount, 0);
+    .reduce((sum: number, cn: any) => sum + Number(cn.total_amount), 0);
   const remainingBalance = billTotal - totalCredited;
+
+  const handlePosted = () => {
+    queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', billId] });
+  };
 
   return (
     <div className="mt-6">
@@ -75,6 +82,9 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Reason
                 </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -89,13 +99,18 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                     {new Date(creditNote.credit_note_date).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {creditNote.currency_code} {creditNote.total_amount.toFixed(2)}
+                    {creditNote.currency_code} {Number(creditNote.total_amount).toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={creditNote.status} />
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {creditNote.reason || '-'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {creditNote.status === 'draft' && (
+                      <VendorCreditNotePostButton creditNoteId={creditNote.id} onSuccess={handlePosted} />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -105,7 +120,7 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                 <td colSpan={2} className="px-4 py-3 text-sm font-semibold text-gray-900">
                   Total Credited (Posted):
                 </td>
-                <td colSpan={3} className="px-4 py-3 text-sm font-bold text-green-600">
+                <td colSpan={4} className="px-4 py-3 text-sm font-bold text-green-600">
                   {currencyCode} {totalCredited.toFixed(2)}
                 </td>
               </tr>

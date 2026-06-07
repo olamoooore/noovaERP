@@ -206,6 +206,32 @@ class EntityManagementController extends Controller
         return response()->json(DB::table('branches')->find($id), 201);
     }
 
+    public function showBranch(int $id): JsonResponse
+    {
+        $branch = DB::table('branches')->find($id);
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+        return response()->json($branch);
+    }
+
+    public function updateBranch(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'code' => 'sometimes|string|max:20',
+            'is_active' => 'sometimes|boolean',
+        ]);
+
+        $branch = DB::table('branches')->find($id);
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        DB::table('branches')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+        return response()->json(DB::table('branches')->find($id));
+    }
+
     public function destroyBranch(int $id): JsonResponse
     {
         $branch = DB::table('branches')->find($id);
@@ -248,6 +274,34 @@ class EntityManagementController extends Controller
         ]));
 
         return response()->json(DB::table('entity_books')->find($id), 201);
+    }
+
+    public function showBook(int $id): JsonResponse
+    {
+        $book = DB::table('entity_books')->find($id);
+        if (!$book) {
+            return response()->json(['message' => 'Entity book not found'], 404);
+        }
+        return response()->json($book);
+    }
+
+    public function updateBook(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'book_type' => 'sometimes|in:general,statutory,management,tax',
+            'currency_code' => 'sometimes|string|size:3|exists:currencies,code',
+            'is_primary' => 'sometimes|boolean',
+            'status' => 'sometimes|in:active,inactive',
+        ]);
+
+        $book = DB::table('entity_books')->find($id);
+        if (!$book) {
+            return response()->json(['message' => 'Entity book not found'], 404);
+        }
+
+        DB::table('entity_books')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+        return response()->json(DB::table('entity_books')->find($id));
     }
 
     public function destroyBook(int $id): JsonResponse

@@ -216,7 +216,7 @@ class CompanySettingsController extends Controller
             $activeCurrencies = DB::table('currencies')
                 ->where('is_active', true)
                 ->orderBy('code')
-                ->get(['code', 'name', 'symbol']);
+                ->get(['code', 'name', 'symbol', 'is_active']);
 
             return response()->json([
                 'success' => true,

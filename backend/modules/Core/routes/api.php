@@ -207,6 +207,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Reports
         Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
         Route::get('/ledger/{account}', [AccountingController::class, 'ledger']);
+        Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet']);
+        Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss']);
         
         // Period-End Processes
         Route::post('/fx-revaluation', [AccountingController::class, 'fxRevaluation']);
@@ -342,10 +344,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         Route::get('/branches', [EntityManagementController::class, 'indexBranches']);
         Route::post('/branches', [EntityManagementController::class, 'storeBranch']);
+        Route::get('/branches/{id}', [EntityManagementController::class, 'showBranch']);
+        Route::put('/branches/{id}', [EntityManagementController::class, 'updateBranch']);
         Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch']);
 
         Route::get('/entity-books', [EntityManagementController::class, 'indexBooks']);
         Route::post('/entity-books', [EntityManagementController::class, 'storeBook']);
+        Route::get('/entity-books/{id}', [EntityManagementController::class, 'showBook']);
+        Route::put('/entity-books/{id}', [EntityManagementController::class, 'updateBook']);
         Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook']);
 
         Route::get('/legal-entities/{entityId}/modules', [EntityManagementController::class, 'indexModules']);

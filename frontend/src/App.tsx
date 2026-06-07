@@ -320,6 +320,7 @@ function App() {
                 <Route path="/accounting/core/entities" element={<AccountingEntityManagementPage />} />
                 
                 {/* Reporting Section */}
+                <Route path="/accounting/reporting" element={<Navigate to="/accounting/reporting/trial-balance" replace />} />
                 <Route path="/accounting/reporting/balance-sheet" element={<BalanceSheetPage />} />
                 <Route path="/accounting/reporting/profit-loss" element={<ProfitLossPage />} />
                 <Route path="/accounting/reporting/cash-flow" element={<CashFlowPage />} />

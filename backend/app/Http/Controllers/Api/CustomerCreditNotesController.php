@@ -214,7 +214,7 @@ class CustomerCreditNotesController extends Controller
             ->orderBy('credit_note_date', 'desc')
             ->get();
 
-        return response()->json($creditNotes);
+        return response()->json(['data' => $creditNotes]);
     }
 
     /**

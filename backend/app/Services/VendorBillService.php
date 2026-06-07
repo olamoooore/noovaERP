@@ -80,6 +80,20 @@ class VendorBillService
                 description: "AP - Bill {$bill->bill_number}",
             );
 
+            // CR purchase discount if applicable
+            $discountAmount = (float) ($bill->discount_amount ?? 0);
+            if ($discountAmount > 0) {
+                // Use the first line's account as the discount offset account
+                $discountAccountId = $bill->lines->first()?->account_id;
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'general_expense',
+                    accountId: $discountAccountId,
+                    debit: 0,
+                    credit: $discountAmount,
+                    description: "Discount - Bill {$bill->bill_number}",
+                );
+            }
+
             $request = new PostingRequest(
                 documentType: 'bill',
                 documentId: $bill->id,

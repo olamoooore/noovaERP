@@ -71,6 +71,11 @@ class JournalEntriesController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Filter by reversal
+        if ($request->has('is_reversal')) {
+            $query->where('is_reversal', filter_var($request->is_reversal, FILTER_VALIDATE_BOOLEAN));
+        }
+
         // Filter by journal
         if ($request->has('journal_id')) {
             $query->where('journal_id', $request->journal_id);

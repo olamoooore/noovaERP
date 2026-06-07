@@ -696,7 +696,7 @@ export const CreateVendorBillPage: React.FC = () => {
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="1"
                             value={line.quantity}
                             onChange={(event) => updateLine(index, 'quantity', parseFloat(event.target.value) || 0)}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"

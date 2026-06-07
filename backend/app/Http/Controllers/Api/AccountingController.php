@@ -340,6 +340,86 @@ class AccountingController extends Controller
         }
     }
 
+    /**
+     * Balance Sheet Report
+     */
+    public function balanceSheet(Request $request)
+    {
+        try {
+            $asOfDate = $request->date('as_of_date') ?? now();
+
+            $accounts = ChartOfAccount::withSum([
+                'journalEntryLines as balance' => function ($q) use ($asOfDate) {
+                    $q->whereHas('journalEntry', fn($je) => $je->where('status', 'posted')->where('entry_date', '<=', $asOfDate));
+                }
+            ], DB::raw('debit - credit'))->get();
+
+            $assets = $accounts->whereIn('type', ['asset'])->values();
+            $liabilities = $accounts->whereIn('type', ['liability'])->values();
+            $equity = $accounts->whereIn('type', ['equity'])->values();
+
+            $totalAssets = $assets->sum('balance');
+            $totalLiabilities = $liabilities->sum('balance');
+            $totalEquity = $equity->sum('balance');
+
+            return response()->json([
+                'as_of_date' => $asOfDate->toDateString(),
+                'assets' => $assets,
+                'liabilities' => $liabilities,
+                'equity' => $equity,
+                'total_assets' => $totalAssets,
+                'total_liabilities' => $totalLiabilities,
+                'total_equity' => $totalEquity,
+                'total_liabilities_and_equity' => $totalLiabilities + $totalEquity,
+                'is_balanced' => abs($totalAssets - ($totalLiabilities + $totalEquity)) < 0.01,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to generate balance sheet',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Profit & Loss (Income Statement) Report
+     */
+    public function profitAndLoss(Request $request)
+    {
+        try {
+            $startDate = $request->date('start_date') ?? now()->startOfYear();
+            $endDate = $request->date('end_date') ?? now();
+
+            $accounts = ChartOfAccount::withSum([
+                'journalEntryLines as balance' => function ($q) use ($startDate, $endDate) {
+                    $q->whereHas('journalEntry', fn($je) => $je->where('status', 'posted')->whereBetween('entry_date', [$startDate, $endDate]));
+                }
+            ], DB::raw('credit - debit'))->get();
+
+            $revenue = $accounts->whereIn('type', ['revenue', 'income'])->values();
+            $expenses = $accounts->whereIn('type', ['expense'])->values();
+
+            $totalRevenue = $revenue->sum('balance');
+            $totalExpenses = $expenses->sum('balance');
+            $netIncome = $totalRevenue - $totalExpenses;
+
+            return response()->json([
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+                'revenue' => $revenue,
+                'expenses' => $expenses,
+                'total_revenue' => $totalRevenue,
+                'total_expenses' => $totalExpenses,
+                'net_income' => $netIncome,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to generate profit and loss',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     // ==================== Period-End Processes ====================
 
     public function fxRevaluation(Request $request, FxRevaluationService $fxService)

@@ -236,8 +236,25 @@ const baseNavItems: NavItem[] = [
       },
       {
         title: 'Reports',
-        href: '/accounting/reporting/trial-balance',
+        href: '/accounting/reporting',
         icon: 'solar:file-text-bold-duotone',
+        children: [
+          {
+            title: 'Trial Balance',
+            href: '/accounting/reporting/trial-balance',
+            icon: 'solar:balance-bold-duotone',
+          },
+          {
+            title: 'Balance Sheet',
+            href: '/accounting/reporting/balance-sheet',
+            icon: 'solar:chart-bold-duotone',
+          },
+          {
+            title: 'Profit & Loss',
+            href: '/accounting/reporting/profit-loss',
+            icon: 'solar:chart-square-bold-duotone',
+          },
+        ],
       },
       {
         title: 'Configuration',

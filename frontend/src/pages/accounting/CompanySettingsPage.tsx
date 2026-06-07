@@ -98,17 +98,18 @@ export default function CompanySettingsPage() {
 
   // Sync controlled state with fetched data
   useEffect(() => {
-    if (currencies && Object.keys(currencies).length > 0) {
+    if (currenciesResponse && currenciesResponse.data) {
+      const data = currenciesResponse.data;
       setCurrencyForm({
-        base_currency: currencies.base_currency || 'SGD',
-        date_format: currencies.date_format || 'MM/DD/YYYY',
-        number_format: currencies.number_format || 'en-US',
-        decimal_places: currencies.decimal_places?.toString() || '2',
-        thousand_separator: currencies.thousand_separator ?? ',',
-        decimal_separator: currencies.decimal_separator || '.',
+        base_currency: data.base_currency || 'SGD',
+        date_format: data.date_format || 'MM/DD/YYYY',
+        number_format: data.number_format || 'en-US',
+        decimal_places: data.decimal_places?.toString() || '2',
+        thousand_separator: data.thousand_separator ?? ',',
+        decimal_separator: data.decimal_separator || '.',
       });
     }
-  }, [currencies]);
+  }, [currenciesResponse]);
 
   useEffect(() => {
     if (defaultAccounts) {
@@ -466,7 +467,6 @@ export default function CompanySettingsPage() {
                     <SelectContent>
                       {availableCurrencies.length > 0 ? (
                         availableCurrencies
-                          .filter((c: any) => c.is_active)
                           .map((c: any) => (
                             <SelectItem key={c.code} value={c.code}>
                               {c.code} - {c.name}

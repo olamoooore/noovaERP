@@ -79,7 +79,8 @@ export interface PostJournalEntryRequest {
 }
 
 export interface ReverseJournalEntryRequest {
-  reason?: string;
+  reversal_date: string;
+  reason: string;
 }
 
 class JournalEntriesApi {

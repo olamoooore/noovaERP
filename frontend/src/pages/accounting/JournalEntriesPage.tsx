@@ -45,10 +45,13 @@ export default function JournalEntriesPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'posted'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'posted' | 'reversed'>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const [reverseOpen, setReverseOpen] = useState(false);
+  const [reverseEntryId, setReverseEntryId] = useState<number | null>(null);
+  const [reverseForm, setReverseForm] = useState({ reversal_date: new Date().toISOString().split('T')[0], reason: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<CreateJournalEntryRequest>({
     journal_id: undefined,
@@ -63,10 +66,11 @@ export default function JournalEntriesPage() {
 
   // Fetch journal entries
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab, search: searchTerm }],
+    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? true : undefined, search: searchTerm }],
     queryFn: () =>
       journalEntriesApi.getJournalEntries({
-        status: activeTab === 'all' ? undefined : activeTab,
+        status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab,
+        is_reversal: activeTab === 'reversed' ? true : undefined,
         search: searchTerm,
         per_page: 50,
       }),
@@ -123,8 +127,8 @@ export default function JournalEntriesPage() {
 
   // Reverse entry mutation
   const reverseMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
-      journalEntriesApi.reverseJournalEntry(id, { reason }),
+    mutationFn: ({ id, reversal_date, reason }: { id: number; reversal_date: string; reason: string }) =>
+      journalEntriesApi.reverseJournalEntry(id, { reversal_date, reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       toast({ title: 'Success', description: 'Journal entry reversed successfully' });
@@ -224,10 +228,20 @@ export default function JournalEntriesPage() {
   };
 
   const handleReverse = (id: number) => {
-    const reason = prompt('Enter reason for reversal (optional):');
-    if (reason !== null) {
-      reverseMutation.mutate({ id, reason: reason || undefined });
+    setReverseEntryId(id);
+    setReverseForm({ reversal_date: new Date().toISOString().split('T')[0], reason: '' });
+    setReverseOpen(true);
+  };
+
+  const handleConfirmReverse = () => {
+    if (!reverseEntryId) return;
+    if (!reverseForm.reason.trim()) {
+      toast({ title: 'Error', description: 'Reason is required', variant: 'destructive' });
+      return;
     }
+    reverseMutation.mutate({ id: reverseEntryId, reversal_date: reverseForm.reversal_date, reason: reverseForm.reason });
+    setReverseOpen(false);
+    setReverseEntryId(null);
   };
 
   const handleDelete = (id: number) => {
@@ -262,6 +276,7 @@ export default function JournalEntriesPage() {
             <TabsTrigger value="all">All Entries</TabsTrigger>
             <TabsTrigger value="draft">Draft</TabsTrigger>
             <TabsTrigger value="posted">Posted</TabsTrigger>
+            <TabsTrigger value="reversed">Reversed</TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
             <Input
@@ -602,6 +617,59 @@ export default function JournalEntriesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reversal Dialog */}
+      <Dialog open={reverseOpen} onOpenChange={(open) => { if (!open) { setReverseOpen(false); setReverseEntryId(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse Journal Entry</DialogTitle>
+            <DialogDescription>
+              Create a reversing entry for this posted journal entry.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reversal_date">Reversal Date *</Label>
+              <Input
+                id="reversal_date"
+                type="date"
+                value={reverseForm.reversal_date}
+                onChange={(e) => setReverseForm((prev) => ({ ...prev, reversal_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reversal_reason">Reason *</Label>
+              <textarea
+                id="reversal_reason"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-sm resize-none"
+                placeholder="Enter reason for reversal..."
+                value={reverseForm.reason}
+                onChange={(e) => setReverseForm((prev) => ({ ...prev, reason: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setReverseOpen(false); setReverseEntryId(null); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmReverse}
+              disabled={reverseMutation.isPending || !reverseForm.reason.trim()}
+            >
+              {reverseMutation.isPending ? (
+                <>
+                  <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
+                  Reversing...
+                </>
+              ) : (
+                'Confirm Reversal'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

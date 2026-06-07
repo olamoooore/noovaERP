@@ -363,12 +363,7 @@ export default function ChartOfAccountsPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => handleOpenForm(account)}
-                  disabled={account.is_system}
-                  title={
-                    account.is_system
-                      ? 'System accounts cannot be edited'
-                      : 'Edit account'
-                  }
+                  title="Edit account"
                 >
                   <Icon icon="solar:pen-linear" className="w-4 h-4" />
                 </Button>
@@ -571,12 +566,7 @@ export default function ChartOfAccountsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => handleOpenForm(account)}
-                              disabled={account.is_system}
-                              title={
-                                account.is_system
-                                  ? 'System accounts cannot be edited'
-                                  : 'Edit account'
-                              }
+                              title="Edit account"
                             >
                               <Icon icon="solar:pen-linear" className="w-4 h-4" />
                             </Button>
