@@ -183,16 +183,6 @@ class ChartOfAccountsController extends Controller
         try {
             $account = ChartOfAccount::findOrFail($id);
 
-            // Determine account level from code
-            $level = $this->getAccountLevel($account->code);
-
-            // Only L3 (individual accounts) can be edited
-            if ($level !== 3) {
-                return response()->json([
-                    'message' => 'Only Level 3 (individual accounts) can be edited. L1/L2 are structural headers.'
-                ], 403);
-            }
-
             // System accounts: allow editing name/description/subtype/is_active but protect code & type
             if ($account->is_system) {
                 $validated = $request->validate([

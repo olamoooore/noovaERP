@@ -363,10 +363,10 @@ export default function ChartOfAccountsPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => handleOpenForm(account)}
-                  disabled={accountLevel !== 3}
+                  disabled={account.is_system}
                   title={
-                    accountLevel !== 3
-                      ? 'Only Level 3 (individual accounts) can be edited'
+                    account.is_system
+                      ? 'System accounts cannot be edited'
                       : 'Edit account'
                   }
                 >
@@ -571,10 +571,10 @@ export default function ChartOfAccountsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => handleOpenForm(account)}
-                              disabled={accountLevel !== 3}
+                              disabled={account.is_system}
                               title={
-                                accountLevel !== 3
-                                  ? 'Only Level 3 (individual accounts) can be edited'
+                                account.is_system
+                                  ? 'System accounts cannot be edited'
                                   : 'Edit account'
                               }
                             >
