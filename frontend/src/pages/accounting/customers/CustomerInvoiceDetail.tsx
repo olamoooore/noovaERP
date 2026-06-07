@@ -22,6 +22,26 @@ import api from '@/lib/api';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 
+const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
+  if (!snapshot) return '';
+  try {
+    const parsed = JSON.parse(snapshot);
+    const parts = [
+      parsed.first_name || parsed.name || '',
+      parsed.last_name || '',
+      parsed.address || parsed.street || '',
+      parsed.street2 || '',
+      parsed.city || '',
+      parsed.state || '',
+      parsed.postal_code || parsed.zip || '',
+      parsed.country || '',
+    ].filter(Boolean);
+    return parts.join(', ');
+  } catch {
+    return snapshot;
+  }
+};
+
 export const CustomerInvoiceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -301,13 +321,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Billing Address Snapshot</p>
-                      <p className="text-sm whitespace-pre-wrap">{invoice.billing_address_snapshot}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Shipping Address Snapshot</p>
-                      <p className="text-sm whitespace-pre-wrap">{invoice.shipping_address_snapshot}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}
                 </div>

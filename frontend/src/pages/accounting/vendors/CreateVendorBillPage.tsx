@@ -14,6 +14,26 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { accountingApi } from '@/lib/api';
 
+const formatLegacyAddress = (address: string | null | undefined): string => {
+  if (!address) return '';
+  try {
+    const parsed = JSON.parse(address);
+    const parts = [
+      parsed.first_name || parsed.name || '',
+      parsed.last_name || '',
+      parsed.address || parsed.street || '',
+      parsed.street2 || '',
+      parsed.city || '',
+      parsed.state || '',
+      parsed.postal_code || parsed.zip || '',
+      parsed.country || '',
+    ].filter(Boolean);
+    return parts.join(', ');
+  } catch {
+    return address;
+  }
+};
+
 interface BillLine {
   account_id: string;
   description: string;
@@ -160,8 +180,8 @@ export const CreateVendorBillPage: React.FC = () => {
       attention_to: selectedVendor.contact_person ?? selectedVendor.name ?? '',
       contact_email: selectedVendor.email ?? '',
       contact_phone: selectedVendor.phone ?? '',
-      vendor_address_snapshot: selectedVendor.address ?? '',
-      remittance_address_snapshot: selectedVendor.address ?? '',
+      vendor_address_snapshot: formatLegacyAddress(selectedVendor.address),
+      remittance_address_snapshot: formatLegacyAddress(selectedVendor.address),
       company_registration_number: selectedVendor.company_registration_number ?? '',
       tax_registration_number: selectedVendor.tax_number ?? '',
     });

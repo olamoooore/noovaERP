@@ -174,20 +174,37 @@ class Invoice extends Model
 
     public static function generateInvoiceNumber(): string
     {
-        // Prefer a database sequence to guarantee concurrency-safe numbering
+        $year = date('Y');
+        $prefix = "INV-{$year}-";
+
         try {
-            $seqVal = \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val ?? null;
-            if ($seqVal !== null) {
-                return 'INV-' . date('Y') . '-' . str_pad((int) $seqVal, 4, '0', STR_PAD_LEFT);
+            \Illuminate\Support\Facades\DB::statement("CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1");
+
+            $maxNum = (int) (\Illuminate\Support\Facades\DB::selectOne("
+                SELECT MAX(CAST(SUBSTRING(invoice_number FROM '\d{4}$') AS INTEGER)) as m
+                FROM invoices
+            ")->m ?? 0);
+
+            if ($maxNum > 0) {
+                \Illuminate\Support\Facades\DB::statement(
+                    "SELECT setval('invoice_number_seq', GREATEST((SELECT last_value FROM invoice_number_seq), {$maxNum}))"
+                );
             }
+
+            $seqVal = (int) \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val;
+            return $prefix . str_pad($seqVal, 4, '0', STR_PAD_LEFT);
         } catch (\Throwable $e) {
-            // Fall back to legacy mechanism if sequence is unavailable
+            \Illuminate\Support\Facades\Log::warning('Invoice number sequence unavailable, using fallback', [
+                'error' => $e->getMessage(),
+            ]);
         }
 
-        // Fallback: derive next number from the latest invoice
-        $latest = static::orderBy('id', 'desc')->first();
+        $latest = static::withTrashed()
+            ->where('invoice_number', 'like', $prefix . '%')
+            ->orderBy('id', 'desc')
+            ->first();
         $number = $latest ? (int) substr($latest->invoice_number, -4) + 1 : 1;
-        return 'INV-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

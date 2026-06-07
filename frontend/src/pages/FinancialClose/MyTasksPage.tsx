@@ -79,6 +79,12 @@ export function MyTasksPage() {
     enabled: !!cycleId,
   })
 
+  const now = new Date()
+
+  function isOverdue(task: CloseTask) {
+    return task.due_date && new Date(task.due_date) < now && task.status !== 'completed' && task.status !== 'cancelled'
+  }
+
   const displayTasks = cycleId ? (byCycleQuery.data ?? []) : tasks
 
   const filteredTasks = statusFilter === 'all'
@@ -121,12 +127,6 @@ export function MyTasksPage() {
     },
     onError: () => toast({ title: 'Failed to block task.', variant: 'destructive' }),
   })
-
-  const now = new Date()
-
-  function isOverdue(task: CloseTask) {
-    return task.due_date && new Date(task.due_date) < now && task.status !== 'completed' && task.status !== 'cancelled'
-  }
 
   function openTask(taskId: string) {
     navigate(`/financial-close/tasks/${taskId}`)

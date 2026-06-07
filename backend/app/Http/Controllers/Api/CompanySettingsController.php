@@ -201,6 +201,17 @@ class CompanySettingsController extends Controller
                 'decimal_separator' => $settings->decimal_separator ?? '.',
             ];
 
+            // Ensure at least default currencies exist
+            $currencyCount = DB::table('currencies')->count();
+            if ($currencyCount === 0) {
+                DB::table('currencies')->insert([
+                    ['code' => 'SGD', 'name' => 'Singapore Dollar', 'symbol' => 'S$', 'decimal_places' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+                    ['code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$', 'decimal_places' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+                    ['code' => 'EUR', 'name' => 'Euro', 'symbol' => '€', 'decimal_places' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+                    ['code' => 'GBP', 'name' => 'British Pound', 'symbol' => '£', 'decimal_places' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+                ]);
+            }
+
             // Include available active currencies from the shared registry
             $activeCurrencies = DB::table('currencies')
                 ->where('is_active', true)
@@ -360,7 +371,13 @@ class CompanySettingsController extends Controller
             ];
 
             foreach ($extendedColumns as $column => $value) {
-                if (Schema::hasColumn('company_settings', $column)) {
+                $exists = DB::selectOne("
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                    AND table_name = 'company_settings'
+                    AND column_name = ?
+                ", [$column]);
+                if ($exists) {
                     $data[$column] = $value;
                 }
             }

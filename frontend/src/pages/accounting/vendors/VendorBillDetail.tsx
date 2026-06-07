@@ -21,6 +21,26 @@ import api, { accountingApi } from '@/lib/api';
 import BillCreditNotes from '../components/BillCreditNotes';
 import CreateVendorCreditNoteDialog from '../components/CreateVendorCreditNoteDialog';
 
+const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
+  if (!snapshot) return '';
+  try {
+    const parsed = JSON.parse(snapshot);
+    const parts = [
+      parsed.first_name || parsed.name || '',
+      parsed.last_name || '',
+      parsed.address || parsed.street || '',
+      parsed.street2 || '',
+      parsed.city || '',
+      parsed.state || '',
+      parsed.postal_code || parsed.zip || '',
+      parsed.country || '',
+    ].filter(Boolean);
+    return parts.join(', ');
+  } catch {
+    return snapshot;
+  }
+};
+
 export const VendorBillDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -297,13 +317,13 @@ export const VendorBillDetail: React.FC = () => {
                   {bill.vendor_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Vendor Address Snapshot</p>
-                      <p className="text-sm whitespace-pre-wrap">{bill.vendor_address_snapshot}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(bill.vendor_address_snapshot)}</p>
                     </div>
                   )}
                   {bill.remittance_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Remittance Address Snapshot</p>
-                      <p className="text-sm whitespace-pre-wrap">{bill.remittance_address_snapshot}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(bill.remittance_address_snapshot)}</p>
                     </div>
                   )}
                 </div>

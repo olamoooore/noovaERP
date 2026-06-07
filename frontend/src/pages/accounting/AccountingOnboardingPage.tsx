@@ -260,10 +260,14 @@ export default function AccountingOnboardingPage() {
     },
   });
 
-  // Find the active (most recent in_progress) session
+  // Find the active or most recently completed session
   const activeSession = useMemo(() => {
     if (!sessionsData?.length) return null;
-    return sessionsData.find((s: any) => s.status === 'in_progress') || null;
+    return (
+      sessionsData.find((s: any) => s.status === 'in_progress') ||
+      sessionsData.find((s: any) => s.status === 'completed') ||
+      null
+    );
   }, [sessionsData]);
 
   // Fetch active session detail (with step states)

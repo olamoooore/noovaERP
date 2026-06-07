@@ -135,7 +135,7 @@ class SalesOrderService
                     return false;
                 }
 
-                return (bool) ($line->product?->track_inventory ?? true);
+                return (bool) ($line->product?->track_inventory ?? false);
             });
             $warehouseId = null;
 
@@ -145,7 +145,7 @@ class SalesOrderService
 
             // Deduct stock for each line item
             foreach ($order->lines as $line) {
-                if ($line->product_id && (bool) ($line->product?->track_inventory ?? true)) {
+                if ($line->product_id && (bool) ($line->product?->track_inventory ?? false)) {
                     $this->inventoryService->adjustStock(
                         productId: $line->product_id,
                         warehouseId: $warehouseId,
@@ -191,7 +191,7 @@ class SalesOrderService
                 return false;
             }
 
-            return (bool) ($line->product?->track_inventory ?? true);
+            return (bool) ($line->product?->track_inventory ?? false);
         });
     }
 

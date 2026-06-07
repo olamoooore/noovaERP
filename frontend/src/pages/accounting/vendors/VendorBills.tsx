@@ -125,7 +125,13 @@ export const VendorBills: React.FC = () => {
         console.warn('Failed to fetch OCR vendor bills. Falling back to canonical vendor bills only.', error);
       }
 
-      return [...ocrBills, ...regularBills];
+      const merged = [...ocrBills, ...regularBills];
+      merged.sort((a, b) => {
+        const dateA = a.created_at || a.document_date || '';
+        const dateB = b.created_at || b.document_date || '';
+        return dateB.localeCompare(dateA);
+      });
+      return merged;
     },
   });
 

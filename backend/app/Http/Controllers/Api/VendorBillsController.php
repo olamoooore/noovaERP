@@ -34,7 +34,8 @@ class VendorBillsController extends Controller
             $vendorId = $request->get('vendor_id');
 
             $query = Bill::with(['vendor', 'lines', 'purchaseOrder', 'goodsReceipt'])
-                ->orderBy('bill_date', 'desc');
+                ->orderBy('created_at', 'desc')
+                ->orderBy('id', 'desc');
 
             // Filter by status
             if ($status) {

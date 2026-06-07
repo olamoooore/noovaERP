@@ -363,15 +363,16 @@ class InvoiceService
                     ->find($salesOrder->source_document_id);
 
                 return $posOrder?->terminal?->warehouse_id
-                    ? (int) $posOrder->terminal->warehouse_id
-                    : null;
+                    ? (int) $posOrder->terminal?->warehouse_id
+                    : (int) ($salesOrder->warehouse_id ?: null);
             })(),
             'WebOrder' => (function () use ($salesOrder): ?int {
                 $webOrder = \Modules\Ecommerce\Models\WebOrder::find($salesOrder->source_document_id);
 
-                return $webOrder?->resolveInventoryWarehouseId();
+                return $webOrder?->resolveInventoryWarehouseId()
+                    ?? ($salesOrder->warehouse_id ? (int) $salesOrder->warehouse_id : null);
             })(),
-            default => null,
+            default => $salesOrder->warehouse_id ? (int) $salesOrder->warehouse_id : null,
         };
     }
 
@@ -406,7 +407,19 @@ class InvoiceService
     {
         $salesOrder = $invoice->salesOrder;
 
-        return $salesOrder?->source_document_type === 'WorkOrder';
+        if (!$salesOrder) {
+            return false;
+        }
+
+        if ($salesOrder->source_document_type === 'WorkOrder') {
+            return true;
+        }
+
+        if ($salesOrder->isFulfilled()) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

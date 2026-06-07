@@ -144,6 +144,26 @@ const getPrimaryCustomerContact = (customer?: CustomerRecord | null): CustomerCo
   return contacts.find((contact) => contact.is_primary) ?? contacts[0];
 };
 
+const formatLegacyAddress = (address: string | null | undefined): string => {
+  if (!address) return '';
+  try {
+    const parsed = JSON.parse(address);
+    const parts = [
+      parsed.first_name || parsed.name || '',
+      parsed.last_name || '',
+      parsed.address || parsed.street || '',
+      parsed.street2 || '',
+      parsed.city || '',
+      parsed.state || '',
+      parsed.postal_code || parsed.zip || '',
+      parsed.country || '',
+    ].filter(Boolean);
+    return parts.join(', ');
+  } catch {
+    return address;
+  }
+};
+
 const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' | 'shipping'): string => {
   if (!customer) {
     return '';
@@ -159,11 +179,11 @@ const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' |
   }
 
   if (type === 'billing') {
-    return customer.billing_address ?? '';
+    return formatLegacyAddress(customer.billing_address);
   }
 
   if (type === 'shipping') {
-    return customer.shipping_address ?? '';
+    return formatLegacyAddress(customer.shipping_address);
   }
 
   return '';
