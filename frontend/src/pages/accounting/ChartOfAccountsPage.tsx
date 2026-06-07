@@ -363,10 +363,10 @@ export default function ChartOfAccountsPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => handleOpenForm(account)}
-                  disabled={account.is_system && (isParent || isGroup)}
+                  disabled={accountLevel !== 3}
                   title={
-                    account.is_system && (isParent || isGroup)
-                      ? 'Parent/Group headers cannot be edited'
+                    accountLevel !== 3
+                      ? 'Only Level 3 (individual accounts) can be edited'
                       : 'Edit account'
                   }
                 >
@@ -571,10 +571,10 @@ export default function ChartOfAccountsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => handleOpenForm(account)}
-                              disabled={account.is_system && (isParent || isGroup)}
+                              disabled={accountLevel !== 3}
                               title={
-                                account.is_system && (isParent || isGroup)
-                                  ? 'Parent/Group headers cannot be edited'
+                                accountLevel !== 3
+                                  ? 'Only Level 3 (individual accounts) can be edited'
                                   : 'Edit account'
                               }
                             >

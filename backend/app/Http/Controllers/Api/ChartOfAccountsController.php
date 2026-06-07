@@ -62,9 +62,8 @@ class ChartOfAccountsController extends Controller
     public function tree(): JsonResponse
     {
         try {
-            // Load all active accounts with their children
+            // Load all accounts with their children
             $allAccounts = ChartOfAccount::with('children')
-                ->where('is_active', true)
                 ->orderBy('code')
                 ->get();
 
@@ -184,6 +183,16 @@ class ChartOfAccountsController extends Controller
         try {
             $account = ChartOfAccount::findOrFail($id);
 
+            // Determine account level from code
+            $level = $this->getAccountLevel($account->code);
+
+            // Only L3 (individual accounts) can be edited
+            if ($level !== 3) {
+                return response()->json([
+                    'message' => 'Only Level 3 (individual accounts) can be edited. L1/L2 are structural headers.'
+                ], 403);
+            }
+
             // System accounts: allow editing name/description/subtype/is_active but protect code & type
             if ($account->is_system) {
                 $validated = $request->validate([
@@ -281,5 +290,22 @@ class ChartOfAccountsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Determine account level from SFRS code format.
+     * L1: X000 (Parents)
+     * L2: XX00 (Groups)
+     * L3: XXXX (Individual accounts)
+     */
+    private function getAccountLevel(string $code): int
+    {
+        if (str_ends_with($code, '000')) {
+            return 1;
+        }
+        if (str_ends_with($code, '00')) {
+            return 2;
+        }
+        return 3;
     }
 }
