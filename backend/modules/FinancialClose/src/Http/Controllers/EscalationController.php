@@ -33,14 +33,13 @@ class EscalationController extends Controller
     public function store(CreateEscalationRequest $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
 
         $escalation = $this->escalationService->createEscalation(
             $tenantId,
             $taskId,
+            $request->input('level', 'medium'),
             $request->input('reason'),
             $request->input('escalated_to'),
-            $userId,
         );
 
         if (!$escalation) {

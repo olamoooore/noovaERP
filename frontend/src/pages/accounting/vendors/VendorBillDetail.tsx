@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import api, { accountingApi } from '@/lib/api';
 import BillCreditNotes from '../components/BillCreditNotes';
 import CreateVendorCreditNoteDialog from '../components/CreateVendorCreditNoteDialog';
+import BillDebitNotes from '../components/BillDebitNotes';
+import CreateVendorDebitNoteDialog from '../components/CreateVendorDebitNoteDialog';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -48,6 +50,7 @@ export const VendorBillDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
+  const [showDebitNoteDialog, setShowDebitNoteDialog] = useState(false);
 
   // Fetch bill details
   const { data: bill, isLoading } = useQuery({
@@ -484,6 +487,30 @@ export const VendorBillDetail: React.FC = () => {
         </Card>
       )}
 
+      {/* Debit Notes */}
+      {bill.status === 'posted' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Debit Notes</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowDebitNoteDialog(true)}
+            >
+              <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-4 w-4" />
+              Create Debit Note
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <BillDebitNotes
+              billId={bill.id}
+              billTotal={bill.total}
+              currencyCode={bill.currency_code}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Journal Entry */}
       {bill.journal_entry_id && (
         <Card>
@@ -513,6 +540,19 @@ export const VendorBillDetail: React.FC = () => {
             setShowCreditNoteDialog(false);
             queryClient.invalidateQueries({ queryKey: ['vendor-bill', id] });
             queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', bill.id] });
+          }}
+        />
+      )}
+
+      {/* Debit Note Dialog */}
+      {showDebitNoteDialog && (
+        <CreateVendorDebitNoteDialog
+          billId={bill.id}
+          onClose={() => setShowDebitNoteDialog(false)}
+          onSuccess={() => {
+            setShowDebitNoteDialog(false);
+            queryClient.invalidateQueries({ queryKey: ['vendor-bill', id] });
+            queryClient.invalidateQueries({ queryKey: ['bill-debit-notes', bill.id] });
           }}
         />
       )}

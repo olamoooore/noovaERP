@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,12 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const isAuthenticated = useAuthStore((state) => !!state.token)
   const { toast } = useToast()
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +35,7 @@ export function LoginPage() {
         title: 'Login successful',
         description: 'Welcome back!',
       })
-      navigate('/')
+      navigate('/dashboard')
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -47,12 +52,21 @@ export function LoginPage() {
       <div className="grid h-full w-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* Left — form column (light, logo retains color) */}
         <section className="relative flex h-full flex-col overflow-hidden bg-white px-6 py-5 sm:px-10 lg:px-14">
-          <header className="flex items-center">
-            <img
-              src={NOOVAERP_LOGO_URL}
-              alt="Noovaerp"
-              className="h-9 w-auto object-contain"
-            />
+          <header className="flex items-center justify-between">
+            <Link to="/" className="flex items-center">
+              <img
+                src={NOOVAERP_LOGO_URL}
+                alt="Noovaerp"
+                className="h-9 w-auto object-contain"
+              />
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition hover:text-slate-900"
+            >
+              <Icon icon="solar:arrow-left-linear" className="h-3.5 w-3.5" />
+              Back to website
+            </Link>
           </header>
 
           <div className="flex flex-1 items-center">
@@ -153,6 +167,13 @@ export function LoginPage() {
                   )}
                 </Button>
               </form>
+
+              <p className="mt-5 text-center text-[13px] text-slate-500">
+                New to NoovaERP?{' '}
+                <Link to="/signup" className="font-semibold text-slate-900 transition hover:underline">
+                  Create your workspace
+                </Link>
+              </p>
 
               <div className="mt-5 flex items-center gap-3 text-[11px] text-slate-400">
                 <span className="h-px flex-1 bg-slate-200" />

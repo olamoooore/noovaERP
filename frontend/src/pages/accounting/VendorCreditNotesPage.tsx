@@ -69,8 +69,8 @@ export default function VendorCreditNotesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Vendor Credit Notes</h1>
-          <p className="text-muted-foreground mt-1">Manage vendor credit notes for returns and corrections</p>
+          <h1 className="text-3xl font-bold">Credit Notes</h1>
+          <p className="text-muted-foreground mt-1">Manage credit notes for returns and corrections</p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
@@ -111,7 +111,7 @@ export default function VendorCreditNotesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Vendor Credit Notes</span>
+            <span>Credit Notes</span>
             {creditNotes.length > 0 && (
               <span className="text-sm font-normal text-muted-foreground">
                 {creditNotes.length} credit note(s)

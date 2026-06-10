@@ -35,7 +35,7 @@ export default function EditVendorCreditNoteDialog({ creditNoteId, onClose, onSu
 
     try {
       await updateMutation.mutateAsync({ id: creditNoteId, creditNote: formData });
-      toast({ title: 'Updated', description: 'Vendor credit note updated successfully.' });
+      toast({ title: 'Updated', description: 'Credit note updated successfully.' });
       onSuccess();
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Failed to update', description: error.response?.data?.message || 'Failed to update credit note.' });
@@ -65,7 +65,7 @@ export default function EditVendorCreditNoteDialog({ creditNoteId, onClose, onSu
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold">Edit Vendor Credit Note</h2>
+              <h2 className="text-xl font-bold">Edit Credit Note</h2>
               <p className="text-sm text-muted-foreground mt-1">{creditNote.credit_note_number}</p>
             </div>
             <Button variant="ghost" size="icon" onClick={onClose}>

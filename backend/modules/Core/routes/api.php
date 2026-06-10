@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\TaxController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\VendorCreditNotesController;
+use App\Http\Controllers\Api\VendorDebitNotesController;
 use App\Http\Controllers\Api\ARTransactionsController;
 use App\Http\Controllers\Api\APTransactionsController;
 use App\Http\Controllers\Api\CustomerStatementController;
@@ -461,6 +462,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/vendors/credit-notes/{creditNote}/post', [VendorCreditNotesController::class, 'post']);
         Route::get('/vendors/bills/{billId}/credit-notes', [VendorCreditNotesController::class, 'getByBill']);
         Route::post('/vendors/credit-notes/validate', [VendorCreditNotesController::class, 'validate']);
+
+        // Vendor Debit Notes
+        Route::get('/vendors/debit-notes', [VendorDebitNotesController::class, 'index']);
+        Route::get('/vendors/debit-notes/{debitNote}', [VendorDebitNotesController::class, 'show']);
+        Route::post('/vendors/debit-notes', [VendorDebitNotesController::class, 'store']);
+        Route::put('/vendors/debit-notes/{debitNote}', [VendorDebitNotesController::class, 'update']);
+        Route::delete('/vendors/debit-notes/{debitNote}', [VendorDebitNotesController::class, 'destroy']);
+        Route::post('/vendors/debit-notes/{debitNote}/post', [VendorDebitNotesController::class, 'post']);
+        Route::get('/vendors/bills/{billId}/debit-notes', [VendorDebitNotesController::class, 'getByBill']);
+        Route::post('/vendors/debit-notes/validate', [VendorDebitNotesController::class, 'validate']);
         
         // Vendors List
         Route::get('/vendors', [VendorsController::class, 'index']);

@@ -7,9 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\FinancialClose\Services\FinancialCloseTaskService;
 use Modules\FinancialClose\Http\Requests\BlockTaskRequest;
+use Modules\FinancialClose\Http\Requests\LinkDocumentRequest;
 use Modules\FinancialClose\Http\Resources\TaskResource;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\SupportingEvidence;
+use Modules\FinancialClose\Models\TaskEvidenceLink;
+use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
@@ -160,5 +164,143 @@ class TaskController extends Controller
         }
 
         return response()->json(['message' => 'Task blocked.']);
+    }
+
+    /** POST /tasks/{taskId}/checklist */
+    public function saveChecklist(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        $request->validate(['completed_items' => ['required', 'array']]);
+        $metadata = is_array($task->metadata) ? $task->metadata : [];
+        $metadata['checklist_completed'] = $request->input('completed_items');
+        $task->update(['metadata' => $metadata]);
+
+        return response()->json(['message' => 'Checklist progress saved.', 'data' => $metadata['checklist_completed']]);
+    }
+
+    /** POST /tasks/{taskId}/evidence */
+    public function uploadEvidence(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        $request->validate(['file' => ['required', 'file', 'max:10240']]);
+
+        $file = $request->file('file');
+        $path = $file->store('close-evidence/' . $taskId, 'public');
+
+        $evidence = SupportingEvidence::create([
+            'tenant_id'  => $tenantId,
+            'review_id'  => null,
+            'file_name'  => $file->getClientOriginalName(),
+            'file_path'  => $path,
+            'status'     => 'attached',
+            'uploaded_by'=> $userId,
+        ]);
+
+        TaskEvidenceLink::create([
+            'tenant_id'   => $tenantId,
+            'task_id'     => $taskId,
+            'evidence_id' => $evidence->id,
+        ]);
+
+        return response()->json(['message' => 'Evidence uploaded.', 'data' => [
+            'id'        => $evidence->id,
+            'file_name' => $evidence->file_name,
+            'file_path' => $evidence->file_path,
+            'status'    => $evidence->status,
+            'created_at'=> $evidence->created_at,
+        ]], 201);
+    }
+
+    /** GET /tasks/{taskId}/evidence */
+    public function listEvidence(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $evidence = TaskEvidenceLink::where('tenant_id', $tenantId)
+            ->where('task_id', $taskId)
+            ->with('evidence')
+            ->get()
+            ->map(function ($link) {
+                $e = $link->evidence;
+                if (!$e) return null;
+                return [
+                    'id'         => $e->id,
+                    'file_name'  => $e->file_name,
+                    'file_path'  => $e->file_path,
+                    'status'     => $e->status,
+                    'uploaded_by'=> $e->uploaded_by,
+                    'created_at' => $e->created_at,
+                    'url'        => $e->file_path ? Storage::disk('public')->url($e->file_path) : null,
+                ];
+            })
+            ->filter()
+            ->values();
+
+        return response()->json(['data' => $evidence]);
+    }
+
+    /** POST /tasks/{taskId}/link-document */
+    public function linkDocument(LinkDocumentRequest $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        $metadata = is_array($task->metadata) ? $task->metadata : [];
+        $links = $metadata['document_links'] ?? [];
+
+        $links[] = [
+            'type'  => $request->input('document_type'),
+            'id'    => (int) $request->input('document_id'),
+            'title' => $request->input('title') ?? ucfirst($request->input('document_type')) . ' #' . $request->input('document_id'),
+        ];
+
+        $metadata['document_links'] = $links;
+        $task->update(['metadata' => $metadata]);
+
+        return response()->json(['message' => 'Document linked.', 'data' => $links], 201);
+    }
+
+    /** DELETE /tasks/{taskId}/link-document */
+    public function unlinkDocument(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        $request->validate([
+            'document_type' => ['required', 'string'],
+            'document_id'   => ['required', 'integer'],
+        ]);
+
+        $metadata = is_array($task->metadata) ? $task->metadata : [];
+        $links = $metadata['document_links'] ?? [];
+
+        $metadata['document_links'] = array_values(array_filter($links, function ($link) use ($request) {
+            return !($link['type'] === $request->input('document_type') && (int) $link['id'] === (int) $request->input('document_id'));
+        }));
+
+        $task->update(['metadata' => $metadata]);
+
+        return response()->json(['message' => 'Document unlinked.', 'data' => $metadata['document_links']]);
     }
 }

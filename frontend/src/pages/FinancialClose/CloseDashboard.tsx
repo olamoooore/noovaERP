@@ -324,6 +324,8 @@ export function CloseDashboard() {
           { label: 'Review Queue',    href: '/financial-close/review-queue', icon: 'solar:inbox-bold-duotone' },
           { label: 'Readiness',       href: '/financial-close/readiness',    icon: 'solar:shield-check-bold-duotone' },
           { label: 'Executive View',  href: '/financial-close/executive',    icon: 'solar:chart-bold-duotone' },
+          { label: 'AI Findings',     href: '/financial-close/findings',     icon: 'solar:magic-stick-3-bold-duotone' },
+          { label: 'Audit Trail',     href: '/financial-close/audit-trail',  icon: 'solar:shield-check-bold-duotone' },
         ].map(item => (
           <Button
             key={item.href}

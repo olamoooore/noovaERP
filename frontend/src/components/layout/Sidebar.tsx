@@ -307,6 +307,11 @@ const baseNavItems: NavItem[] = [
             href: '/financial-close/executive',
             icon: 'solar:chart-bold-duotone',
           },
+          {
+            title: 'Audit Trail',
+            href: '/financial-close/audit-trail',
+            icon: 'solar:shield-check-bold-duotone',
+          },
         ],
       },
       {

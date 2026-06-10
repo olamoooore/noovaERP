@@ -41,7 +41,7 @@ class FinancialCloseAiFindingService
      * Generate and persist a new AI finding
      * All AI outputs must use structured contracts
      */
-    public function createFinding(string $tenantId, string $reviewId, string $entityId, string $accountCode, array $aiOutput): ?AiFinding
+    public function createFinding(string $tenantId, ?string $reviewId, string $entityId, ?string $accountCode, array $aiOutput): ?AiFinding
     {
         try {
             $validated = $this->validator->validate($aiOutput, [

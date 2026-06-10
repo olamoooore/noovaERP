@@ -55,6 +55,12 @@ export interface CloseTask {
   related_accounts?: string[]
   evidence_items?: string[]
   checklist_items?: string[]
+  checklist_completed?: string[]
+  document_links?: Array<{
+    type: string
+    id: number
+    title: string
+  }>
   detail_title?: string | null
   dependencies?: Array<{
     id: string
@@ -216,6 +222,28 @@ export const closeTasksApi = {
 
   block: (taskId: string, reason: string) =>
     api.post(`/close/tasks/${taskId}/block`, { reason }),
+
+  saveChecklist: (taskId: string, completedItems: string[]) =>
+    api.post(`/close/tasks/${taskId}/checklist`, { completed_items: completedItems }),
+
+  uploadEvidence: (taskId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/close/tasks/${taskId}/evidence`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  listEvidence: (taskId: string) =>
+    api.get<{ data: Array<{ id: string; file_name: string; file_path: string; status: string; url: string | null; created_at: string }> }>(
+      `/close/tasks/${taskId}/evidence`
+    ),
+
+  linkDocument: (taskId: string, documentType: string, documentId: number, title?: string) =>
+    api.post(`/close/tasks/${taskId}/link-document`, { document_type: documentType, document_id: documentId, title }),
+
+  unlinkDocument: (taskId: string, documentType: string, documentId: number) =>
+    api.delete(`/close/tasks/${taskId}/link-document`, { data: { document_type: documentType, document_id: documentId } }),
 }
 
 // ─── Escalations ─────────────────────────────────────────────────────────────
@@ -224,8 +252,8 @@ export const escalationsApi = {
   list: (taskId: string) =>
     api.get<{ data: Escalation[] }>(`/close/tasks/${taskId}/escalations`),
 
-  create: (taskId: string, reason: string, escalatedTo?: string) =>
-    api.post<{ data: Escalation }>(`/close/tasks/${taskId}/escalations`, { reason, escalated_to: escalatedTo }),
+  create: (taskId: string, reason: string, level?: string, escalatedTo?: string) =>
+    api.post<{ data: Escalation }>(`/close/tasks/${taskId}/escalations`, { reason, level: level ?? 'medium', escalated_to: escalatedTo }),
 
   resolve: (escalationId: string) =>
     api.post(`/close/escalations/${escalationId}/resolve`),
@@ -268,4 +296,30 @@ export const forecastApi = {
 
   executive: (entityId: string, periodId: string) =>
     api.get<{ data: ExecutiveSummary }>(`/close/forecast/${entityId}/executive`, { params: { period_id: periodId } }),
+}
+
+// ─── Audit Trail ──────────────────────────────────────────────────────────────
+
+export interface AuditTrailEntry {
+  id: string
+  actor_id: string
+  actor_name: string
+  actor_email: string | null
+  action: string
+  entity_type: string
+  entity_id: string
+  description: string
+  created_at: string
+  source: string
+}
+
+export const auditTrailApi = {
+  list: (params?: { action?: string; entity_type?: string; date_from?: string; date_to?: string; per_page?: number; page?: number }) =>
+    api.get<{ data: AuditTrailEntry[]; meta: { current_page: number; last_page: number; per_page: number; total: number } }>('/close/audit-trail', { params }),
+
+  actions: () =>
+    api.get<{ data: string[] }>('/close/audit-trail/actions'),
+
+  stats: () =>
+    api.get<{ data: { today_count: number; total_count: number } }>('/close/audit-trail/stats'),
 }

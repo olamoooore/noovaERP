@@ -150,7 +150,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
     e.preventDefault();
 
     if (!formData.bill_id) {
-      toast({ variant: 'destructive', title: 'Bill required', description: 'Please select a bill for this credit note.' });
+      toast({ variant: 'destructive', title: 'Bill required',         description: 'Please select a bill for this credit note.' });
       return;
     }
 
@@ -161,7 +161,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
 
     try {
       await createMutation.mutateAsync(formData as CreateVendorCreditNotePayload);
-      toast({ title: 'Credit note created', description: 'The vendor credit note has been created successfully.' });
+      toast({ title: 'Credit note created', description: 'The credit note has been created successfully.' });
       onSuccess();
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Failed to create credit note', description: error.response?.data?.message || 'Failed to create credit note.' });
@@ -178,11 +178,15 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
     return formData.lines.reduce((sum, line) => sum + calculateLineTotal(line), 0);
   };
 
+  const creditNoteTotal = calculateTotal();
+  const billTotal = selectedBill ? Number(selectedBill.total) || 0 : 0;
+  const exceedsBill = selectedBill && creditNoteTotal > billTotal;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Create Vendor Credit Note</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Create Credit Note</h2>
           <p className="text-gray-600 mt-1">Create a credit note for a vendor bill</p>
         </div>
 
@@ -309,6 +313,14 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
 
           {selectedBill && formData.lines.length > 0 && (
             <div className="mb-6">
+              {exceedsBill && (
+                <div className="flex items-center gap-2 p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 shrink-0" />
+                  <p className="text-sm">
+                    <strong>Warning:</strong> Credit note total (${creditNoteTotal.toFixed(2)}) exceeds bill total (${billTotal.toFixed(2)}). The bill's remaining balance may not cover this amount.
+                  </p>
+                </div>
+              )}
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Line Items</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full">
@@ -354,10 +366,12 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan={4} className="px-4 py-2 text-right font-semibold">Total:</td>
-                      <td className="px-4 py-2 font-bold">
-                        ${calculateTotal().toFixed(2)}
-                      </td>
+                      <td colSpan={4} className="px-4 py-2 text-right text-sm text-gray-600">Bill Total:</td>
+                      <td className="px-4 py-2 text-sm font-medium">${billTotal.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={4} className="px-4 py-2 text-right font-semibold">Credit Note Total:</td>
+                      <td className={`px-4 py-2 font-bold ${exceedsBill ? 'text-red-600' : ''}`}>${creditNoteTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>

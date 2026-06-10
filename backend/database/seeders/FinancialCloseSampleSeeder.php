@@ -55,30 +55,6 @@ class FinancialCloseSampleSeeder extends Seeder
             // ── 2. Tasks ──────────────────────────────────────────────────────
             $taskDefs = [
                 [
-                    'title'       => 'Reconcile Cash Account (1010)',
-                    'status'      => 'created',
-                    'priority'    => 'high',
-                    'is_critical' => false,
-                    'due_date'    => now()->addDays(2),
-                    'metadata'    => [
-                        'detail_title' => 'Cash Reconciliation Workpaper',
-                        'description' => 'Prepare the month-end cash reconciliation package, tie the bank statement to the GL, and clear reconciling items before treasury sign-off.',
-                        'owner_label' => $user->name,
-                        'workstream' => 'Treasury Close',
-                        'deliverable' => 'Signed cash reconciliation workpaper with bank support attached.',
-                        'business_impact' => 'Cash is the anchor balance for liquidity reporting and downstream payroll funding.',
-                        'next_step' => 'Upload the April bank statement and resolve the uncleared ACH item.',
-                        'related_accounts' => ['1010 Cash', '1015 Clearing'],
-                        'evidence_items' => ['April bank statement', 'Cash reconciliation workbook', 'Treasury sign-off'],
-                        'checklist_items' => [
-                            'Tie opening balance to prior month close',
-                            'Match each statement line to the GL',
-                            'Explain and document reconciling items',
-                            'Submit completed workpaper for approval',
-                        ],
-                    ],
-                ],
-                [
                     'title'       => 'Review AR Aging Report',
                     'status'      => 'blocked',
                     'priority'    => 'medium',
@@ -128,30 +104,6 @@ class FinancialCloseSampleSeeder extends Seeder
                     ],
                 ],
                 [
-                    'title'       => 'Reconcile AP Subledger',
-                    'status'      => 'in_progress',
-                    'priority'    => 'high',
-                    'is_critical' => false,
-                    'due_date'    => now()->subDay(),   // overdue — highlighted in red
-                    'metadata'    => [
-                        'detail_title' => 'AP Subledger Reconciliation',
-                        'description' => 'Reconcile the AP subledger to the control account and explain the unmatched supplier credit balances.',
-                        'owner_label' => $user->name,
-                        'workstream' => 'Payables Reconciliation',
-                        'deliverable' => 'AP-to-GL tie-out with reconciling item tracker.',
-                        'business_impact' => 'Unresolved AP variances can misstate liabilities and vendor aging.',
-                        'next_step' => 'Clear three supplier mismatches before controller review.',
-                        'related_accounts' => ['2000 Accounts Payable', '2015 Supplier Credits'],
-                        'evidence_items' => ['AP aging export', 'Supplier statement comparison', 'Tie-out workbook'],
-                        'checklist_items' => [
-                            'Export AP aging and compare to GL',
-                            'Investigate unmatched supplier credits',
-                            'Document reconciling items',
-                            'Submit tie-out to controller',
-                        ],
-                    ],
-                ],
-                [
                     'title'       => 'Review Inventory Valuation',
                     'status'      => 'completed',
                     'priority'    => 'medium',
@@ -196,35 +148,9 @@ class FinancialCloseSampleSeeder extends Seeder
                 ]);
                 $taskIds[$def['title']] = $taskId;
             }
-            $this->command->info('  ✓ 5 tasks created (1 blocked, 1 overdue, 1 submitted, 1 completed)');
+            $this->command->info('  ✓ 3 tasks created (1 blocked, 1 submitted, 1 completed)');
 
-            DB::table('fco_task_dependencies')->insert([
-                'id'                 => (string) Str::uuid(),
-                'tenant_id'          => $tenantId,
-                'task_id'            => $taskIds['Approve Payroll Journal Entry'],
-                'depends_on_task_id' => $taskIds['Reconcile Cash Account (1010)'],
-                'dependency_type'    => 'hard',
-                'created_at'         => now(),
-                'updated_at'         => now(),
-            ]);
-            $this->command->info('  ✓ 1 task dependency created for payroll approval');
-
-            // ── 3. An escalation on the overdue task ──────────────────────────
-            DB::table('fco_escalation_events')->insert([
-                'id'               => (string) Str::uuid(),
-                'tenant_id'        => $tenantId,
-                'task_id'          => $taskIds['Reconcile AP Subledger'],
-                'escalation_level' => 'medium',
-                'status'           => 'open',
-                'escalated_to'     => null,
-                'reason'           => 'Task past due date — automatic escalation triggered.',
-                'metadata'         => null,
-                'created_at'       => now(),
-                'updated_at'       => now(),
-            ]);
-            $this->command->info('  ✓ Escalation created on overdue task');
-
-            // ── 4. Account Reviews (for readiness + findings) ─────────────────
+            // ── 3. Account Reviews (for readiness + findings) ─────────────────
             $accounts = [
                 ['code' => '1010', 'name' => 'Cash',                 'status' => 'approved',     'risk' => 'normal'],
                 ['code' => '1200', 'name' => 'Accounts Receivable',  'status' => 'submitted',    'risk' => 'watch'],
@@ -255,7 +181,7 @@ class FinancialCloseSampleSeeder extends Seeder
             }
             $this->command->info('  ✓ 5 account reviews created (1 approved, 1 submitted, 2 in-progress, 1 not-started)');
 
-            // ── 5. Sign-off on approved account ───────────────────────────────
+            // ── 4. Sign-off on approved account ───────────────────────────────
             DB::table('fci_signoffs')->insert([
                 'id'        => (string) Str::uuid(),
                 'tenant_id' => $tenantId,
@@ -270,7 +196,7 @@ class FinancialCloseSampleSeeder extends Seeder
             ]);
             $this->command->info('  ✓ Sign-off recorded on Cash account');
 
-            // ── 6. AI Findings ────────────────────────────────────────────────
+            // ── 5. AI Findings ────────────────────────────────────────────────
             $findings = [
                 [
                     'review_id'   => $reviewIds['4000'],
@@ -347,7 +273,7 @@ class FinancialCloseSampleSeeder extends Seeder
             }
             $this->command->info('  ✓ 3 AI findings created (1 critical, 1 high, 1 medium)');
 
-            // ── 7. Readiness Snapshot ─────────────────────────────────────────
+            // ── 6. Readiness Snapshot ─────────────────────────────────────────
             DB::table('fci_close_readiness_snapshots')->insert([
                 'id'                  => (string) Str::uuid(),
                 'tenant_id'           => $tenantId,
@@ -373,7 +299,7 @@ class FinancialCloseSampleSeeder extends Seeder
             ]);
             $this->command->info('  ✓ Readiness snapshot created (score: 38%)');
 
-            // ── 8. Print test URLs ────────────────────────────────────────────
+            // ── 7. Print test URLs ────────────────────────────────────────────
             $this->command->newLine();
             $this->command->info('======================================================');
             $this->command->info('  FINANCIAL CLOSE — TEST URLs');

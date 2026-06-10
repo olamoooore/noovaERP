@@ -27,7 +27,7 @@ export default function VendorCreditNotePostButton({ creditNoteId, onSuccess }: 
   const handlePost = async () => {
     try {
       await postMutation.mutateAsync(creditNoteId);
-      toast({ title: 'Posted', description: 'Vendor credit note posted successfully.' });
+      toast({ title: 'Posted', description: 'Credit note posted successfully.' });
       setShowConfirm(false);
       onSuccess();
     } catch (error: any) {
@@ -48,7 +48,7 @@ export default function VendorCreditNotePostButton({ creditNoteId, onSuccess }: 
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Post Vendor Credit Note?</AlertDialogTitle>
+            <AlertDialogTitle>Post Credit Note?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The credit note will create GL entries and update vendor balances.
             </AlertDialogDescription>

@@ -20,6 +20,9 @@ use Modules\FinancialClose\Models\AiFinding;
  * 3. Negative Liability/Equity/Revenue  — liability/equity/revenue with negative balance
  * 4. Inactive Account with Activity     — no activity for 90+ days, then current-period activity
  * 5. Missing Documentation              — large journal lines without description or reference
+ * 6. Unposted Journal Entries           — draft entries that should be reviewed
+ * 7. Overdue AR Invoices                — customer invoices past due date
+ * 8. Unreconciled Bank Transactions     — bank GL lines without reconciliation
  */
 class FinancialCloseAiAnalysisService
 {
@@ -115,6 +118,24 @@ class FinancialCloseAiAnalysisService
 
             // Update review risk status based on findings
             $this->updateReviewRisk($review);
+        }
+
+        // Rule 6: Unposted journal entries (global, not per-account)
+        $unpostedFinding = $this->detectUnpostedJournalEntries($tenantId, $entityId, $currentMonth);
+        if ($unpostedFinding) {
+            $findingsCreated++;
+        }
+
+        // Rule 7: Overdue AR invoices (global)
+        $overdueFinding = $this->detectOverdueInvoices($tenantId, $entityId, $currentMonth);
+        if ($overdueFinding) {
+            $findingsCreated++;
+        }
+
+        // Rule 8: Unreconciled bank transactions (global)
+        $unreconciledFinding = $this->detectUnreconciledBankTransactions($tenantId, $entityId, $currentMonth);
+        if ($unreconciledFinding) {
+            $findingsCreated++;
         }
 
         Log::info('FinancialClose AI: Analysis complete', [
@@ -387,5 +408,132 @@ class FinancialCloseAiAnalysisService
         if ($review->risk_status !== $newRisk) {
             $review->update(['risk_status' => $newRisk]);
         }
+    }
+
+    /**
+     * Rule 6: Detect unposted (draft) journal entries.
+     */
+    private function detectUnpostedJournalEntries(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
+    {
+        $count = DB::table('journal_entries')
+            ->where('status', 'draft')
+            ->count();
+
+        if ($count === 0) {
+            return null;
+        }
+
+        $totalAmount = DB::table('journal_entries')
+            ->where('status', 'draft')
+            ->join('journal_entry_lines', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->sum('debit');
+
+        return $this->findingService->createFinding(
+            $tenantId,
+            null,
+            $entityId,
+            null,
+            [
+                'finding_type'    => 'unposted_entries',
+                'description'     => "{$count} draft journal entries found totaling " . number_format((float) $totalAmount, 2) . '. These entries have not been posted to the GL.',
+                'confidence'      => 0.95,
+                'risk_status'     => 'high',
+                'likely_cause'    => 'Journal entries created but not reviewed/approved for posting.',
+                'recommendation'  => 'Review and post draft journal entries before closing the period.',
+                'detail_items'    => [
+                    ['label' => 'Draft Entries', 'value' => (string) $count],
+                    ['label' => 'Total Amount',  'value' => number_format((float) $totalAmount, 2)],
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Rule 7: Detect overdue customer invoices.
+     */
+    private function detectOverdueInvoices(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
+    {
+        $count = DB::table('invoices')
+            ->whereIn('status', ['sent', 'partial', 'posted'])
+            ->where('due_date', '<', now()->toDateString())
+            ->count();
+
+        if ($count === 0) {
+            return null;
+        }
+
+        $totalAmount = DB::table('invoices')
+            ->whereIn('status', ['sent', 'partial', 'posted'])
+            ->where('due_date', '<', now()->toDateString())
+            ->sum('balance');
+
+        return $this->findingService->createFinding(
+            $tenantId,
+            null,
+            $entityId,
+            null,
+            [
+                'finding_type'    => 'overdue_invoices',
+                'description'     => "{$count} customer invoices are overdue totaling " . number_format((float) $totalAmount, 2) . '. These invoices are past their due date.',
+                'confidence'      => 0.98,
+                'risk_status'     => 'high',
+                'likely_cause'    => 'Customers have not paid invoices by the due date.',
+                'recommendation'  => 'Follow up with customers on overdue invoices and consider bad debt provisions.',
+                'detail_items'    => [
+                    ['label' => 'Overdue Invoices', 'value' => (string) $count],
+                    ['label' => 'Total Outstanding', 'value' => number_format((float) $totalAmount, 2)],
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Rule 8: Detect unreconciled bank transactions.
+     */
+    private function detectUnreconciledBankTransactions(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
+    {
+        $bankAccountIds = DB::table('bank_accounts')
+            ->where('is_active', true)
+            ->pluck('gl_account_id');
+
+        if ($bankAccountIds->isEmpty()) {
+            return null;
+        }
+
+        $count = DB::table('journal_entry_lines')
+            ->whereNull('reconciliation_id')
+            ->whereIn('account_id', $bankAccountIds)
+            ->count();
+
+        if ($count === 0) {
+            return null;
+        }
+
+        $totalAmount = DB::table('journal_entry_lines')
+            ->whereNull('reconciliation_id')
+            ->whereIn('account_id', $bankAccountIds)
+            ->selectRaw('COALESCE(SUM(debit), 0) as total_debit, COALESCE(SUM(credit), 0) as total_credit')
+            ->first();
+
+        $netAmount = abs((float) ($totalAmount->total_debit ?? 0) - (float) ($totalAmount->total_credit ?? 0));
+
+        return $this->findingService->createFinding(
+            $tenantId,
+            null,
+            $entityId,
+            null,
+            [
+                'finding_type'    => 'unreconciled_transactions',
+                'description'     => "{$count} unreconciled bank transactions found. Net unreconciled amount: " . number_format($netAmount, 2) . '.',
+                'confidence'      => 0.95,
+                'risk_status'     => 'medium',
+                'likely_cause'    => 'Bank transactions have not been matched to bank statement lines.',
+                'recommendation'  => 'Complete bank reconciliation for all active bank accounts before closing the period.',
+                'detail_items'    => [
+                    ['label' => 'Unreconciled Lines', 'value' => (string) $count],
+                    ['label' => 'Net Amount',         'value' => number_format($netAmount, 2)],
+                ],
+            ]
+        );
     }
 }

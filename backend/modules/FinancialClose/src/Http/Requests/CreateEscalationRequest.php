@@ -15,6 +15,7 @@ class CreateEscalationRequest extends FormRequest
     {
         return [
             'reason'       => ['required', 'string', 'max:1000'],
+            'level'        => ['nullable', 'string', 'in:low,medium,high,critical'],
             'escalated_to' => ['nullable', 'string', 'uuid'],
         ];
     }

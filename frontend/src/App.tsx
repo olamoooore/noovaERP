@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
 
@@ -89,6 +90,8 @@ const CustomerCreditNotesPage = lazy(() => import('@/pages/accounting/CustomerCr
 const CustomerCreditNoteDetail = lazy(() => import('@/pages/accounting/customers/CustomerCreditNoteDetail'))
 const VendorCreditNotesPage = lazy(() => import('@/pages/accounting/VendorCreditNotesPage'))
 const VendorCreditNoteDetail = lazy(() => import('@/pages/accounting/vendors/VendorCreditNoteDetail'))
+const VendorDebitNotesPage = lazy(() => import('@/pages/accounting/VendorDebitNotesPage'))
+const VendorDebitNoteDetail = lazy(() => import('@/pages/accounting/vendors/VendorDebitNoteDetail'))
 const ARTransactionsPage = lazy(() => import('@/pages/accounting/ARTransactionsPage'))
 const APTransactionsPage = lazy(() => import('@/pages/accounting/APTransactionsPage'))
 const BalanceSheetPage = lazy(() => import('@/pages/accounting/reports/BalanceSheetPage'))
@@ -111,6 +114,7 @@ const AiFindingsPage     = lazy(() => import('@/pages/FinancialClose/AiFindingsP
 const ReadinessCockpitPage = lazy(() => import('@/pages/FinancialClose/ReadinessCockpitPage').then(m => ({ default: m.ReadinessCockpitPage })))
 const ForecastPage       = lazy(() => import('@/pages/FinancialClose/ForecastPage').then(m => ({ default: m.ForecastPage })))
 const ExecutiveSummaryPage = lazy(() => import('@/pages/FinancialClose/ExecutiveSummaryPage').then(m => ({ default: m.ExecutiveSummaryPage })))
+const AuditTrailPage = lazy(() => import('@/pages/FinancialClose/AuditTrailPage'))
 
 // Field Service Module Pages
 const FieldServiceDashboard = lazy(() => import('@/pages/FieldService/FieldServiceDashboard').then(m => ({ default: m.FieldServiceDashboard })))
@@ -208,6 +212,19 @@ const OfflinePaymentMethods = lazy(() => import('@/pages/Settings/OfflinePayment
 // Fulfillment Pages
 const FulfillmentSettings = lazy(() => import('@/pages/Settings/FulfillmentSettings').then(m => ({ default: m.FulfillmentSettings })))
 
+// Public marketing site + signup
+const LandingPage = lazy(() => import('@/pages/landing/LandingPage').then(m => ({ default: m.LandingPage })))
+const SignupPage = lazy(() => import('@/pages/SignupPage').then(m => ({ default: m.SignupPage })))
+
+// Root gate: authenticated users go to the dashboard, visitors see the website
+function HomeGate() {
+  const isAuthenticated = useAuthStore((state) => !!state.token)
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <LandingPage />
+}
+
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen">
@@ -236,7 +253,10 @@ function App() {
         <BrowserRouter basename={import.meta.env.VITE_BASE_PATH || '/'}>
           <Suspense fallback={<PageLoader />}>
             <Routes>
+            {/* Public website + auth */}
+            <Route path="/" element={<HomeGate />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
             
             <Route element={<ProtectedRoute />}>
               {/* Receipt Builder - fullscreen without sidebar */}
@@ -244,7 +264,7 @@ function App() {
 
               {/* Main Layout Routes - with sidebar */}
               <Route element={<MainLayout />}>
-                <Route path="/" element={<DashboardPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/products/new" element={<ProductCreatePage />} />
                 <Route path="/products/import" element={<ProductImportPage />} />
@@ -304,6 +324,8 @@ function App() {
                 <Route path="/accounting/vendors/payments" element={<VendorPayments />} />
                 <Route path="/accounting/vendors/credit-notes" element={<VendorCreditNotesPage />} />
                 <Route path="/accounting/vendors/credit-notes/:id" element={<VendorCreditNoteDetail />} />
+                <Route path="/accounting/vendors/debit-notes" element={<VendorDebitNotesPage />} />
+                <Route path="/accounting/vendors/debit-notes/:id" element={<VendorDebitNoteDetail />} />
                 <Route path="/accounting/vendors/transactions" element={<APTransactionsPage />} />
                 
                 {/* Accounting Core Section */}
@@ -388,6 +410,7 @@ function App() {
                 <Route path="/financial-close/readiness" element={<ReadinessCockpitPage />} />
                 <Route path="/financial-close/forecast" element={<ForecastPage />} />
                 <Route path="/financial-close/executive" element={<ExecutiveSummaryPage />} />
+                <Route path="/financial-close/audit-trail" element={<AuditTrailPage />} />
 
                 {/* Field Service Module Routes */}
                 <Route path="/field-service" element={<FieldServiceDashboard />} />

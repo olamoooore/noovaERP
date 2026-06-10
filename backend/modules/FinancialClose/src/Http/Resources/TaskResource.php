@@ -34,6 +34,8 @@ class TaskResource extends JsonResource
             'related_accounts' => array_values($metadata['related_accounts'] ?? []),
             'evidence_items'   => array_values($metadata['evidence_items'] ?? []),
             'checklist_items'  => array_values($metadata['checklist_items'] ?? []),
+            'checklist_completed' => array_values($metadata['checklist_completed'] ?? []),
+            'document_links'   => array_values($metadata['document_links'] ?? []),
             'dependencies'     => $this->whenLoaded('dependencies', function () {
                 return $this->dependencies->map(function ($dependency): array {
                     return [

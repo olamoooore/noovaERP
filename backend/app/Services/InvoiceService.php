@@ -454,7 +454,7 @@ class InvoiceService
     public function applyRefundToInvoice(Invoice $invoice, float $refundAmount): Invoice
     {
         Invoice::where('id', $invoice->id)
-            ->increment('balance', $refundAmount);
+            ->decrement('balance', $refundAmount);
         Invoice::where('id', $invoice->id)
             ->decrement('paid_amount', $refundAmount);
 

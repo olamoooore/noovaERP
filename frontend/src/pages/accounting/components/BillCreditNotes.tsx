@@ -1,6 +1,11 @@
-import { useCreditNotesByBill } from '@/hooks/useVendorCreditNotes';
+import { useState } from 'react';
+import { useCreditNotesByBill, useDeleteVendorCreditNote } from '@/hooks/useVendorCreditNotes';
 import VendorCreditNotePostButton from './VendorCreditNotePostButton';
+import EditVendorCreditNoteDialog from './EditVendorCreditNoteDialog';
 import { useQueryClient } from '@tanstack/react-query';
+import { Icon } from '@iconify/react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface BillCreditNotesProps {
   billId: number;
@@ -23,8 +28,11 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function BillCreditNotes({ billId, billTotal, currencyCode }: BillCreditNotesProps) {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: creditNotes, isLoading } = useCreditNotesByBill(billId);
+  const [editingCreditNoteId, setEditingCreditNoteId] = useState<number | null>(null);
+  const deleteMutation = useDeleteVendorCreditNote();
 
   if (isLoading) {
     return (
@@ -39,6 +47,17 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
     .filter((cn: any) => cn.status === 'posted')
     .reduce((sum: number, cn: any) => sum + Number(cn.total_amount), 0);
   const remainingBalance = billTotal - totalCredited;
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this credit note?')) return;
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast({ title: 'Deleted', description: 'Credit note deleted successfully.' });
+      queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', billId] });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Failed to delete', description: err.response?.data?.message || 'Failed to delete credit note.' });
+    }
+  };
 
   const handlePosted = () => {
     queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', billId] });
@@ -109,7 +128,15 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                   </td>
                   <td className="px-4 py-3 text-right">
                     {creditNote.status === 'draft' && (
-                      <VendorCreditNotePostButton creditNoteId={creditNote.id} onSuccess={handlePosted} />
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingCreditNoteId(creditNote.id)}>
+                          <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                        </Button>
+                        <VendorCreditNotePostButton creditNoteId={creditNote.id} onSuccess={handlePosted} />
+                        <Button size="sm" variant="ghost" onClick={() => handleDelete(creditNote.id)}>
+                          <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -127,6 +154,17 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
             </tfoot>
           </table>
         </div>
+      )}
+
+      {editingCreditNoteId && (
+        <EditVendorCreditNoteDialog
+          creditNoteId={editingCreditNoteId}
+          onClose={() => setEditingCreditNoteId(null)}
+          onSuccess={() => {
+            setEditingCreditNoteId(null);
+            queryClient.invalidateQueries({ queryKey: ['bill-credit-notes', billId] });
+          }}
+        />
       )}
     </div>
   );

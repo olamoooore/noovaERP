@@ -153,14 +153,16 @@ export function AiFindingsPage() {
                         <Badge variant={risk.variant}>{risk.label} Risk</Badge>
                         <Badge variant={status.variant}>{status.label}</Badge>
                         <span className="text-xs text-muted-foreground">
-                          {finding.finding_type.replace(/_/g, ' ')}
+                          {finding.finding_type?.replace(/_/g, ' ')}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          Confidence: <span className="font-medium text-foreground">{Math.round(finding.confidence * 100)}%</span>
+                          Confidence: <span className="font-medium text-foreground">{Math.round((finding.confidence ?? 0) * 100)}%</span>
                         </span>
-                        <span className="text-xs text-muted-foreground">
-                          Review {finding.review_id.slice(0, 8)}
-                        </span>
+                        {finding.review_id && (
+                          <span className="text-xs text-muted-foreground">
+                            Review {finding.review_id.slice(0, 8)}
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-foreground">{finding.description}</p>
                       {finding.likely_cause && (
@@ -169,7 +171,7 @@ export function AiFindingsPage() {
                           <p className="text-sm mt-1 text-foreground">{finding.likely_cause}</p>
                         </div>
                       )}
-                      {!!finding.detail_items.length && (
+                       {!!(finding.detail_items && finding.detail_items.length) && (
                         <div className="grid gap-2 sm:grid-cols-2">
                           {finding.detail_items.map(item => (
                             <div key={`${finding.id}-${item.label}`} className="rounded-lg border px-3 py-2">

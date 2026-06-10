@@ -9,6 +9,7 @@ use Modules\FinancialClose\Http\Controllers\ReadinessController;
 use Modules\FinancialClose\Http\Controllers\ForecastController;
 use Modules\FinancialClose\Http\Controllers\ChecklistTemplateController;
 use Modules\FinancialClose\Http\Controllers\SignoffController;
+use Modules\FinancialClose\Http\Controllers\AuditTrailController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +36,11 @@ Route::post('/tasks/{taskId}/submit',           [TaskController::class, 'submit'
 Route::post('/tasks/{taskId}/complete',         [TaskController::class, 'complete']);
 Route::post('/tasks/{taskId}/return',           [TaskController::class, 'returnTask']);
 Route::post('/tasks/{taskId}/block',            [TaskController::class, 'block']);
+Route::post('/tasks/{taskId}/checklist',        [TaskController::class, 'saveChecklist']);
+Route::post('/tasks/{taskId}/evidence',         [TaskController::class, 'uploadEvidence']);
+Route::get('/tasks/{taskId}/evidence',          [TaskController::class, 'listEvidence']);
+Route::post('/tasks/{taskId}/link-document',    [TaskController::class, 'linkDocument']);
+Route::delete('/tasks/{taskId}/link-document',  [TaskController::class, 'unlinkDocument']);
 
 // ─── Escalations ─────────────────────────────────────────────────────────────
 Route::get('/tasks/{taskId}/escalations',               [EscalationController::class, 'index']);
@@ -70,3 +76,8 @@ Route::post('/signoffs/{signoffId}/revoke',             [SignoffController::clas
 // ─── Forecast ────────────────────────────────────────────────────────────────
 Route::get('/cycles/{cycleId}/forecast',                [ForecastController::class, 'show']);
 Route::get('/forecast/{entityId}/executive',            [ForecastController::class, 'executive']);
+
+// ─── Audit Trail ─────────────────────────────────────────────────────────────
+Route::get('/audit-trail',                              [AuditTrailController::class, 'index']);
+Route::get('/audit-trail/actions',                      [AuditTrailController::class, 'actions']);
+Route::get('/audit-trail/stats',                        [AuditTrailController::class, 'stats']);

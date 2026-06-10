@@ -16,7 +16,7 @@ class FinancialCloseFindingGenerated
     public function __construct(
         public readonly string $tenantId,
         public readonly string $findingId,
-        public readonly string $reviewId,
+        public readonly ?string $reviewId,
         public readonly string $riskStatus,
     ) {}
 }

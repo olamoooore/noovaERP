@@ -145,7 +145,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         // 3. Overdue invoices (customer invoices past due date)
         $overdueInvoices = DB::table('invoices')
-            ->whereIn('status', ['sent', 'partial'])
+            ->whereIn('status', ['sent', 'partial', 'posted'])
             ->where('due_date', '<', now()->toDateString())
             ->count();
         if ($overdueInvoices > 0) {
@@ -162,10 +162,9 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
         }
 
         // 4. Unreconciled bank transactions
-        $bankAccountIds = DB::table('chart_of_accounts')
-            ->whereIn('subtype', ['asset_cash', 'asset_current'])
-            ->where('type', 'asset')
-            ->pluck('id');
+        $bankAccountIds = DB::table('bank_accounts')
+            ->where('is_active', true)
+            ->pluck('gl_account_id');
 
         $unreconciled = 0;
         if ($bankAccountIds->isNotEmpty()) {

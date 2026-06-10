@@ -20,21 +20,23 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function TransactionTypeBadge({ type }: { type: string }) {
-  const colors = {
+  const colors: Record<string, string> = {
     bill: 'bg-purple-100 text-purple-800',
     payment: 'bg-green-100 text-green-800',
     credit_note: 'bg-orange-100 text-orange-800',
+    debit_note: 'bg-blue-100 text-blue-800',
   };
 
-  const labels = {
+  const labels: Record<string, string> = {
     bill: 'Bill',
     payment: 'Payment',
     credit_note: 'Credit Note',
+    debit_note: 'Debit Note',
   };
 
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[type as keyof typeof colors]}`}>
-      {labels[type as keyof typeof labels] || type}
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[type] || 'bg-gray-100 text-gray-800'}`}>
+      {labels[type] || type}
     </span>
   );
 }
@@ -87,6 +89,7 @@ export default function APTransactionsPage() {
       bill: `/accounting/vendors/bills/${transaction.transaction_id}`,
       payment: `/accounting/vendors/payments?search=${encodeURIComponent(transaction.document_number || '')}`,
       credit_note: `/accounting/vendors/credit-notes?search=${encodeURIComponent(transaction.document_number || '')}`,
+      debit_note: `/accounting/vendors/debit-notes?search=${encodeURIComponent(transaction.document_number || '')}`,
     };
     
     const route = routes[transaction.transaction_type as keyof typeof routes];
@@ -162,6 +165,7 @@ export default function APTransactionsPage() {
                 <option value="bill">Bill</option>
                 <option value="payment">Payment</option>
                 <option value="credit_note">Credit Note</option>
+                <option value="debit_note">Debit Note</option>
               </select>
             </div>
 
