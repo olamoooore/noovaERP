@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\TenantRoleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -51,6 +52,10 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth-token')->plainTextToken;
 
+        $roleService = app(TenantRoleService::class);
+        $role = $roleService->getSpatieRoleName($user->id, $tenant->id);
+        $permissions = $roleService->getPermissions($user->id, $tenant->id);
+
         return response()->json([
             'user' => $user,
             'token' => $token,
@@ -58,6 +63,8 @@ class AuthController extends Controller
                 'id' => $tenant->id,
                 'name' => $tenant->name,
             ],
+            'role' => $role,
+            'permissions' => $permissions,
         ]);
     }
 
@@ -70,6 +77,27 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return response()->json($request->user()->load('roles.permissions'));
+        $user = $request->user();
+
+        // Resolve tenant-scoped role and permissions
+        $tenantId = $request->header('X-Tenant-ID');
+        if (! $tenantId && function_exists('tenant') && tenant()) {
+            $tenantId = tenant('id');
+        }
+
+        $role = null;
+        $permissions = [];
+
+        if ($tenantId) {
+            $roleService = app(TenantRoleService::class);
+            $role = $roleService->getSpatieRoleName($user->id, $tenantId);
+            $permissions = $roleService->getPermissions($user->id, $tenantId);
+        }
+
+        return response()->json([
+            'user' => $user->load('roles.permissions'),
+            'role' => $role,
+            'permissions' => $permissions,
+        ]);
     }
 }

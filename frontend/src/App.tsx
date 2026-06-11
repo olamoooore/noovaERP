@@ -36,6 +36,7 @@ const POSBarcodePage = lazy(() => import('@/pages/POS/POSBarcodePage').then(m =>
 const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m => ({ default: m.POSReportsPage })))
 const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m => ({ default: m.POSSettingsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const TenantUsersPage = lazy(() => import('@/pages/TenantUsersPage'))
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
@@ -377,6 +378,7 @@ function App() {
                 <Route path="/dashboards/inventory" element={<InventoryDashboard />} />
                 <Route path="/dashboards/financial" element={<FinancialDashboard />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/users" element={<TenantUsersPage />} />
                 <Route path="/settings/iot-devices" element={<IoTDevicesPage />} />
                 <Route path="/iot-hub" element={<IoTHubPage />} />
                 

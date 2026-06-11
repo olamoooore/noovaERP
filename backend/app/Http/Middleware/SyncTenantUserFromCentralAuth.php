@@ -107,5 +107,26 @@ class SyncTenantUserFromCentralAuth
         if (!$tenantUser->hasRole($role)) {
             $tenantUser->assignRole($role);
         }
+
+        // Sync permissions from the role to the tenant user
+        $this->syncRolePermissions($role);
+    }
+
+    private function syncRolePermissions(Role $role): void
+    {
+        // Ensure standard permissions exist for this role.
+        // If the RolePermissionSeeder has not been run in this tenant yet,
+        // permissions will be empty and this is a no-op.
+        $permissions = $role->permissions;
+
+        if ($permissions->isEmpty()) {
+            return;
+        }
+
+        foreach ($permissions as $permission) {
+            if (! $role->hasPermissionTo($permission)) {
+                $role->givePermissionTo($permission);
+            }
+        }
     }
 }

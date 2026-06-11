@@ -5,6 +5,7 @@ import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
 
 interface NavItem {
   title: string
@@ -12,6 +13,7 @@ interface NavItem {
   icon: string
   badge?: number
   featureKey?: string
+  requiredPermission?: string
   children?: NavItem[]
 }
 
@@ -559,6 +561,12 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:widget-bold-duotone',
   },
   {
+    title: 'Team',
+    href: '/settings/users',
+    icon: 'solar:users-group-rounded-bold-duotone',
+    requiredPermission: 'users.view',
+  },
+  {
     title: 'Settings',
     href: '/settings',
     icon: 'solar:settings-bold-duotone',
@@ -627,12 +635,61 @@ export function Sidebar() {
     return featureStatusByKey.get(matchedKey) === true
   }
 
+  // RBAC: derive required permission from featureKey or explicit override
+  const { hasPermission, user, role } = useAuthStore()
+
+  const derivePermission = (item: NavItem): string | undefined => {
+    if (item.requiredPermission) return item.requiredPermission
+    if (!item.featureKey) return undefined
+
+    // Map feature keys to view permissions
+    const permissionMap: Record<string, string> = {
+      pos: 'pos.view',
+      inventory: 'inventory.view',
+      sales: 'sales.view',
+      accounting: 'accounting.view',
+      loyalty: 'loyalty.view',
+      'event-management': 'event_management.view',
+      'website-builder': 'settings.view',
+      ecommerce: 'sales.view',
+      iot: 'iot.view',
+      ai: 'ai.view',
+      'field-service': 'field_service.view',
+      hrm: 'hrm.view',
+      'financial-reporting': 'reports.view',
+    }
+
+    const base = permissionMap[item.featureKey]
+    if (!base) return undefined
+
+    // Settings pages within modules require *.settings permission
+    if (item.href.endsWith('/settings') || item.title.toLowerCase().includes('settings')) {
+      const module = base.replace('.view', '')
+      return `${module}.settings`
+    }
+
+    return base
+  }
+
+  const canAccessNavItem = (item: NavItem): boolean => {
+    const permission = derivePermission(item)
+    if (!permission) return true
+    return hasPermission(permission)
+  }
+
   const navItems = baseNavItems.reduce<NavItem[]>((items, item) => {
     if (!isFeatureEnabled(item.featureKey)) {
       return items
     }
 
-    const children = item.children?.filter((child) => isFeatureEnabled(child.featureKey))
+    if (!canAccessNavItem(item)) {
+      return items
+    }
+
+    const children = item.children?.filter((child) => {
+      if (!isFeatureEnabled(child.featureKey)) return false
+      return canAccessNavItem(child)
+    })
 
     if (item.children && !item.featureKey && features && (!children || children.length === 0)) {
       return items
@@ -760,8 +817,8 @@ export function Sidebar() {
             <Icon icon="solar:user-bold" className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <p className="font-medium">Tenant Name</p>
-            <p className="text-xs text-muted-foreground">Free Trial</p>
+            <p className="font-medium">{user?.name || 'User'}</p>
+            <p className="text-xs text-muted-foreground capitalize">{role || 'Member'}</p>
           </div>
         </div>
       </div>

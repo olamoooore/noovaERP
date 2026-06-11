@@ -133,10 +133,10 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     // --- Phase 5: Admin User Management (throttled, gate-enforced per method) ---
     Route::prefix('users')->middleware('throttle:30,1')->group(function () {
         Route::get('/',                    [AdminUserController::class, 'index']);
-        Route::post('/invite',             [AdminUserController::class, 'invite']);
-        Route::put('/{user}/role',         [AdminUserController::class, 'updateRole']);
-        Route::delete('/{user}',           [AdminUserController::class, 'deactivate']);
-        Route::post('/{user}/reactivate',  [AdminUserController::class, 'reactivate']);
+        Route::post('/invite',             [AdminUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
+        Route::put('/{user}/role',         [AdminUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
+        Route::delete('/{user}',           [AdminUserController::class, 'deactivate'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.delete');
+        Route::post('/{user}/reactivate',  [AdminUserController::class, 'reactivate'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
     });
 
     // --- Phase 5: Collections — tracked at invoice level (throttled, gate-enforced per method) ---

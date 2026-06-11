@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react'
 import { useAuthStore } from '@/store/authStore'
+import { Badge } from '@/components/ui/badge'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export function TopBar() {
-  const { user, logout } = useAuthStore()
+  const { user, logout, role } = useAuthStore()
   const navigate = useNavigate()
 
   const handleLogout = () => {
@@ -24,6 +25,11 @@ export function TopBar() {
     <div className="flex h-16 items-center justify-between border-b bg-card px-6">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold">Welcome back, {user?.name}</h1>
+        {role && (
+          <Badge variant="secondary" className="text-xs capitalize">
+            {role}
+          </Badge>
+        )}
       </div>
 
       <div className="flex items-center gap-4">
@@ -47,6 +53,9 @@ export function TopBar() {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium">{user?.name}</p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
+                {role && (
+                  <p className="text-xs font-medium text-primary capitalize">{role}</p>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

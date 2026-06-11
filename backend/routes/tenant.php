@@ -105,7 +105,7 @@ Route::middleware([
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
     // Document correction endpoints
-    Route::prefix('corrections')->group(function () {
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.post')->group(function () {
         // Invoice corrections
         Route::post('/invoices/{id}/void', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'voidInvoice']);
         Route::post('/invoices/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseInvoice']);
@@ -118,12 +118,16 @@ Route::middleware([
         Route::post('/bills/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseBill']);
         Route::post('/bills/{id}/credit-note', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createBillCreditNote']);
         Route::post('/bills/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createBillReplacement']);
+    });
 
-        // Journal corrections
+    // Journal corrections require accounting.reverse
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.reverse')->group(function () {
         Route::post('/journals/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseJournal']);
         Route::post('/journals/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createJournalReplacement']);
+    });
 
-        // Payment corrections
+    // Payment corrections require accounting.post
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.post')->group(function () {
         Route::post('/payments/{id}/refund', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'refundPayment']);
         Route::post('/payments/{id}/reverse', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'reversePayment']);
         Route::post('/payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyPayment']);
@@ -132,6 +136,13 @@ Route::middleware([
         Route::post('/bill-payments/{id}/refund', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'refundBillPayment']);
         Route::post('/bill-payments/{id}/reverse', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'reverseBillPayment']);
         Route::post('/bill-payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyBillPayment']);
+    });
+
+    // Tenant user management
+    Route::prefix('tenant-users')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);
+        Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
+        Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.delete');
     });
 
     // Version/correction chain endpoints
