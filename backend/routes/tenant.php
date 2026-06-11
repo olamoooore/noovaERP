@@ -141,6 +141,7 @@ Route::middleware([
     // Tenant user management
     Route::prefix('tenant-users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
         Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
         Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.delete');
     });

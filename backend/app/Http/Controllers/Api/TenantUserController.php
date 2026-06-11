@@ -85,7 +85,7 @@ class TenantUserController extends Controller
         }
 
         // Only Owner and Admin can change roles
-        $currentRole = $this->roleService->getRole($currentUser->id, $tenantId);
+        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
         if (! $currentRole || ! in_array($currentRole->value, UserRole::superRoles(), true)) {
             return response()->json([
                 'message' => 'You do not have permission to change user roles.',
@@ -141,7 +141,7 @@ class TenantUserController extends Controller
         }
 
         // Only Owner can remove users
-        $currentRole = $this->roleService->getRole($currentUser->id, $tenantId);
+        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
         if ($currentRole !== UserRole::OWNER) {
             return response()->json([
                 'message' => 'Only the tenant owner can remove users.',
@@ -171,6 +171,114 @@ class TenantUserController extends Controller
         ]);
     }
 
+    /**
+     * POST /api/v1/tenant-users
+     *
+     * Invite or add a user to the current tenant.
+     * If the email exists in central users, just add the tenant access row.
+     * If not, create a new central user with a temporary password.
+     */
+    public function invite(Request $request): JsonResponse
+    {
+        $tenantId = $this->resolveTenantId($request);
+
+        if (! $tenantId) {
+            return response()->json(['message' => 'Tenant context required.'], 403);
+        }
+
+        $currentUser = $request->user();
+
+        if (! $currentUser) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        // Only Owner and Admin can invite users
+        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
+        if (! $currentRole || ! in_array($currentRole->value, UserRole::superRoles(), true)) {
+            return response()->json([
+                'message' => 'You do not have permission to invite users.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'role'  => ['required', 'string', Rule::in(UserRole::values())],
+            'name'  => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $email = strtolower($validated['email']);
+        $role  = $validated['role'];
+        $name  = $validated['name'] ?? explode('@', $email)[0];
+
+        // Look up existing user in public schema
+        $existingUser = DB::table('public.users')->where('email', $email)->first();
+
+        if ($existingUser) {
+            // Check if user already has access to this tenant
+            $alreadyHasAccess = DB::table('public.user_company_access')
+                ->where('user_id', $existingUser->id)
+                ->where('tenant_id', $tenantId)
+                ->exists();
+
+            if ($alreadyHasAccess) {
+                return response()->json([
+                    'message' => 'User is already a member of this workspace.',
+                ], 422);
+            }
+
+            DB::table('public.user_company_access')->insert([
+                'user_id'    => $existingUser->id,
+                'tenant_id'  => $tenantId,
+                'role'       => $role,
+                'is_default' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'User added to workspace successfully.',
+                'data'    => [
+                    'id'    => $existingUser->id,
+                    'name'  => $existingUser->name,
+                    'email' => $existingUser->email,
+                    'role'  => $role,
+                ],
+            ], 201);
+        }
+
+        // Create new central user
+        $tempPassword = \Illuminate\Support\Str::random(16);
+        $newUserId = DB::table('public.users')->insertGetId([
+            'name'              => $name,
+            'email'             => $email,
+            'email_verified_at' => null,
+            'password'          => \Illuminate\Support\Facades\Hash::make($tempPassword),
+            'role'              => 'platform_super_admin',
+            'is_active'         => true,
+            'created_at'        => now(),
+            'updated_at'        => now(),
+        ]);
+
+        DB::table('public.user_company_access')->insert([
+            'user_id'    => $newUserId,
+            'tenant_id'  => $tenantId,
+            'role'       => $role,
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Invitation sent. User created and added to workspace.',
+            'data'    => [
+                'id'    => $newUserId,
+                'name'  => $name,
+                'email' => $email,
+                'role'  => $role,
+            ],
+        ], 201);
+    }
+
     private function resolveTenantId(Request $request): ?string
     {
         if (function_exists('tenant') && tenant()) {
@@ -186,5 +294,14 @@ class TenantUserController extends Controller
         }
 
         return null;
+    }
+
+    private function resolveCentralUserId(\App\Models\User $user): int
+    {
+        $centralUserId = DB::table('public.users')
+            ->where('email', $user->email)
+            ->value('id');
+
+        return (int) ($centralUserId ?? $user->id);
     }
 }

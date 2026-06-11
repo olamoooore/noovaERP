@@ -4,6 +4,8 @@ import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -65,11 +67,18 @@ async function removeTenantUser(userId: number): Promise<void> {
   await api.delete(`/tenant-users/${userId}`)
 }
 
+async function inviteTenantUser(email: string, role: string, name?: string): Promise<void> {
+  await api.post('/tenant-users', { email, role, name })
+}
+
 export default function TenantUsersPage() {
   const qc = useQueryClient()
   const { toast } = useToast()
   const { role: currentRole } = useAuthStore()
   const [updatingId, setUpdatingId] = useState<number | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('viewer')
+  const [inviteName, setInviteName] = useState('')
 
   const canManageRoles = currentRole === 'Owner' || currentRole === 'Admin'
   const canRemoveUsers = currentRole === 'Owner'
@@ -110,6 +119,24 @@ export default function TenantUsersPage() {
     },
   })
 
+  const inviteMutation = useMutation({
+    mutationFn: () => inviteTenantUser(inviteEmail, inviteRole, inviteName || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tenant-users'] })
+      toast({ title: 'User invited successfully' })
+      setInviteEmail('')
+      setInviteName('')
+      setInviteRole('viewer')
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to invite user',
+        description: err?.response?.data?.message || 'Unknown error',
+      })
+    },
+  })
+
   const users = data ?? []
 
   return (
@@ -120,6 +147,61 @@ export default function TenantUsersPage() {
           Manage who has access to this workspace and what they can do.
         </p>
       </div>
+
+      {canManageRoles && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Invite Team Member</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-email" className="text-xs">Email</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-name" className="text-xs">Name (optional)</Label>
+                <Input
+                  id="invite-name"
+                  placeholder="John Doe"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-role" className="text-xs">Role</Label>
+                <Select value={inviteRole} onValueChange={setInviteRole}>
+                  <SelectTrigger id="invite-role" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={() => inviteMutation.mutate()}
+                disabled={!inviteEmail || inviteMutation.isPending}
+                className="h-9"
+              >
+                {inviteMutation.isPending ? 'Inviting…' : 'Invite Member'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -54,7 +54,10 @@ class RequirePermission
             ], 403);
         }
 
-        if ($this->roleService->hasPermission($user->id, $tenantId, $permission)) {
+        // Resolve central user id — user_company_access stores central IDs, not tenant schema IDs
+        $centralUserId = $this->resolveCentralUserId($user);
+
+        if ($this->roleService->hasPermission($centralUserId, $tenantId, $permission)) {
             return $next($request);
         }
 
@@ -79,5 +82,14 @@ class RequirePermission
         }
 
         return null;
+    }
+
+    private function resolveCentralUserId(\App\Models\User $user): int
+    {
+        $centralUserId = \Illuminate\Support\Facades\DB::table('public.users')
+            ->where('email', $user->email)
+            ->value('id');
+
+        return (int) ($centralUserId ?? $user->id);
     }
 }
