@@ -222,7 +222,7 @@ export const CustomerPayments: React.FC = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Total Amount</p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0))}
+                    {formatCurrency(payments.reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0))}
                   </p>
                 </div>
                 <Icon icon="solar:dollar-bold-duotone" className="h-8 w-8 text-green-500" />
