@@ -63,14 +63,40 @@ class RefreshReadinessSnapshotJob implements ShouldQueue
             ]);
         }
 
-        JobRunHistory::create([
-            'tenant_id'      => $this->tenantId,
-            'job_name'       => 'RefreshReadinessSnapshotJob',
-            'reference_id'   => $this->entityId,
-            'started_at'     => $startedAt,
-            'finished_at'    => now(),
-            'result'         => ['readiness_score' => $snapshot?->readiness_score],
-            'correlation_id' => $this->correlationId,
-        ]);
+        try {
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'readiness_snapshot',
+                'status'         => 'completed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'metadata'       => [
+                    'entity_id'       => $this->entityId,
+                    'period_id'       => $this->periodId,
+                    'cycle_id'        => $this->cycleId,
+                    'readiness_score' => $snapshot?->readiness_score,
+                    'correlation_id'  => $this->correlationId,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'readiness_snapshot',
+                'status'         => 'failed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'error_message'  => $e->getMessage(),
+                'metadata'       => [
+                    'entity_id'      => $this->entityId,
+                    'period_id'      => $this->periodId,
+                    'cycle_id'       => $this->cycleId,
+                    'correlation_id' => $this->correlationId,
+                ],
+            ]);
+
+            throw $e;
+        }
     }
 }

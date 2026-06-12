@@ -37,16 +37,38 @@ class GenerateCompletionSnapshotJob implements ShouldQueue
             'correlation_id' => $this->correlationId,
         ]);
 
-        $snapshot = $completionService->generateSnapshot($this->tenantId, $this->cycleId);
+        try {
+            $snapshot = $completionService->generateSnapshot($this->tenantId, $this->cycleId);
 
-        JobRunHistory::create([
-            'tenant_id'      => $this->tenantId,
-            'job_name'       => 'GenerateCompletionSnapshotJob',
-            'reference_id'   => $this->cycleId,
-            'started_at'     => $startedAt,
-            'finished_at'    => now(),
-            'result'         => ['completion_percentage' => $snapshot?->completion_percentage],
-            'correlation_id' => $this->correlationId,
-        ]);
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'completion_snapshot',
+                'status'         => 'completed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'metadata'       => [
+                    'cycle_id'             => $this->cycleId,
+                    'completion_percentage' => $snapshot?->completion_percentage,
+                    'correlation_id'       => $this->correlationId,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'completion_snapshot',
+                'status'         => 'failed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'error_message'  => $e->getMessage(),
+                'metadata'       => [
+                    'cycle_id'       => $this->cycleId,
+                    'correlation_id' => $this->correlationId,
+                ],
+            ]);
+
+            throw $e;
+        }
     }
 }

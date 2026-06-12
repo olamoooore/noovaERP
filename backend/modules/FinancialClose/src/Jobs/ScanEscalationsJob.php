@@ -37,16 +37,38 @@ class ScanEscalationsJob implements ShouldQueue
             'correlation_id' => $this->correlationId,
         ]);
 
-        $count = $escalationService->processOverdueTasks($this->tenantId, $this->cycleId);
+        try {
+            $count = $escalationService->processOverdueTasks($this->tenantId, $this->cycleId);
 
-        JobRunHistory::create([
-            'tenant_id'      => $this->tenantId,
-            'job_name'       => 'ScanEscalationsJob',
-            'reference_id'   => $this->cycleId,
-            'started_at'     => $startedAt,
-            'finished_at'    => now(),
-            'result'         => ['escalated_count' => $count],
-            'correlation_id' => $this->correlationId,
-        ]);
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'escalation_scan',
+                'status'         => 'completed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'metadata'       => [
+                    'cycle_id'         => $this->cycleId,
+                    'escalated_count'  => $count,
+                    'correlation_id'   => $this->correlationId,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            JobRunHistory::create([
+                'tenant_id'      => $this->tenantId,
+                'job_type'       => 'escalation_scan',
+                'status'         => 'failed',
+                'started_at'     => $startedAt,
+                'completed_at'   => now(),
+                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
+                'error_message'  => $e->getMessage(),
+                'metadata'       => [
+                    'cycle_id'       => $this->cycleId,
+                    'correlation_id' => $this->correlationId,
+                ],
+            ]);
+
+            throw $e;
+        }
     }
 }
