@@ -50,7 +50,7 @@ class FinancialCloseAiAnalysisService
             'period_id' => $periodId,
         ]);
 
-        $currentMonth = Carbon::createFromFormat('Y-m', $periodId)->startOfMonth();
+        $currentMonth = $this->resolvePeriodMonth($periodId);
         $priorMonth = $currentMonth->copy()->subMonth();
 
         $accounts = ChartOfAccount::where('is_active', true)
@@ -147,6 +147,23 @@ class FinancialCloseAiAnalysisService
             'findings_created' => $findingsCreated,
             'accounts_analyzed' => $accounts->count(),
         ];
+    }
+
+    /**
+     * Resolve a period id (which may be a free-form string) to a Carbon month.
+     * Falls back to the current month if no YYYY-MM pattern is found.
+     */
+    private function resolvePeriodMonth(string $periodId): Carbon
+    {
+        if (preg_match('/(\d{4})-(\d{2})/', $periodId, $matches)) {
+            return Carbon::createFromDate((int) $matches[1], (int) $matches[2], 1)->startOfMonth();
+        }
+
+        Log::warning('FinancialClose AI: period_id does not contain YYYY-MM, falling back to current month', [
+            'period_id' => $periodId,
+        ]);
+
+        return now()->startOfMonth();
     }
 
     /**
