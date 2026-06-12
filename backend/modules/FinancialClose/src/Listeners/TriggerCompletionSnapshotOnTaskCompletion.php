@@ -14,6 +14,8 @@ class TriggerCompletionSnapshotOnTaskCompletion implements ShouldQueue
 {
     public function handle(FinancialCloseTaskCompleted $event): void
     {
+        tenancy()->initialize($event->tenantId);
+
         GenerateCompletionSnapshotJob::dispatch(
             $event->tenantId,
             $event->cycleId,

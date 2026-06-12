@@ -29,6 +29,8 @@ class ScanEscalationsJob implements ShouldQueue
 
     public function handle(FinancialCloseEscalationService $escalationService): void
     {
+        tenancy()->initialize($this->tenantId);
+
         $startedAt = now();
 
         Log::info('FinancialClose: ScanEscalationsJob started', [

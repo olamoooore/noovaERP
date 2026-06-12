@@ -16,6 +16,8 @@ class TriggerReadinessRefreshOnTaskCompletion implements ShouldQueue
 {
     public function handle(FinancialCloseTaskCompleted $event): void
     {
+        tenancy()->initialize($event->tenantId);
+
         $task = CloseTask::where('tenant_id', $event->tenantId)
             ->where('id', $event->taskId)
             ->with('cycle:id,entity_id,period_id')

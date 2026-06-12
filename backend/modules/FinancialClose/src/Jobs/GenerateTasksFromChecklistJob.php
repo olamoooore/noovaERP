@@ -35,6 +35,8 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
     public function handle(FinancialCloseChecklistService $checklistService): void
     {
+        tenancy()->initialize($this->tenantId);
+
         $startedAt = now();
 
         $cycle = CloseCycle::where('tenant_id', $this->tenantId)

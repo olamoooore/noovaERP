@@ -15,6 +15,8 @@ class TriggerTaskGenerationOnCycleOpened implements ShouldQueue
 {
     public function handle(FinancialCloseCycleOpened $event): void
     {
+        tenancy()->initialize($event->tenantId);
+
         Log::info('FinancialClose: TriggerTaskGenerationOnCycleOpened dispatching GenerateTasksFromChecklistJob', [
             'tenant_id' => $event->tenantId,
             'cycle_id'  => $event->cycleId,

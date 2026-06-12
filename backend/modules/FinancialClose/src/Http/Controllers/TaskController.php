@@ -46,8 +46,10 @@ class TaskController extends Controller
     public function myTasks(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
 
         $tasks = CloseTask::where('tenant_id', $tenantId)
+            ->where('assigned_to', $userId)
             ->whereNotIn('status', ['completed', 'cancelled'])
             ->orderBy('due_date')
             ->get();

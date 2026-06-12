@@ -29,6 +29,8 @@ class GenerateCompletionSnapshotJob implements ShouldQueue
 
     public function handle(FinancialCloseCompletionService $completionService): void
     {
+        tenancy()->initialize($this->tenantId);
+
         $startedAt = now();
 
         Log::info('FinancialClose: GenerateCompletionSnapshotJob started', [

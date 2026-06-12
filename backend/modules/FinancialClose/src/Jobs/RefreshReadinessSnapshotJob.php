@@ -32,6 +32,8 @@ class RefreshReadinessSnapshotJob implements ShouldQueue
 
     public function handle(FinancialCloseReadinessService $readinessService, FinancialCloseAiAnalysisService $aiAnalysisService): void
     {
+        tenancy()->initialize($this->tenantId);
+
         $startedAt = now();
 
         Log::info('FinancialClose: RefreshReadinessSnapshotJob started', [
