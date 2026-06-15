@@ -88,7 +88,7 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
             ['user_id' => $user->id, 'tenant_id' => self::TENANT_ID],
             [
                 'role'         => $account['role'],
-                'is_default'   => false,
+                'is_default'   => true,
                 'created_at'   => now(),
                 'updated_at'   => now(),
             ]
