@@ -35,6 +35,12 @@ class FinancialCloseAiAnalysisService
     ) {}
 
     /**
+     * Current analysis month — set by analyze() so helper methods can
+     * resolve source references (journal lines, etc.) for findings.
+     */
+    protected ?Carbon $currentMonth = null;
+
+    /**
      * Run AI analysis for a tenant/entity/period and generate findings.
      *
      * @param string $tenantId
@@ -51,6 +57,7 @@ class FinancialCloseAiAnalysisService
         ]);
 
         $currentMonth = $this->resolvePeriodMonth($periodId);
+        $this->currentMonth = $currentMonth;
         $priorMonth = $currentMonth->copy()->subMonth();
 
         $accounts = ChartOfAccount::where('is_active', true)
@@ -258,6 +265,8 @@ class FinancialCloseAiAnalysisService
         $direction = $variance > 0 ? 'increased' : 'decreased';
         $variancePct = round(abs($variance) * 100, 1);
 
+        $sourceRefs = $this->accountJournalEntryRefs($account->id, $this->currentMonth);
+
         return $this->findingService->createFinding(
             $tenantId,
             $reviewId,
@@ -276,6 +285,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Variance %',      'value' => $variancePct . '%'],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }
@@ -300,6 +310,8 @@ class FinancialCloseAiAnalysisService
             $recommendation = 'Review recent debits and verify no entries were posted to the wrong side.';
         }
 
+        $sourceRefs = $this->accountJournalEntryRefs($account->id, $this->currentMonth);
+
         return $this->findingService->createFinding(
             $tenantId,
             $reviewId,
@@ -316,6 +328,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Current Balance', 'value' => number_format($balance, 2)],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }
@@ -327,6 +340,8 @@ class FinancialCloseAiAnalysisService
         ChartOfAccount $account,
         Carbon $lastActivityDate
     ): ?AiFinding {
+        $sourceRefs = $this->accountJournalEntryRefs($account->id, $this->currentMonth);
+
         return $this->findingService->createFinding(
             $tenantId,
             $reviewId,
@@ -343,6 +358,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Last Activity',   'value' => $lastActivityDate->format('Y-m-d')],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }
@@ -377,6 +393,18 @@ class FinancialCloseAiAnalysisService
         $totalAmount = $lines->sum(fn ($l) => (float) $l->debit + (float) $l->credit);
         $count = $lines->count();
 
+        $sourceRefs = $lines->take(10)->map(fn ($l) => [
+            'type'  => 'journal_entry',
+            'id'    => (string) $l->journal_entry_id,
+            'label' => 'Journal Entry #' . $l->journal_entry_id,
+            'route' => '/accounting/core/journal-entries',
+            'meta'  => [
+                'line_id'    => (string) $l->id,
+                'amount'     => number_format((float) $l->debit + (float) $l->credit, 2),
+                'reference'  => $l->reference,
+            ],
+        ])->values()->all();
+
         return $this->findingService->createFinding(
             $tenantId,
             $reviewId,
@@ -393,8 +421,38 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Lines Affected', 'value' => (string) $count],
                     ['label' => 'Total Amount',   'value' => number_format($totalAmount, 2)],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
+    }
+
+    /**
+     * Build source references for journal entry lines on an account in a period.
+     * Returns up to 15 refs so users can jump straight to the transactions
+     * that triggered a variance / negative-balance / inactive finding.
+     */
+    private function accountJournalEntryRefs(int $accountId, Carbon $month): array
+    {
+        $lines = JournalEntryLine::where('account_id', $accountId)
+            ->whereHas('journalEntry', function ($q) use ($month) {
+                $q->where('status', 'posted')
+                  ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
+            })
+            ->orderBy('id', 'desc')
+            ->limit(15)
+            ->get(['id', 'journal_entry_id', 'debit', 'credit', 'description', 'reference']);
+
+        return $lines->map(fn ($l) => [
+            'type'  => 'journal_entry',
+            'id'    => (string) $l->journal_entry_id,
+            'label' => 'Journal Entry #' . $l->journal_entry_id,
+            'route' => '/accounting/core/journal-entries',
+            'meta'  => [
+                'line_id'   => (string) $l->id,
+                'amount'    => number_format((float) $l->debit + (float) $l->credit, 2),
+                'reference' => $l->reference,
+            ],
+        ])->values()->all();
     }
 
     private function updateReviewRisk(AccountReview $review): void
@@ -432,9 +490,7 @@ class FinancialCloseAiAnalysisService
      */
     private function detectUnpostedJournalEntries(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
     {
-        $count = DB::table('journal_entries')
-            ->where('status', 'draft')
-            ->count();
+        $count = (int) DB::table('journal_entries')->where('status', 'draft')->count();
 
         if ($count === 0) {
             return null;
@@ -444,6 +500,23 @@ class FinancialCloseAiAnalysisService
             ->where('status', 'draft')
             ->join('journal_entry_lines', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
             ->sum('debit');
+
+        $draftEntries = DB::table('journal_entries')
+            ->where('status', 'draft')
+            ->orderBy('entry_date', 'desc')
+            ->limit(15)
+            ->get(['id', 'entry_date', 'reference', 'description']);
+
+        $sourceRefs = $draftEntries->map(fn ($je) => [
+            'type'  => 'journal_entry',
+            'id'    => (string) $je->id,
+            'label' => 'Journal Entry #' . $je->id,
+            'route' => '/accounting/core/journal-entries',
+            'meta'  => [
+                'date'       => $je->entry_date,
+                'reference'  => $je->reference,
+            ],
+        ])->values()->all();
 
         return $this->findingService->createFinding(
             $tenantId,
@@ -461,6 +534,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Draft Entries', 'value' => (string) $count],
                     ['label' => 'Total Amount',  'value' => number_format((float) $totalAmount, 2)],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }
@@ -470,19 +544,34 @@ class FinancialCloseAiAnalysisService
      */
     private function detectOverdueInvoices(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
     {
-        $count = DB::table('invoices')
+        $overdueQuery = DB::table('invoices')
             ->whereIn('status', ['sent', 'partial', 'posted'])
-            ->where('due_date', '<', now()->toDateString())
-            ->count();
+            ->where('due_date', '<', now()->toDateString());
+
+        $count = $overdueQuery->count();
 
         if ($count === 0) {
             return null;
         }
 
-        $totalAmount = DB::table('invoices')
-            ->whereIn('status', ['sent', 'partial', 'posted'])
-            ->where('due_date', '<', now()->toDateString())
-            ->sum('balance');
+        $totalAmount = $overdueQuery->sum('balance');
+
+        $overdueInvoices = $overdueQuery
+            ->orderBy('due_date', 'asc')
+            ->limit(15)
+            ->get(['id', 'invoice_number', 'due_date', 'balance', 'status']);
+
+        $sourceRefs = $overdueInvoices->map(fn ($inv) => [
+            'type'  => 'invoice',
+            'id'    => (string) $inv->id,
+            'label' => ($inv->invoice_number ?? 'Invoice #' . $inv->id),
+            'route' => '/invoices/' . $inv->id,
+            'meta'  => [
+                'due_date' => $inv->due_date,
+                'balance'  => number_format((float) $inv->balance, 2),
+                'status'   => $inv->status,
+            ],
+        ])->values()->all();
 
         return $this->findingService->createFinding(
             $tenantId,
@@ -500,6 +589,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Overdue Invoices', 'value' => (string) $count],
                     ['label' => 'Total Outstanding', 'value' => number_format((float) $totalAmount, 2)],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }
@@ -534,6 +624,25 @@ class FinancialCloseAiAnalysisService
 
         $netAmount = abs((float) ($totalAmount->total_debit ?? 0) - (float) ($totalAmount->total_credit ?? 0));
 
+        $unreconciledLines = DB::table('journal_entry_lines')
+            ->whereNull('reconciliation_id')
+            ->whereIn('account_id', $bankAccountIds)
+            ->orderBy('id', 'desc')
+            ->limit(15)
+            ->get(['id', 'journal_entry_id', 'account_id', 'debit', 'credit', 'description']);
+
+        $sourceRefs = $unreconciledLines->map(fn ($line) => [
+            'type'  => 'bank_transaction',
+            'id'    => (string) $line->id,
+            'label' => 'Bank Line #' . $line->id,
+            'route' => '/accounting/core/reconciliation',
+            'meta'  => [
+                'journal_entry_id' => (string) $line->journal_entry_id,
+                'amount'           => number_format((float) $line->debit + (float) $line->credit, 2),
+                'description'      => $line->description,
+            ],
+        ])->values()->all();
+
         return $this->findingService->createFinding(
             $tenantId,
             null,
@@ -550,6 +659,7 @@ class FinancialCloseAiAnalysisService
                     ['label' => 'Unreconciled Lines', 'value' => (string) $count],
                     ['label' => 'Net Amount',         'value' => number_format($netAmount, 2)],
                 ],
+                'source_refs'     => $sourceRefs,
             ]
         );
     }

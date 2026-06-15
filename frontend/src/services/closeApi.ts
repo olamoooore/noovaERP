@@ -98,6 +98,13 @@ export interface AiFinding {
   likely_cause: string | null
   recommendation: string | null
   detail_items: Array<{ label: string; value: string }>
+  source_refs?: Array<{
+    type: string
+    id: string
+    label: string
+    route: string | null
+    meta?: Record<string, string | null> | null
+  }>
   accepted_by: string | null
   accepted_at: string | null
   dismissed_by: string | null

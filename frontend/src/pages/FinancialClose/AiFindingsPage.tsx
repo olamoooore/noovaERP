@@ -181,6 +181,54 @@ export function AiFindingsPage() {
                           ))}
                         </div>
                       )}
+                      {!!(finding.source_refs && finding.source_refs.length > 0) && (
+                        <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 dark:border-violet-900 dark:bg-violet-950/30">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300 flex items-center gap-1">
+                            <Icon icon="solar:link-bold-duotone" className="h-4 w-4" />
+                            Source transactions ({finding.source_refs.length})
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {finding.source_refs.slice(0, 8).map((ref, idx) => {
+                              const metaParts = ref.meta
+                                ? Object.entries(ref.meta)
+                                    .filter(([, v]) => v != null && v !== '')
+                                    .slice(0, 2)
+                                    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                                : []
+                              return (
+                                <button
+                                  key={`${finding.id}-ref-${idx}`}
+                                  onClick={() => ref.route && navigate(ref.route)}
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-violet-300 bg-white px-2.5 py-1 text-xs font-medium text-violet-800 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                                  title={metaParts.join(' \u2022 ')}
+                                >
+                                  <Icon icon="solar:document-text-bold" className="h-3.5 w-3.5" />
+                                  {ref.label}
+                                  {metaParts.length > 0 && (
+                                    <span className="text-violet-400 dark:text-violet-500 hidden sm:inline">
+                                      \u00b7 {metaParts[0]}
+                                    </span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                            {finding.source_refs.length > 8 && (
+                              <span className="inline-flex items-center px-2 py-1 text-xs text-muted-foreground">
+                                +{finding.source_refs.length - 8} more
+                              </span>
+                            )}
+                          </div>
+                          {finding.source_refs[0]?.route && (
+                            <button
+                              onClick={() => navigate(finding.source_refs![0].route!)}
+                              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
+                            >
+                              View all in accounting
+                              <Icon icon="solar:arrow-right-bold" className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                       {finding.recommendation && (
                         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/30">
                           <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Recommended action</p>

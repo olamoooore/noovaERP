@@ -16,6 +16,7 @@ class FindingResource extends JsonResource
     public function toArray(Request $request): array
     {
         $structuredOutput = is_array($this->structured_output) ? $this->structured_output : [];
+        $sourceRefs = is_array($structuredOutput['source_refs'] ?? null) ? $structuredOutput['source_refs'] : [];
 
         return [
             'id'           => $this->id,
@@ -29,8 +30,19 @@ class FindingResource extends JsonResource
             'description'  => $this->description,
             'likely_cause' => isset($structuredOutput['likely_cause']) ? (string) $structuredOutput['likely_cause'] : null,
             'recommendation' => isset($structuredOutput['recommendation']) ? (string) $structuredOutput['recommendation'] : null,
+            'source_refs'  => collect($sourceRefs)
+                ->filter(fn ($ref) => is_array($ref) && !empty($ref['id']))
+                ->map(fn ($ref) => [
+                    'type'  => $ref['type']  ?? 'transaction',
+                    'id'    => (string) $ref['id'],
+                    'label' => $ref['label'] ?? ('#' . $ref['id']),
+                    'route' => $ref['route'] ?? null,
+                    'meta'  => is_array($ref['meta'] ?? null) ? $ref['meta'] : null,
+                ])
+                ->values()
+                ->all(),
             'detail_items' => collect($structuredOutput)
-                ->except(['likely_cause', 'recommendation'])
+                ->except(['likely_cause', 'recommendation', 'source_refs'])
                 ->take(4)
                 ->map(fn ($value, $key) => [
                     'label' => Str::of($key)->replace('_', ' ')->title()->toString(),
