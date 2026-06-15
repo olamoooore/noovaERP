@@ -9,6 +9,8 @@ class EscalationResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $meta = $this->metadata ?? [];
+
         return [
             'id'               => $this->id,
             'task_id'          => $this->task_id,
@@ -16,6 +18,10 @@ class EscalationResource extends JsonResource
             'status'           => $this->status,
             'reason'           => $this->reason,
             'escalated_to'     => $this->escalated_to,
+            'routed_user_name' => $meta['routed_user_name'] ?? null,
+            'routed_user_email'=> $meta['routed_user_email'] ?? null,
+            'routed_role'      => $meta['routed_role'] ?? null,
+            'auto_routed'      => $meta['auto_routed'] ?? false,
             'resolved_at'      => $this->resolved_at,
             'created_at'       => $this->created_at,
         ];
