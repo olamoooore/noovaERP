@@ -16,6 +16,16 @@ export interface CloseCycle {
   opened_at: string | null
   closed_at: string | null
   created_at: string
+  metadata?: Record<string, unknown> | null
+}
+
+export interface CycleReadiness {
+  ready_to_close: boolean
+  incomplete_tasks: number
+  open_escalations: number
+  authorised_signoffs: number
+  required_signoffs: number
+  reason?: string
 }
 
 export interface ChecklistTemplate {
@@ -173,6 +183,15 @@ export const closeCyclesApi = {
 
   close: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/close`),
+
+  signoff: (cycleId: string, role: string, notes?: string) =>
+    api.post(`/close/cycles/${cycleId}/signoff`, { role, notes }),
+
+  revokeSignoff: (cycleId: string) =>
+    api.post(`/close/cycles/${cycleId}/revoke-signoff`),
+
+  readiness: (cycleId: string) =>
+    api.get<{ data: CycleReadiness }>(`/close/cycles/${cycleId}/readiness`),
 
   generateTasks: (cycleId: string, templateId?: string) =>
     api.post(`/close/cycles/${cycleId}/generate-tasks`, templateId ? { template_id: templateId } : {}),

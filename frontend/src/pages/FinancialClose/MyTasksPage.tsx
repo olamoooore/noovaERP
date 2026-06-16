@@ -136,6 +136,17 @@ export function MyTasksPage() {
     event.stopPropagation()
   }
 
+  function navigateToDocLink(link: { type: string; id: number | string; title?: string }) {
+    const routes: Record<string, string> = {
+      invoice: '/invoices/',
+      bill: '/accounting/vendors/bills/',
+      journal_entry: '/accounting/core/journal-entries',
+      bank_transaction: '/accounting/core/reconciliation',
+    }
+    const base = routes[link.type] ?? '/accounting/core/journal-entries'
+    navigate(base.endsWith('/') ? base + link.id : base)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -230,6 +241,33 @@ export function MyTasksPage() {
                           <Icon icon="solar:arrow-right-bold" className="h-3.5 w-3.5" />
                         </button>
                       </div>
+                      {!!(task.document_links && task.document_links.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                            <Icon icon="solar:link-bold" className="h-3 w-3" />
+                            Source:
+                          </span>
+                          {task.document_links.slice(0, 3).map((link, idx) => (
+                            <button
+                              key={`doc-${task.id}-${idx}`}
+                              type="button"
+                              onClick={(event) => {
+                                stopCardClick(event)
+                                navigateToDocLink(link)
+                              }}
+                              className="inline-flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-xs text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
+                            >
+                              <Icon icon="solar:document-text-bold" className="h-3 w-3" />
+                              {link.title ?? `${link.type} #${link.id}`}
+                            </button>
+                          ))}
+                          {task.document_links.length > 3 && (
+                            <span className="text-xs text-muted-foreground">
+                              +{task.document_links.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">

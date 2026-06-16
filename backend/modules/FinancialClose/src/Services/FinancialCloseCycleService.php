@@ -4,11 +4,21 @@ namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
 
 class FinancialCloseCycleService
 {
+    /**
+     * Roles authorised to sign off a close cycle (final approval gate).
+     */
+    private const SIGNOFF_ROLES = ['Owner', 'Admin', 'Manager'];
+
+    /**
+     * Minimum number of distinct sign-offs required to mark a cycle ready to close.
+     */
+    private const REQUIRED_SIGNOFFS = 1;
     /**
      * Get all close cycles for a tenant/entity
      */
@@ -131,5 +141,173 @@ class FinancialCloseCycleService
         ]);
 
         return true;
+    }
+
+    /**
+     * Record a cycle-level sign-off from an authorised user.
+     * A cycle must have at least REQUIRED_SIGNOFFS distinct authorised
+     * sign-offs AND all tasks completed/resolved before it can be closed.
+     */
+    public function signoffCycle(string $tenantId, string $cycleId, string $userId, ?string $role, ?string $notes = null): array
+    {
+        $cycle = $this->getCycle($tenantId, $cycleId);
+
+        if (!$cycle) {
+            return ['success' => false, 'reason' => 'Cycle not found.'];
+        }
+
+        if (in_array($cycle->status, ['closed', 'archived'])) {
+            return ['success' => false, 'reason' => 'Cycle is already closed.'];
+        }
+
+        $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
+        $signoffs = $metadata['cycle_signoffs'] ?? [];
+
+        // Prevent duplicate sign-off by the same user
+        $alreadySigned = collect($signoffs)->firstWhere('user_id', $userId);
+        if ($alreadySigned) {
+            return ['success' => false, 'reason' => 'You have already signed off this cycle.'];
+        }
+
+        $signoffs[] = [
+            'user_id' => $userId,
+            'role'    => $role,
+            'notes'   => $notes,
+            'signed_at' => now()->toIso8601String(),
+        ];
+
+        $metadata['cycle_signoffs'] = $signoffs;
+        $cycle->update(['metadata' => $metadata]);
+
+        AuditLog::create([
+            'tenant_id'   => $tenantId,
+            'actor_id'    => $userId,
+            'action'      => 'cycle_signed_off',
+            'entity_type' => 'close_cycle',
+            'entity_id'   => $cycleId,
+            'after'       => ['role' => $role, 'signoff_count' => count($signoffs)],
+        ]);
+
+        // Re-evaluate readiness after each sign-off
+        $evaluation = $this->evaluateReadiness($tenantId, $cycleId);
+
+        return [
+            'success'       => true,
+            'signoff_count' => count($signoffs),
+            'ready_to_close'=> $evaluation['ready_to_close'],
+            'evaluation'    => $evaluation,
+        ];
+    }
+
+    /**
+     * Revoke a cycle-level sign-off.
+     */
+    public function revokeCycleSignoff(string $tenantId, string $cycleId, string $userId): array
+    {
+        $cycle = $this->getCycle($tenantId, $cycleId);
+
+        if (!$cycle) {
+            return ['success' => false, 'reason' => 'Cycle not found.'];
+        }
+
+        $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
+        $signoffs = $metadata['cycle_signoffs'] ?? [];
+
+        $filtered = array_values(array_filter($signoffs, fn ($s) => $s['user_id'] !== $userId));
+
+        if (count($filtered) === count($signoffs)) {
+            return ['success' => false, 'reason' => 'No sign-off found for this user.'];
+        }
+
+        $metadata['cycle_signoffs'] = $filtered;
+        $cycle->update(['metadata' => $metadata]);
+
+        AuditLog::create([
+            'tenant_id'   => $tenantId,
+            'actor_id'    => $userId,
+            'action'      => 'cycle_signoff_revoked',
+            'entity_type' => 'close_cycle',
+            'entity_id'   => $cycleId,
+        ]);
+
+        // Downgrade from ready_to_close if sign-offs no longer sufficient
+        if ($cycle->status === 'ready_to_close') {
+            $cycle->update(['status' => 'opened']);
+        }
+
+        return ['success' => true];
+    }
+
+    /**
+     * Evaluate whether a cycle meets all conditions to be marked ready_to_close.
+     *
+     * Conditions:
+     *  - All tasks are completed or cancelled (no open/in-progress/submitted/blocked/escalated)
+     *  - No open escalation events
+     *  - At least REQUIRED_SIGNOFFS cycle-level sign-offs from authorised roles
+     */
+    public function evaluateReadiness(string $tenantId, string $cycleId): array
+    {
+        $cycle = $this->getCycle($tenantId, $cycleId);
+
+        if (!$cycle) {
+            return ['ready_to_close' => false, 'reason' => 'Cycle not found.'];
+        }
+
+        // Count incomplete tasks
+        $incompleteTasks = CloseTask::where('tenant_id', $tenantId)
+            ->where('cycle_id', $cycleId)
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->count();
+
+        // Count open escalations
+        $openEscalations = \Modules\FinancialClose\Models\EscalationEvent::where('tenant_id', $tenantId)
+            ->whereHas('task', function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            })
+            ->where('status', 'open')
+            ->count();
+
+        // Count authorised sign-offs
+        $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
+        $signoffs = $metadata['cycle_signoffs'] ?? [];
+        $authorisedSignoffs = collect($signoffs)
+            ->filter(fn ($s) => in_array($s['role'], self::SIGNOFF_ROLES))
+            ->count();
+
+        $ready = $incompleteTasks === 0
+            && $openEscalations === 0
+            && $authorisedSignoffs >= self::REQUIRED_SIGNOFFS;
+
+        // Auto-transition to ready_to_close when conditions are met
+        if ($ready && $cycle->status === 'opened') {
+            $cycle->update(['status' => 'ready_to_close']);
+
+            AuditLog::create([
+                'tenant_id'   => $tenantId,
+                'actor_id'    => 'system',
+                'action'      => 'cycle_ready_to_close',
+                'entity_type' => 'close_cycle',
+                'entity_id'   => $cycleId,
+                'after'       => [
+                    'incomplete_tasks' => $incompleteTasks,
+                    'open_escalations' => $openEscalations,
+                    'signoffs'         => $authorisedSignoffs,
+                ],
+            ]);
+        }
+
+        // Downgrade if conditions no longer met
+        if (!$ready && $cycle->status === 'ready_to_close') {
+            $cycle->update(['status' => 'opened']);
+        }
+
+        return [
+            'ready_to_close'    => $ready,
+            'incomplete_tasks'  => $incompleteTasks,
+            'open_escalations'  => $openEscalations,
+            'authorised_signoffs' => $authorisedSignoffs,
+            'required_signoffs' => self::REQUIRED_SIGNOFFS,
+        ];
     }
 }

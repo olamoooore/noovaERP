@@ -82,6 +82,23 @@ export function CloseCyclesPage() {
     onError: () => toast({ title: 'Cycle is not ready to close.', variant: 'destructive' }),
   })
 
+  const signoffMutation = useMutation({
+    mutationFn: ({ cycleId, role }: { cycleId: string; role: string }) =>
+      closeCyclesApi.signoff(cycleId, role),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
+      const ready = res?.data?.ready_to_close
+      const count = res?.data?.signoff_count
+      toast({
+        title: ready
+          ? 'Sign-off recorded. Cycle is now ready to close.'
+          : `Sign-off recorded (${count}). Complete remaining tasks to unlock close.`,
+      })
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast({ title: err?.response?.data?.message ?? 'Sign-off failed.', variant: 'destructive' }),
+  })
+
   const generateTasksMutation = useMutation({
     mutationFn: ({ cycleId, templateId }: { cycleId: string; templateId?: string }) =>
       closeCyclesApi.generateTasks(cycleId, templateId),
@@ -140,6 +157,12 @@ export function CloseCyclesPage() {
                       <div>
                         <p className="font-semibold text-base">Period: {cycle.period_id}</p>
                         <p className="text-sm text-muted-foreground">Entity: {cycle.entity_id}</p>
+                        {cycle.metadata && Array.isArray((cycle.metadata as Record<string, unknown>)?.cycle_signoffs) && (
+                          <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <Icon icon="solar:verified-check-bold" className="h-3.5 w-3.5" />
+                            {((cycle.metadata as Record<string, unknown[]>).cycle_signoffs as unknown[]).length} sign-off(s) recorded
+                          </p>
+                        )}
                         {cycle.opened_at && (
                           <p className="text-xs text-muted-foreground mt-1">
                             Opened {new Date(cycle.opened_at).toLocaleDateString()}
@@ -202,6 +225,16 @@ export function CloseCyclesPage() {
                           >
                             <Icon icon="solar:chart-2-bold-duotone" className="mr-1.5 h-4 w-4" />
                             Forecast
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                            onClick={() => signoffMutation.mutate({ cycleId: cycle.id, role: 'Admin' })}
+                            disabled={signoffMutation.isPending}
+                          >
+                            <Icon icon="solar:verified-check-bold-duotone" className="mr-1.5 h-4 w-4" />
+                            Sign Off
                           </Button>
                           {cycle.status === 'ready_to_close' && (
                             <Button

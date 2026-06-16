@@ -24,6 +24,9 @@ Route::get('/cycles',                           [CloseCycleController::class, 'i
 Route::post('/cycles',                          [CloseCycleController::class, 'store']);
 Route::post('/cycles/{cycleId}/open',           [CloseCycleController::class, 'open']);
 Route::post('/cycles/{cycleId}/close',          [CloseCycleController::class, 'close']);
+Route::post('/cycles/{cycleId}/signoff',         [CloseCycleController::class, 'signoff']);
+Route::post('/cycles/{cycleId}/revoke-signoff',  [CloseCycleController::class, 'revokeSignoff']);
+Route::get('/cycles/{cycleId}/readiness',        [CloseCycleController::class, 'readiness']);
 Route::post('/cycles/{cycleId}/generate-tasks', [CloseCycleController::class, 'generateTasks']);
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────

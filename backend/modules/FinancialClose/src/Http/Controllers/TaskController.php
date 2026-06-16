@@ -61,13 +61,39 @@ class TaskController extends Controller
     public function reviewQueue(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
 
-        $tasks = CloseTask::where('tenant_id', $tenantId)
+        // Submitted tasks awaiting review
+        $submittedTasks = CloseTask::where('tenant_id', $tenantId)
             ->where('status', 'submitted')
             ->orderBy('due_date')
             ->get();
 
-        return response()->json(['data' => TaskResource::collection($tasks)]);
+        // Escalated tasks routed to this user (via open escalation events)
+        $escalatedTaskIds = \Modules\FinancialClose\Models\EscalationEvent::where('tenant_id', $tenantId)
+            ->where('status', 'open')
+            ->where('escalated_to', (string) $userId)
+            ->pluck('task_id')
+            ->unique()
+            ->all();
+
+        $escalatedTasks = [];
+        if (!empty($escalatedTaskIds)) {
+            $escalatedTasks = CloseTask::where('tenant_id', $tenantId)
+                ->whereIn('id', $escalatedTaskIds)
+                ->whereNotIn('status', ['completed', 'cancelled'])
+                ->orderBy('due_date')
+                ->get()
+                ->all();
+        }
+
+        // Merge and de-duplicate (a task could be both submitted and escalated)
+        $merged = $submittedTasks
+            ->merge(collect($escalatedTasks))
+            ->unique('id')
+            ->values();
+
+        return response()->json(['data' => TaskResource::collection($merged)]);
     }
 
     /** GET /tasks/{taskId} */

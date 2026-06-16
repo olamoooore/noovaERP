@@ -76,13 +76,74 @@ class CloseCycleController extends Controller
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
 
+        // Evaluate readiness before attempting close
+        $evaluation = $this->cycleService->evaluateReadiness($tenantId, $cycleId);
+
+        if (!$evaluation['ready_to_close']) {
+            return response()->json([
+                'message'    => 'Cycle is not ready to close.',
+                'evaluation' => $evaluation,
+            ], 422);
+        }
+
         $success = $this->cycleService->closeCycle($tenantId, $cycleId, $userId);
 
         if (!$success) {
-            return response()->json(['message' => 'Cycle is not ready to close.'], 422);
+            return response()->json(['message' => 'Cycle cannot be closed.'], 422);
         }
 
         return response()->json(['message' => 'Cycle closed.']);
+    }
+
+    /** POST /cycles/{cycleId}/signoff — record cycle-level sign-off */
+    public function signoff(Request $request, string $cycleId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        $result = $this->cycleService->signoffCycle(
+            $tenantId,
+            $cycleId,
+            $userId,
+            $request->input('role'),
+            $request->input('notes'),
+        );
+
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
+        }
+
+        return response()->json([
+            'message'       => 'Cycle sign-off recorded.',
+            'signoff_count' => $result['signoff_count'],
+            'ready_to_close'=> $result['ready_to_close'],
+            'evaluation'    => $result['evaluation'],
+        ], 201);
+    }
+
+    /** POST /cycles/{cycleId}/revoke-signoff */
+    public function revokeSignoff(Request $request, string $cycleId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        $result = $this->cycleService->revokeCycleSignoff($tenantId, $cycleId, $userId);
+
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
+        }
+
+        return response()->json(['message' => 'Sign-off revoked.']);
+    }
+
+    /** GET /cycles/{cycleId}/readiness — evaluate close readiness */
+    public function readiness(Request $request, string $cycleId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $evaluation = $this->cycleService->evaluateReadiness($tenantId, $cycleId);
+
+        return response()->json(['data' => $evaluation]);
     }
 
     /** POST /cycles/{cycleId}/generate-tasks */
