@@ -21,8 +21,9 @@ class ReadinessController extends Controller
     public function show(Request $request, string $entityId, string $periodId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
+        $cycleId  = $request->query('cycle_id');
 
-        $summary = $this->readinessService->getReadinessSummary($tenantId, $entityId, $periodId);
+        $summary = $this->readinessService->getReadinessSummary($tenantId, $entityId, $periodId, $cycleId);
 
         return response()->json(['data' => $summary]);
     }

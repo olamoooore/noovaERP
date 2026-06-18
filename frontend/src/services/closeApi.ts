@@ -353,8 +353,8 @@ export const findingsApi = {
 // ─── Readiness ────────────────────────────────────────────────────────────────
 
 export const readinessApi = {
-  get: (entityId: string, periodId: string) =>
-    api.get<{ data: ReadinessSummary }>(`/close/readiness/${entityId}/${periodId}`),
+  get: (entityId: string, periodId: string, cycleId?: string) =>
+    api.get<{ data: ReadinessSummary }>(`/close/readiness/${entityId}/${periodId}`, { params: cycleId ? { cycle_id: cycleId } : undefined }),
 
   refresh: (entityId: string, periodId: string, cycleId?: string) =>
     api.post<{ data: ReadinessSummary }>(`/close/readiness/${entityId}/${periodId}/refresh`, { cycle_id: cycleId }),

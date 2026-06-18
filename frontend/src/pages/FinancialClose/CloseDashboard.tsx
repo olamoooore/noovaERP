@@ -98,13 +98,13 @@ export function CloseDashboard() {
   const periodId = focusCycle?.period_id ?? DEFAULT_PERIOD_ID
 
   const { data: readiness } = useQuery<ReadinessSummary>({
-    queryKey: ['readiness', entityId, periodId],
-    queryFn: () => readinessApi.get(entityId, periodId).then(r => r.data.data),
+    queryKey: ['readiness', entityId, periodId, focusCycle?.id],
+    queryFn: () => readinessApi.get(entityId, periodId, focusCycle?.id).then(r => r.data.data),
   })
 
   const now = new Date()
-  const overdue = myTasks.filter(t => t.due_date && new Date(t.due_date) < now && t.status !== 'completed' && t.status !== 'cancelled')
-  const blocked = myTasks.filter(t => t.status === 'blocked')
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const overdue = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && new Date(t.created_at) < oneWeekAgo)
   const attentionAccounts = [...(readiness?.accounts ?? [])].sort(attentionSort).slice(0, 3)
   const signedOffAccounts = readiness?.signed_off_accounts ?? 0
   const totalAccounts = readiness?.total_accounts ?? 0
@@ -124,7 +124,7 @@ export function CloseDashboard() {
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="px-3 py-1">{activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}</Badge>
                 <Badge variant="outline" className="px-3 py-1">{openFindings} open findings</Badge>
-                <Badge variant="outline" className="px-3 py-1">{blocked.length} blocked task{blocked.length !== 1 ? 's' : ''}</Badge>
+                <Badge variant="outline" className="px-3 py-1">{openBlockers} blocked task{openBlockers !== 1 ? 's' : ''}</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
                 Financial close command center. Review readiness, manage tasks, and investigate AI-generated findings from accounts that need attention.
@@ -165,9 +165,9 @@ export function CloseDashboard() {
         />
         <KpiCard
           label="Blocked Tasks"
-          value={blocked.length}
+          value={openBlockers}
           icon="solar:lock-keyhole-bold-duotone"
-          iconClass={blocked.length > 0 ? 'bg-orange-500/10 text-orange-500' : 'bg-primary/10 text-primary'}
+          iconClass={openBlockers > 0 ? 'bg-orange-500/10 text-orange-500' : 'bg-primary/10 text-primary'}
           hint="Direct link into the blocked queue"
           onClick={() => navigate('/financial-close/tasks?status=blocked')}
         />

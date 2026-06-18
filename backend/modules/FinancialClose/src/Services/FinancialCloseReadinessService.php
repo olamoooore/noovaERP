@@ -113,11 +113,16 @@ class FinancialCloseReadinessService
     }
 
     /**
-     * Get a readiness summary — live-computed task metrics on top of snapshot data.
+     * Get a readiness summary — fully live-computed from current data.
+     * Auto-generates a snapshot if none exists for this entity/period.
      */
-    public function getReadinessSummary(string $tenantId, string $entityId, string $periodId): array
+    public function getReadinessSummary(string $tenantId, string $entityId, string $periodId, ?string $cycleId = null): array
     {
         $snapshot = $this->getLatestSnapshot($tenantId, $entityId, $periodId);
+
+        if (!$snapshot) {
+            $snapshot = $this->generateSnapshot($tenantId, $entityId, $periodId, $cycleId);
+        }
 
         if (!$snapshot) {
             return [
@@ -126,45 +131,61 @@ class FinancialCloseReadinessService
                 'signed_off_accounts' => 0,
                 'open_blockers'       => 0,
                 'open_findings'       => 0,
-                'readiness_score'    => 0,
-                'is_ready'           => false,
-                'snapshot_available' => false,
-                'generated_at'       => null,
-                'accounts'           => [],
+                'readiness_score'     => 0,
+                'is_ready'            => false,
+                'snapshot_available'  => false,
+                'generated_at'        => null,
+                'accounts'            => [],
             ];
         }
-
-        // Live task metrics (always current)
-        $activeTasks = CloseTask::where('tenant_id', $tenantId)
-            ->whereNotIn('status', ['completed', 'cancelled'])
-            ->count();
-
-        $blockedTasks = CloseTask::where('tenant_id', $tenantId)
-            ->whereIn('status', ['blocked', 'escalated'])
-            ->count();
-
-        // Live findings count
-        $openFindings = AiFinding::where('tenant_id', $tenantId)
-            ->where('entity_id', $entityId)
-            ->where('status', 'open')
-            ->count();
 
         $reviews = AccountReview::where('tenant_id', $tenantId)
             ->where('entity_id', $entityId)
             ->get();
 
+        $totalAccounts     = $reviews->count();
+        $signedOffAccounts = $reviews->whereIn('status', ['approved', 'locked'])->count();
+
+        $sectionBreakdown = $this->buildSectionBreakdown($reviews);
+
+        $weightedSum  = array_sum(array_column($sectionBreakdown, 'score'));
+        $accountScore = $totalAccounts > 0 ? round($weightedSum / $totalAccounts, 2) : null;
+
+        $taskQuery = CloseTask::where('tenant_id', $tenantId);
+        if ($cycleId) {
+            $taskQuery->where('cycle_id', $cycleId);
+        }
+
+        $totalTasks     = (clone $taskQuery)->count();
+        $completedTasks = (clone $taskQuery)->where('status', 'completed')->count();
+        $blockedTasks   = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
+        $cancelledTasks = (clone $taskQuery)->where('status', 'cancelled')->count();
+
+        $activeTasks        = $totalTasks - $completedTasks - $cancelledTasks;
+        $taskCompletionRate = $activeTasks > 0 ? round(($completedTasks / $activeTasks) * 100, 2) : 0;
+
+        if ($accountScore !== null) {
+            $readinessScore = round(0.5 * $accountScore + 0.5 * $taskCompletionRate, 2);
+        } else {
+            $readinessScore = $taskCompletionRate;
+        }
+
+        $openFindings = AiFinding::where('tenant_id', $tenantId)
+            ->where('entity_id', $entityId)
+            ->where('status', 'open')
+            ->count();
+
         return [
-            'readiness_score'     => $snapshot->readiness_score,
-            'total_accounts'      => $snapshot->total_accounts,
-            'reviewed_accounts'   => $snapshot->reviewed_accounts,
-            'signed_off_accounts' => $snapshot->signed_off_accounts,
+            'readiness_score'     => $readinessScore,
+            'total_accounts'      => $totalAccounts,
+            'reviewed_accounts'   => $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count(),
+            'signed_off_accounts' => $signedOffAccounts,
             'open_blockers'       => $blockedTasks,
             'open_findings'       => $openFindings,
-            'is_ready'            => $snapshot->readiness_score >= 100
-                                     && $blockedTasks === 0,
+            'is_ready'            => $readinessScore >= 100 && $blockedTasks === 0,
             'snapshot_available'  => true,
             'generated_at'        => $snapshot->generated_at,
-            'accounts'            => $this->buildSectionBreakdown($reviews),
+            'accounts'            => $sectionBreakdown,
         ];
     }
 
