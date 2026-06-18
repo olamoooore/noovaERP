@@ -40,10 +40,10 @@ export default defineConfig({
         categories: ['business', 'finance', 'productivity'],
       },
       workbox: {
-        // Cache all JS/CSS/HTML assets for offline shell
-        globPatterns: ['**/*.{js,css,html,svg,ico,woff,woff2}'],
-        // Exclude large files and theme screenshots
-        globIgnores: ['**/theme-screenshots/**', '**/Web-Templates/**'],
+        // Cache all JS/CSS/SVG assets for offline shell — exclude index.html so
+        // the browser always fetches the fresh version with current asset hashes
+        globPatterns: ['**/*.{js,css,svg,ico,woff,woff2}'],
+        globIgnores: ['**/theme-screenshots/**', '**/Web-Templates/**', '**/index.html'],
         // Allow large chunks (WebsiteEditor is 2.4MB)
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
         // Runtime caching for API calls
