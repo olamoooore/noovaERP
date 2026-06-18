@@ -38,15 +38,15 @@ export function AiFindingsPage() {
   const queryClient = useQueryClient()
   const [riskFilter, setRiskFilter] = useState<string>('all')
 
-  const entityId = 'entity-001'
-  const periodId = '2026-04'
+  const entityId = params.get('entityId') ?? 'entity-001'
+  const periodId = params.get('periodId') ?? '2026-04'
 
   const { data: findings = [], isLoading } = useQuery<AiFinding[]>({
-    queryKey: ['ai-findings', reviewId || 'all'],
+    queryKey: ['ai-findings', reviewId || 'all', entityId],
     queryFn: () =>
       reviewId
         ? findingsApi.list(reviewId).then(r => r.data.data)
-        : findingsApi.listAll().then(r => r.data.data),
+        : findingsApi.listAll({ entity_id: entityId }).then(r => r.data.data),
   })
 
   const refreshMutation = useMutation({

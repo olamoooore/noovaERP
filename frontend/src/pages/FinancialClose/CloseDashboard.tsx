@@ -93,9 +93,9 @@ export function CloseDashboard() {
   })
 
   const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
-  const focusCycle = activeCycles[0]
-  const entityId = focusCycle?.entity_id ?? DEFAULT_ENTITY_ID
-  const periodId = focusCycle?.period_id ?? DEFAULT_PERIOD_ID
+  const focusCycle = activeCycles.find(c => c.entity_id === DEFAULT_ENTITY_ID && c.period_id === DEFAULT_PERIOD_ID) ?? activeCycles[0]
+  const entityId = DEFAULT_ENTITY_ID
+  const periodId = DEFAULT_PERIOD_ID
 
   const { data: readiness } = useQuery<ReadinessSummary>({
     queryKey: ['readiness', entityId, periodId, focusCycle?.id],
@@ -132,7 +132,7 @@ export function CloseDashboard() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => navigate('/financial-close/readiness')}>
+              <Button onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}${focusCycle ? `&cycleId=${focusCycle.id}` : ''}`)}>
                 <Icon icon="solar:shield-check-bold-duotone" className="mr-2 h-4 w-4" />
                 Open Readiness Cockpit
               </Button>
@@ -193,7 +193,7 @@ export function CloseDashboard() {
             'bg-red-500/10 text-red-500'
           }
           hint="Open the cockpit for account detail"
-          onClick={() => navigate('/financial-close/readiness')}
+          onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
         />
         <KpiCard
           label="Open Blockers"
@@ -209,7 +209,7 @@ export function CloseDashboard() {
           icon="solar:magic-stick-3-bold-duotone"
           iconClass="bg-yellow-500/10 text-yellow-500"
           hint="Presentation-ready anomaly list"
-          onClick={() => navigate('/financial-close/findings')}
+          onClick={() => navigate(`/financial-close/findings?entityId=${entityId}&periodId=${periodId}`)}
         />
         <KpiCard
           label="Accounts Signed Off"
@@ -217,7 +217,7 @@ export function CloseDashboard() {
           icon="solar:clipboard-check-bold-duotone"
           iconClass="bg-green-500/10 text-green-500"
           hint="Open account coverage"
-          onClick={() => navigate('/financial-close/readiness')}
+          onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
         />
       </div>
 
@@ -279,7 +279,7 @@ export function CloseDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Account Attention</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/financial-close/readiness')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}>
                 Open Cockpit
               </Button>
             </div>
@@ -305,11 +305,11 @@ export function CloseDashboard() {
                     <div className="flex gap-2 mt-4">
                       <Button
                         size="sm"
-                        onClick={() => navigate(account.open_findings > 0 ? `/financial-close/findings?reviewId=${account.review_id}` : '/financial-close/readiness')}
+                        onClick={() => navigate(account.open_findings > 0 ? `/financial-close/findings?reviewId=${account.review_id}` : `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
                       >
                         {account.open_findings > 0 ? 'Open Findings' : 'Open Cockpit'}
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate('/financial-close/readiness')}>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}>
                         Coverage
                       </Button>
                     </div>
@@ -326,9 +326,9 @@ export function CloseDashboard() {
         {[
           { label: 'My Tasks',        href: '/financial-close/tasks',        icon: 'solar:list-check-bold-duotone' },
           { label: 'Review Queue',    href: '/financial-close/review-queue', icon: 'solar:inbox-bold-duotone' },
-          { label: 'Readiness',       href: '/financial-close/readiness',    icon: 'solar:shield-check-bold-duotone' },
+          { label: 'Readiness',       href: `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`,    icon: 'solar:shield-check-bold-duotone' },
           { label: 'Executive View',  href: '/financial-close/executive',    icon: 'solar:chart-bold-duotone' },
-          { label: 'AI Findings',     href: '/financial-close/findings',     icon: 'solar:magic-stick-3-bold-duotone' },
+          { label: 'AI Findings',     href: `/financial-close/findings?entityId=${entityId}&periodId=${periodId}`,     icon: 'solar:magic-stick-3-bold-duotone' },
           { label: 'Audit Trail',     href: '/financial-close/audit-trail',  icon: 'solar:shield-check-bold-duotone' },
         ].map(item => (
           <Button

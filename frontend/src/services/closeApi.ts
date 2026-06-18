@@ -328,7 +328,7 @@ export const escalationsApi = {
 // ─── AI Findings ─────────────────────────────────────────────────────────────
 
 export const findingsApi = {
-  listAll: (params?: { status?: string; risk_status?: string }) =>
+  listAll: (params?: { status?: string; risk_status?: string; entity_id?: string; period_id?: string }) =>
     api.get<{ data: AiFinding[] }>('/close/findings', { params }),
 
   list: (reviewId: string) =>

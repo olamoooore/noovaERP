@@ -35,6 +35,10 @@ class FindingController extends Controller
             $query->where('risk_status', $request->input('risk_status'));
         }
 
+        if ($request->filled('entity_id')) {
+            $query->where('entity_id', $request->input('entity_id'));
+        }
+
         return response()->json(['data' => FindingResource::collection($query->get())]);
     }
 

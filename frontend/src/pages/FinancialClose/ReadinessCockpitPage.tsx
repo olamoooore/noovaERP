@@ -109,14 +109,14 @@ export function ReadinessCockpitPage() {
   const queryClient = useQueryClient()
 
   const { data: readiness, isLoading } = useQuery<ReadinessSummary>({
-    queryKey: ['readiness', entityId, periodId],
-    queryFn: () => readinessApi.get(entityId, periodId).then(r => r.data.data),
+    queryKey: ['readiness', entityId, periodId, cycleId],
+    queryFn: () => readinessApi.get(entityId, periodId, cycleId).then(r => r.data.data),
   })
 
   const refreshMutation = useMutation({
     mutationFn: () => readinessApi.refresh(entityId, periodId, cycleId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['readiness', entityId, periodId] })
+      queryClient.invalidateQueries({ queryKey: ['readiness', entityId, periodId, cycleId] })
       toast({ title: 'Readiness snapshot refreshed.' })
     },
     onError: () => toast({ title: 'Refresh failed.', variant: 'destructive' }),
