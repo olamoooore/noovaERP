@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\FinancialClose\Services\FinancialCloseTaskService;
+use Modules\FinancialClose\Services\FinancialCloseAssignmentService;
 use Modules\FinancialClose\Http\Requests\BlockTaskRequest;
 use Modules\FinancialClose\Http\Requests\LinkDocumentRequest;
 use Modules\FinancialClose\Http\Resources\TaskResource;
@@ -19,7 +20,16 @@ class TaskController extends Controller
 {
     public function __construct(
         private readonly FinancialCloseTaskService $taskService,
+        private readonly FinancialCloseAssignmentService $assignmentService,
     ) {}
+
+    /** GET /users — list users available for task assignment */
+    public function users(): JsonResponse
+    {
+        $users = \App\Models\User::select('id', 'name', 'email')->get();
+
+        return response()->json(['data' => $users]);
+    }
 
     /** GET /cycles/{cycleId}/tasks */
     public function index(Request $request, string $cycleId): JsonResponse
@@ -206,6 +216,49 @@ class TaskController extends Controller
         }
 
         return response()->json(['message' => 'Task blocked.']);
+    }
+
+    /** POST /tasks/{taskId}/assign */
+    public function assign(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = (string) $request->user()->id;
+
+        $request->validate(['assigned_to' => ['required', 'string']]);
+
+        $success = $this->assignmentService->assignTask($tenantId, $taskId, $request->input('assigned_to'), $userId);
+
+        if (!$success) {
+            return response()->json(['message' => 'Task cannot be assigned.'], 422);
+        }
+
+        return response()->json(['message' => 'Task assigned.']);
+    }
+
+    /** POST /tasks/{taskId}/reassign */
+    public function reassign(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = (string) $request->user()->id;
+
+        $request->validate(['assigned_to' => ['required', 'string']]);
+
+        $success = $this->assignmentService->reassignTask($tenantId, $taskId, $request->input('assigned_to'), $userId);
+
+        if (!$success) {
+            return response()->json(['message' => 'Task cannot be reassigned.'], 422);
+        }
+
+        return response()->json(['message' => 'Task reassigned.']);
+    }
+
+    /** GET /tasks/{taskId}/assignments */
+    public function assignmentHistory(string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $history  = $this->assignmentService->getAssignmentHistory($tenantId, $taskId);
+
+        return response()->json(['data' => $history]);
     }
 
     /** POST /tasks/{taskId}/checklist */

@@ -63,6 +63,9 @@ export function TaskDetailPage() {
   const [linkDocId, setLinkDocId] = useState('')
   const [linkDocTitle, setLinkDocTitle] = useState('')
 
+  const [reassignDialogOpen, setReassignDialogOpen] = useState(false)
+  const [reassignUserId, setReassignUserId] = useState('')
+
   const { data: task, isLoading } = useQuery<CloseTask>({
     queryKey: ['task-detail', taskId],
     queryFn: () => closeTasksApi.get(taskId).then(r => r.data.data),
@@ -76,6 +79,17 @@ export function TaskDetailPage() {
   })
 
   const refetchTask = () => queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] })
+
+  const { data: users = [] } = useQuery<Array<{ id: number; name: string; email: string }>>({
+    queryKey: ['close-users'],
+    queryFn: () => closeTasksApi.users().then(r => r.data.data),
+  })
+
+  const reassignMutation = useMutation({
+    mutationFn: () => closeTasksApi.reassign(taskId, reassignUserId),
+    onSuccess: () => { setReassignDialogOpen(false); setReassignUserId(''); refetchTask(); toast({ title: 'Task reassigned.' }) },
+    onError: () => toast({ title: 'Failed to reassign task.', variant: 'destructive' }),
+  })
 
   const startMutation    = useMutation({ mutationFn: () => closeTasksApi.start(taskId),       onSuccess: () => { refetchTask(); toast({ title: 'Task started.' }) },       onError: () => toast({ title: 'Failed to start task.', variant: 'destructive' }) })
   const submitMutation   = useMutation({ mutationFn: () => closeTasksApi.submit(taskId),      onSuccess: () => { refetchTask(); toast({ title: 'Task submitted for review.' }) }, onError: () => toast({ title: 'Failed to submit task.', variant: 'destructive' }) })
@@ -228,6 +242,12 @@ export function TaskDetailPage() {
           )}
           {task.status === 'blocked' && (
             <span className="text-sm text-muted-foreground italic px-2">Blocked</span>
+          )}
+          {!['completed', 'cancelled'].includes(task.status) && (
+            <Button size="sm" variant="outline" onClick={() => setReassignDialogOpen(true)}>
+              <Icon icon="solar:user-switch-bold" className="h-4 w-4 mr-1" />
+              Reassign
+            </Button>
           )}
         </div>
       </div>
@@ -612,6 +632,38 @@ export function TaskDetailPage() {
             <Button variant="outline" onClick={() => setLinkDocDialogOpen(false)}>Cancel</Button>
             <Button disabled={!linkDocId.trim() || linkDocMutation.isPending} onClick={() => linkDocMutation.mutate()}>
               {linkDocMutation.isPending ? 'Linking...' : 'Link Document'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reassign dialog */}
+      <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reassign Task</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Reassign <span className="font-medium text-foreground">"{task.title}"</span> to a different user.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="reassign-user">Assign to <span className="text-red-500">*</span></Label>
+              <select
+                id="reassign-user"
+                value={reassignUserId}
+                onChange={e => setReassignUserId(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+              >
+                <option value="">Select a user…</option>
+                {users.map(u => (
+                  <option key={u.id} value={String(u.id)}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReassignDialogOpen(false)}>Cancel</Button>
+            <Button disabled={!reassignUserId || reassignMutation.isPending} onClick={() => reassignMutation.mutate()}>
+              {reassignMutation.isPending ? 'Reassigning...' : 'Confirm Reassign'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -260,6 +260,9 @@ export const checklistTemplatesApi = {
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 export const closeTasksApi = {
+  users: () =>
+    api.get<{ data: Array<{ id: number; name: string; email: string }> }>('/close/users'),
+
   byCycle: (cycleId: string) =>
     api.get<{ data: CloseTask[] }>(`/close/cycles/${cycleId}/tasks`),
 
@@ -288,6 +291,17 @@ export const closeTasksApi = {
 
   block: (taskId: string, reason: string) =>
     api.post(`/close/tasks/${taskId}/block`, { reason }),
+
+  assign: (taskId: string, assignedTo: string) =>
+    api.post(`/close/tasks/${taskId}/assign`, { assigned_to: assignedTo }),
+
+  reassign: (taskId: string, assignedTo: string) =>
+    api.post(`/close/tasks/${taskId}/reassign`, { assigned_to: assignedTo }),
+
+  assignmentHistory: (taskId: string) =>
+    api.get<{ data: Array<{ id: string; assigned_to: string; assigned_by: string; assigned_at: string }> }>(
+      `/close/tasks/${taskId}/assignments`
+    ),
 
   saveChecklist: (taskId: string, completedItems: string[]) =>
     api.post(`/close/tasks/${taskId}/checklist`, { completed_items: completedItems }),
