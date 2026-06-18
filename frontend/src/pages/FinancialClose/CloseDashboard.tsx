@@ -93,13 +93,13 @@ export function CloseDashboard() {
   })
 
   const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
-  const focusCycle = activeCycles.find(c => c.entity_id === DEFAULT_ENTITY_ID && c.period_id === DEFAULT_PERIOD_ID) ?? activeCycles[0]
+  const matchCycle = activeCycles.find(c => c.entity_id === DEFAULT_ENTITY_ID && c.period_id === DEFAULT_PERIOD_ID)
   const entityId = DEFAULT_ENTITY_ID
   const periodId = DEFAULT_PERIOD_ID
 
   const { data: readiness } = useQuery<ReadinessSummary>({
-    queryKey: ['readiness', entityId, periodId, focusCycle?.id],
-    queryFn: () => readinessApi.get(entityId, periodId, focusCycle?.id).then(r => r.data.data),
+    queryKey: ['readiness', entityId, periodId, matchCycle?.id],
+    queryFn: () => readinessApi.get(entityId, periodId, matchCycle?.id).then(r => r.data.data),
   })
 
   const now = new Date()
@@ -132,7 +132,7 @@ export function CloseDashboard() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}${focusCycle ? `&cycleId=${focusCycle.id}` : ''}`)}>
+              <Button onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}${matchCycle ? `&cycleId=${matchCycle.id}` : ''}`)}>
                 <Icon icon="solar:shield-check-bold-duotone" className="mr-2 h-4 w-4" />
                 Open Readiness Cockpit
               </Button>
@@ -201,7 +201,7 @@ export function CloseDashboard() {
           icon="solar:danger-bold-duotone"
           iconClass={openBlockers > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
           hint="Pivot into tasks and approvals"
-          onClick={() => navigate('/financial-close/tasks?status=blocked')}
+          onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
         />
         <KpiCard
           label="Open AI Findings"
@@ -209,7 +209,7 @@ export function CloseDashboard() {
           icon="solar:magic-stick-3-bold-duotone"
           iconClass="bg-yellow-500/10 text-yellow-500"
           hint="Presentation-ready anomaly list"
-          onClick={() => navigate(`/financial-close/findings?entityId=${entityId}&periodId=${periodId}`)}
+          onClick={() => navigate(`/financial-close/findings?entityId=${entityId}&periodId=${periodId}&status=open`)}
         />
         <KpiCard
           label="Accounts Signed Off"
@@ -328,7 +328,7 @@ export function CloseDashboard() {
           { label: 'Review Queue',    href: '/financial-close/review-queue', icon: 'solar:inbox-bold-duotone' },
           { label: 'Readiness',       href: `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`,    icon: 'solar:shield-check-bold-duotone' },
           { label: 'Executive View',  href: '/financial-close/executive',    icon: 'solar:chart-bold-duotone' },
-          { label: 'AI Findings',     href: `/financial-close/findings?entityId=${entityId}&periodId=${periodId}`,     icon: 'solar:magic-stick-3-bold-duotone' },
+          { label: 'AI Findings',     href: `/financial-close/findings?entityId=${entityId}&periodId=${periodId}&status=open`,     icon: 'solar:magic-stick-3-bold-duotone' },
           { label: 'Audit Trail',     href: '/financial-close/audit-trail',  icon: 'solar:shield-check-bold-duotone' },
         ].map(item => (
           <Button

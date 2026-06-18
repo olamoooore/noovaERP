@@ -28,6 +28,7 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   dismissed: { label: 'Dismissed', variant: 'secondary' },
   escalated: { label: 'Escalated', variant: 'destructive' },
   edited:    { label: 'Edited',    variant: 'outline' },
+  superseded: { label: 'Superseded', variant: 'secondary' },
 }
 
 export function AiFindingsPage() {
@@ -40,13 +41,14 @@ export function AiFindingsPage() {
 
   const entityId = params.get('entityId') ?? 'entity-001'
   const periodId = params.get('periodId') ?? '2026-04'
+  const statusFilter = params.get('status') ?? 'open'
 
   const { data: findings = [], isLoading } = useQuery<AiFinding[]>({
-    queryKey: ['ai-findings', reviewId || 'all', entityId],
+    queryKey: ['ai-findings', reviewId || 'all', entityId, statusFilter],
     queryFn: () =>
       reviewId
         ? findingsApi.list(reviewId).then(r => r.data.data)
-        : findingsApi.listAll({ entity_id: entityId }).then(r => r.data.data),
+        : findingsApi.listAll({ entity_id: entityId, status: statusFilter }).then(r => r.data.data),
   })
 
   const refreshMutation = useMutation({
