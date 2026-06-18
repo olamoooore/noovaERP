@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\LockDate;
 use App\Models\LockDateOverride;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Lock Date Validation Service
@@ -37,6 +39,20 @@ class LockDateValidationService
                 ->first();
         }
 
+        // Fallback: check company_settings.lock_date (set via Accounting > Settings > Fiscal Year)
+        if (!$lockDate) {
+            $companyLockDate = DB::table('company_settings')
+                ->whereNotNull('lock_date')
+                ->value('lock_date');
+
+            if ($companyLockDate) {
+                $lockDate = new \stdClass();
+                $lockDate->lock_date = Carbon::parse($companyLockDate);
+                $lockDate->lock_type = 'all';
+                $lockDate->reason = 'Company-wide lock date';
+            }
+        }
+
         // No lock date set
         if (!$lockDate) {
             return [
@@ -52,8 +68,8 @@ class LockDateValidationService
                 'is_locked' => true,
                 'lock_date' => $lockDate->lock_date->format('Y-m-d'),
                 'lock_type' => $lockDate->lock_type,
-                'message' => "Cannot post transactions dated before {$lockDate->lock_date->format('Y-m-d')}. Period is locked.",
-                'reason' => $lockDate->reason,
+                'message' => "Cannot post transactions dated on or before {$lockDate->lock_date->format('Y-m-d')}. Period is closed/locked.",
+                'reason' => $lockDate->reason ?? null,
             ];
         }
 

@@ -42,19 +42,32 @@ class FinancialCloseAiAnalysisService
 
     /**
      * Run AI analysis for a tenant/entity/period and generate findings.
+     * When $refresh is true, clears stale open findings first so resolved issues disappear.
      *
      * @param string $tenantId
      * @param string $entityId
      * @param string $periodId  Format YYYY-MM
+     * @param bool $refresh     If true, delete open findings before re-analyzing
      * @return array Summary of findings created
      */
-    public function analyze(string $tenantId, string $entityId, string $periodId): array
+    public function analyze(string $tenantId, string $entityId, string $periodId, bool $refresh = false): array
     {
         Log::info('FinancialClose AI: Starting analysis', [
             'tenant_id' => $tenantId,
             'entity_id' => $entityId,
             'period_id' => $periodId,
+            'refresh'   => $refresh,
         ]);
+
+        // On refresh: clear all open findings for this entity so resolved issues disappear
+        if ($refresh) {
+            $cleared = AiFinding::where('tenant_id', $tenantId)
+                ->where('entity_id', $entityId)
+                ->where('status', 'open')
+                ->update(['status' => 'superseded']);
+
+            Log::info('FinancialClose AI: Cleared stale findings', ['superseded' => $cleared]);
+        }
 
         $currentMonth = $this->resolvePeriodMonth($periodId);
         $this->currentMonth = $currentMonth;

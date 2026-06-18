@@ -4,9 +4,19 @@ import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { closeCyclesApi, checklistTemplatesApi, type CloseCycle, type ChecklistTemplate } from '@/services/closeApi'
+import {
+  closeCyclesApi,
+  checklistTemplatesApi,
+  entityManagementApi,
+  fiscalPeriodsApi,
+  type CloseCycle,
+  type ChecklistTemplate,
+  type LegalEntity,
+  type EntityBook,
+  type FiscalPeriod,
+} from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Select,
   SelectContent,
@@ -24,8 +34,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-const ENTITY_ID = 'entity-001' // default entity for this tenant
-
 const cycleStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
   draft:          { label: 'Draft',          color: 'secondary', icon: 'solar:document-bold-duotone' },
   opened:         { label: 'In Progress',    color: 'default',   icon: 'solar:play-circle-bold-duotone' },
@@ -33,17 +41,25 @@ const cycleStatusConfig: Record<string, { label: string; color: string; icon: st
   closed:         { label: 'Closed',         color: 'success',   icon: 'solar:lock-bold-duotone' },
 }
 
+const CUSTOM_PERIOD_VALUE = 'custom-period'
+
 export function CloseCyclesPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
-  const [periodId, setPeriodId] = useState('')
+
+  // Create form state
+  const [selectedEntityId, setSelectedEntityId] = useState('')
+  const [selectedBookId, setSelectedBookId] = useState('')
+  const [selectedPeriodValue, setSelectedPeriodValue] = useState('')
+  const [customPeriod, setCustomPeriod] = useState('')
+  const [cycleName, setCycleName] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('none')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['close-cycles', ENTITY_ID],
-    queryFn: () => closeCyclesApi.list(ENTITY_ID).then(r => r.data.data),
+    queryKey: ['close-cycles'],
+    queryFn: () => closeCyclesApi.list().then(r => r.data.data),
   })
 
   const { data: templatesData } = useQuery({
@@ -52,17 +68,70 @@ export function CloseCyclesPage() {
   })
   const templates: ChecklistTemplate[] = templatesData ?? []
 
+  const { data: entitiesData } = useQuery({
+    queryKey: ['legal-entities'],
+    queryFn: () => entityManagementApi.listEntities().then(r => r.data),
+  })
+  const entities: LegalEntity[] = useMemo(() => {
+    const raw = entitiesData ?? []
+    return Array.isArray(raw) ? raw : (raw as any).data ?? []
+  }, [entitiesData])
+
+  const selectedEntity = useMemo(
+    () => entities.find(e => e.id.toString() === selectedEntityId),
+    [entities, selectedEntityId]
+  )
+
+  const { data: booksData } = useQuery({
+    queryKey: ['entity-books', selectedEntityId],
+    queryFn: () => entityManagementApi.listBooks(Number(selectedEntityId)).then(r => r.data),
+    enabled: !!selectedEntityId,
+  })
+  const books: EntityBook[] = useMemo(() => {
+    const raw = booksData ?? []
+    return Array.isArray(raw) ? raw : (raw as any).data ?? []
+  }, [booksData])
+
+  const { data: periodsData } = useQuery({
+    queryKey: ['fiscal-periods', 'open'],
+    queryFn: () => fiscalPeriodsApi.list({ status: 'open' }).then(r => r.data.data),
+  })
+  const periods: FiscalPeriod[] = periodsData ?? []
+
   const createMutation = useMutation({
-    mutationFn: () => closeCyclesApi.create(ENTITY_ID, periodId, selectedTemplateId === 'none' ? undefined : selectedTemplateId),
+    mutationFn: () => {
+      const periodId = selectedPeriodValue === CUSTOM_PERIOD_VALUE
+        ? customPeriod.trim()
+        : selectedPeriodValue
+      return closeCyclesApi.create({
+        entity_id: selectedEntity?.code || selectedEntityId,
+        period_id: periodId,
+        name: cycleName.trim() || undefined,
+        accounting_book_id: selectedBookId || undefined,
+        template_id: selectedTemplateId === 'none' ? undefined : selectedTemplateId,
+      }).then(r => r.data)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
       setCreateOpen(false)
-      setPeriodId('')
-      setSelectedTemplateId('none')
+      resetCreateForm()
       toast({ title: 'Cycle created.' })
     },
-    onError: () => toast({ title: 'Failed to create cycle.', variant: 'destructive' }),
+    onError: (error: any) => toast({
+      title: 'Failed to create cycle.',
+      description: error?.message || error?.response?.data?.message || 'Please check your inputs.',
+      variant: 'destructive',
+    }),
   })
+
+  const resetCreateForm = () => {
+    setSelectedEntityId('')
+    setSelectedBookId('')
+    setSelectedPeriodValue('')
+    setCustomPeriod('')
+    setCycleName('')
+    setSelectedTemplateId('none')
+  }
 
   const openMutation = useMutation({
     mutationFn: (id: string) => closeCyclesApi.open(id),
@@ -116,6 +185,12 @@ export function CloseCyclesPage() {
 
   const cycles: CloseCycle[] = data ?? []
 
+  const isCreateDisabled =
+    !selectedEntityId ||
+    !selectedBookId ||
+    (!selectedPeriodValue || (selectedPeriodValue === CUSTOM_PERIOD_VALUE && !customPeriod.trim())) ||
+    createMutation.isPending
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -155,8 +230,16 @@ export function CloseCyclesPage() {
                         <Icon icon={cfg.icon} className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="font-semibold text-base">Period: {cycle.period_id}</p>
-                        <p className="text-sm text-muted-foreground">Entity: {cycle.entity_id}</p>
+                        <p className="font-semibold text-base">
+                          {cycle.name || `Period: ${cycle.period_id}`}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Entity: {cycle.entity_id}{' '}
+                          {cycle.accounting_book_id && `| Book ID: ${cycle.accounting_book_id}`}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Period: {cycle.period_id}
+                        </p>
                         {cycle.metadata && Array.isArray((cycle.metadata as Record<string, unknown>)?.cycle_signoffs) && (
                           <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
                             <Icon icon="solar:verified-check-bold" className="h-3.5 w-3.5" />
@@ -257,24 +340,85 @@ export function CloseCyclesPage() {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { setCreateOpen(false); resetCreateForm(); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>New Close Cycle</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="period">Period ID</Label>
+              <Label htmlFor="entity">Company / Entity *</Label>
+              <Select value={selectedEntityId} onValueChange={(v) => { setSelectedEntityId(v); setSelectedBookId(''); }}>
+                <SelectTrigger id="entity">
+                  <SelectValue placeholder="Select a legal entity" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entities.map(e => (
+                    <SelectItem key={e.id} value={e.id.toString()}>{e.name} ({e.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {entities.length === 0 && (
+                <p className="text-xs text-destructive">No legal entities found. Create one under Accounting → Multi-Entity Management.</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="book">Accounting Book *</Label>
+              <Select value={selectedBookId} onValueChange={setSelectedBookId} disabled={!selectedEntityId}>
+                <SelectTrigger id="book">
+                  <SelectValue placeholder={selectedEntityId ? "Select an accounting book" : "Select an entity first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {books.map(b => (
+                    <SelectItem key={b.id} value={b.id.toString()}>{b.name} ({b.book_type})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedEntityId && books.length === 0 && (
+                <p className="text-xs text-destructive">No books for this entity. Create one under Accounting → Multi-Entity Management.</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="period">Close Period *</Label>
+              <Select value={selectedPeriodValue} onValueChange={setSelectedPeriodValue}>
+                <SelectTrigger id="period">
+                  <SelectValue placeholder="Select a fiscal period" />
+                </SelectTrigger>
+                <SelectContent>
+                  {periods.map(p => (
+                    <SelectItem key={p.id} value={p.code}>{p.name} ({p.code})</SelectItem>
+                  ))}
+                  <SelectItem value={CUSTOM_PERIOD_VALUE}>Custom period…</SelectItem>
+                </SelectContent>
+              </Select>
+              {periods.length === 0 && (
+                <p className="text-xs text-muted-foreground">No open fiscal periods found. Use “Custom period” or create periods under Accounting.</p>
+              )}
+              {selectedPeriodValue === CUSTOM_PERIOD_VALUE && (
+                <Input
+                  placeholder="e.g. 2026_06_Testing1"
+                  value={customPeriod}
+                  onChange={e => setCustomPeriod(e.target.value)}
+                  className="mt-2"
+                />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Close Cycle Name</Label>
               <Input
-                id="period"
-                placeholder="e.g. 2026-Q1 or 2026-03"
-                value={periodId}
-                onChange={e => setPeriodId(e.target.value)}
+                id="name"
+                placeholder="e.g. FC-CLOSE-2026-06-JD"
+                value={cycleName}
+                onChange={e => setCycleName(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Uniquely identifies this reporting period within the entity.
+                Descriptive name for this close cycle. Defaults to the period if left blank.
               </p>
             </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="template">Checklist Template</Label>
               <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
@@ -294,10 +438,10 @@ export function CloseCyclesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setCreateOpen(false); resetCreateForm(); }}>Cancel</Button>
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!periodId.trim() || createMutation.isPending}
+              disabled={isCreateDisabled}
             >
               Create Cycle
             </Button>

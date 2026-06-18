@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\FinancialClose\Services\FinancialCloseAiFindingService;
+use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
 use Modules\FinancialClose\Http\Requests\CreateFindingRequest;
 use Modules\FinancialClose\Http\Requests\EditFindingRequest;
 use Modules\FinancialClose\Http\Resources\FindingResource;
@@ -15,6 +16,7 @@ class FindingController extends Controller
 {
     public function __construct(
         private readonly FinancialCloseAiFindingService $findingService,
+        private readonly FinancialCloseAiAnalysisService $aiAnalysisService,
     ) {}
 
     /** GET /findings — all findings for this tenant */
@@ -73,10 +75,10 @@ class FindingController extends Controller
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
 
-        $success = $this->findingService->acceptFinding($tenantId, $findingId, $userId);
+        $result = $this->findingService->acceptFinding($tenantId, $findingId, $userId);
 
-        if (!$success) {
-            return response()->json(['message' => 'Finding not found or already resolved.'], 422);
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
         }
 
         return response()->json(['message' => 'Finding accepted.']);
@@ -88,15 +90,15 @@ class FindingController extends Controller
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
 
-        $success = $this->findingService->editFinding(
+        $result = $this->findingService->editFinding(
             $tenantId,
             $findingId,
             $userId,
             $request->input('edited_output'),
         );
 
-        if (!$success) {
-            return response()->json(['message' => 'Finding not found.'], 422);
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
         }
 
         return response()->json(['message' => 'Finding edited.']);
@@ -108,10 +110,10 @@ class FindingController extends Controller
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
 
-        $success = $this->findingService->dismissFinding($tenantId, $findingId, $userId);
+        $result = $this->findingService->dismissFinding($tenantId, $findingId, $userId);
 
-        if (!$success) {
-            return response()->json(['message' => 'Finding not found or cannot be dismissed.'], 422);
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
         }
 
         return response()->json(['message' => 'Finding dismissed.']);
@@ -123,12 +125,28 @@ class FindingController extends Controller
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
 
-        $success = $this->findingService->escalateFinding($tenantId, $findingId, $userId);
+        $result = $this->findingService->escalateFinding($tenantId, $findingId, $userId);
 
-        if (!$success) {
-            return response()->json(['message' => 'Finding not found or cannot be escalated.'], 422);
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
         }
 
         return response()->json(['message' => 'Finding escalated.']);
+    }
+
+    /** POST /findings/refresh — re-run AI analysis, clearing stale findings first */
+    public function refreshFindings(Request $request): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $entityId = $request->input('entity_id', 'entity-001');
+        $periodId = $request->input('period_id', date('Y-m'));
+
+        $result = $this->aiAnalysisService->analyze($tenantId, $entityId, $periodId, true);
+
+        return response()->json([
+            'message'          => 'Findings refreshed.',
+            'findings_created' => $result['findings_created'] ?? 0,
+            'accounts_analyzed' => $result['accounts_analyzed'] ?? 0,
+        ]);
     }
 }

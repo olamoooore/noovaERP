@@ -2,6 +2,9 @@
 
 namespace Modules\FinancialClose\Services;
 
+use App\Models\FiscalPeriod;
+use App\Models\LockDate;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\CloseTask;
@@ -50,8 +53,15 @@ class FinancialCloseCycleService
     /**
      * Create a new close cycle
      */
-    public function createCycle(string $tenantId, string $entityId, string $periodId, string $userId, ?string $templateId = null): ?CloseCycle
-    {
+    public function createCycle(
+        string $tenantId,
+        string $entityId,
+        string $periodId,
+        string $userId,
+        ?string $templateId = null,
+        ?string $name = null,
+        ?string $accountingBookId = null,
+    ): ?CloseCycle {
         $existing = CloseCycle::where('tenant_id', $tenantId)
             ->where('entity_id', $entityId)
             ->where('period_id', $periodId)
@@ -68,12 +78,14 @@ class FinancialCloseCycleService
         }
 
         return CloseCycle::create([
-            'tenant_id' => $tenantId,
-            'entity_id' => $entityId,
-            'period_id' => $periodId,
-            'template_id' => $templateId,
-            'status' => 'draft',
-            'created_by' => $userId,
+            'tenant_id'          => $tenantId,
+            'entity_id'          => $entityId,
+            'accounting_book_id' => $accountingBookId,
+            'period_id'          => $periodId,
+            'name'               => $name,
+            'template_id'        => $templateId,
+            'status'             => 'draft',
+            'created_by'         => $userId,
         ]);
     }
 
@@ -113,7 +125,7 @@ class FinancialCloseCycleService
     }
 
     /**
-     * Close a cycle
+     * Close a cycle — also locks the fiscal period and creates a lock_date record
      */
     public function closeCycle(string $tenantId, string $cycleId, string $userId): bool
     {
@@ -132,12 +144,57 @@ class FinancialCloseCycleService
             'closed_at' => now(),
         ]);
 
+        // ── Lock the fiscal period ──────────────────────────
+        $periodCode = $cycle->period_id;
+        $period = FiscalPeriod::where('code', $periodCode)->first();
+
+        if ($period && !$period->isLocked()) {
+            $period->lock();
+
+            Log::info('FinancialClose: fiscal period locked on cycle close', [
+                'period_code' => $periodCode,
+                'cycle_id'    => $cycleId,
+            ]);
+        }
+
+        // ── Also create a lock_date record for transaction-type enforcement ──
+        // Use the period end date as the lock date (last day of the period)
+        $lockDateValue = $period?->period_end ?? now();
+        if ($period) {
+            // Deactivate any existing 'all' lock_date that's older
+            LockDate::where('lock_type', 'all')
+                ->where('is_active', true)
+                ->where('lock_date', '<', $lockDateValue)
+                ->update(['is_active' => false]);
+
+            // Create or update the lock_date record
+            $existingLock = LockDate::where('lock_type', 'all')
+                ->where('lock_date', $lockDateValue)
+                ->first();
+
+            if (!$existingLock) {
+                LockDate::create([
+                    'lock_type'  => 'all',
+                    'lock_date'  => $lockDateValue,
+                    'set_by'     => $userId,
+                    'reason'     => "Financial Close cycle {$cycleId} closed for period {$periodCode}",
+                    'is_active'  => true,
+                ]);
+            }
+        }
+
         AuditLog::create([
             'tenant_id' => $tenantId,
-            'actor_id' => $userId,
-            'action' => 'cycle_closed',
+            'actor_id'  => $userId,
+            'action'    => 'cycle_closed',
             'entity_type' => 'close_cycle',
             'entity_id' => $cycleId,
+            'after'     => [
+                'period_locked' => $period?->code,
+                'lock_date'     => $lockDateValue instanceof \Carbon\Carbon
+                    ? $lockDateValue->format('Y-m-d')
+                    : $lockDateValue,
+            ],
         ]);
 
         return true;
@@ -308,6 +365,101 @@ class FinancialCloseCycleService
             'open_escalations'  => $openEscalations,
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,
+        ];
+    }
+
+    /**
+     * Reopen a locked fiscal period.
+     * Requires authorised role (Admin/Owner/Manager) and logs an audit trail.
+     * Also rolls back the company_settings.lock_date to the previous period's end.
+     */
+    public function reopenPeriod(string $tenantId, string $periodCode, string $userId, ?string $role = null): array
+    {
+        $period = FiscalPeriod::where('code', $periodCode)->first();
+
+        if (!$period) {
+            return ['success' => false, 'reason' => "Fiscal period '{$periodCode}' not found."];
+        }
+
+        if (!$period->isLocked()) {
+            // Also check company_settings.lock_date — if it covers this period, treat as locked
+            $companyLockDate = DB::table('company_settings')->whereNotNull('lock_date')->value('lock_date');
+            if (!$companyLockDate || !$period->period_start->lte(\Carbon\Carbon::parse($companyLockDate))) {
+                return ['success' => false, 'reason' => "Fiscal period '{$periodCode}' is not locked."];
+            }
+        }
+
+        // Authorisation check: only Admin/Owner/Manager can reopen
+        $isAuthorised = false;
+        $user = \App\Models\User::find($userId);
+
+        if ($user) {
+            // 1. Check Spatie role names (Owner, Admin, Manager)
+            if (method_exists($user, 'hasRole')) {
+                try {
+                    $isAuthorised = $user->hasRole(['Owner', 'Admin', 'Manager', 'super-admin']);
+                } catch (\Throwable $e) {
+                    // Spatie not fully configured
+                }
+            }
+
+            // 2. Check accounting.settings permission
+            if (!$isAuthorised && method_exists($user, 'hasPermissionTo')) {
+                try {
+                    $isAuthorised = $user->hasPermissionTo('accounting.settings');
+                } catch (\Throwable $e) {
+                    // Permission not found
+                }
+            }
+        }
+
+        if (!$isAuthorised) {
+            return ['success' => false, 'reason' => 'Insufficient permissions. Only Admin/Owner/Manager can reopen a locked period.'];
+        }
+
+        // Unlock the fiscal period
+        if ($period->isLocked()) {
+            $period->unlock();
+        }
+
+        // Deactivate the matching lock_date record
+        LockDate::where('lock_type', 'all')
+            ->where('is_active', true)
+            ->where('lock_date', '<=', $period->period_end)
+            ->update(['is_active' => false]);
+
+        // Roll back company_settings.lock_date to previous period's end
+        $prevPeriod = FiscalPeriod::where('period_end', '<', $period->period_start)
+            ->orderBy('period_end', 'desc')
+            ->first();
+
+        $newLockDate = $prevPeriod?->period_end?->format('Y-m-d') ?? null;
+        DB::table('company_settings')->update(['lock_date' => $newLockDate]);
+
+        AuditLog::create([
+            'tenant_id'   => $tenantId,
+            'actor_id'    => $userId,
+            'action'      => 'period_reopened',
+            'entity_type' => 'fiscal_period',
+            'entity_id'   => (string) $period->id,
+            'after'       => [
+                'period_code'      => $periodCode,
+                'role'             => $role,
+                'new_lock_date'    => $newLockDate,
+            ],
+        ]);
+
+        Log::info('FinancialClose: fiscal period reopened', [
+            'period_code'   => $periodCode,
+            'user_id'       => $userId,
+            'role'          => $role,
+            'new_lock_date' => $newLockDate,
+        ]);
+
+        return [
+            'success'    => true,
+            'message'    => "Period '{$periodCode}' has been reopened.",
+            'lock_date'  => $newLockDate,
         ];
     }
 }

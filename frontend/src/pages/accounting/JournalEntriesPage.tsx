@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -52,6 +52,7 @@ export default function JournalEntriesPage() {
   const [reverseOpen, setReverseOpen] = useState(false);
   const [reverseEntryId, setReverseEntryId] = useState<number | null>(null);
   const [reverseForm, setReverseForm] = useState({ reversal_date: new Date().toISOString().split('T')[0], reason: '' });
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<CreateJournalEntryRequest>({
     journal_id: undefined,
@@ -63,6 +64,25 @@ export default function JournalEntriesPage() {
       { account_id: 0, debit: 0, credit: 0, description: '' },
     ],
   });
+
+  // Auto-open a specific journal entry when linked from a close task
+  useEffect(() => {
+    const entryId = searchParams.get('entry_id');
+    if (!entryId) return;
+
+    journalEntriesApi.getJournalEntry(Number(entryId))
+      .then((entry) => {
+        setSelectedEntry(entry);
+        setViewOpen(true);
+        // Remove the query param so a refresh doesn't reopen the dialog
+        const next = new URLSearchParams(searchParams);
+        next.delete('entry_id');
+        setSearchParams(next, { replace: true });
+      })
+      .catch(() => {
+        toast({ title: 'Journal entry not found', variant: 'destructive' });
+      });
+  }, [searchParams, setSearchParams, toast]);
 
   // Fetch journal entries
   const { data: entriesData, isLoading } = useQuery({
@@ -615,6 +635,14 @@ export default function JournalEntriesPage() {
             </div>
           )}
           <DialogFooter>
+            {selectedEntry?.status === 'draft' && (
+              <Button
+                onClick={() => postMutation.mutate(selectedEntry.id)}
+                disabled={postMutation.isPending}
+              >
+                {postMutation.isPending ? 'Posting...' : 'Post'}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setViewOpen(false)}>
               Close
             </Button>

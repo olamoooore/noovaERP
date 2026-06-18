@@ -46,12 +46,26 @@ class TaskController extends Controller
     public function myTasks(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId   = (string) $request->user()->id;
+        $status   = $request->query('status');
 
-        $tasks = CloseTask::where('tenant_id', $tenantId)
-            ->where('assigned_to', $userId)
-            ->whereNotIn('status', ['completed', 'cancelled'])
-            ->orderBy('due_date')
+        $query = CloseTask::where('tenant_id', $tenantId)
+            ->where('assigned_to', $userId);
+
+        if ($status === 'completed') {
+            $query->where('status', 'completed');
+        } elseif ($status === 'cancelled') {
+            $query->where('status', 'cancelled');
+        } elseif ($status === 'all') {
+            // No status filter — return everything
+        } elseif ($status) {
+            $query->where('status', $status);
+        } else {
+            // Default: active tasks only (exclude completed/cancelled)
+            $query->whereNotIn('status', ['completed', 'cancelled']);
+        }
+
+        $tasks = $query->orderBy('due_date')
             ->get();
 
         return response()->json(['data' => TaskResource::collection($tasks)]);

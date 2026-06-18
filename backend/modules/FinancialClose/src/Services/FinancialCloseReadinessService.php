@@ -8,6 +8,7 @@ use Modules\FinancialClose\Models\AccountReview;
 use Modules\FinancialClose\Models\AiFinding;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Events\FinancialCloseReadinessSnapshotGenerated;
+use Modules\FinancialClose\Jobs\RefreshReadinessSnapshotJob;
 
 class FinancialCloseReadinessService
 {
@@ -20,43 +21,53 @@ class FinancialCloseReadinessService
 
     /**
      * Generate a readiness snapshot for an entity/period.
-     * Readiness is advisory only — not close truth.
+     * Blends account review status with task completion metrics.
      */
     public function generateSnapshot(string $tenantId, string $entityId, string $periodId, ?string $cycleId = null): ?CloseReadinessSnapshot
     {
+        // --- Account reviews ---
         $reviews = AccountReview::where('tenant_id', $tenantId)
             ->where('entity_id', $entityId)
             ->get();
 
-        $totalAccounts    = $reviews->count();
-        $reviewedAccounts = $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count();
+        $totalAccounts     = $reviews->count();
+        $reviewedAccounts  = $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count();
         $signedOffAccounts = $reviews->whereIn('status', ['approved', 'locked'])->count();
 
-        $findingsByReview = AiFinding::where('tenant_id', $tenantId)
-            ->whereIn('review_id', $reviews->pluck('id'))
+        $sectionBreakdown = $this->buildSectionBreakdown($reviews);
+
+        $weightedSum    = array_sum(array_column($sectionBreakdown, 'score'));
+        $accountScore   = $totalAccounts > 0 ? round($weightedSum / $totalAccounts, 2) : null;
+
+        // --- AI findings (entity-wide) ---
+        $openFindings = AiFinding::where('tenant_id', $tenantId)
+            ->where('entity_id', $entityId)
             ->where('status', 'open')
-            ->get()
-            ->groupBy('review_id');
+            ->count();
 
-        $openFindings = $findingsByReview->flatten(1)->count();
-
-        // Open critical tasks from the cycle if provided; otherwise tenant-wide
-        $criticalTaskQuery = CloseTask::where('tenant_id', $tenantId)
-            ->where('is_critical', true)
-            ->whereNotIn('status', ['completed', 'cancelled']);
-
+        // --- Tasks ---
+        $taskQuery = CloseTask::where('tenant_id', $tenantId);
         if ($cycleId) {
-            $criticalTaskQuery->where('cycle_id', $cycleId);
+            $taskQuery->where('cycle_id', $cycleId);
         }
 
-        $openBlockers = $criticalTaskQuery->count();
+        $totalTasks      = (clone $taskQuery)->count();
+        $completedTasks  = (clone $taskQuery)->where('status', 'completed')->count();
+        $blockedTasks    = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
+        $cancelledTasks  = (clone $taskQuery)->where('status', 'cancelled')->count();
+        $inProgressTasks = (clone $taskQuery)->where('status', 'in_progress')->count();
+        $submittedTasks  = (clone $taskQuery)->where('status', 'submitted')->count();
+        $createdTasks    = (clone $taskQuery)->where('status', 'created')->count();
 
-        $sectionBreakdown = $this->buildSectionBreakdown($reviews, $findingsByReview);
+        $activeTasks     = $totalTasks - $completedTasks - $cancelledTasks;
+        $taskCompletionRate = $activeTasks > 0 ? round(($completedTasks / $activeTasks) * 100, 2) : 0;
 
-        $weightedSum = array_sum(array_column($sectionBreakdown, 'score'));
-        $readinessScore = $totalAccounts > 0
-            ? round($weightedSum / $totalAccounts, 2)
-            : 0;
+        // --- Blend score ---
+        if ($accountScore !== null) {
+            $readinessScore = round(0.5 * $accountScore + 0.5 * $taskCompletionRate, 2);
+        } else {
+            $readinessScore = $taskCompletionRate;
+        }
 
         $snapshot = CloseReadinessSnapshot::create([
             'tenant_id'          => $tenantId,
@@ -66,13 +77,25 @@ class FinancialCloseReadinessService
             'total_accounts'     => $totalAccounts,
             'reviewed_accounts'  => $reviewedAccounts,
             'signed_off_accounts' => $signedOffAccounts,
-            'open_blockers'      => $openBlockers,
+            'open_blockers'      => $blockedTasks,
             'open_findings'      => $openFindings,
             'section_breakdown'  => $sectionBreakdown,
             'generated_at'       => now(),
+            'metadata'           => [
+                'total_tasks'      => $totalTasks,
+                'completed_tasks'  => $completedTasks,
+                'blocked_tasks'    => $blockedTasks,
+                'cancelled_tasks'  => $cancelledTasks,
+                'in_progress_tasks' => $inProgressTasks,
+                'submitted_tasks'  => $submittedTasks,
+                'created_tasks'    => $createdTasks,
+                'active_tasks'     => $activeTasks,
+                'task_completion_rate' => $taskCompletionRate,
+                'account_score'    => $accountScore,
+            ],
         ]);
 
-        event(new FinancialCloseReadinessSnapshotGenerated($tenantId, $entityId, $periodId, $readinessScore, $openBlockers));
+        event(new FinancialCloseReadinessSnapshotGenerated($tenantId, $entityId, $periodId, $readinessScore, $blockedTasks));
 
         return $snapshot;
     }
@@ -90,8 +113,7 @@ class FinancialCloseReadinessService
     }
 
     /**
-     * Get a readiness summary — advisory only.
-     * is_ready requires: 100% score AND zero open critical blockers.
+     * Get a readiness summary — live-computed task metrics on top of snapshot data.
      */
     public function getReadinessSummary(string $tenantId, string $entityId, string $periodId): array
     {
@@ -112,34 +134,69 @@ class FinancialCloseReadinessService
             ];
         }
 
+        // Live task metrics (always current)
+        $activeTasks = CloseTask::where('tenant_id', $tenantId)
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->count();
+
+        $blockedTasks = CloseTask::where('tenant_id', $tenantId)
+            ->whereIn('status', ['blocked', 'escalated'])
+            ->count();
+
+        // Live findings count
+        $openFindings = AiFinding::where('tenant_id', $tenantId)
+            ->where('entity_id', $entityId)
+            ->where('status', 'open')
+            ->count();
+
         $reviews = AccountReview::where('tenant_id', $tenantId)
             ->where('entity_id', $entityId)
             ->get();
-
-        $findingsByReview = AiFinding::where('tenant_id', $tenantId)
-            ->whereIn('review_id', $reviews->pluck('id'))
-            ->where('status', 'open')
-            ->get()
-            ->groupBy('review_id');
 
         return [
             'readiness_score'     => $snapshot->readiness_score,
             'total_accounts'      => $snapshot->total_accounts,
             'reviewed_accounts'   => $snapshot->reviewed_accounts,
             'signed_off_accounts' => $snapshot->signed_off_accounts,
-            'open_blockers'       => $snapshot->open_blockers,
-            'open_findings'       => $snapshot->open_findings,
-            // is_ready requires full score AND zero open critical blockers
+            'open_blockers'       => $blockedTasks,
+            'open_findings'       => $openFindings,
             'is_ready'            => $snapshot->readiness_score >= 100
-                                     && $snapshot->open_blockers === 0,
+                                     && $blockedTasks === 0,
             'snapshot_available'  => true,
             'generated_at'        => $snapshot->generated_at,
-            'accounts'            => $this->buildSectionBreakdown($reviews, $findingsByReview),
+            'accounts'            => $this->buildSectionBreakdown($reviews),
         ];
     }
 
-    private function buildSectionBreakdown($reviews, $findingsByReview): array
+    /**
+     * Dispatch a readiness refresh for a given cycle (sync or async).
+     */
+    public function dispatchRefreshForCycle(string $tenantId, string $cycleId): void
     {
+        $cycle = \Modules\FinancialClose\Models\CloseCycle::where('tenant_id', $tenantId)
+            ->where('id', $cycleId)
+            ->first();
+
+        if (!$cycle) {
+            return;
+        }
+
+        RefreshReadinessSnapshotJob::dispatch(
+            $tenantId,
+            $cycle->entity_id,
+            $cycle->period_id,
+            $cycleId,
+        );
+    }
+
+    private function buildSectionBreakdown($reviews): array
+    {
+        $findingsByReview = AiFinding::where('tenant_id', $reviews->first()?->tenant_id ?? '')
+            ->whereIn('review_id', $reviews->pluck('id'))
+            ->where('status', 'open')
+            ->get()
+            ->groupBy('review_id');
+
         return $reviews
             ->sortBy('account_code')
             ->values()

@@ -35,9 +35,11 @@ class CloseCycleController extends Controller
         $userId   = $request->user()->id;
 
         $validated = $request->validate([
-            'entity_id'   => ['required', 'string'],
-            'period_id'   => ['required', 'string'],
-            'template_id' => ['nullable', 'string'],
+            'entity_id'          => ['required', 'string'],
+            'period_id'          => ['required', 'string'],
+            'template_id'        => ['nullable', 'string'],
+            'name'               => ['nullable', 'string', 'max:255'],
+            'accounting_book_id' => ['nullable', 'string'],
         ]);
 
         $cycle = $this->cycleService->createCycle(
@@ -46,6 +48,8 @@ class CloseCycleController extends Controller
             $validated['period_id'],
             $userId,
             $validated['template_id'] ?? null,
+            $validated['name'] ?? null,
+            $validated['accounting_book_id'] ?? null,
         );
 
         if (!$cycle) {
@@ -166,7 +170,7 @@ class CloseCycleController extends Controller
             $cycle->update(['template_id' => $templateId]);
         }
 
-        $result = $this->checklistService->expandTemplateIntoTasks($tenantId, $cycleId, $templateId);
+        $result = $this->checklistService->expandTemplateIntoTasks($tenantId, $cycleId, $templateId, auth()->id());
 
         if (!$result) {
             return response()->json(['message' => 'Task generation failed. Ensure the template is active.'], 422);
@@ -177,5 +181,41 @@ class CloseCycleController extends Controller
             'cycle_id' => $cycleId,
             'template_id' => $templateId,
         ]);
+    }
+
+    /** POST /cycles/reopen-period — reopen a locked fiscal period */
+    public function reopenPeriod(Request $request): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        $validated = $request->validate([
+            'period_code' => ['required', 'string'],
+        ]);
+
+        // Resolve the user's role name for authorisation
+        $role = null;
+        $user = $request->user();
+        if (method_exists($user, 'getRoleNames')) {
+            $roles = $user->getRoleNames();
+            $role  = is_array($roles) ? ($roles[0] ?? null) : $roles->first() ?? null;
+        }
+        // Fallback: check the 'role' string column on the users table
+        if (!$role && $user) {
+            $role = $user->role ?? null;
+        }
+
+        $result = $this->cycleService->reopenPeriod(
+            $tenantId,
+            $validated['period_code'],
+            $userId,
+            $role,
+        );
+
+        if (!$result['success']) {
+            return response()->json(['message' => $result['reason']], 422);
+        }
+
+        return response()->json(['message' => $result['message']]);
     }
 }

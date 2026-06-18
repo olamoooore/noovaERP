@@ -86,6 +86,31 @@ class FiscalPeriodValidator
             ];
         }
 
+        // Fallback: check company_settings.lock_date (set via Accounting > Settings > Fiscal Year)
+        $companyLockDate = \Illuminate\Support\Facades\DB::table('company_settings')
+            ->whereNotNull('lock_date')
+            ->value('lock_date');
+
+        if ($companyLockDate && $date->lte(\Carbon\Carbon::parse($companyLockDate))) {
+            if ($user && $this->userCanOverride($user)) {
+                Log::info("User {$user->id} overriding company lock date for period: {$period->code}");
+
+                return [
+                    'allowed' => true,
+                    'reason' => null,
+                    'period' => $period,
+                    'override' => true,
+                    'warning' => 'Posting to locked period with override permission',
+                ];
+            }
+
+            return [
+                'allowed' => false,
+                'reason' => "Period is closed (company lock date: {$companyLockDate}). Cannot post transactions to closed periods.",
+                'period' => $period,
+            ];
+        }
+
         // Period is open - allow posting
         return [
             'allowed' => true,

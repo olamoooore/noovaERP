@@ -87,14 +87,18 @@ class FinancialCloseAiFindingService
     /**
      * Accept a finding
      */
-    public function acceptFinding(string $tenantId, string $findingId, string $userId): bool
+    public function acceptFinding(string $tenantId, string $findingId, string $userId): array
     {
         $finding = AiFinding::where('tenant_id', $tenantId)
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding || $finding->status !== 'open') {
-            return false;
+        if (!$finding) {
+            return ['success' => false, 'reason' => 'Finding not found.'];
+        }
+
+        if ($finding->status !== 'open') {
+            return ['success' => false, 'reason' => "Finding is already {$finding->status}."];
         }
 
         $finding->update([
@@ -106,20 +110,24 @@ class FinancialCloseAiFindingService
         $this->writeFeedback($tenantId, $findingId, $userId, 'accepted');
         $this->writeAuditLog($tenantId, $userId, 'finding_accepted', $findingId);
 
-        return true;
+        return ['success' => true];
     }
 
     /**
      * Edit a finding
      */
-    public function editFinding(string $tenantId, string $findingId, string $userId, array $editedOutput): bool
+    public function editFinding(string $tenantId, string $findingId, string $userId, array $editedOutput): array
     {
         $finding = AiFinding::where('tenant_id', $tenantId)
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding || $finding->status !== 'open') {
-            return false;
+        if (!$finding) {
+            return ['success' => false, 'reason' => 'Finding not found.'];
+        }
+
+        if ($finding->status !== 'open') {
+            return ['success' => false, 'reason' => "Finding is already {$finding->status}."];
         }
 
         $finding->update(['status' => 'edited']);
@@ -127,20 +135,24 @@ class FinancialCloseAiFindingService
         $this->writeFeedback($tenantId, $findingId, $userId, 'edited', null, $editedOutput);
         $this->writeAuditLog($tenantId, $userId, 'finding_edited', $findingId);
 
-        return true;
+        return ['success' => true];
     }
 
     /**
      * Dismiss a finding
      */
-    public function dismissFinding(string $tenantId, string $findingId, string $userId, ?string $comment = null): bool
+    public function dismissFinding(string $tenantId, string $findingId, string $userId, ?string $comment = null): array
     {
         $finding = AiFinding::where('tenant_id', $tenantId)
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding || $finding->status !== 'open') {
-            return false;
+        if (!$finding) {
+            return ['success' => false, 'reason' => 'Finding not found.'];
+        }
+
+        if ($finding->status !== 'open') {
+            return ['success' => false, 'reason' => "Finding is already {$finding->status}."];
         }
 
         $finding->update([
@@ -152,20 +164,24 @@ class FinancialCloseAiFindingService
         $this->writeFeedback($tenantId, $findingId, $userId, 'dismissed', $comment);
         $this->writeAuditLog($tenantId, $userId, 'finding_dismissed', $findingId);
 
-        return true;
+        return ['success' => true];
     }
 
     /**
      * Escalate a finding
      */
-    public function escalateFinding(string $tenantId, string $findingId, string $userId, ?string $comment = null): bool
+    public function escalateFinding(string $tenantId, string $findingId, string $userId, ?string $comment = null): array
     {
         $finding = AiFinding::where('tenant_id', $tenantId)
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding || $finding->status !== 'open') {
-            return false;
+        if (!$finding) {
+            return ['success' => false, 'reason' => 'Finding not found.'];
+        }
+
+        if ($finding->status !== 'open') {
+            return ['success' => false, 'reason' => "Finding is already {$finding->status}."];
         }
 
         $finding->update(['status' => 'escalated']);
@@ -173,7 +189,7 @@ class FinancialCloseAiFindingService
         $this->writeFeedback($tenantId, $findingId, $userId, 'escalated', $comment);
         $this->writeAuditLog($tenantId, $userId, 'finding_escalated', $findingId);
 
-        return true;
+        return ['success' => true];
     }
 
     /**

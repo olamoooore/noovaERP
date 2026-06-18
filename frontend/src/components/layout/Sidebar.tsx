@@ -267,7 +267,6 @@ const baseNavItems: NavItem[] = [
         title: 'Financial Close',
         href: '/financial-close',
         icon: 'solar:calendar-mark-bold-duotone',
-        featureKey: 'ai',
         children: [
           {
             title: 'Dashboard',

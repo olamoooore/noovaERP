@@ -14,10 +14,28 @@ use Modules\FinancialClose\Events\FinancialCloseTaskBlocked;
 class FinancialCloseTaskService
 {
     protected FinancialCloseDependencyService $dependencyService;
+    protected FinancialCloseReadinessService $readinessService;
 
-    public function __construct(FinancialCloseDependencyService $dependencyService)
+    public function __construct(FinancialCloseDependencyService $dependencyService, FinancialCloseReadinessService $readinessService)
     {
         $this->dependencyService = $dependencyService;
+        $this->readinessService  = $readinessService;
+    }
+
+    /**
+     * Dispatch a readiness refresh for the task's cycle.
+     */
+    private function refreshReadiness(string $tenantId, string $cycleId): void
+    {
+        try {
+            $this->readinessService->dispatchRefreshForCycle($tenantId, $cycleId);
+        } catch (\Throwable $e) {
+            Log::warning('FinancialClose: failed to dispatch readiness refresh', [
+                'tenant_id' => $tenantId,
+                'cycle_id'  => $cycleId,
+                'error'     => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -67,6 +85,7 @@ class FinancialCloseTaskService
         $task->update(['status' => 'in_progress']);
         $this->writeAuditLog($tenantId, $userId, 'task_started', $taskId);
         event(new FinancialCloseTaskStarted($tenantId, $taskId, $userId));
+        $this->refreshReadiness($tenantId, $task->cycle_id);
 
         return true;
     }
@@ -85,6 +104,7 @@ class FinancialCloseTaskService
         $task->update(['status' => 'submitted']);
         $this->writeAuditLog($tenantId, $userId, 'task_submitted', $taskId);
         event(new FinancialCloseTaskSubmitted($tenantId, $taskId, $userId, $task->cycle_id));
+        $this->refreshReadiness($tenantId, $task->cycle_id);
 
         return true;
     }
@@ -103,6 +123,7 @@ class FinancialCloseTaskService
         $task->update(['status' => 'returned']);
         $this->writeAuditLog($tenantId, $userId, 'task_returned', $taskId);
         event(new FinancialCloseTaskReturned($tenantId, $taskId, $userId));
+        $this->refreshReadiness($tenantId, $task->cycle_id);
 
         return true;
     }
@@ -110,7 +131,7 @@ class FinancialCloseTaskService
     /**
      * Complete a task — dependency-aware.
      * Hard dependencies that are not yet completed WILL deny completion.
-     * This is a non-negotiable orchestration rule.
+     * Checklist items and evidence must be resolved.
      */
     public function completeTask(string $tenantId, string $taskId, string $userId): array
     {
@@ -140,6 +161,26 @@ class FinancialCloseTaskService
             ];
         }
 
+        // Pre-flight checks: checklist + evidence
+        $preFlightBlockers = $this->getPreFlightBlockers($tenantId, $task);
+        if (!empty($preFlightBlockers)) {
+            Log::warning('FinancialClose: task completion denied — pre-flight checks failed', [
+                'tenant_id' => $tenantId,
+                'task_id'   => $taskId,
+                'blockers'  => $preFlightBlockers,
+            ]);
+
+            $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_preflight', $taskId, [
+                'blockers' => $preFlightBlockers,
+            ]);
+
+            return [
+                'success'  => false,
+                'reason'   => 'Pre-flight checks failed',
+                'blockers' => $preFlightBlockers,
+            ];
+        }
+
         $task->update(['status' => 'completed', 'completed_at' => now()]);
         $this->writeAuditLog($tenantId, $userId, 'task_completed', $taskId);
 
@@ -149,6 +190,44 @@ class FinancialCloseTaskService
         $this->dependencyService->unblockDownstreamTasks($tenantId, $taskId);
 
         return ['success' => true];
+    }
+
+    /**
+     * Check pre-flight conditions that must be met before completing a task.
+     * Returns an array of blocker messages (empty = all clear).
+     */
+    private function getPreFlightBlockers(string $tenantId, CloseTask $task): array
+    {
+        $blockers = [];
+        $metadata = is_array($task->metadata) ? $task->metadata : [];
+
+        // 1. Checklist: all items must be checked
+        $checklistItems     = $metadata['checklist_items'] ?? [];
+        $checklistCompleted = $metadata['checklist_completed'] ?? [];
+        if (count($checklistItems) > 0) {
+            $missing = array_diff($checklistItems, $checklistCompleted);
+            if (!empty($missing)) {
+                $blockers[] = [
+                    'type'    => 'checklist',
+                    'message' => count($missing) . ' checklist item(s) not yet completed',
+                    'details' => array_values($missing),
+                ];
+            }
+        }
+
+        // 2. Evidence: at least one file must be uploaded (if the task has document links)
+        $evidenceCount = \Modules\FinancialClose\Models\TaskEvidenceLink::where('tenant_id', $tenantId)
+            ->where('task_id', $task->id)
+            ->count();
+        $documentLinks = $metadata['document_links'] ?? [];
+        if (!empty($documentLinks) && $evidenceCount === 0) {
+            $blockers[] = [
+                'type'    => 'evidence',
+                'message' => 'At least one evidence file must be uploaded for linked source documents',
+            ];
+        }
+
+        return $blockers;
     }
 
     /**
@@ -165,6 +244,7 @@ class FinancialCloseTaskService
         $task->update(['status' => 'blocked']);
         $this->writeAuditLog($tenantId, $userId, 'task_blocked', $taskId, ['reason' => $reason]);
         event(new FinancialCloseTaskBlocked($tenantId, $taskId, $userId, $reason));
+        $this->refreshReadiness($tenantId, $task->cycle_id);
 
         return true;
     }
@@ -183,6 +263,7 @@ class FinancialCloseTaskService
         $task->update(['status' => 'cancelled']);
 
         $this->writeAuditLog($tenantId, $userId, 'task_cancelled', $taskId);
+        $this->refreshReadiness($tenantId, $task->cycle_id);
 
         return true;
     }

@@ -9,7 +9,9 @@ import api from '@/lib/api'
 export interface CloseCycle {
   id: string
   entity_id: string
+  accounting_book_id: string | null
   period_id: string
+  name: string | null
   template_id: string | null
   status: 'draft' | 'opened' | 'ready_to_close' | 'closed'
   created_by: string
@@ -169,14 +171,52 @@ export interface ExecutiveSummary {
   generated_at?: string
 }
 
+export interface LegalEntity {
+  id: number
+  name: string
+  code: string
+  group_id: number
+  country_code?: string
+  base_currency?: string
+  status?: string
+}
+
+export interface EntityBook {
+  id: number
+  name: string
+  book_type: string
+  currency_code: string
+  legal_entity_id: number
+  is_primary?: boolean
+  status?: string
+}
+
+export interface FiscalPeriod {
+  id: number
+  name: string
+  code: string
+  period_start: string
+  period_end: string
+  period_type: string
+  fiscal_year: number
+  status: string
+  is_locked: boolean
+}
+
 // ─── Close Cycles ─────────────────────────────────────────────────────────────
 
 export const closeCyclesApi = {
-  list: (entityId: string) =>
-    api.get<{ data: CloseCycle[] }>('/close/cycles', { params: { entity_id: entityId } }),
+  list: (entityId?: string) =>
+    api.get<{ data: CloseCycle[] }>('/close/cycles', { params: entityId ? { entity_id: entityId } : undefined }),
 
-  create: (entityId: string, periodId: string, templateId?: string) =>
-    api.post<{ data: CloseCycle }>('/close/cycles', { entity_id: entityId, period_id: periodId, template_id: templateId }),
+  create: (data: {
+    entity_id: string
+    period_id: string
+    name?: string
+    accounting_book_id?: string
+    template_id?: string
+  }) =>
+    api.post<{ data: CloseCycle }>('/close/cycles', data),
 
   open: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/open`),
@@ -226,8 +266,8 @@ export const closeTasksApi = {
   get: (taskId: string) =>
     api.get<{ data: CloseTask }>(`/close/tasks/${taskId}`),
 
-  myTasks: () =>
-    api.get<{ data: CloseTask[] }>('/close/tasks/my'),
+  myTasks: (status?: string) =>
+    api.get<{ data: CloseTask[] }>('/close/tasks/my', { params: status && status !== 'all' ? { status } : undefined }),
 
   reviewQueue: () =>
     api.get<{ data: CloseTask[] }>('/close/tasks/review-queue'),
@@ -302,6 +342,12 @@ export const findingsApi = {
 
   escalate: (findingId: string) =>
     api.post(`/close/findings/${findingId}/escalate`),
+
+  refreshFindings: (entityId: string, periodId: string) =>
+    api.post<{ message: string; findings_created: number; accounts_analyzed: number }>(
+      '/close/findings/refresh',
+      { entity_id: entityId, period_id: periodId },
+    ),
 }
 
 // ─── Readiness ────────────────────────────────────────────────────────────────
@@ -348,4 +394,15 @@ export const auditTrailApi = {
 
   stats: () =>
     api.get<{ data: { today_count: number; total_count: number } }>('/close/audit-trail/stats'),
+}
+
+// ─── Entity / Book / Period lookups ───────────────────────────────────────────
+
+export const entityManagementApi = {
+  listEntities: () => api.get<LegalEntity[]>('/accounting/legal-entities'),
+  listBooks: (legalEntityId: number) => api.get<EntityBook[]>('/accounting/entity-books', { params: { legal_entity_id: legalEntityId } }),
+}
+
+export const fiscalPeriodsApi = {
+  list: (params?: { status?: string; fiscal_year?: number }) => api.get<{ data: FiscalPeriod[] }>('/accounting/fiscal-periods', { params }),
 }

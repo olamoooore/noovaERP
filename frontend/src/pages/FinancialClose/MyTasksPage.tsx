@@ -41,9 +41,12 @@ const priorityConfig: Record<string, { label: string; class: string }> = {
 }
 
 interface BlockerItem {
-  depends_on_task_id: string
-  depends_on_task_title: string
-  depends_on_status: string
+  depends_on_task_id?: string
+  depends_on_task_title?: string
+  depends_on_status?: string
+  type?: string
+  message?: string
+  details?: string[]
 }
 
 export function MyTasksPage() {
@@ -60,8 +63,8 @@ export function MyTasksPage() {
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter)
 
   const { data: tasks = [], isLoading } = useQuery<CloseTask[]>({
-    queryKey: ['my-tasks', cycleId],
-    queryFn: () => closeTasksApi.myTasks().then(r => r.data.data),
+    queryKey: ['my-tasks', cycleId, statusFilter],
+    queryFn: () => closeTasksApi.myTasks(statusFilter).then(r => r.data.data),
   })
 
   const byCycleQuery = useQuery<CloseTask[]>({
@@ -72,7 +75,7 @@ export function MyTasksPage() {
 
   const cycleQuery = useQuery({
     queryKey: ['close-cycle-detail', cycleId],
-    queryFn: () => closeCyclesApi.list('entity-001').then(r => {
+    queryFn: () => closeCyclesApi.list().then(r => {
       const cycles = r.data.data
       return cycles.find((c: { id: string }) => c.id === cycleId) ?? null
     }),
@@ -87,11 +90,15 @@ export function MyTasksPage() {
 
   const displayTasks = cycleId ? (byCycleQuery.data ?? []) : tasks
 
-  const filteredTasks = statusFilter === 'all'
-    ? displayTasks
-    : statusFilter === 'overdue'
-      ? displayTasks.filter(t => isOverdue(t))
-      : displayTasks.filter(t => t.status === statusFilter)
+  // For myTasks endpoint, backend handles status filtering.
+  // For cycle tasks, apply client-side filter.
+  const filteredTasks = cycleId
+    ? (statusFilter === 'all'
+        ? displayTasks
+        : statusFilter === 'overdue'
+          ? displayTasks.filter(t => isOverdue(t))
+          : displayTasks.filter(t => t.status === statusFilter))
+    : displayTasks
 
   function mutationOpts(label: string) {
     return {
@@ -137,11 +144,28 @@ export function MyTasksPage() {
   }
 
   function navigateToDocLink(link: { type: string; id: number | string; title?: string }) {
+    if (link.type === 'journal_entry') {
+      navigate(`/accounting/core/journal-entries?entry_id=${link.id}`)
+      return
+    }
+
+    if (link.type === 'report') {
+      const reportRoutes: Record<string, string> = {
+        'trial-balance': '/accounting/reporting/trial-balance',
+        'financial-statements': '/accounting/reporting/financial-statements',
+        'general-ledger': '/accounting/reporting/general-ledger',
+      }
+      navigate(reportRoutes[link.id as string] ?? '/accounting/reporting/trial-balance')
+      return
+    }
+
     const routes: Record<string, string> = {
       invoice: '/invoices/',
       bill: '/accounting/vendors/bills/',
-      journal_entry: '/accounting/core/journal-entries',
-      bank_transaction: '/accounting/core/reconciliation',
+      payment: '/accounting/customers/payments',
+      credit_note: '/accounting/vendors/credit-notes/',
+      debit_note: '/accounting/vendors/debit-notes/',
+      bank_reconciliation: '/accounting/core/reconciliation',
     }
     const base = routes[link.type] ?? '/accounting/core/journal-entries'
     navigate(base.endsWith('/') ? base + link.id : base)
@@ -352,17 +376,31 @@ export function MyTasksPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-500">
               <Icon icon="solar:lock-keyhole-bold-duotone" className="h-5 w-5" />
-              Unresolved Dependencies
+              Cannot Complete Task
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This task cannot be completed until the following required tasks are finished:
+            The following issues must be resolved before this task can be completed:
           </p>
           <div className="space-y-2 mt-2">
-            {blockersModal.map(b => (
-              <div key={b.depends_on_task_id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                <span className="text-sm font-medium">{b.depends_on_task_title}</span>
-                <Badge variant="secondary" className="text-xs">{b.depends_on_status}</Badge>
+            {blockersModal.map((b, idx) => (
+              <div key={idx} className="rounded-lg border px-3 py-2">
+                {b.type ? (
+                  <div>
+                    <span className="text-sm font-medium capitalize">{b.type}</span>
+                    <p className="text-sm text-muted-foreground mt-1">{b.message}</p>
+                    {b.details && b.details.length > 0 && (
+                      <ul className="mt-1 list-disc list-inside text-xs text-muted-foreground">
+                        {b.details.map((d, i) => <li key={i}>{d}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{b.depends_on_task_title}</span>
+                    <Badge variant="secondary" className="text-xs">{b.depends_on_status}</Badge>
+                  </div>
+                )}
               </div>
             ))}
           </div>

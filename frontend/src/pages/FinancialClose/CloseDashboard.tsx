@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { closeTasksApi, closeCyclesApi, readinessApi, type CloseCycle, type CloseTask, type ReadinessAccount, type ReadinessSummary } from '@/services/closeApi'
 
-const ENTITY_ID = 'entity-001'
-const PERIOD_ID  = '2026-04'
+const DEFAULT_ENTITY_ID = 'entity-001'
+const DEFAULT_PERIOD_ID  = '2026-04'
 
 function KpiCard({
   label,
@@ -88,19 +88,23 @@ export function CloseDashboard() {
   })
 
   const { data: cycles = [] } = useQuery<CloseCycle[]>({
-    queryKey: ['close-cycles', ENTITY_ID],
-    queryFn: () => closeCyclesApi.list(ENTITY_ID).then(r => r.data.data),
+    queryKey: ['close-cycles'],
+    queryFn: () => closeCyclesApi.list().then(r => r.data.data),
   })
 
+  const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
+  const focusCycle = activeCycles[0]
+  const entityId = focusCycle?.entity_id ?? DEFAULT_ENTITY_ID
+  const periodId = focusCycle?.period_id ?? DEFAULT_PERIOD_ID
+
   const { data: readiness } = useQuery<ReadinessSummary>({
-    queryKey: ['readiness', ENTITY_ID, PERIOD_ID],
-    queryFn: () => readinessApi.get(ENTITY_ID, PERIOD_ID).then(r => r.data.data),
+    queryKey: ['readiness', entityId, periodId],
+    queryFn: () => readinessApi.get(entityId, periodId).then(r => r.data.data),
   })
 
   const now = new Date()
   const overdue = myTasks.filter(t => t.due_date && new Date(t.due_date) < now && t.status !== 'completed' && t.status !== 'cancelled')
   const blocked = myTasks.filter(t => t.status === 'blocked')
-  const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
   const attentionAccounts = [...(readiness?.accounts ?? [])].sort(attentionSort).slice(0, 3)
   const signedOffAccounts = readiness?.signed_off_accounts ?? 0
   const totalAccounts = readiness?.total_accounts ?? 0
@@ -115,7 +119,7 @@ export function CloseDashboard() {
             <div className="space-y-4 max-w-2xl">
               <div>
                 <h1 className="text-3xl font-bold">Financial Close</h1>
-                <p className="text-muted-foreground mt-1">Command dashboard for {ENTITY_ID} — {PERIOD_ID}</p>
+                <p className="text-muted-foreground mt-1">Command dashboard for {entityId} — {periodId}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="px-3 py-1">{activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}</Badge>

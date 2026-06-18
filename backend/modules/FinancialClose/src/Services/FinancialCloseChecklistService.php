@@ -51,7 +51,7 @@ class FinancialCloseChecklistService
     /**
      * Expand a checklist template into tasks for a close cycle
      */
-    public function expandTemplateIntoTasks(string $tenantId, string $cycleId, string $templateId): bool
+    public function expandTemplateIntoTasks(string $tenantId, string $cycleId, string $templateId, ?string $userId = null): bool
     {
         $cycle = CloseCycle::where('tenant_id', $tenantId)
             ->where('id', $cycleId)
@@ -80,6 +80,7 @@ class FinancialCloseChecklistService
                 'status' => 'created',
                 'priority' => $definition['priority'] ?? 'medium',
                 'is_critical' => $definition['is_critical'] ?? false,
+                'assigned_to' => $userId,
             ]);
         }
 

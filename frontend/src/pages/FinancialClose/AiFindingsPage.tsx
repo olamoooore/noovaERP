@@ -38,12 +38,24 @@ export function AiFindingsPage() {
   const queryClient = useQueryClient()
   const [riskFilter, setRiskFilter] = useState<string>('all')
 
+  const entityId = 'entity-001'
+  const periodId = '2026-04'
+
   const { data: findings = [], isLoading } = useQuery<AiFinding[]>({
     queryKey: ['ai-findings', reviewId || 'all'],
     queryFn: () =>
       reviewId
         ? findingsApi.list(reviewId).then(r => r.data.data)
         : findingsApi.listAll().then(r => r.data.data),
+  })
+
+  const refreshMutation = useMutation({
+    mutationFn: () => findingsApi.refreshFindings(entityId, periodId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['ai-findings'] })
+      toast({ title: `Refreshed — ${res.data.findings_created} finding(s) created.` })
+    },
+    onError: () => toast({ title: 'Refresh failed.', variant: 'destructive' }),
   })
 
   function invalidate() {
@@ -85,17 +97,30 @@ export function AiFindingsPage() {
             AI-generated anomalies and exceptions for human review.
           </p>
         </div>
-        <Select value={riskFilter} onValueChange={setRiskFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Filter risk" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Risk Levels</SelectItem>
-            {Object.entries(riskConfig).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={riskFilter} onValueChange={setRiskFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Filter risk" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Risk Levels</SelectItem>
+              {Object.entries(riskConfig).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+          >
+            <Icon
+              icon="solar:refresh-bold"
+              className={`h-4 w-4 ${refreshMutation.isPending ? 'animate-spin' : ''}`}
+            />
+            Refresh Findings
+          </Button>
+        </div>
       </div>
 
       {/* AI Advisory Banner */}

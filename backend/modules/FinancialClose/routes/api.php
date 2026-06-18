@@ -28,6 +28,7 @@ Route::post('/cycles/{cycleId}/signoff',         [CloseCycleController::class, '
 Route::post('/cycles/{cycleId}/revoke-signoff',  [CloseCycleController::class, 'revokeSignoff']);
 Route::get('/cycles/{cycleId}/readiness',        [CloseCycleController::class, 'readiness']);
 Route::post('/cycles/{cycleId}/generate-tasks', [CloseCycleController::class, 'generateTasks']);
+Route::post('/cycles/reopen-period',           [CloseCycleController::class, 'reopenPeriod']);
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 Route::get('/cycles/{cycleId}/tasks',           [TaskController::class, 'index']);
@@ -52,6 +53,7 @@ Route::post('/escalations/{escalationId}/resolve',      [EscalationController::c
 
 // ─── AI Findings ─────────────────────────────────────────────────────────────
 Route::get('/findings',                                 [FindingController::class, 'listAll']);
+Route::post('/findings/refresh',                        [FindingController::class, 'refreshFindings']);
 Route::get('/reviews/{reviewId}/findings',              [FindingController::class, 'index']);
 Route::post('/reviews/{reviewId}/findings',             [FindingController::class, 'store']);
 Route::post('/findings/{findingId}/accept',             [FindingController::class, 'accept']);

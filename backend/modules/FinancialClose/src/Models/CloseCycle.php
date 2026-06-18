@@ -15,7 +15,9 @@ class CloseCycle extends Model
     protected $fillable = [
         'tenant_id',
         'entity_id',
+        'accounting_book_id',
         'period_id',
+        'name',
         'template_id',
         'status',
         'created_by',

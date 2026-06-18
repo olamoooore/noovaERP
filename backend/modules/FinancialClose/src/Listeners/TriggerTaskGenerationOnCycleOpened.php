@@ -25,6 +25,8 @@ class TriggerTaskGenerationOnCycleOpened implements ShouldQueue
         GenerateTasksFromChecklistJob::dispatch(
             $event->tenantId,
             $event->cycleId,
+            '',
+            $event->userId,
         );
     }
 }

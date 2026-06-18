@@ -79,7 +79,20 @@ export function TaskDetailPage() {
 
   const startMutation    = useMutation({ mutationFn: () => closeTasksApi.start(taskId),       onSuccess: () => { refetchTask(); toast({ title: 'Task started.' }) },       onError: () => toast({ title: 'Failed to start task.', variant: 'destructive' }) })
   const submitMutation   = useMutation({ mutationFn: () => closeTasksApi.submit(taskId),      onSuccess: () => { refetchTask(); toast({ title: 'Task submitted for review.' }) }, onError: () => toast({ title: 'Failed to submit task.', variant: 'destructive' }) })
-  const completeMutation = useMutation({ mutationFn: () => closeTasksApi.complete(taskId),    onSuccess: () => { refetchTask(); toast({ title: 'Task completed.' }) },       onError: () => toast({ title: 'Failed to complete task.', variant: 'destructive' }) })
+  const completeMutation = useMutation({
+    mutationFn: () => closeTasksApi.complete(taskId),
+    onSuccess: () => { refetchTask(); toast({ title: 'Task completed.' }) },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? 'Failed to complete task.'
+      const blockers = err?.response?.data?.blockers
+      if (blockers?.length) {
+        const details = blockers.map((b: any) => b.message ?? b.depends_on_task_title).join('; ')
+        toast({ title: msg, description: details, variant: 'destructive' })
+      } else {
+        toast({ title: msg, variant: 'destructive' })
+      }
+    }
+  })
   const returnMutation   = useMutation({ mutationFn: () => closeTasksApi.returnTask(taskId),  onSuccess: () => { refetchTask(); toast({ title: 'Task returned.' }) },        onError: () => toast({ title: 'Failed to return task.', variant: 'destructive' }) })
   const blockMutation    = useMutation({
     mutationFn: () => closeTasksApi.block(taskId, blockReason),
@@ -182,6 +195,9 @@ export function TaskDetailPage() {
           <InfoRow label="Owner" value={task.owner_label ?? task.assigned_to} />
           <InfoRow label="Due" value={task.due_date ? new Date(task.due_date).toLocaleString() : null} />
           <InfoRow label="Workstream" value={task.workstream} />
+          {task.document_links && task.document_links.length > 0 && (
+            <InfoRow label="Source Documents" value={`${task.document_links.length} linked`} />
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -244,12 +260,83 @@ export function TaskDetailPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="checklist" className="space-y-4">
+      <Tabs defaultValue={documentLinks.length > 0 ? 'sources' : 'checklist'} className="space-y-4">
         <TabsList>
+          <TabsTrigger value="sources">Source Documents</TabsTrigger>
           <TabsTrigger value="checklist">Checklist</TabsTrigger>
           <TabsTrigger value="dependencies">Dependencies</TabsTrigger>
           <TabsTrigger value="escalations">Escalations</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="sources" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Linked Source Documents</CardTitle>
+                {!['completed', 'cancelled'].includes(task.status) && (
+                  <Button size="sm" variant="outline" onClick={() => setLinkDocDialogOpen(true)}>
+                    <Icon icon="solar:link-bold" className="h-4 w-4 mr-1" />
+                    Link Document
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {documentLinks.length > 0 ? documentLinks.map((doc, idx) => (
+                <div key={idx} className="rounded-xl border p-4 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Icon
+                      icon={doc.type === 'bill' ? 'solar:bill-list-bold' : doc.type === 'invoice' ? 'solar:file-text-bold' : doc.type === 'journal_entry' ? 'solar:book-bold' : doc.type === 'payment' ? 'solar:card-bold' : doc.type === 'report' ? 'solar:chart-square-bold' : 'solar:document-bold'}
+                      className="h-4 w-4 text-muted-foreground"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold">{doc.title}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{doc.type.replace('_', ' ')} #{doc.id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      if (doc.type === 'journal_entry') {
+                        navigate(`/accounting/core/journal-entries?entry_id=${doc.id}`)
+                        return
+                      }
+
+                      if (doc.type === 'report') {
+                        const reportRoutes: Record<string, string> = {
+                          'trial-balance': '/accounting/reporting/trial-balance',
+                          'financial-statements': '/accounting/reporting/financial-statements',
+                          'general-ledger': '/accounting/reporting/general-ledger',
+                        }
+                        const reportRoute = reportRoutes[doc.id as string] ?? '/accounting/reporting/trial-balance'
+                        navigate(reportRoute)
+                        return
+                      }
+
+                      const routes: Record<string, string> = {
+                        bill: `/accounting/vendors/bills/${doc.id}`,
+                        invoice: `/invoices/${doc.id}`,
+                        payment: '/accounting/customers/payments',
+                        credit_note: `/accounting/vendors/credit-notes/${doc.id}`,
+                        debit_note: `/accounting/vendors/debit-notes/${doc.id}`,
+                      }
+                      const route = routes[doc.type]
+                      if (route) navigate(route)
+                    }}>
+                      <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                    </Button>
+                    {!['completed', 'cancelled'].includes(task.status) && (
+                      <Button size="sm" variant="ghost" onClick={() => unlinkDocMutation.mutate({ docType: doc.type, docId: doc.id })}>
+                        <Icon icon="solar:link-minimalistic-remove-bold" className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )) : (
+                <p className="text-sm text-muted-foreground">No source documents linked to this task.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="checklist" className="space-y-4">
           <Card>
@@ -383,59 +470,6 @@ export function TaskDetailPage() {
                 </div>
               )) : (
                 <p className="text-sm text-muted-foreground">No explicit task dependencies recorded for this task.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Linked Source Documents</CardTitle>
-                {!['completed', 'cancelled'].includes(task.status) && (
-                  <Button size="sm" variant="outline" onClick={() => setLinkDocDialogOpen(true)}>
-                    <Icon icon="solar:link-bold" className="h-4 w-4 mr-1" />
-                    Link Document
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {documentLinks.length > 0 ? documentLinks.map((doc, idx) => (
-                <div key={idx} className="rounded-xl border p-4 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Icon
-                      icon={doc.type === 'bill' ? 'solar:bill-list-bold' : doc.type === 'invoice' ? 'solar:file-text-bold' : doc.type === 'journal_entry' ? 'solar:book-bold' : doc.type === 'payment' ? 'solar:card-bold' : 'solar:document-bold'}
-                      className="h-4 w-4 text-muted-foreground"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold">{doc.title}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{doc.type.replace('_', ' ')} #{doc.id}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => {
-                      const routes: Record<string, string> = {
-                        bill: `/accounting/vendors/bills/${doc.id}`,
-                        invoice: `/accounting/customers/invoices/${doc.id}`,
-                        journal_entry: `/accounting/journal-entries/${doc.id}`,
-                        payment: `/accounting/payments/${doc.id}`,
-                        credit_note: `/accounting/vendors/credit-notes/${doc.id}`,
-                        debit_note: `/accounting/vendors/debit-notes/${doc.id}`,
-                      }
-                      const route = routes[doc.type]
-                      if (route) navigate(route)
-                    }}>
-                      <Icon icon="solar:eye-bold" className="h-4 w-4" />
-                    </Button>
-                    {!['completed', 'cancelled'].includes(task.status) && (
-                      <Button size="sm" variant="ghost" onClick={() => unlinkDocMutation.mutate({ docType: doc.type, docId: doc.id })}>
-                        <Icon icon="solar:link-minimalistic-remove-bold" className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )) : (
-                <p className="text-sm text-muted-foreground">No source documents linked to this task.</p>
               )}
             </CardContent>
           </Card>
