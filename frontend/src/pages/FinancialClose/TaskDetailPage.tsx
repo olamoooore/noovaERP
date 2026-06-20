@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { closeTasksApi, escalationsApi, type CloseTask, type Escalation } from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
+import { useAuthStore } from '@/store/authStore'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   created: { label: 'Created', variant: 'secondary' },
@@ -50,6 +51,11 @@ export function TaskDetailPage() {
   const { taskId = '' } = useParams()
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { role: userRole, user } = useAuthStore()
+
+  // Role-based access control: Owner, Admin, Manager are reviewer roles
+  const reviewerRoles = ['Owner', 'Admin', 'Manager']
+  const isReviewer = userRole ? reviewerRoles.includes(userRole) : false
 
   const [blockDialogOpen, setBlockDialogOpen] = useState(false)
   const [blockReason, setBlockReason] = useState('')
@@ -76,6 +82,12 @@ export function TaskDetailPage() {
     queryKey: ['task-evidence', taskId],
     queryFn: () => closeTasksApi.listEvidence(taskId).then(r => r.data.data),
     enabled: !!taskId,
+  })
+
+  const { data: blockersData } = useQuery({
+    queryKey: ['task-blockers', taskId],
+    queryFn: () => closeTasksApi.checkBlockers(taskId).then(r => r.data),
+    enabled: !!taskId && task?.status === 'submitted',
   })
 
   const refetchTask = () => queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] })
@@ -117,6 +129,8 @@ export function TaskDetailPage() {
   const checklistCompleted: string[] = task?.checklist_completed ?? []
   const checklistItems: string[] = task?.checklist_items ?? []
   const documentLinks = task?.document_links ?? []
+  const taskType = task?.metadata?.type as string | undefined
+  const bankAccountId = task?.metadata?.bank_account_id as number | undefined
 
   const toggleChecklistItem = (item: string) => {
     const completed = checklistCompleted.includes(item)
@@ -141,6 +155,20 @@ export function TaskDetailPage() {
     mutationFn: (escalationId: string) => escalationsApi.resolve(escalationId),
     onSuccess: () => { refetchTask(); toast({ title: 'Escalation resolved.' }) },
     onError: () => toast({ title: 'Failed to resolve escalation.', variant: 'destructive' }),
+  })
+
+  const returnEscalationMutation = useMutation({
+    mutationFn: ({ escalationId, reason }: { escalationId: string; reason?: string }) =>
+      escalationsApi.return(escalationId, reason),
+    onSuccess: () => { refetchTask(); toast({ title: 'Escalation returned to preparer.' }) },
+    onError: () => toast({ title: 'Failed to return escalation.', variant: 'destructive' }),
+  })
+
+  const approveEscalationMutation = useMutation({
+    mutationFn: ({ escalationId, notes }: { escalationId: string; notes?: string }) =>
+      escalationsApi.approve(escalationId, notes),
+    onSuccess: () => { refetchTask(); toast({ title: 'Escalation approved.' }) },
+    onError: () => toast({ title: 'Failed to approve escalation.', variant: 'destructive' }),
   })
 
   const uploadEvidenceMutation = useMutation({
@@ -230,15 +258,32 @@ export function TaskDetailPage() {
               </Button>
             </>
           )}
-          {task.status === 'submitted' && (
+          {task.status === 'submitted' && isReviewer && String(task.assigned_to) !== String(user?.id) && (
             <>
-              <Button size="sm" onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
-                Complete
+              <Button
+                size="sm"
+                onClick={() => completeMutation.mutate()}
+                disabled={completeMutation.isPending || (blockersData && !blockersData.can_complete)}
+                title={blockersData && !blockersData.can_complete ? 'Resolve blockers before approving' : 'Approve this task'}
+              >
+                Approve
               </Button>
+              {blockersData && !blockersData.can_complete && (
+                <span className="text-xs text-orange-600 ml-2">
+                  ({blockersData.blockers.length} blocker(s) to resolve)
+                </span>
+              )}
               <Button size="sm" variant="outline" onClick={() => returnMutation.mutate()} disabled={returnMutation.isPending}>
                 Return
               </Button>
             </>
+          )}
+          {task.status === 'submitted' && (!isReviewer || String(task.assigned_to) === String(user?.id)) && (
+            <span className="text-sm text-muted-foreground italic px-2">
+              {isReviewer && String(task.assigned_to) === String(user?.id)
+                ? 'Waiting for another reviewer to approve'
+                : 'Pending review'}
+            </span>
           )}
           {task.status === 'blocked' && (
             <span className="text-sm text-muted-foreground italic px-2">Blocked</span>
@@ -277,6 +322,16 @@ export function TaskDetailPage() {
               <p className="mt-1">{task.blocker_reason}</p>
             </div>
           )}
+          {blockersData && !blockersData.can_complete && task.status === 'submitted' && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+              <div className="font-semibold">Cannot complete task</div>
+              <ul className="mt-2 space-y-1 list-disc list-inside">
+                {blockersData.blockers.map((blocker, idx) => (
+                  <li key={idx}>{blocker.message}{blocker.details ? `: ${blocker.details}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -284,6 +339,7 @@ export function TaskDetailPage() {
         <TabsList>
           <TabsTrigger value="sources">Source Documents</TabsTrigger>
           <TabsTrigger value="checklist">Checklist</TabsTrigger>
+          <TabsTrigger value="evidence">Evidence</TabsTrigger>
           <TabsTrigger value="dependencies">Dependencies</TabsTrigger>
           <TabsTrigger value="escalations">Escalations</TabsTrigger>
         </TabsList>
@@ -317,7 +373,11 @@ export function TaskDetailPage() {
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="ghost" onClick={() => {
                       if (doc.type === 'journal_entry') {
-                        navigate(`/accounting/core/journal-entries?entry_id=${doc.id}`)
+                        if (taskType === 'unreconciled_transactions' && bankAccountId) {
+                          navigate(`/accounting/core/reconciliation?account=${bankAccountId}`)
+                        } else {
+                          navigate(`/accounting/core/journal-entries?entry_id=${doc.id}`)
+                        }
                         return
                       }
 
@@ -333,7 +393,9 @@ export function TaskDetailPage() {
                       }
 
                       const routes: Record<string, string> = {
-                        bill: `/accounting/vendors/bills/${doc.id}`,
+                        bill: taskType === 'ap_subledger_reconciliation'
+                          ? `/accounting/ap-reconciliation?task_id=${taskId}`
+                          : `/accounting/vendors/bills/${doc.id}`,
                         invoice: `/invoices/${doc.id}`,
                         payment: '/accounting/customers/payments',
                         credit_note: `/accounting/vendors/credit-notes/${doc.id}`,
@@ -419,55 +481,74 @@ export function TaskDetailPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <Separator />
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Uploaded Evidence</p>
-                  {!['completed', 'cancelled'].includes(task.status) && (
-                    <label className="cursor-pointer inline-flex items-center gap-1 px-3 py-1.5 border border-input rounded-md text-sm font-medium hover:bg-accent">
-                      <Icon icon="solar:upload-bold" className="h-4 w-4" />
-                      Upload File
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={e => {
-                          const file = e.target.files?.[0]
-                          if (file) uploadEvidenceMutation.mutate(file)
-                          e.target.value = ''
-                        }}
-                        disabled={uploadEvidenceMutation.isPending}
-                      />
-                    </label>
-                  )}
-                </div>
-                {evidenceList && evidenceList.length > 0 ? (
-                  <div className="space-y-2">
-                    {evidenceList.map((ev: any) => (
-                      <div key={ev.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Icon icon="solar:file-text-bold" className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{ev.file_name}</span>
-                          <Badge variant="outline" className="text-xs">{ev.status}</Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(ev.created_at).toLocaleDateString()}
-                          </span>
-                          {ev.url && (
-                            <a href={ev.url} target="_blank" rel="noopener noreferrer">
-                              <Icon icon="solar:eye-bold" className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No evidence uploaded yet.</p>
+        <TabsContent value="evidence" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Uploaded Evidence</CardTitle>
+                {!['completed', 'cancelled'].includes(task.status) && (
+                  <label className="cursor-pointer inline-flex items-center gap-1 px-3 py-1.5 border border-input rounded-md text-sm font-medium hover:bg-accent">
+                    <Icon icon="solar:upload-bold" className="h-4 w-4" />
+                    Upload File
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) uploadEvidenceMutation.mutate(file)
+                        e.target.value = ''
+                      }}
+                      disabled={uploadEvidenceMutation.isPending}
+                    />
+                  </label>
                 )}
               </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {evidenceList && evidenceList.length > 0 ? (
+                <div className="space-y-2">
+                  {evidenceList.map((ev: any) => (
+                    <div key={ev.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="solar:file-text-bold" className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{ev.file_name}</span>
+                        <Badge variant="outline" className="text-xs">{ev.status}</Badge>
+                        {['completed', 'cancelled'].includes(task.status) && (
+                          <Badge variant="secondary" className="text-xs">Locked</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(ev.created_at).toLocaleDateString()}
+                        </span>
+                        {ev.url && (
+                          <a
+                            href={closeTasksApi.downloadEvidenceUrl(taskId, ev.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Icon icon="solar:eye-bold" className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No evidence uploaded yet.</p>
+              )}
+
+              {['completed', 'cancelled'].includes(task.status) && (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Evidence is locked after task completion. No changes are allowed.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -518,14 +599,34 @@ export function TaskDetailPage() {
                         {escalation.status}
                       </Badge>
                       {escalation.status === 'open' && !['completed', 'cancelled'].includes(task.status) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => resolveEscalationMutation.mutate(escalation.id)}
-                          disabled={resolveEscalationMutation.isPending}
-                        >
-                          Resolve
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600"
+                            onClick={() => returnEscalationMutation.mutate({ escalationId: escalation.id })}
+                            disabled={returnEscalationMutation.isPending || approveEscalationMutation.isPending || resolveEscalationMutation.isPending}
+                          >
+                            Return
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveEscalationMutation.mutate({ escalationId: escalation.id })}
+                            disabled={returnEscalationMutation.isPending || approveEscalationMutation.isPending || resolveEscalationMutation.isPending}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => resolveEscalationMutation.mutate(escalation.id)}
+                            disabled={returnEscalationMutation.isPending || approveEscalationMutation.isPending || resolveEscalationMutation.isPending}
+                          >
+                            Resolve
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>

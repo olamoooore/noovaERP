@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Services\InvoiceService;
+use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesOrderService;
 
@@ -15,6 +16,7 @@ class InvoiceController extends Controller
     public function __construct(
         private InvoiceService $invoiceService,
         private SalesOrderService $salesOrderService,
+        private LockDateValidationService $lockDateValidator,
     ) {}
 
     public function index(Request $request)
@@ -77,6 +79,17 @@ class InvoiceController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
+
+        // Lock-date check: block creating invoice dated in a closed period
+        $invoiceDate = $validated['invoice_date'] ?? now()->toDateString();
+        $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoiceDate);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => "Cannot create invoice dated in a closed period. {$lockResult['message']}",
+                'lock_date' => $lockResult['lock_date'],
+                'transaction_date' => $invoiceDate,
+            ], 422);
+        }
 
         try {
             // Map invoice lines to SalesOrder line format
@@ -220,6 +233,16 @@ class InvoiceController extends Controller
                 'message' => 'Invoice already posted',
                 'invoice' => $invoice->fresh(['journalEntry', 'lines']),
             ]);
+        }
+
+        // Lock-date check: block posting into a closed period
+        $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoice->invoice_date);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => $lockResult['message'],
+                'lock_date' => $lockResult['lock_date'],
+                'transaction_date' => $invoice->invoice_date->format('Y-m-d'),
+            ], 422);
         }
 
         try {

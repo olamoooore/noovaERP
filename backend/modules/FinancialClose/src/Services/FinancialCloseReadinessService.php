@@ -60,7 +60,12 @@ class FinancialCloseReadinessService
         $createdTasks    = (clone $taskQuery)->where('status', 'created')->count();
 
         $activeTasks     = $totalTasks - $completedTasks - $cancelledTasks;
-        $taskCompletionRate = $activeTasks > 0 ? round(($completedTasks / $activeTasks) * 100, 2) : 0;
+        $effectiveTotal  = $totalTasks - $cancelledTasks;
+        $taskCompletionRate = $effectiveTotal > 0 ? round(($completedTasks / $effectiveTotal) * 100, 2) : 0;
+
+        // Penalize blocked/escalated tasks (each blocked task reduces score by up to 10%)
+        $blockedPenalty = $effectiveTotal > 0 ? min(30, round(($blockedTasks / $effectiveTotal) * 100, 2)) : 0;
+        $taskCompletionRate = max(0, round($taskCompletionRate - $blockedPenalty, 2));
 
         // --- Blend score ---
         if ($accountScore !== null) {
@@ -162,7 +167,11 @@ class FinancialCloseReadinessService
         $cancelledTasks = (clone $taskQuery)->where('status', 'cancelled')->count();
 
         $activeTasks        = $totalTasks - $completedTasks - $cancelledTasks;
-        $taskCompletionRate = $activeTasks > 0 ? round(($completedTasks / $activeTasks) * 100, 2) : 0;
+        $effectiveTotal     = $totalTasks - $cancelledTasks;
+        $taskCompletionRate = $effectiveTotal > 0 ? round(($completedTasks / $effectiveTotal) * 100, 2) : 0;
+
+        $blockedPenalty = $effectiveTotal > 0 ? min(30, round(($blockedTasks / $effectiveTotal) * 100, 2)) : 0;
+        $taskCompletionRate = max(0, round($taskCompletionRate - $blockedPenalty, 2));
 
         if ($accountScore !== null) {
             $readinessScore = round(0.5 * $accountScore + 0.5 * $taskCompletionRate, 2);

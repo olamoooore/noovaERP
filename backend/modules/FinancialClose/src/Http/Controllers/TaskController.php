@@ -4,9 +4,11 @@ namespace Modules\FinancialClose\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Modules\FinancialClose\Services\FinancialCloseTaskService;
 use Modules\FinancialClose\Services\FinancialCloseAssignmentService;
+use Modules\FinancialClose\Services\FileAccessBrokerService;
 use Modules\FinancialClose\Http\Requests\BlockTaskRequest;
 use Modules\FinancialClose\Http\Requests\LinkDocumentRequest;
 use Modules\FinancialClose\Http\Resources\TaskResource;
@@ -14,6 +16,7 @@ use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\SupportingEvidence;
 use Modules\FinancialClose\Models\TaskEvidenceLink;
+use Modules\FinancialClose\Models\RestrictedDocumentAccessLog;
 use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
@@ -21,6 +24,7 @@ class TaskController extends Controller
     public function __construct(
         private readonly FinancialCloseTaskService $taskService,
         private readonly FinancialCloseAssignmentService $assignmentService,
+        private readonly FileAccessBrokerService $fileAccessBroker,
     ) {}
 
     /** GET /users — list users available for task assignment */
@@ -170,13 +174,48 @@ class TaskController extends Controller
         return response()->json(['message' => 'Task submitted for review.']);
     }
 
+    /** GET /tasks/{taskId}/blockers */
+    public function checkBlockers(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
+        if (!$task) {
+            return response()->json(['message' => 'Task not found.'], 404);
+        }
+
+        $blockers = [];
+
+        // Check dependency blockers
+        if (!$this->taskService->getDependencyService()->canComplete($tenantId, $taskId)) {
+            $depBlockers = $this->taskService->getDependencyService()->getUnresolvedHardDependencies($tenantId, $taskId);
+            foreach ($depBlockers as $dep) {
+                $blockers[] = [
+                    'type' => 'dependency',
+                    'message' => $dep['depends_on_task_title'] ?? 'Upstream task',
+                    'details' => $dep['depends_on_status'] ?? 'unknown',
+                ];
+            }
+        }
+
+        // Check pre-flight blockers (checklist, evidence)
+        $preFlightBlockers = $this->taskService->getPreFlightBlockersForTask($tenantId, $task);
+        $blockers = array_merge($blockers, $preFlightBlockers);
+
+        return response()->json([
+            'can_complete' => empty($blockers),
+            'blockers' => $blockers,
+        ]);
+    }
+
     /** POST /tasks/{taskId}/complete */
     public function complete(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
+        $userRole = $this->getUserRole($request);
 
-        $result = $this->taskService->completeTask($tenantId, $taskId, $userId);
+        $result = $this->taskService->completeTask($tenantId, $taskId, $userId, $userRole);
 
         if (!$result['success']) {
             return response()->json([
@@ -193,14 +232,29 @@ class TaskController extends Controller
     {
         $tenantId = tenant()->getTenantKey();
         $userId   = $request->user()->id;
+        $userRole = $this->getUserRole($request);
 
-        $success = $this->taskService->returnTask($tenantId, $taskId, $userId);
+        $success = $this->taskService->returnTask($tenantId, $taskId, $userId, $userRole);
 
         if (!$success) {
-            return response()->json(['message' => 'Task cannot be returned.'], 422);
+            return response()->json(['message' => 'Task cannot be returned. Only reviewers (Manager, Admin, Owner) can return tasks.'], 422);
         }
 
         return response()->json(['message' => 'Task returned.']);
+    }
+
+    /**
+     * Resolve the user's tenant-scoped role from the user_company_access table.
+     */
+    private function getUserRole(Request $request): ?string
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        return \DB::table('public.user_company_access')
+            ->where('user_id', $userId)
+            ->where('tenant_id', $tenantId)
+            ->value('role');
     }
 
     /** POST /tasks/{taskId}/block */
@@ -290,6 +344,11 @@ class TaskController extends Controller
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
+        // Prevent evidence upload if task is completed or cancelled
+        if (in_array($task->status, ['completed', 'cancelled'])) {
+            return response()->json(['message' => 'Cannot upload evidence to a completed or cancelled task.'], 422);
+        }
+
         $request->validate(['file' => ['required', 'file', 'max:10240']]);
 
         $file = $request->file('file');
@@ -345,6 +404,84 @@ class TaskController extends Controller
             ->values();
 
         return response()->json(['data' => $evidence]);
+    }
+
+    /** GET /tasks/{taskId}/evidence/{evidenceId}/download */
+    public function downloadEvidence(Request $request, string $taskId, string $evidenceId): Response|JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+
+        // Check if user can download evidence
+        if (!$this->fileAccessBroker->authorizeAccess($tenantId, $userId, $evidenceId)) {
+            return response()->json(['message' => 'Unauthorized to download this evidence.'], 403);
+        }
+
+        $evidence = SupportingEvidence::where('tenant_id', $tenantId)
+            ->where('id', $evidenceId)
+            ->first();
+
+        if (!$evidence || !$evidence->file_path) {
+            return response()->json(['message' => 'Evidence not found or file missing.'], 404);
+        }
+
+        // Log the view access
+        RestrictedDocumentAccessLog::create([
+            'tenant_id' => $tenantId,
+            'user_id' => $userId,
+            'document_type' => 'evidence',
+            'document_id' => $evidenceId,
+            'action' => 'view',
+            'was_authorized' => true,
+        ]);
+
+        $path = $evidence->file_path;
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json(['message' => 'File not found on disk.'], 404);
+        }
+
+        $fileContents = Storage::disk('public')->get($path);
+        $mimeType = Storage::disk('public')->mimeType($path);
+        $fileName = $evidence->file_name;
+
+        return response($fileContents, 200, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+        ]);
+    }
+
+    /** GET /tasks/{taskId}/evidence/audit-trail */
+    public function evidenceAuditTrail(Request $request, string $taskId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        // Get all evidence IDs for this task
+        $evidenceIds = TaskEvidenceLink::where('tenant_id', $tenantId)
+            ->where('task_id', $taskId)
+            ->pluck('evidence_id')
+            ->toArray();
+
+        if (empty($evidenceIds)) {
+            return response()->json(['data' => []]);
+        }
+
+        // Get access logs for these evidence items
+        $logs = RestrictedDocumentAccessLog::where('tenant_id', $tenantId)
+            ->where('document_type', 'evidence')
+            ->whereIn('document_id', $evidenceIds)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'id' => $log->id,
+                    'user_id' => $log->user_id,
+                    'action' => $log->action,
+                    'was_authorized' => $log->was_authorized,
+                    'created_at' => $log->created_at,
+                ];
+            });
+
+        return response()->json(['data' => $logs]);
     }
 
     /** POST /tasks/{taskId}/link-document */

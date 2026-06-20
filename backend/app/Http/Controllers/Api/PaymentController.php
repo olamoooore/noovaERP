@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Invoice;
 use App\Services\InvoiceService;
+use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
     public function __construct(
-        private InvoiceService $invoiceService
+        private InvoiceService $invoiceService,
+        private LockDateValidationService $lockDateValidator,
     ) {}
 
     /**
@@ -110,6 +112,17 @@ class PaymentController extends Controller
             if ($totalApplied > $invoice->balance) {
                 return response()->json([
                     'message' => 'Payment amount exceeds invoice balance',
+                ], 422);
+            }
+
+            // Lock-date check: block recording payment dated in a closed period
+            $paymentDate = $validated['payment_date'] ?? now()->toDateString();
+            $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $paymentDate);
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message' => "Cannot record payment dated in a closed period. {$lockResult['message']}",
+                    'lock_date' => $lockResult['lock_date'],
+                    'transaction_date' => $paymentDate,
                 ], 422);
             }
 

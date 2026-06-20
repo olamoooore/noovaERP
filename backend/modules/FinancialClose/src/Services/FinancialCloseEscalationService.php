@@ -172,6 +172,92 @@ class FinancialCloseEscalationService
     }
 
     /**
+     * Return an escalation - sends task back to the preparer
+     * Task status changes to 'in_progress'
+     */
+    public function returnEscalation(string $tenantId, string $escalationId, string $userId, ?string $reason = null): bool
+    {
+        $escalation = EscalationEvent::where('tenant_id', $tenantId)
+            ->where('id', $escalationId)
+            ->first();
+
+        if (!$escalation || $escalation->status !== 'open') {
+            return false;
+        }
+
+        $escalation->update([
+            'status' => 'returned',
+            'resolved_at' => now(),
+            'metadata' => array_merge($escalation->metadata ?? [], [
+                'return_reason' => $reason,
+                'returned_by' => $userId,
+            ]),
+        ]);
+
+        $task = CloseTask::where('tenant_id', $tenantId)
+            ->where('id', $escalation->task_id)
+            ->first();
+
+        if ($task) {
+            $task->update(['status' => 'in_progress']);
+
+            AuditLog::create([
+                'tenant_id' => $tenantId,
+                'actor_id' => $userId,
+                'action' => 'escalation_returned',
+                'entity_type' => 'close_task',
+                'entity_id' => $task->id,
+                'after' => ['reason' => $reason],
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Approve an escalation - approves the task work and moves it forward
+     * Task status changes to 'approved'
+     */
+    public function approveEscalation(string $tenantId, string $escalationId, string $userId, ?string $notes = null): bool
+    {
+        $escalation = EscalationEvent::where('tenant_id', $tenantId)
+            ->where('id', $escalationId)
+            ->first();
+
+        if (!$escalation || $escalation->status !== 'open') {
+            return false;
+        }
+
+        $escalation->update([
+            'status' => 'approved',
+            'resolved_at' => now(),
+            'metadata' => array_merge($escalation->metadata ?? [], [
+                'approval_notes' => $notes,
+                'approved_by' => $userId,
+            ]),
+        ]);
+
+        $task = CloseTask::where('tenant_id', $tenantId)
+            ->where('id', $escalation->task_id)
+            ->first();
+
+        if ($task) {
+            $task->update(['status' => 'approved']);
+
+            AuditLog::create([
+                'tenant_id' => $tenantId,
+                'actor_id' => $userId,
+                'action' => 'escalation_approved',
+                'entity_type' => 'close_task',
+                'entity_id' => $task->id,
+                'after' => ['notes' => $notes],
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
      * Scan for overdue tasks and create escalations automatically
      */
     public function processOverdueTasks(string $tenantId, string $cycleId): int

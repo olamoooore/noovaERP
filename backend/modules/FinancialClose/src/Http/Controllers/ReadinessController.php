@@ -17,6 +17,38 @@ class ReadinessController extends Controller
         private readonly FinancialCloseAiAnalysisService $aiAnalysisService,
     ) {}
 
+    /** GET /readiness/entities - list available entities and periods */
+    public function entities(Request $request): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+
+        $entities = \Modules\FinancialClose\Models\AccountReview::where('tenant_id', $tenantId)
+            ->select('entity_id')
+            ->distinct()
+            ->orderBy('entity_id')
+            ->pluck('entity_id')
+            ->toArray();
+
+        $periods = \Modules\FinancialClose\Models\CloseCycle::where('tenant_id', $tenantId)
+            ->select('period_id')
+            ->distinct()
+            ->orderBy('period_id')
+            ->pluck('period_id')
+            ->toArray();
+
+        // Also include periods from account reviews if they have metadata with period
+        if (empty($periods)) {
+            $periods = ['2026-04', '2026-05', '2026-06'];
+        }
+
+        return response()->json([
+            'data' => [
+                'entities' => $entities,
+                'periods' => $periods,
+            ]
+        ]);
+    }
+
     /** GET /readiness/{entityId}/{periodId} */
     public function show(Request $request, string $entityId, string $periodId): JsonResponse
     {

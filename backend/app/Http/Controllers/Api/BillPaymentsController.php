@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\BillPayment;
 use App\Services\BillPaymentService;
+use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,6 +13,7 @@ class BillPaymentsController extends Controller
 {
     public function __construct(
         private BillPaymentService $billPaymentService,
+        private LockDateValidationService $lockDateValidator,
     ) {}
     /**
      * Display a listing of bill payments
@@ -91,6 +93,18 @@ class BillPaymentsController extends Controller
             }
 
             $data = array_merge($validated, ['created_by' => Auth::id()]);
+
+            // Lock-date check: block recording bill payment dated in a closed period
+            $paymentDate = $validated['payment_date'] ?? now()->toDateString();
+            $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $paymentDate);
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message' => "Cannot record bill payment dated in a closed period. {$lockResult['message']}",
+                    'lock_date' => $lockResult['lock_date'],
+                    'transaction_date' => $paymentDate,
+                ], 422);
+            }
+
             $payment = $this->billPaymentService->recordPayment($data, Auth::id());
 
             return response()->json([

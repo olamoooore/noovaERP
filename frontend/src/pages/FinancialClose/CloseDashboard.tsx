@@ -1,13 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { closeTasksApi, closeCyclesApi, readinessApi, type CloseCycle, type CloseTask, type ReadinessAccount, type ReadinessSummary } from '@/services/closeApi'
-
-const DEFAULT_ENTITY_ID = 'entity-001'
-const DEFAULT_PERIOD_ID  = '2026-04'
 
 function KpiCard({
   label,
@@ -81,6 +79,14 @@ function cycleBadgeClass(status: string) {
 
 export function CloseDashboard() {
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const entityId = params.get('entityId') ?? 'entity-001'
+  const periodId = params.get('periodId') ?? '2026-04'
+
+  const { data: entityOptions } = useQuery({
+    queryKey: ['readiness-entities'],
+    queryFn: () => readinessApi.entities().then(r => r.data.data),
+  })
 
   const { data: myTasks = [] } = useQuery<CloseTask[]>({
     queryKey: ['my-tasks'],
@@ -93,9 +99,13 @@ export function CloseDashboard() {
   })
 
   const activeCycles = cycles.filter(c => c.status === 'opened' || c.status === 'ready_to_close')
-  const matchCycle = activeCycles.find(c => c.entity_id === DEFAULT_ENTITY_ID && c.period_id === DEFAULT_PERIOD_ID)
-  const entityId = DEFAULT_ENTITY_ID
-  const periodId = DEFAULT_PERIOD_ID
+  const matchCycle = activeCycles.find(c => c.entity_id === entityId && c.period_id === periodId)
+
+  function updateParam(key: string, value: string) {
+    const next = new URLSearchParams(params)
+    next.set(key, value)
+    setParams(next, { replace: true })
+  }
 
   const { data: readiness } = useQuery<ReadinessSummary>({
     queryKey: ['readiness', entityId, periodId, matchCycle?.id],
@@ -119,7 +129,28 @@ export function CloseDashboard() {
             <div className="space-y-4 max-w-2xl">
               <div>
                 <h1 className="text-3xl font-bold">Financial Close</h1>
-                <p className="text-muted-foreground mt-1">Command dashboard for {entityId} — {periodId}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <Select value={entityId} onValueChange={(v) => updateParam('entityId', v)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Entity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(entityOptions?.entities ?? ['entity-001']).map(e => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={periodId} onValueChange={(v) => updateParam('periodId', v)}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(entityOptions?.periods ?? ['2026-04']).map(p => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="px-3 py-1">{activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}</Badge>

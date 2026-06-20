@@ -25,6 +25,7 @@ Route::post('/cycles',                          [CloseCycleController::class, 's
 Route::post('/cycles/{cycleId}/open',           [CloseCycleController::class, 'open']);
 Route::post('/cycles/{cycleId}/close',          [CloseCycleController::class, 'close']);
 Route::post('/cycles/{cycleId}/signoff',         [CloseCycleController::class, 'signoff']);
+Route::get('/cycles/{cycleId}/signoff-check',     [CloseCycleController::class, 'signoffCheck']);
 Route::post('/cycles/{cycleId}/revoke-signoff',  [CloseCycleController::class, 'revokeSignoff']);
 Route::get('/cycles/{cycleId}/readiness',        [CloseCycleController::class, 'readiness']);
 Route::post('/cycles/{cycleId}/generate-tasks', [CloseCycleController::class, 'generateTasks']);
@@ -38,6 +39,7 @@ Route::get('/tasks/review-queue',               [TaskController::class, 'reviewQ
 Route::get('/tasks/{taskId}',                   [TaskController::class, 'show']);
 Route::post('/tasks/{taskId}/start',            [TaskController::class, 'start']);
 Route::post('/tasks/{taskId}/submit',           [TaskController::class, 'submit']);
+Route::get('/tasks/{taskId}/blockers',          [TaskController::class, 'checkBlockers']);
 Route::post('/tasks/{taskId}/complete',         [TaskController::class, 'complete']);
 Route::post('/tasks/{taskId}/return',           [TaskController::class, 'returnTask']);
 Route::post('/tasks/{taskId}/block',            [TaskController::class, 'block']);
@@ -47,6 +49,8 @@ Route::get('/tasks/{taskId}/assignments',       [TaskController::class, 'assignm
 Route::post('/tasks/{taskId}/checklist',        [TaskController::class, 'saveChecklist']);
 Route::post('/tasks/{taskId}/evidence',         [TaskController::class, 'uploadEvidence']);
 Route::get('/tasks/{taskId}/evidence',          [TaskController::class, 'listEvidence']);
+Route::get('/tasks/{taskId}/evidence/{evidenceId}/download', [TaskController::class, 'downloadEvidence']);
+Route::get('/tasks/{taskId}/evidence/audit-trail', [TaskController::class, 'evidenceAuditTrail']);
 Route::post('/tasks/{taskId}/link-document',    [TaskController::class, 'linkDocument']);
 Route::delete('/tasks/{taskId}/link-document',  [TaskController::class, 'unlinkDocument']);
 
@@ -54,6 +58,8 @@ Route::delete('/tasks/{taskId}/link-document',  [TaskController::class, 'unlinkD
 Route::get('/tasks/{taskId}/escalations',               [EscalationController::class, 'index']);
 Route::post('/tasks/{taskId}/escalations',              [EscalationController::class, 'store']);
 Route::post('/escalations/{escalationId}/resolve',      [EscalationController::class, 'resolve']);
+Route::post('/escalations/{escalationId}/return',       [EscalationController::class, 'return']);
+Route::post('/escalations/{escalationId}/approve',      [EscalationController::class, 'approve']);
 
 // ─── AI Findings ─────────────────────────────────────────────────────────────
 Route::get('/findings',                                 [FindingController::class, 'listAll']);
@@ -66,6 +72,7 @@ Route::post('/findings/{findingId}/dismiss',            [FindingController::clas
 Route::post('/findings/{findingId}/escalate',           [FindingController::class, 'escalate']);
 
 // ─── Readiness ───────────────────────────────────────────────────────────────
+Route::get('/readiness/entities',                        [ReadinessController::class, 'entities']);
 Route::get('/readiness/{entityId}/{periodId}',          [ReadinessController::class, 'show']);
 Route::post('/readiness/{entityId}/{periodId}/refresh', [ReadinessController::class, 'refresh']);
 

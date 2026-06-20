@@ -227,6 +227,9 @@ export const closeCyclesApi = {
   signoff: (cycleId: string, role: string, notes?: string) =>
     api.post(`/close/cycles/${cycleId}/signoff`, { role, notes }),
 
+  signoffCheck: (cycleId: string) =>
+    api.get<{ data: { can_signoff: boolean; evaluation: CycleReadiness } }>(`/close/cycles/${cycleId}/signoff-check`),
+
   revokeSignoff: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/revoke-signoff`),
 
@@ -286,6 +289,11 @@ export const closeTasksApi = {
       `/close/tasks/${taskId}/complete`
     ),
 
+  checkBlockers: (taskId: string) =>
+    api.get<{ can_complete: boolean; blockers: Array<{ type: string; message: string; details?: any }> }>(
+      `/close/tasks/${taskId}/blockers`
+    ),
+
   returnTask: (taskId: string) =>
     api.post(`/close/tasks/${taskId}/return`),
 
@@ -319,6 +327,14 @@ export const closeTasksApi = {
       `/close/tasks/${taskId}/evidence`
     ),
 
+  downloadEvidenceUrl: (taskId: string, evidenceId: string) =>
+    `/api/financial-close/tasks/${taskId}/evidence/${evidenceId}/download`,
+
+  evidenceAuditTrail: (taskId: string) =>
+    api.get<{ data: Array<{ id: string; user_id: string; action: string; was_authorized: boolean; created_at: string }> }>(
+      `/close/tasks/${taskId}/evidence/audit-trail`
+    ),
+
   linkDocument: (taskId: string, documentType: string, documentId: number, title?: string) =>
     api.post(`/close/tasks/${taskId}/link-document`, { document_type: documentType, document_id: documentId, title }),
 
@@ -337,6 +353,12 @@ export const escalationsApi = {
 
   resolve: (escalationId: string) =>
     api.post(`/close/escalations/${escalationId}/resolve`),
+
+  return: (escalationId: string, reason?: string) =>
+    api.post(`/close/escalations/${escalationId}/return`, { reason }),
+
+  approve: (escalationId: string, notes?: string) =>
+    api.post(`/close/escalations/${escalationId}/approve`, { notes }),
 }
 
 // ─── AI Findings ─────────────────────────────────────────────────────────────
@@ -372,6 +394,9 @@ export const readinessApi = {
 
   refresh: (entityId: string, periodId: string, cycleId?: string) =>
     api.post<{ data: ReadinessSummary }>(`/close/readiness/${entityId}/${periodId}/refresh`, { cycle_id: cycleId }),
+
+  entities: () =>
+    api.get<{ data: { entities: string[]; periods: string[] } }>('/close/readiness/entities'),
 }
 
 // ─── Forecast ─────────────────────────────────────────────────────────────────

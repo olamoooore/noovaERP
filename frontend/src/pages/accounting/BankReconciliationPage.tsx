@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ export function BankReconciliationPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
   // State management
   const [selectedBankAccount, setSelectedBankAccount] = useState<number | null>(null);
@@ -48,6 +49,18 @@ export function BankReconciliationPage() {
     status: 'all',
     search: '',
   });
+
+  // Pre-select bank account from query param
+  const accountParam = searchParams.get('account');
+  useEffect(() => {
+    if (accountParam && bankAccountsData?.data) {
+      const accId = parseInt(accountParam, 10);
+      const exists = bankAccountsData.data.find((a: any) => a.id === accId);
+      if (exists) {
+        setSelectedBankAccount(accId);
+      }
+    }
+  }, [accountParam, bankAccountsData]);
 
   // Add transaction form state
   const [newTransaction, setNewTransaction] = useState<AddTransactionRequest>({

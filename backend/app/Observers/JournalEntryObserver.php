@@ -4,14 +4,17 @@ namespace App\Observers;
 
 use App\Models\JournalEntry;
 use App\Models\Tenant;
+use Modules\FinancialClose\Jobs\RefreshJournalEntryTaskLinksJob;
 use Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Journal Entry Observer
  * 
  * Listens to journal entry events and triggers BI updates
+ * and Financial Close task refresh when status changes.
  */
 class JournalEntryObserver
 {
@@ -20,9 +23,9 @@ class JournalEntryObserver
      */
     public function created(JournalEntry $journalEntry): void
     {
-        // Dispatch BI update when entry is created and posted
         if ($journalEntry->status === 'posted') {
             $this->dispatchBIUpdate($journalEntry);
+            $this->dispatchTaskRefresh($journalEntry);
         }
     }
 
@@ -31,10 +34,72 @@ class JournalEntryObserver
      */
     public function updated(JournalEntry $journalEntry): void
     {
-        // Dispatch BI update when entry status changes to posted
         if ($journalEntry->wasChanged('status') && $journalEntry->status === 'posted') {
             $this->dispatchBIUpdate($journalEntry);
+            $this->dispatchTaskRefresh($journalEntry);
         }
+    }
+
+    /**
+     * Dispatch task refresh job to update Financial Close task links
+     */
+    private function dispatchTaskRefresh(JournalEntry $journalEntry): void
+    {
+        try {
+            $tenantId = $this->resolveTenantId($journalEntry);
+            if (!$tenantId) {
+                return;
+            }
+
+            $activeCycles = DB::table('fco_close_cycles')
+                ->where('tenant_id', $tenantId)
+                ->where('status', 'opened')
+                ->pluck('id');
+
+            foreach ($activeCycles as $cycleId) {
+                RefreshJournalEntryTaskLinksJob::dispatch(
+                    tenantId: $tenantId,
+                    cycleId: $cycleId,
+                    journalEntryId: $journalEntry->id,
+                )->delay(now()->addSeconds(5));
+            }
+
+            Log::info('JournalEntryObserver: Task refresh job dispatched', [
+                'journal_entry_id' => $journalEntry->id,
+                'status' => $journalEntry->status,
+                'tenant_id' => $tenantId,
+                'cycles_count' => $activeCycles->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('JournalEntryObserver: Failed to dispatch task refresh', [
+                'journal_entry_id' => $journalEntry->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Resolve tenant ID from journal entry
+     */
+    private function resolveTenantId(JournalEntry $journalEntry): ?string
+    {
+        if (function_exists('tenant') && tenant()) {
+            return (string) tenant()->getTenantKey();
+        }
+
+        if ($journalEntry->tenant_id ?? null) {
+            return (string) $journalEntry->tenant_id;
+        }
+
+        if ($journalEntry->tenant?->id) {
+            return (string) $journalEntry->tenant->id;
+        }
+
+        if (tenancy()->initialized) {
+            return (string) tenant()->id;
+        }
+
+        return null;
     }
 
     /**

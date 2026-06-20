@@ -114,7 +114,11 @@ class CloseCycleController extends Controller
         );
 
         if (!$result['success']) {
-            return response()->json(['message' => $result['reason']], 422);
+            return response()->json([
+                'message' => $result['reason'],
+                'incomplete_tasks' => $result['incomplete_tasks'] ?? null,
+                'open_escalations' => $result['open_escalations'] ?? null,
+            ], 422);
         }
 
         return response()->json([
@@ -123,6 +127,20 @@ class CloseCycleController extends Controller
             'ready_to_close'=> $result['ready_to_close'],
             'evaluation'    => $result['evaluation'],
         ], 201);
+    }
+
+    /** GET /cycles/{cycleId}/signoff-check — check if sign-off is blocked */
+    public function signoffCheck(Request $request, string $cycleId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $evaluation = $this->cycleService->evaluateReadiness($tenantId, $cycleId);
+
+        return response()->json([
+            'data' => [
+                'can_signoff' => $evaluation['incomplete_tasks'] === 0 && $evaluation['open_escalations'] === 0,
+                'evaluation' => $evaluation,
+            ]
+        ]);
     }
 
     /** POST /cycles/{cycleId}/revoke-signoff */

@@ -7,6 +7,7 @@ use App\Models\Bill;
 use App\Models\BillLine;
 use App\Models\GoodsReceipt;
 use App\Services\BillService;
+use App\Services\LockDateValidationService;
 use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
 use Illuminate\Http\Request;
@@ -19,6 +20,11 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class VendorBillsController extends Controller
 {
+    public function __construct(
+        private LockDateValidationService $lockDateValidator,
+        private ThreeWayMatchService $threeWayMatchService,
+        private BillService $billService,
+    ) {}
     /**
      * List all vendor bills
      * 
@@ -132,11 +138,6 @@ class VendorBillsController extends Controller
         }
     }
 
-    public function __construct(
-        private readonly ThreeWayMatchService $threeWayMatchService,
-        private readonly BillService $billService,
-    ) {}
-
     /**
      * Create a new vendor bill
      *
@@ -184,6 +185,16 @@ class VendorBillsController extends Controller
                 return response()->json([
                     'message' => 'Validation failed',
                     'errors'  => $validator->errors(),
+                ], 422);
+            }
+
+            // Lock-date check: block creating bill dated in a closed period
+            $lockResult = $this->lockDateValidator->validateTransactionDate('purchases', $request->input('bill_date'));
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message' => "Cannot create bill dated in a closed period. {$lockResult['message']}",
+                    'lock_date' => $lockResult['lock_date'],
+                    'transaction_date' => $request->input('bill_date'),
                 ], 422);
             }
 
@@ -507,6 +518,16 @@ class VendorBillsController extends Controller
                         ], 422);
                     }
                 }
+            }
+
+            // Lock-date check: block posting into a closed period
+            $lockResult = $this->lockDateValidator->validateTransactionDate('purchases', $bill->bill_date);
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message' => "Cannot post bill dated in a closed period. {$lockResult['message']}",
+                    'lock_date' => $lockResult['lock_date'],
+                    'transaction_date' => $bill->bill_date?->format('Y-m-d'),
+                ], 422);
             }
 
             $result = $billService->postBill($bill);

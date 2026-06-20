@@ -156,6 +156,7 @@ export function CloseCyclesPage() {
       closeCyclesApi.signoff(cycleId, role),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
+      queryClient.invalidateQueries({ queryKey: ['signoff-check', signoffCycleId] })
       const ready = res?.data?.ready_to_close
       const count = res?.data?.signoff_count
       toast({
@@ -164,8 +165,20 @@ export function CloseCyclesPage() {
           : `Sign-off recorded (${count}). Complete remaining tasks to unlock close.`,
       })
     },
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast({ title: err?.response?.data?.message ?? 'Sign-off failed.', variant: 'destructive' }),
+    onError: (err: { response?: { data?: { message?: string; incomplete_tasks?: number; open_escalations?: number } } }) => {
+      const msg = err?.response?.data?.message ?? 'Sign-off failed.'
+      const incomplete = err?.response?.data?.incomplete_tasks
+      const escalations = err?.response?.data?.open_escalations
+      const details = [
+        incomplete ? `${incomplete} incomplete task(s)` : '',
+        escalations ? `${escalations} open escalation(s)` : '',
+      ].filter(Boolean).join(', ')
+      toast({
+        title: msg,
+        description: details ? `Blockers: ${details}` : undefined,
+        variant: 'destructive',
+      })
+    },
   })
 
   const generateTasksMutation = useMutation({
@@ -184,6 +197,31 @@ export function CloseCyclesPage() {
   })
 
   const cycles: CloseCycle[] = data ?? []
+
+  // Sign-off confirmation dialog state
+  const [signoffDialogOpen, setSignoffDialogOpen] = useState(false)
+  const [signoffCycleId, setSignoffCycleId] = useState<string | null>(null)
+
+  const { data: signoffCheckData, isLoading: signoffCheckLoading } = useQuery({
+    queryKey: ['signoff-check', signoffCycleId],
+    queryFn: () => closeCyclesApi.signoffCheck(signoffCycleId!).then(r => r.data.data),
+    enabled: !!signoffCycleId && signoffDialogOpen,
+  })
+
+  const canSignoff = signoffCheckData?.can_signoff ?? false
+  const signoffEvaluation = signoffCheckData?.evaluation
+
+  function openSignoffDialog(cycleId: string) {
+    setSignoffCycleId(cycleId)
+    setSignoffDialogOpen(true)
+  }
+
+  function confirmSignoff() {
+    if (!signoffCycleId) return
+    signoffMutation.mutate({ cycleId: signoffCycleId, role: 'Admin' })
+    setSignoffDialogOpen(false)
+    setSignoffCycleId(null)
+  }
 
   const isCreateDisabled =
     !selectedEntityId ||
@@ -313,7 +351,7 @@ export function CloseCyclesPage() {
                             size="sm"
                             variant="outline"
                             className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                            onClick={() => signoffMutation.mutate({ cycleId: cycle.id, role: 'Admin' })}
+                            onClick={() => openSignoffDialog(cycle.id)}
                             disabled={signoffMutation.isPending}
                           >
                             <Icon icon="solar:verified-check-bold-duotone" className="mr-1.5 h-4 w-4" />
@@ -444,6 +482,108 @@ export function CloseCyclesPage() {
               disabled={isCreateDisabled}
             >
               Create Cycle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign-off Confirmation Dialog */}
+      <Dialog open={signoffDialogOpen} onOpenChange={(open) => { if (!open) { setSignoffDialogOpen(false); setSignoffCycleId(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:verified-check-bold-duotone" className="h-5 w-5 text-blue-600" />
+              Confirm Sign-Off
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {signoffCheckLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground py-4 justify-center">
+                <Icon icon="solar:spinner-bold" className="h-4 w-4 animate-spin" />
+                Checking blockers...
+              </div>
+            ) : signoffEvaluation ? (
+              <>
+                {!canSignoff && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/30">
+                    <div className="flex items-start gap-3">
+                      <Icon icon="solar:danger-bold" className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium text-red-700 dark:text-red-400">Sign-off Blocked</p>
+                        <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                          All tasks must be completed and escalations resolved before sign-off.
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-red-600 dark:text-red-300">
+                          {signoffEvaluation.incomplete_tasks > 0 && (
+                            <li className="flex items-center gap-2">
+                              <span className="font-mono text-xs bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">{signoffEvaluation.incomplete_tasks}</span>
+                              incomplete task(s)
+                            </li>
+                          )}
+                          {signoffEvaluation.open_escalations > 0 && (
+                            <li className="flex items-center gap-2">
+                              <span className="font-mono text-xs bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">{signoffEvaluation.open_escalations}</span>
+                              open escalation(s)
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {canSignoff && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/30">
+                    <div className="flex items-start gap-3">
+                      <Icon icon="solar:check-circle-bold" className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium text-green-700 dark:text-green-400">Ready to Sign Off</p>
+                        <p className="text-sm text-green-600 dark:text-green-300 mt-1">
+                          All tasks are complete and escalations resolved.
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-green-600 dark:text-green-300">
+                          <li className="flex items-center gap-2">
+                            <Icon icon="solar:check-read-bold" className="h-3.5 w-3.5" />
+                            All tasks completed
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Icon icon="solar:check-read-bold" className="h-3.5 w-3.5" />
+                            No open escalations
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Icon icon="solar:check-read-bold" className="h-3.5 w-3.5" />
+                            {signoffEvaluation.authorised_signoffs} / {signoffEvaluation.required_signoffs} sign-off(s)
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  By signing off, you attest that all reconciliation work for this cycle is complete and accurate.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4 text-center">Unable to check blockers.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSignoffDialogOpen(false); setSignoffCycleId(null); }}>Cancel</Button>
+            <Button
+              onClick={confirmSignoff}
+              disabled={!canSignoff || signoffCheckLoading || signoffMutation.isPending}
+              className={!canSignoff ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              {signoffMutation.isPending ? (
+                <>
+                  <Icon icon="solar:spinner-bold" className="mr-2 h-4 w-4 animate-spin" />
+                  Signing Off...
+                </>
+              ) : (
+                <>
+                  <Icon icon="solar:verified-check-bold-duotone" className="mr-2 h-4 w-4" />
+                  Confirm Sign-Off
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

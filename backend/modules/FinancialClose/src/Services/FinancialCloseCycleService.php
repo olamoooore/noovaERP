@@ -217,6 +217,36 @@ class FinancialCloseCycleService
             return ['success' => false, 'reason' => 'Cycle is already closed.'];
         }
 
+        // Block sign-off if there are incomplete tasks
+        $incompleteTasks = CloseTask::where('tenant_id', $tenantId)
+            ->where('cycle_id', $cycleId)
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->count();
+
+        if ($incompleteTasks > 0) {
+            return [
+                'success' => false,
+                'reason' => "Cannot sign off: {$incompleteTasks} incomplete task(s) must be completed or cancelled first.",
+                'incomplete_tasks' => $incompleteTasks,
+            ];
+        }
+
+        // Block sign-off if there are open escalations
+        $openEscalations = \Modules\FinancialClose\Models\EscalationEvent::where('tenant_id', $tenantId)
+            ->whereHas('task', function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            })
+            ->where('status', 'open')
+            ->count();
+
+        if ($openEscalations > 0) {
+            return [
+                'success' => false,
+                'reason' => "Cannot sign off: {$openEscalations} open escalation(s) must be resolved first.",
+                'open_escalations' => $openEscalations,
+            ];
+        }
+
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
         $signoffs = $metadata['cycle_signoffs'] ?? [];
 

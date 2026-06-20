@@ -63,4 +63,36 @@ class EscalationController extends Controller
 
         return response()->json(['message' => 'Escalation resolved.']);
     }
+
+    /** POST /escalations/{escalationId}/return */
+    public function return(Request $request, string $escalationId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+        $reason   = $request->input('reason');
+
+        $success = $this->escalationService->returnEscalation($tenantId, $escalationId, $userId, $reason);
+
+        if (!$success) {
+            return response()->json(['message' => 'Escalation not found or already resolved.'], 422);
+        }
+
+        return response()->json(['message' => 'Escalation returned to preparer.']);
+    }
+
+    /** POST /escalations/{escalationId}/approve */
+    public function approve(Request $request, string $escalationId): JsonResponse
+    {
+        $tenantId = tenant()->getTenantKey();
+        $userId   = $request->user()->id;
+        $notes    = $request->input('notes');
+
+        $success = $this->escalationService->approveEscalation($tenantId, $escalationId, $userId, $notes);
+
+        if (!$success) {
+            return response()->json(['message' => 'Escalation not found or already resolved.'], 422);
+        }
+
+        return response()->json(['message' => 'Escalation approved.']);
+    }
 }

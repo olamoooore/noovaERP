@@ -23,6 +23,14 @@ class FinancialCloseTaskService
     }
 
     /**
+     * Get the dependency service instance.
+     */
+    public function getDependencyService(): FinancialCloseDependencyService
+    {
+        return $this->dependencyService;
+    }
+
+    /**
      * Dispatch a readiness refresh for the task's cycle.
      */
     private function refreshReadiness(string $tenantId, string $cycleId): void
@@ -110,13 +118,32 @@ class FinancialCloseTaskService
     }
 
     /**
-     * Return a task to the assignee
+     * Return a task to the assignee.
+     * Role check: only Manager, Admin, Owner can return submitted tasks.
      */
-    public function returnTask(string $tenantId, string $taskId, string $userId): bool
+    public function returnTask(string $tenantId, string $taskId, string $userId, ?string $userRole = null): bool
     {
         $task = $this->getTask($tenantId, $taskId);
 
         if (!$task || $task->status !== 'submitted') {
+            return false;
+        }
+
+        // Role-based access control: only reviewer roles can return tasks
+        $reviewerRoles = ['owner', 'admin', 'manager'];
+        if ($userRole && !in_array(strtolower($userRole), $reviewerRoles)) {
+            Log::warning('FinancialClose: task return denied — insufficient role', [
+                'tenant_id' => $tenantId,
+                'task_id'   => $taskId,
+                'user_id'   => $userId,
+                'user_role' => $userRole,
+            ]);
+
+            $this->writeAuditLog($tenantId, $userId, 'task_return_denied_role', $taskId, [
+                'user_role' => $userRole,
+                'required_roles' => $reviewerRoles,
+            ]);
+
             return false;
         }
 
@@ -132,13 +159,55 @@ class FinancialCloseTaskService
      * Complete a task — dependency-aware.
      * Hard dependencies that are not yet completed WILL deny completion.
      * Checklist items and evidence must be resolved.
+     * Role check: only Manager, Admin, Owner can complete (reviewer roles).
+     * Separation-of-duties: completer must differ from the assigned preparer.
      */
-    public function completeTask(string $tenantId, string $taskId, string $userId): array
+    public function completeTask(string $tenantId, string $taskId, string $userId, ?string $userRole = null): array
     {
         $task = $this->getTask($tenantId, $taskId);
 
         if (!$task || $task->status !== 'submitted') {
             return ['success' => false, 'reason' => 'Task not found or not in submitted state'];
+        }
+
+        // Role-based access control: only reviewer roles can complete/approve tasks
+        $reviewerRoles = ['owner', 'admin', 'manager'];
+        if ($userRole && !in_array(strtolower($userRole), $reviewerRoles)) {
+            Log::warning('FinancialClose: task completion denied — insufficient role', [
+                'tenant_id' => $tenantId,
+                'task_id'   => $taskId,
+                'user_id'   => $userId,
+                'user_role' => $userRole,
+            ]);
+
+            $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_role', $taskId, [
+                'user_role' => $userRole,
+                'required_roles' => $reviewerRoles,
+            ]);
+
+            return [
+                'success' => false,
+                'reason'  => 'Only reviewers (Manager, Admin, Owner) can approve submitted tasks',
+            ];
+        }
+
+        // Separation-of-duties: the completer must not be the same user who prepared the task
+        if ($task->assigned_to && (string) $task->assigned_to === (string) $userId) {
+            Log::warning('FinancialClose: task completion denied — separation of duties violated', [
+                'tenant_id'  => $tenantId,
+                'task_id'    => $taskId,
+                'user_id'    => $userId,
+                'assigned_to' => $task->assigned_to,
+            ]);
+
+            $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_sod', $taskId, [
+                'assigned_to' => $task->assigned_to,
+            ]);
+
+            return [
+                'success' => false,
+                'reason'  => 'You cannot approve a task you prepared. Another reviewer must approve it.',
+            ];
         }
 
         if (!$this->dependencyService->canComplete($tenantId, $taskId)) {
@@ -190,6 +259,16 @@ class FinancialCloseTaskService
         $this->dependencyService->unblockDownstreamTasks($tenantId, $taskId);
 
         return ['success' => true];
+    }
+
+    /**
+     * Check pre-flight conditions that must be met before completing a task.
+     * Public wrapper for external access.
+     * Returns an array of blocker messages (empty = all clear).
+     */
+    public function getPreFlightBlockersForTask(string $tenantId, CloseTask $task): array
+    {
+        return $this->getPreFlightBlockers($tenantId, $task);
     }
 
     /**

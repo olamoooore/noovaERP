@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { readinessApi, type ReadinessAccount, type ReadinessSummary } from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
 
@@ -100,13 +101,18 @@ function getAccountAction(account: ReadinessAccount) {
 
 export function ReadinessCockpitPage() {
   const navigate = useNavigate()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const entityId = params.get('entityId') ?? 'entity-001'
   const periodId = params.get('periodId') ?? '2026-04'
   const cycleId  = params.get('cycleId') ?? undefined
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
+
+  const { data: entityOptions } = useQuery({
+    queryKey: ['readiness-entities'],
+    queryFn: () => readinessApi.entities().then(r => r.data.data),
+  })
 
   const { data: readiness, isLoading } = useQuery<ReadinessSummary>({
     queryKey: ['readiness', entityId, periodId, cycleId],
@@ -126,6 +132,12 @@ export function ReadinessCockpitPage() {
     document.getElementById('readiness-accounts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  function updateParam(key: string, value: string) {
+    const next = new URLSearchParams(params)
+    next.set(key, value)
+    setParams(next, { replace: true })
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between flex-wrap gap-4">
@@ -135,9 +147,28 @@ export function ReadinessCockpitPage() {
             Back
           </Button>
           <h1 className="text-3xl font-bold">Readiness Cockpit</h1>
-          <p className="text-muted-foreground mt-1">
-            {entityId} — {periodId}
-          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <Select value={entityId} onValueChange={(v) => updateParam('entityId', v)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Entity" />
+              </SelectTrigger>
+              <SelectContent>
+                {(entityOptions?.entities ?? ['entity-001']).map(e => (
+                  <SelectItem key={e} value={e}>{e}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={periodId} onValueChange={(v) => updateParam('periodId', v)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Period" />
+              </SelectTrigger>
+              <SelectContent>
+                {(entityOptions?.periods ?? ['2026-04']).map(p => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <Button
           variant="outline"

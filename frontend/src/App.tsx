@@ -22,6 +22,7 @@ const CustomersPage = lazy(() => import('@/pages/CustomersPage').then(m => ({ de
 const CustomerDetailsPage = lazy(() => import('@/pages/Customers/CustomerDetailsPage').then(m => ({ default: m.CustomerDetailsPage })))
 const InvoicesPage = lazy(() => import('@/pages/InvoicesPage').then(m => ({ default: m.InvoicesPage })))
 const InvoiceDetailPage = lazy(() => import('@/pages/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })))
+const InvoicePaymentPage = lazy(() => import('@/pages/InvoicePaymentPage').then(m => ({ default: m.InvoicePaymentPage })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
@@ -74,6 +75,7 @@ const AgedReceivablesPage = lazy(() => import('@/pages/accounting/reports/AgedRe
 const AgedPayablesPage = lazy(() => import('@/pages/accounting/reports/AgedPayablesPage').then(m => ({ default: m.AgedPayablesPage })))
 const BankReconciliationPage = lazy(() => import('@/pages/accounting/BankReconciliationPage').then(m => ({ default: m.BankReconciliationPage })))
 const BankReconciliationHistoryPage = lazy(() => import('@/pages/accounting/BankReconciliationHistoryPage'))
+const ApSubledgerReconciliationPage = lazy(() => import('@/pages/accounting/ApSubledgerReconciliationPage').then(m => ({ default: m.ApSubledgerReconciliationPage })))
 const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
 const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
 const MultiCurrencyPage = lazy(() => import('@/pages/accounting/MultiCurrencyPage'))
@@ -301,6 +303,7 @@ function App() {
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/create" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+                <Route path="/invoices/:id/payment" element={<InvoicePaymentPage />} />
                 <Route path="/accounting" element={<Navigate to="/accounting/dashboard" replace />} />
                 
                 {/* New Accounting Module Routes */}
@@ -335,6 +338,7 @@ function App() {
                 <Route path="/accounting/core/journals" element={<JournalsPage />} />
                 <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
                 <Route path="/accounting/core/reconciliation/history" element={<BankReconciliationHistoryPage />} />
+                <Route path="/accounting/ap-reconciliation" element={<ApSubledgerReconciliationPage />} />
                 <Route path="/accounting/core/assets" element={<AssetsManagementPage />} />
                 <Route path="/accounting/core/lock-dates" element={<LockDatesPage />} />
                 <Route path="/accounting/core/multi-currency" element={<MultiCurrencyPage />} />

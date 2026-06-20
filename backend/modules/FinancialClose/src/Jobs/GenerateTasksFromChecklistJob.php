@@ -257,28 +257,33 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
         }
 
         // 4. Unreconciled bank transactions
-        $bankAccountIds = DB::table('bank_accounts')
+        $bankAccounts = DB::table('bank_accounts')
             ->where('is_active', true)
-            ->pluck('gl_account_id');
+            ->get(['id', 'gl_account_id'])
+            ->keyBy('gl_account_id');
 
-        if ($bankAccountIds->isNotEmpty()) {
-            $unreconciled = DB::table('journal_entry_lines')
+        if ($bankAccounts->isNotEmpty()) {
+            $bankAccountIds = $bankAccounts->pluck('gl_account_id');
+
+            $unreconciledLines = DB::table('journal_entry_lines')
                 ->whereNull('reconciliation_id')
                 ->whereIn('account_id', $bankAccountIds)
-                ->distinct('journal_entry_id')
-                ->orderBy('journal_entry_id')
-                ->limit(50)
-                ->pluck('journal_entry_id');
+                ->get(['journal_entry_id', 'account_id']);
 
-            if ($unreconciled->isNotEmpty()) {
-                // Build document links: prefer payment reference, fall back to JE entry number
+            if ($unreconciledLines->isNotEmpty()) {
+                $unreconciledJeIds = $unreconciledLines->pluck('journal_entry_id')->unique()->take(50);
+
+                $firstLine = $unreconciledLines->first();
+                $firstGlAccountId = $firstLine->account_id;
+                $bankAccountId = $bankAccounts->get($firstGlAccountId)?->id;
+
                 $paymentMap = DB::table('payments')
-                    ->whereIn('journal_entry_id', $unreconciled)
+                    ->whereIn('journal_entry_id', $unreconciledJeIds)
                     ->get(['journal_entry_id', 'payment_number'])
                     ->keyBy('journal_entry_id');
 
                 $journalEntries = DB::table('journal_entries')
-                    ->whereIn('id', $unreconciled)
+                    ->whereIn('id', $unreconciledJeIds)
                     ->get(['id', 'entry_number']);
 
                 $documentLinks = $journalEntries->map(function ($je) use ($paymentMap) {
@@ -298,9 +303,10 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
                     'priority'    => 'high',
                     'is_critical' => false,
                     'metadata'    => [
-                        'type'          => 'unreconciled_transactions',
-                        'count'         => $journalEntries->count(),
-                        'document_links' => $documentLinks,
+                        'type'           => 'unreconciled_transactions',
+                        'count'          => $journalEntries->count(),
+                        'bank_account_id' => $bankAccountId,
+                        'document_links'  => $documentLinks,
                     ],
                 ]);
             }
@@ -347,7 +353,23 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             ]);
         }
 
-        // 6. Default close tasks (always created, idempotent by type)
+        // 6. Fetch all depreciation journal entries to link to the run_depreciation task
+        $depreciationJEs = DB::table('depreciation_schedules')
+            ->join('journal_entries', 'depreciation_schedules.journal_entry_id', '=', 'journal_entries.id')
+            ->join('fixed_assets', 'depreciation_schedules.asset_id', '=', 'fixed_assets.id')
+            ->whereNotNull('depreciation_schedules.journal_entry_id')
+            ->orderBy('journal_entries.entry_number')
+            ->limit(50)
+            ->get(['journal_entries.id', 'journal_entries.entry_number', 'fixed_assets.name as asset_name']);
+
+        $depreciationDocumentLinks = $depreciationJEs->map(fn ($je) => [
+            'type'  => 'journal_entry',
+            'id'    => $je->id,
+            'title' => $je->entry_number ?: "JE #{$je->id}",
+            'meta'  => ['asset_name' => $je->asset_name],
+        ])->all();
+
+        // 7. Default close tasks (always created, idempotent by type)
         $defaultTasks = [
             [
                 'title' => 'Review trial balance',
@@ -357,14 +379,14 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
                 'document_links' => [
                     ['type' => 'report', 'id' => 'trial-balance', 'title' => 'Trial Balance Report'],
                 ],
-                'depends_on' => ['unposted_journal_entries', 'unpaid_bills', 'overdue_invoices'],
+                'depends_on' => ['unposted_journal_entries', 'unpaid_bills'],
             ],
             [
                 'title' => 'Run depreciation entries',
                 'priority' => 'medium',
                 'is_critical' => false,
                 'type' => 'run_depreciation',
-                'document_links' => [],
+                'document_links' => $depreciationDocumentLinks,
                 'depends_on' => ['review_trial_balance'],
             ],
             [
@@ -396,14 +418,21 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
         ];
 
         foreach ($defaultTasks as $task) {
+            $metadata = [
+                'type'          => $task['type'],
+                'document_links' => $task['document_links'],
+            ];
+
+            if ($task['type'] === 'run_depreciation' && count($depreciationDocumentLinks) > 0) {
+                $metadata['count'] = count($depreciationDocumentLinks);
+                $task['title'] = "Post {$depreciationJEs->count()} depreciation entries";
+            }
+
             $upsertTask([
                 'title'       => $task['title'],
                 'priority'    => $task['priority'],
                 'is_critical' => $task['is_critical'],
-                'metadata'    => [
-                    'type'          => $task['type'],
-                    'document_links' => $task['document_links'],
-                ],
+                'metadata'    => $metadata,
             ]);
         }
 
