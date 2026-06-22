@@ -102,6 +102,7 @@ const ProfitLossPage = lazy(() => import('@/pages/accounting/reports/ProfitLossP
 const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'))
 const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
 const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
+const ComplianceReportsPage = lazy(() => import('@/pages/accounting/reports/ComplianceReportsPage'))
 const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
 
 // AI Module Pages
@@ -355,6 +356,7 @@ function App() {
                 <Route path="/accounting/reporting/trial-balance" element={<TrialBalancePage />} />
                 <Route path="/accounting/reporting/aged-receivables" element={<AgedReceivablesPage />} />
                 <Route path="/accounting/reporting/aged-payables" element={<AgedPayablesPage />} />
+                <Route path="/accounting/reporting/compliance" element={<ComplianceReportsPage />} />
                 
                 {/* Configuration Section */}
                 <Route path="/accounting/configuration/company" element={<CompanySettingsPage />} />

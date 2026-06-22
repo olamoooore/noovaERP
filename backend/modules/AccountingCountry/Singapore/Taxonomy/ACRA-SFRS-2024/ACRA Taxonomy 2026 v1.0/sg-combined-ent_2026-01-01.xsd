@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--                     
+            *************** Entry-point : 2026-01-01*************
+          
+            *************** Combined for all entities*************
+			
+			*************** All rights reserved. No part of this publication may be produced or transmitted in any form or by any means, 
+					   including photocopying and recording, without attributing the publication to the Accounting and Corporate Regulatory Authority (ACRA) of Singapore
+					   and shall be restricted to non-commercial use only. *************** 
+-->
+<xsd:schema targetNamespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-combined-ent" elementFormDefault="qualified" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:sg-combined-ent="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-combined-ent" xmlns:sg-dei="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-dei" xmlns:ref="http://www.xbrl.org/2006/ref" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:sg-ty-dim="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ty-dim" xmlns:sg-ssa="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ssa" xmlns:sg-types="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-types" xmlns:sg-lm="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-lm" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sg-ca="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ca" xmlns:reference="http://xbrl.org/2008/reference" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd">
+    <xsd:annotation>
+      <xsd:appinfo>
+        <link:linkbaseRef xlink:type="simple" xlink:href="sg-combined-ent_2026-01-01_formula\sg-combined-ent_2026-01-01.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" />
+      </xsd:appinfo>
+    </xsd:annotation>
+  </xsd:import>
+  <xsd:import namespace="http://www.xbrl.org/dtr/type/non-numeric" schemaLocation="http://www.xbrl.org/dtr/type/nonNumeric-2009-12-16.xsd" />
+  <xsd:import namespace="http://www.xbrl.org/dtr/type/numeric" schemaLocation="http://www.xbrl.org/dtr/type/numeric-2009-12-16.xsd" />
+  <xsd:import namespace="http://www.xbrl.org/2009/role/reference" schemaLocation="http://www.xbrl.org/lrr/role/reference-2009-12-16.xsd" />
+  <xsd:import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd" />
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-sfrs-ent" schemaLocation="sg-sfrs-ent_2026-01-01.xsd" />
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-sim-ent" schemaLocation="sg-sim-ent_2026-01-01.xsd" />
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins-ent" schemaLocation="sg-fsh-ins-ent_2026-01-01.xsd" />
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-bfc-ent" schemaLocation="sg-fsh-bfc-ent_2026-01-01.xsd" />
+</xsd:schema>

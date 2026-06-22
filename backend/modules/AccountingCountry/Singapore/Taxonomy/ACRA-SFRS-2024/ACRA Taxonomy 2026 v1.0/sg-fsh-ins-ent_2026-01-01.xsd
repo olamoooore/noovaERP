@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--                     
+            *************** Entry-point : 2026-01-01*************
+          
+            *************** Financial Statements Highlights - Insurance companies *************
+			
+			*************** All rights reserved. No part of this publication may be produced or transmitted in any form or by any means, 
+					   including photocopying and recording, without attributing the publication to the Accounting and Corporate Regulatory Authority (ACRA) of Singapore
+					   and shall be restricted to non-commercial use only. *************** 
+    
+-->
+<xsd:schema targetNamespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins-ent" elementFormDefault="qualified" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:sg-fsh-ins-ent="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins-ent" xmlns:sg-fsh="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-fsh" xmlns:ref="http://www.xbrl.org/2006/ref" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:sg-dei="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-dei" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:sg-types="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-types" xmlns:sg-ssa="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ssa" xmlns:sg-fsh-ins-rol="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins-rol" xmlns:sg-lm="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-lm" xmlns:sg-ty-dim="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ty-dim" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sg-ca="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ca" xmlns:reference="http://xbrl.org/2008/reference" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <xsd:annotation>
+    <xsd:appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/md_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/el_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/cr_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/dt_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/dm_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/cs_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/fsh-dm_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/ar_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/pn_2026-01-01_for.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula/sg_param_2026-01-01.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="fr/sg-fsh-ins/sg-fsh-ins_2026-01-01_pre.xml" xlink:title="Presentation Linkbase" xlink:role="http://www.xbrl.org/2003/role/presentationLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="fr/sg-fsh-ins/sg-fsh-ins_2026-01-01_cal.xml" xlink:title="Calculation Linkbase" xlink:role="http://www.xbrl.org/2003/role/calculationLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="fr/sg-fsh-ins/sg-fsh-ins_2026-01-01_def.xml" xlink:title="Definition Linkbase" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="fr/sg-fsh-ins/sg-fsh-ins_2026-01-01-lab.xml" xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="references/sg-fsh-ins_2026-01-01_ref.xml" xlink:role="http://www.xbrl.org/2003/role/referenceLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="references/sg-sfrs_2026-01-01_ref.xml" xlink:title="Reference Linkbase" xlink:role="http://www.xbrl.org/2003/role/referenceLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+    </xsd:appinfo>
+  </xsd:annotation>
+  <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+  <xsd:import namespace="http://www.xbrl.org/dtr/type/non-numeric" schemaLocation="http://www.xbrl.org/dtr/type/nonNumeric-2009-12-16.xsd"/>
+  <xsd:import namespace="http://www.xbrl.org/dtr/type/numeric" schemaLocation="http://www.xbrl.org/dtr/type/numeric-2009-12-16.xsd"/>
+  <xsd:import namespace="http://xbrl.org/2010/message" schemaLocation="http://www.xbrl.org/2010/generic-message.xsd"/>
+  <xsd:import namespace="http://xbrl.org/2010/message/validation" schemaLocation="http://www.xbrl.org/2010/validation-message.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins/lab_rol_sg-fsh-ins_2026-01-01" schemaLocation="fr/sg-fsh-ins/lab_rol_sg-fsh-ins_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ee/sg-ee-sfrs" schemaLocation="elts/sg-ee/sg-ee-sfrs/sg-ee-sfrs_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-fsh" schemaLocation="elts/sg-fsh-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-lm" schemaLocation="elts/sg-lm-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-as" schemaLocation="elts/sg-as-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ca" schemaLocation="elts/sg-ca-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-dei" schemaLocation="elts/sg-dei-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ssa" schemaLocation="elts/sg-ssa-cor_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-types" schemaLocation="elts/sg-types_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/elts/sg-ty-dim" schemaLocation="elts/sg-ty-dim_2026-01-01.xsd"/>
+  <xsd:import namespace="http://www.bizfinx.gov.sg/taxonomy/2026-01-01/sg-fsh-ins-rol" schemaLocation="fr/sg-fsh-ins/sg-fsh-ins_2026-01-01_elr.xsd"/>
+  <xsd:import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd"/>
+  <xsd:import namespace="http://www.xbrl.org/2009/role/reference" schemaLocation="http://www.xbrl.org/lrr/role/reference-2009-12-16.xsd"/>
+</xsd:schema>

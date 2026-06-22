@@ -151,6 +151,14 @@ Route::middleware([
     Route::get('/bills/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getBillCorrectionChain']);
     Route::get('/journals/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getJournalCorrectionChain']);
 
+    // ─── XBRL / Compliance Reports (optional, gated by feature flag) ──────────
+    if (config('compliance.enabled', false)) {
+        Route::prefix('accounting/compliance')->group(function () {
+            Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
+            Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
+        });
+    }
+
     $modules = app(\App\Modules\ModuleManager::class);
 
     foreach ($modules->tenantApiRouteFiles() as $routesFile) {

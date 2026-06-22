@@ -1,0 +1,9 @@
+{
+    "key": "AccountingCountry",
+    "name": "Accounting Country Compliance",
+    "type": "addon",
+    "description": "Country-specific statutory reporting plugins for XBRL/compliance exports",
+    "providers": [
+        "App\\Providers\\CompliancePluginServiceProvider"
+    ]
+}

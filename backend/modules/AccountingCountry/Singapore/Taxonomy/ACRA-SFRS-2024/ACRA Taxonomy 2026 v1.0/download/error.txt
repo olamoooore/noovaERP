@@ -1,0 +1,411 @@
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/28/2025 11:44:48 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/30/2025 11:14:32 AM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+10/30/2025 11:14:34 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:52 AM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/3/2025 12:31:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/7/2025 5:59:50 PM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+11/7/2025 5:59:54 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/7/2025 5:59:54 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/7/2025 5:59:54 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/7/2025 5:59:54 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/7/2025 5:59:55 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/11/2025 12:39:52 PM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+11/19/2025 1:24:45 PM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+11/19/2025 1:24:46 PM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: node
+   at System.Windows.Forms.TreeNodeCollection.AddInternal(TreeNode node, Int32 delta)
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+1/8/2026 10:09:51 AM
+ErrorMessage:    at FormulaClassStructure.ReadFormulaLinkbase.readLinkLoc(String fullPath)
+FunctionName: readLinkLoc()
+1/8/2026 10:09:53 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+1/8/2026 10:09:53 AM
+ErrorMessage: System.NullReferenceException: Object reference not set to an instance of an object.
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+1/8/2026 10:09:53 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+1/8/2026 10:09:53 AM
+ErrorMessage: System.NullReferenceException: Object reference not set to an instance of an object.
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.NullReferenceException: Object reference not set to an instance of an object.
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.NullReferenceException: Object reference not set to an instance of an object.
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.ArgumentNullException: Value cannot be null.
+Parameter name: source
+   at System.Linq.Enumerable.Contains[TSource](IEnumerable`1 source, TSource value, IEqualityComparer`1 comparer)
+   at Formula_Editor.BusinessLayer.FormulaExpression.getLabelName(String qname)
+   at Formula_Editor.BusinessLayer.FormulaExpression.createNode(filter filter, TreeNode trn)
+FunctionName: createNode()
+1/8/2026 10:09:54 AM
+ErrorMessage: System.NullReferenceException: Object reference not set to an instance of an object.
+   at Formula_Editor.BusinessLayer.FormulaExpression.addVariables(Locator loc)
+FunctionName: addVariables()
