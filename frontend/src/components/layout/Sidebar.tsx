@@ -256,11 +256,6 @@ const baseNavItems: NavItem[] = [
             href: '/accounting/reporting/profit-loss',
             icon: 'solar:chart-square-bold-duotone',
           },
-          {
-            title: 'Compliance Reports',
-            href: '/accounting/reporting/compliance',
-            icon: 'solar:shield-check-bold-duotone',
-          },
         ],
       },
       {
@@ -556,6 +551,11 @@ const baseNavItems: NavItem[] = [
         title: 'Expense Analytics',
         href: '/reports/expense-analytics',
         icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Compliance Reports',
+        href: '/accounting/reporting/compliance',
+        icon: 'solar:shield-check-bold-duotone',
       },
     ],
   },
