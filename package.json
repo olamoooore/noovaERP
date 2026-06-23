@@ -8,7 +8,8 @@
     "dev": "concurrently -n backend,frontend,queue,ollama -c green,blue,yellow,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\" \"npm run dev:ollama\""
   },
   "dependencies": {
-    "class-variance-authority": "^0.7.1"
+    "class-variance-authority": "^0.7.1",
+    "playwright": "^1.61.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"
