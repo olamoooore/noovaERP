@@ -518,7 +518,7 @@ const baseNavItems: NavItem[] = [
       {
         title: 'Trial Balance',
         href: '/accounting/reporting/trial-balance',
-        icon: 'solar:balance-bold-duotone',
+        icon: 'solar:scale-bold-duotone',
       },
       {
         title: 'Balance Sheet',
