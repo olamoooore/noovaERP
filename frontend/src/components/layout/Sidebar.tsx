@@ -237,28 +237,6 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:dollar-bold-duotone',
       },
       {
-        title: 'Reports',
-        href: '/accounting/reporting',
-        icon: 'solar:file-text-bold-duotone',
-        children: [
-          {
-            title: 'Trial Balance',
-            href: '/accounting/reporting/trial-balance',
-            icon: 'solar:balance-bold-duotone',
-          },
-          {
-            title: 'Balance Sheet',
-            href: '/accounting/reporting/balance-sheet',
-            icon: 'solar:chart-bold-duotone',
-          },
-          {
-            title: 'Profit & Loss',
-            href: '/accounting/reporting/profit-loss',
-            icon: 'solar:chart-square-bold-duotone',
-          },
-        ],
-      },
-      {
         title: 'Configuration',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
@@ -536,6 +514,21 @@ const baseNavItems: NavItem[] = [
         title: 'Financial Reports',
         href: '/reports/financial',
         icon: 'solar:dollar-bold-duotone',
+      },
+      {
+        title: 'Trial Balance',
+        href: '/accounting/reporting/trial-balance',
+        icon: 'solar:balance-bold-duotone',
+      },
+      {
+        title: 'Balance Sheet',
+        href: '/accounting/reporting/balance-sheet',
+        icon: 'solar:chart-bold-duotone',
+      },
+      {
+        title: 'Profit & Loss',
+        href: '/accounting/reporting/profit-loss',
+        icon: 'solar:chart-square-bold-duotone',
       },
       {
         title: 'Inventory Reports',
