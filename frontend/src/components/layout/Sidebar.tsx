@@ -256,6 +256,11 @@ const baseNavItems: NavItem[] = [
             href: '/accounting/reporting/profit-loss',
             icon: 'solar:chart-square-bold-duotone',
           },
+          {
+            title: 'Compliance Reports',
+            href: '/accounting/reporting/compliance',
+            icon: 'solar:shield-check-bold-duotone',
+          },
         ],
       },
       {
