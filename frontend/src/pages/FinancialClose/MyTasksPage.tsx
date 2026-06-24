@@ -184,7 +184,7 @@ export function MyTasksPage() {
           <h1 className="text-3xl font-bold">My Tasks</h1>
           <p className="text-muted-foreground mt-1">
             {cycleId
-              ? `Tasks for cycle ${cycleQuery.data?.period_id ?? cycleQuery.data?.entity_id ?? cycleId}`
+              ? `Tasks for cycle ${cycleQuery.data?.name || cycleQuery.data?.period_id || 'Unknown'}`
               : 'All tasks assigned to you'}
           </p>
         </div>

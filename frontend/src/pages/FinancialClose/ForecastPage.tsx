@@ -4,7 +4,7 @@ import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { forecastApi, type Forecast } from '@/services/closeApi'
+import { forecastApi, closeCyclesApi, type Forecast, type CloseCycle } from '@/services/closeApi'
 
 const riskConfig = {
   low:    { label: 'Low Risk',    class: 'bg-green-500/10 text-green-600',  badge: 'outline' as const },
@@ -59,6 +59,15 @@ export function ForecastPage() {
     enabled: !!cycleId,
   })
 
+  const { data: cycle } = useQuery<CloseCycle | null>({
+    queryKey: ['close-cycle-detail', cycleId],
+    queryFn: () => closeCyclesApi.list().then(r => {
+      const cycles = r.data.data
+      return cycles.find((c: { id: string }) => c.id === cycleId) ?? null
+    }),
+    enabled: !!cycleId,
+  })
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -68,7 +77,7 @@ export function ForecastPage() {
         </Button>
         <h1 className="text-3xl font-bold">Cycle Forecast</h1>
         <p className="text-muted-foreground mt-1">
-          {cycleId ? `Projected close trajectory for cycle ${cycleId}` : 'Select a cycle to view forecast'}
+          {cycleId ? `Projected close trajectory for cycle ${cycle?.name || cycle?.period_id || 'Unknown'}` : 'Select a cycle to view forecast'}
         </p>
       </div>
 

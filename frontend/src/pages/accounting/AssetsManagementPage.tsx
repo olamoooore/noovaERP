@@ -219,11 +219,11 @@ export default function AssetsManagementPage() {
         name: asset.name,
         category: asset.category,
         purchase_date: asset.purchase_date ? asset.purchase_date.split('T')[0] : '',
-        purchase_cost: asset.purchase_cost ?? '',
+        purchase_cost: asset.purchase_cost || '',
       depreciation_method: asset.depreciation_method,
       useful_life_years: asset.useful_life_years,
       useful_life_units: asset.useful_life_units,
-      salvage_value: asset.salvage_value ?? '',
+      salvage_value: asset.salvage_value || '',
         depreciation_start_date: asset.depreciation_start_date ? asset.depreciation_start_date.split('T')[0] : '',
         asset_account_id: asset.asset_account_id,
         depreciation_account_id: asset.depreciation_account_id,
@@ -556,7 +556,7 @@ export default function AssetsManagementPage() {
                   type="number"
                   step="0.01"
                   placeholder="0.00"
-                  value={formData.purchase_cost === '' ? '' : formData.purchase_cost}
+                  value={formData.purchase_cost === '' || formData.purchase_cost === 0 ? '' : formData.purchase_cost}
                   onChange={(e) => setFormData({ ...formData, purchase_cost: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                 />
               </div>
@@ -594,7 +594,7 @@ export default function AssetsManagementPage() {
                   type="number"
                   step="0.01"
                   placeholder="0.00"
-                  value={formData.salvage_value === '' ? '' : formData.salvage_value}
+                  value={formData.salvage_value === '' || formData.salvage_value === 0 ? '' : formData.salvage_value}
                   onChange={(e) => setFormData({ ...formData, salvage_value: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                 />
               </div>

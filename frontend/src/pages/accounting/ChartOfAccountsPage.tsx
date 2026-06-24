@@ -769,7 +769,7 @@ export default function ChartOfAccountsPage() {
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
                     {accounts
-                      .filter((a) => a.id !== editingAccount?.id && a.id)
+                      .filter((a) => a.id !== editingAccount?.id && a.id && a.can_be_parent)
                       .map((account) => (
                         <SelectItem key={account.id} value={account.id.toString()}>
                           {account.code} - {account.name}

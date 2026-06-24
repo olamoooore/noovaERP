@@ -100,6 +100,15 @@ export default function AccountingEntityManagementPage() {
   const [branchForm, setBranchForm] = useState({ legal_entity_id: '', name: '', code: '' });
   const [bookForm, setBookForm] = useState({ legal_entity_id: '', name: '', book_type: 'general', currency_code: 'USD' });
 
+  const { data: currenciesData } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings/currencies');
+      return response.data.available_currencies || [];
+    },
+  });
+  const currencies = currenciesData || [];
+
   const { data, isLoading } = useQuery({
     queryKey: ['accounting-entity-management'],
     queryFn: async () => {
@@ -399,7 +408,14 @@ export default function AccountingEntityManagementPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Base Currency *</Label>
-                    <Input value={groupForm.base_currency} onChange={(e) => setGroupForm({ ...groupForm, base_currency: e.target.value })} placeholder="USD" maxLength={3} />
+                    <Select value={groupForm.base_currency} onValueChange={(v) => setGroupForm({ ...groupForm, base_currency: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger>
+                      <SelectContent>
+                        {currencies.map((c: any) => (
+                          <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -440,7 +456,14 @@ export default function AccountingEntityManagementPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Base Currency *</Label>
-                    <Input value={entityForm.base_currency} onChange={(e) => setEntityForm({ ...entityForm, base_currency: e.target.value })} placeholder="USD" maxLength={3} />
+                    <Select value={entityForm.base_currency} onValueChange={(v) => setEntityForm({ ...entityForm, base_currency: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger>
+                      <SelectContent>
+                        {currencies.map((c: any) => (
+                          <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </>
@@ -506,7 +529,14 @@ export default function AccountingEntityManagementPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Currency *</Label>
-                    <Input value={bookForm.currency_code} onChange={(e) => setBookForm({ ...bookForm, currency_code: e.target.value })} placeholder="USD" maxLength={3} />
+                    <Select value={bookForm.currency_code} onValueChange={(v) => setBookForm({ ...bookForm, currency_code: v })}>
+                      <SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger>
+                      <SelectContent>
+                        {currencies.map((c: any) => (
+                          <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </>
