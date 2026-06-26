@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('audit_exports', function (Blueprint $table) {
             $table->id();
             $table->foreignId('auditor_id')->constrained('auditors')->onDelete('cascade');
-            $table->foreignId('tenant_id')->constrained()->onDelete('cascade');
+            $table->string('tenant_id', 50)->index();
             $table->json('scope'); // { entity_id, period, modules, reports }
             $table->string('file_name');
             $table->string('file_path', 500);

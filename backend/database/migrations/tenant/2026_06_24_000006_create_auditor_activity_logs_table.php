@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('auditor_activity_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('auditor_id')->constrained('auditors')->onDelete('cascade');
-            $table->foreignId('tenant_id')->constrained()->onDelete('cascade');
+            $table->string('tenant_id', 50)->index();
             $table->string('action', 100); // login, view_report, view_transaction, view_document, export, query_created, query_responded, query_closed
             $table->string('resource_type', 100)->nullable(); // report, transaction, document, query, export
             $table->string('resource_id', 255)->nullable();

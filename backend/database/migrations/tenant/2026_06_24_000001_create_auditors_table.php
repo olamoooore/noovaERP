@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('auditors', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id')->constrained()->onDelete('cascade');
+            $table->string('tenant_id', 50)->index();
             $table->string('email')->index();
             $table->string('name');
             $table->string('phone')->nullable();

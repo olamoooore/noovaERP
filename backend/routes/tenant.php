@@ -165,8 +165,7 @@ Route::middleware([
         require $routesFile;
     }
 
-    // Auditor Portal Routes
-    require __DIR__.'/auditor.php';
+
 
     // ─── Approval Workflow ────────────────────────────────────────────────────
     // Tenant-scoped approval requests for POS void/refund/return/discount.
@@ -180,3 +179,6 @@ Route::middleware([
         Route::post('/{id}/reject',     [\App\Http\Controllers\ApprovalController::class, 'reject']);
     });
 });
+
+// Auditor Portal Routes (standalone with own middleware)
+require __DIR__.'/auditor.php';
