@@ -8,11 +8,6 @@ use Illuminate\Http\Request;
 
 class AuditorActivityLogController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:sanctum');
-    }
-
     public function index(Request $request)
     {
         $auditor = $request->attributes->get('auditor');

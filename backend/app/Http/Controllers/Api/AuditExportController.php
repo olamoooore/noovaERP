@@ -11,9 +11,19 @@ use ZipArchive;
 
 class AuditExportController extends Controller
 {
-    public function __construct()
+    public function adminIndex(Request $request)
     {
-        $this->middleware('auth:sanctum');
+        $tenantId = tenant()->id;
+        $query = AuditExport::where('tenant_id', $tenantId);
+
+        if ($request->has('auditor_id')) {
+            $query->where('auditor_id', $request->get('auditor_id'));
+        }
+
+        $exports = $query->orderBy('created_at', 'desc')
+            ->paginate($request->get('per_page', 15));
+
+        return response()->json($exports);
     }
 
     public function index(Request $request)
@@ -33,11 +43,10 @@ class AuditExportController extends Controller
     public function store(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
-            return response()->json(['message' => 'Auditor access required'], 403);
-        }
+        $isAuditor = $auditor !== null;
+        $isAdmin = !$isAuditor && $request->user() !== null;
 
-        if (!$auditor->scopes()->where('can_export', true)->exists()) {
+        if ($isAuditor && !$auditor->scopes()->where('can_export', true)->exists()) {
             return response()->json(['message' => 'No permission to export data'], 403);
         }
 
@@ -52,24 +61,31 @@ class AuditExportController extends Controller
             'include_journals' => 'boolean',
             'include_transactions' => 'boolean',
             'include_documents' => 'boolean',
+            'auditor_id' => 'nullable|integer|exists:auditors,id',
         ]);
 
-        $scope = $auditor->scopes()->where('entity_id', $validated['entity_id'])->first();
-        if (!$scope) {
-            return response()->json(['message' => 'No scope for this entity'], 403);
+        $auditorId = $auditor?->id ?? $validated['auditor_id'] ?? null;
+
+        if ($auditor) {
+            $scope = $auditor->scopes()->where('entity_id', $validated['entity_id'])->first();
+            if (!$scope) {
+                return response()->json(['message' => 'No scope for this entity'], 403);
+            }
+        } else {
+            $scope = null;
         }
 
         $exportData = $this->gatherExportData($validated, $scope);
 
         $fileName = 'audit-export-' . now()->format('Y-m-d-His') . '.zip';
-        $filePath = "auditor/exports/{$auditor->id}/{$fileName}";
+        $filePath = "auditor/exports/{$auditorId}/{$fileName}";
 
         Storage::disk('local')->put($filePath, $this->createZipArchive($exportData, $fileName));
 
         $fileSize = Storage::disk('local')->size($filePath);
 
         $export = AuditExport::create([
-            'auditor_id' => $auditor->id,
+            'auditor_id' => $auditorId,
             'tenant_id' => tenant()->id,
             'scope' => $validated,
             'file_name' => $fileName,
@@ -79,7 +95,7 @@ class AuditExportController extends Controller
         ]);
 
         AuditorActivityLog::create([
-            'auditor_id' => $auditor->id,
+            'auditor_id' => $auditorId,
             'tenant_id' => tenant()->id,
             'action' => 'export_created',
             'resource_type' => 'export',
@@ -142,29 +158,25 @@ class AuditExportController extends Controller
     private function gatherExportData(array $validated, $scope): array
     {
         $data = [];
+        $entityId = $validated['entity_id'];
 
         $data['summary'] = [
             'export_date' => now()->toIso8601String(),
-            'entity_id' => $validated['entity_id'],
+            'entity_id' => $entityId,
             'period' => ['start' => $validated['period_start'], 'end' => $validated['period_end']],
             'modules' => $validated['modules'] ?? [],
             'reports' => $validated['reports'] ?? [],
         ];
 
         if (in_array('accounting', $validated['modules'] ?? [])) {
-            $data['accounts'] = \App\Models\ChartOfAccount::where('entity_id', $validated['entity_id'])->get()->toArray();
-            $data['journal_entries'] = \App\Models\JournalEntry::where('entity_id', $validated['entity_id'])
-                ->whereBetween('entry_date', [$validated['period_start'], $validated['period_end']])
+            $data['accounts'] = \App\Models\ChartOfAccount::get()->toArray();
+            $data['journal_entries'] = \App\Models\JournalEntry::whereBetween('entry_date', [$validated['period_start'], $validated['period_end']])
                 ->get()->toArray();
         }
 
         if (($validated['include_transactions'] ?? false) || in_array('transactions', $validated['modules'] ?? [])) {
-            $data['invoices'] = \App\Models\Invoice::where('entity_id', $validated['entity_id'])
-                ->whereBetween('invoice_date', [$validated['period_start'], $validated['period_end']])
-                ->get()->toArray();
-            $data['bills'] = \App\Models\Bill::where('entity_id', $validated['entity_id'])
-                ->whereBetween('bill_date', [$validated['period_start'], [$validated['period_end']]])
-                ->get()->toArray();
+            $data['invoices'] = \App\Models\Invoice::whereBetween('invoice_date', [$validated['period_start'], $validated['period_end']])->get()->toArray();
+            $data['bills'] = \App\Models\Bill::whereBetween('bill_date', [$validated['period_start'], $validated['period_end']])->get()->toArray();
         }
 
         return $data;

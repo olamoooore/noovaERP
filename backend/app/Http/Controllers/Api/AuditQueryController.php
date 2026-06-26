@@ -11,9 +11,36 @@ use Illuminate\Support\Facades\DB;
 
 class AuditQueryController extends Controller
 {
-    public function __construct()
+    public function adminIndex(Request $request)
     {
-        $this->middleware('auth:sanctum');
+        $tenantId = tenant()->id;
+        $query = AuditQuery::with(['responses.responder', 'assignedTo', 'closedBy', 'auditor'])
+            ->where('tenant_id', $tenantId);
+
+        if ($request->has('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        if ($request->has('severity')) {
+            $query->where('severity', $request->get('severity'));
+        }
+
+        if ($request->has('auditor_id')) {
+            $query->where('auditor_id', $request->get('auditor_id'));
+        }
+
+        if ($request->has('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $queries = $query->orderBy('created_at', 'desc')
+            ->paginate($request->get('per_page', 15));
+
+        return response()->json($queries);
     }
 
     public function index(Request $request)
@@ -55,13 +82,8 @@ class AuditQueryController extends Controller
     public function store(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
-            return response()->json(['message' => 'Auditor access required'], 403);
-        }
-
-        if (!$auditor->scopes()->where('can_raise_queries', true)->exists()) {
-            return response()->json(['message' => 'No permission to raise queries'], 403);
-        }
+        $isAuditor = $auditor !== null;
+        $isAdmin = !$isAuditor && $request->user() !== null;
 
         $validated = $request->validate([
             'source_type' => 'required|in:report_line,transaction,document,account',
@@ -72,10 +94,20 @@ class AuditQueryController extends Controller
             'severity' => 'required|in:low,medium,high,critical',
             'due_date' => 'nullable|date|after:today',
             'assigned_to' => 'nullable|exists:users,id',
+            'auditor_id' => 'nullable|integer|exists:auditors,id',
         ]);
 
+        $auditorId = $auditor?->id ?? $validated['auditor_id'] ?? null;
+        if (!$auditorId) {
+            return response()->json(['message' => 'auditor_id is required'], 422);
+        }
+
+        if ($isAuditor && !$auditor->scopes()->where('can_raise_queries', true)->exists()) {
+            return response()->json(['message' => 'No permission to raise queries'], 403);
+        }
+
         $query = AuditQuery::create([
-            'auditor_id' => $auditor->id,
+            'auditor_id' => $auditorId,
             'tenant_id' => tenant()->id,
             'source_type' => $validated['source_type'],
             'source_id' => $validated['source_id'],
@@ -89,7 +121,7 @@ class AuditQueryController extends Controller
         ]);
 
         AuditorActivityLog::create([
-            'auditor_id' => $auditor->id,
+            'auditor_id' => $auditorId,
             'tenant_id' => tenant()->id,
             'action' => 'query_created',
             'resource_type' => 'query',
@@ -108,23 +140,15 @@ class AuditQueryController extends Controller
     public function show(Request $request, string $id)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
-            return response()->json(['message' => 'Auditor access required'], 403);
-        }
+        $isAuditor = $auditor !== null;
 
         $query = AuditQuery::with(['responses.responder', 'assignedTo', 'closedBy'])
-            ->where('auditor_id', $auditor->id)
+            ->where('tenant_id', tenant()->id)
             ->findOrFail($id);
 
-        AuditorActivityLog::create([
-            'auditor_id' => $auditor->id,
-            'tenant_id' => tenant()->id,
-            'action' => 'query_viewed',
-            'resource_type' => 'query',
-            'resource_id' => $query->id,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
+        if ($isAuditor && $query->auditor_id !== $auditor->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         return response()->json($query);
     }
@@ -132,11 +156,13 @@ class AuditQueryController extends Controller
     public function update(Request $request, string $id)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
-            return response()->json(['message' => 'Auditor access required'], 403);
-        }
+        $isAuditor = $auditor !== null;
 
-        $query = AuditQuery::where('auditor_id', $auditor->id)->findOrFail($id);
+        $query = AuditQuery::where('tenant_id', tenant()->id)->findOrFail($id);
+
+        if ($isAuditor && $query->auditor_id !== $auditor->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         $validated = $request->validate([
             'severity' => 'sometimes|in:low,medium,high,critical',
@@ -220,11 +246,13 @@ class AuditQueryController extends Controller
     public function close(Request $request, string $id)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
-            return response()->json(['message' => 'Auditor access required'], 403);
-        }
+        $isAuditor = $auditor !== null;
 
-        $query = AuditQuery::where('auditor_id', $auditor->id)->findOrFail($id);
+        $query = AuditQuery::where('tenant_id', tenant()->id)->findOrFail($id);
+
+        if ($isAuditor && $query->auditor_id !== $auditor->id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
 
         if ($query->status === 'closed') {
             return response()->json(['message' => 'Query already closed'], 422);
@@ -242,7 +270,7 @@ class AuditQueryController extends Controller
         ]);
 
         AuditorActivityLog::create([
-            'auditor_id' => $auditor->id,
+            'auditor_id' => $auditor?->id ?? $query->auditor_id,
             'tenant_id' => tenant()->id,
             'action' => 'query_closed',
             'resource_type' => 'query',

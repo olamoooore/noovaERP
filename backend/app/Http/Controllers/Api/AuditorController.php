@@ -18,11 +18,6 @@ use Illuminate\Support\Facades\Storage;
 
 class AuditorController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:sanctum');
-    }
-
     public function index(Request $request)
     {
         $auditors = Auditor::with(['scopes.entity', 'invitedBy'])
@@ -100,7 +95,7 @@ class AuditorController extends Controller
 
     public function show(Request $request, string $id)
     {
-        $auditor = Auditor::with(['scopes.entity', 'queries', 'exports', 'activityLogs'])
+        $auditor = Auditor::with(['scopes.entity', 'invitedBy', 'queries', 'exports', 'activityLogs'])
             ->where('tenant_id', tenant()->id)
             ->findOrFail($id);
 
@@ -304,6 +299,27 @@ class AuditorController extends Controller
         return response()->json([
             'message' => 'Invitation accepted successfully',
             'data' => $auditor->load('scopes.entity'),
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $auditor = $request->attributes->get('auditor');
+        if (!$auditor) {
+            return response()->json(['message' => 'Auditor access required'], 403);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'nullable|string|max:50',
+            'organization' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $auditor->update($validated);
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'data' => $auditor->fresh(),
         ]);
     }
 }

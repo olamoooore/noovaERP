@@ -24,7 +24,7 @@ class AuditQueryResponse extends Model
         'evidence_urls' => 'array',
     ];
 
-    public function query(): BelongsTo
+    public function auditQuery(): BelongsTo
     {
         return $this->belongsTo(AuditQuery::class, 'query_id');
     }
