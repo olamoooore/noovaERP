@@ -552,23 +552,55 @@ const baseNavItems: NavItem[] = [
       },
     ],
   },
-  {
-    title: 'Modules',
-    href: '/modules',
-    icon: 'solar:widget-bold-duotone',
-  },
-  {
-    title: 'Team',
-    href: '/settings/users',
-    icon: 'solar:users-group-rounded-bold-duotone',
-    requiredPermission: 'users.view',
-  },
-  {
-    title: 'Settings',
-    href: '/settings',
-    icon: 'solar:settings-bold-duotone',
-  },
-]
+      {
+        title: 'Modules',
+        href: '/modules',
+        icon: 'solar:widget-bold-duotone',
+      },
+      {
+        title: 'Auditor Portal',
+        href: '/auditor',
+        icon: 'solar:shield-check-bold-duotone',
+        children: [
+          {
+            title: 'Dashboard',
+            href: '/auditor/dashboard',
+            icon: 'solar:chart-square-bold-duotone',
+          },
+          {
+            title: 'Manage Auditors',
+            href: '/auditor/manage',
+            icon: 'solar:users-group-two-rounded-bold-duotone',
+          },
+          {
+            title: 'Queries',
+            href: '/auditor/queries',
+            icon: 'solar:message-circle-bold-duotone',
+          },
+          {
+            title: 'Exports',
+            href: '/auditor/exports',
+            icon: 'solar:download-bold-duotone',
+          },
+          {
+            title: 'Activity Log',
+            href: '/auditor/activity',
+            icon: 'solar:clock-circle-bold-duotone',
+          },
+        ],
+      },
+      {
+        title: 'Team',
+        href: '/settings/users',
+        icon: 'solar:users-group-rounded-bold-duotone',
+        requiredPermission: 'users.view',
+      },
+      {
+        title: 'Settings',
+        href: '/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ]
 
 export function Sidebar() {
   const location = useLocation()

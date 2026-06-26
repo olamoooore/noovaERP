@@ -98,6 +98,13 @@ const VendorDebitNoteDetail = lazy(() => import('@/pages/accounting/vendors/Vend
 const ARTransactionsPage = lazy(() => import('@/pages/accounting/ARTransactionsPage'))
 const APTransactionsPage = lazy(() => import('@/pages/accounting/APTransactionsPage'))
 const BalanceSheetPage = lazy(() => import('@/pages/accounting/reports/BalanceSheetPage'))
+
+// Auditor Portal Pages
+const AuditorManagementPage = lazy(() => import('@/pages/auditor/AuditorManagementPage'))
+const AuditorDashboardPage = lazy(() => import('@/pages/auditor/AuditorDashboardPage'))
+const AuditorQueriesPage = lazy(() => import('@/pages/auditor/AuditorQueriesPage'))
+const AuditorExportsPage = lazy(() => import('@/pages/auditor/AuditorExportsPage'))
+const AuditorActivityPage = lazy(() => import('@/pages/auditor/AuditorActivityPage'))
 const ProfitLossPage = lazy(() => import('@/pages/accounting/reports/ProfitLossPage'))
 const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'))
 const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
@@ -419,6 +426,14 @@ function App() {
                 <Route path="/financial-close/forecast" element={<ForecastPage />} />
                 <Route path="/financial-close/executive" element={<ExecutiveSummaryPage />} />
                 <Route path="/financial-close/audit-trail" element={<AuditTrailPage />} />
+
+                {/* Auditor Portal Routes */}
+                <Route path="/auditor" element={<AuditorDashboardPage />} />
+                <Route path="/auditor/dashboard" element={<AuditorDashboardPage />} />
+                <Route path="/auditor/manage" element={<AuditorManagementPage />} />
+                <Route path="/auditor/queries" element={<AuditorQueriesPage />} />
+                <Route path="/auditor/exports" element={<AuditorExportsPage />} />
+                <Route path="/auditor/activity" element={<AuditorActivityPage />} />
 
                 {/* Field Service Module Routes */}
                 <Route path="/field-service" element={<FieldServiceDashboard />} />

@@ -165,6 +165,9 @@ Route::middleware([
         require $routesFile;
     }
 
+    // Auditor Portal Routes
+    require __DIR__.'/auditor.php';
+
     // ─── Approval Workflow ────────────────────────────────────────────────────
     // Tenant-scoped approval requests for POS void/refund/return/discount.
     // Requires auth:sanctum (inherited from outer middleware group).
