@@ -7,6 +7,7 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
+use Modules\IoT\Services\AgentHttpClient;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\Tenant;
@@ -19,7 +20,8 @@ use App\Models\Tenant;
 class IoTAgentController extends Controller
 {
     public function __construct(
-        protected DeviceManager $deviceManager
+        protected DeviceManager $deviceManager,
+        protected AgentHttpClient $agentClient
     ) {}
 
     /**
@@ -401,124 +403,83 @@ class IoTAgentController extends Controller
                     ],
                 ]);
             }
-            $agentToken = $request->query('agent_token')
-                ?? ($agentDevice?->config['agent_token'] ?? null)
-                ?? Setting::getValue('iot_agent_token');
 
-            if (is_string($agentToken)) {
-                $agentToken = preg_replace('/^Bearer\s+/i', '', trim($agentToken)) ?: null;
-            }
-            
-            // Try to ping the agent directly
-            try {
-                $http = \Illuminate\Support\Facades\Http::withoutVerifying()->timeout(5);
+            // Use AgentHttpClient to verify the agent via UMP API
+            // This uses X-UMP-Token header and UMP's device/agent endpoints
+            $devicesResult = $this->agentClient->getDevices($agentId);
+            $devices = [];
 
-                if (!empty($agentToken)) {
-                    $http = $http->withHeaders([
-                        'Authorization' => 'Bearer ' . $agentToken,
-                    ]);
+            if ($devicesResult['success']) {
+                $deviceList = $devicesResult['devices'] ?? $devicesResult['discovered'] ?? [];
+                $devices = array_values(array_map(static function (array $device): array {
+                    return [
+                        'deviceId' => $device['ump_device_id'] ?? $device['id'] ?? $device['_id'] ?? $device['serialNumber'] ?? $device['name'] ?? 'unknown-device',
+                        'type' => $device['type'] ?? $device['connectionType'] ?? 'unknown',
+                        'vendor' => $device['vendor'] ?? $device['manufacturer'] ?? 'Unknown',
+                        'model' => $device['model'] ?? $device['name'] ?? 'Unknown Device',
+                        'status' => $device['status'] ?? 'unknown',
+                    ];
+                }, array_filter($deviceList, 'is_array')));
+
+                // Update agent device if it exists
+                if ($agentDevice) {
+                    $agentDevice->markOnline();
                 }
 
-                $response = $http->get($agentUrl . '/api/health');
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Agent is online and responding',
+                    'data' => [
+                        'agent_id' => $agentId,
+                        'status' => 'online',
+                        'registered' => $agentDevice !== null,
+                        'agent_version' => null,
+                        'uptime' => null,
+                        'devices' => $devices,
+                        'agent_url' => $agentUrl,
+                    ],
+                ]);
+            }
+
+            // Fallback: try to ping the agent URL directly (legacy approach)
+            try {
+                $http = \Illuminate\Support\Facades\Http::withoutVerifying()->timeout(5);
+                $response = $http->get("{$agentUrl}/api/health");
 
                 if ($response->successful()) {
                     $healthData = $response->json();
-                    $devices = [];
-
-                    try {
-                        $devicesResponse = $http->get($agentUrl . '/api/v1/devices');
-
-                        if (! $devicesResponse->successful()) {
-                            $devicesResponse = $http->get($agentUrl . '/api/devices');
-                        }
-
-                        if ($devicesResponse->successful()) {
-                            $rawDevices = $devicesResponse->json('data.items', $devicesResponse->json('data', []));
-
-                            if (is_array($rawDevices)) {
-                                $devices = array_values(array_map(static function (array $device): array {
-                                    return [
-                                        'deviceId' => $device['id'] ?? $device['_id'] ?? $device['serialNumber'] ?? $device['name'] ?? 'unknown-device',
-                                        'type' => $device['type'] ?? 'unknown',
-                                        'vendor' => $device['vendor'] ?? $device['manufacturer'] ?? 'Unknown',
-                                        'model' => $device['model'] ?? $device['name'] ?? 'Unknown Device',
-                                        'status' => $device['status'] ?? 'unknown',
-                                    ];
-                                }, array_filter($rawDevices, 'is_array')));
-                            }
-                        }
-                    } catch (\Throwable $deviceFetchError) {
-                        Log::debug('Agent device list fetch failed during verification', [
-                            'agent_id' => $agentId,
-                            'agent_url' => $agentUrl,
-                            'error' => $deviceFetchError->getMessage(),
-                        ]);
-                    }
-                    
-                    // Update agent device if it exists
-                    if ($agentDevice) {
-                        $agentDevice->markOnline();
-                    }
-
                     return response()->json([
                         'success' => true,
-                        'message' => 'Agent is online and responding',
+                        'message' => 'Agent is online and responding (direct)',
                         'data' => [
                             'agent_id' => $agentId,
                             'status' => 'online',
                             'registered' => $agentDevice !== null,
                             'agent_version' => $healthData['version'] ?? null,
                             'uptime' => $healthData['uptime'] ?? null,
-                            'devices' => $devices,
+                            'devices' => [],
                             'agent_url' => $agentUrl,
                         ],
                     ]);
                 }
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Agent returned an error response',
-                    'data' => [
-                        'agent_id' => $agentId,
-                        'status' => 'error',
-                        'agent_url' => $agentUrl,
-                    ],
-                ]);
-
-            } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                Log::warning('Agent connection failed', [
+            } catch (\Throwable $directPingError) {
+                Log::debug('Direct agent ping failed (expected for UMP agents)', [
                     'agent_id' => $agentId,
                     'agent_url' => $agentUrl,
-                    'error' => $e->getMessage(),
-                ]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot connect to agent. Make sure the Local Agent is running.',
-                    'data' => [
-                        'agent_id' => $agentId,
-                        'status' => 'unreachable',
-                        'agent_url' => $agentUrl,
-                        'registered' => $agentDevice !== null,
-                    ],
-                ]);
-            } catch (\Exception $e) {
-                Log::warning('Agent ping failed', [
-                    'agent_id' => $agentId,
-                    'agent_url' => $agentUrl,
-                    'error' => $e->getMessage(),
-                ]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Agent is not responding: ' . $e->getMessage(),
-                    'data' => [
-                        'agent_id' => $agentId,
-                        'status' => 'unreachable',
-                        'agent_url' => $agentUrl,
-                    ],
+                    'error' => $directPingError->getMessage(),
                 ]);
             }
+
+            // Agent is not reachable via UMP or direct ping
+            return response()->json([
+                'success' => false,
+                'message' => 'Agent is not responding. Make sure the Local Agent is running.',
+                'data' => [
+                    'agent_id' => $agentId,
+                    'status' => 'unreachable',
+                    'registered' => $agentDevice !== null,
+                ],
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Agent verification failed', [
