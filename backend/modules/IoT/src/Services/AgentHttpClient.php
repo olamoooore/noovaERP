@@ -192,8 +192,12 @@ class AgentHttpClient implements DeviceClientInterface
      *
      * Resolution order:
      * 1. IoTDevice config (type='agent' with matching agent_id)
-     * 2. Global Setting 'iot_agent_token' (admin-configured)
-     * 3. Request header X-UMP-Token (passed from frontend as fallback)
+     * 2. Request header X-UMP-Token (passed from frontend as fallback)
+     * 3. Global Setting 'iot_agent_token' (admin-configured)
+     *
+     * NOTE: Header takes priority over Setting because tenants like Acme
+     * may have a stale/invalid Setting value while the frontend sends the
+     * correct live token from localStorage (ump_api_key) after linking.
      */
     private function getAgentToken(string $agentId): ?string
     {
@@ -202,8 +206,8 @@ class AgentHttpClient implements DeviceClientInterface
             ->first();
 
         $token = $agentDevice?->config['agent_token']
-            ?? Setting::getValue('iot_agent_token')
-            ?? request()->header('X-UMP-Token');
+            ?? request()->header('X-UMP-Token')
+            ?? Setting::getValue('iot_agent_token');
 
         return $this->normalizeBearerToken($token);
     }
