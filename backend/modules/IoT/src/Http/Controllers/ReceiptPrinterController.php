@@ -184,11 +184,25 @@ class ReceiptPrinterController extends Controller
 
         $deviceId = $request->input('device_id');
 
-        // Verify device exists
-        $device = DeviceConfiguration::where('id', $deviceId)
-            ->where('agent_id', $agentId)
-            ->where('device_type', 'printer')
-            ->first();
+        // Verify device exists — accept UUID id or serial/ump_device_id
+        $device = null;
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $deviceId)) {
+            $device = DeviceConfiguration::where('id', $deviceId)
+                ->where('agent_id', $agentId)
+                ->where('device_type', 'printer')
+                ->first();
+        }
+        if (!$device) {
+            $device = DeviceConfiguration::where('agent_id', $agentId)
+                ->where('device_type', 'printer')
+                ->where(function ($q) use ($deviceId) {
+                    $q->where('connection_info->ump_device_id', $deviceId)
+                      ->orWhere('connection_info->serialNumber', $deviceId)
+                      ->orWhere('connection_info->umpId', $deviceId)
+                      ->orWhere('name', $deviceId);
+                })
+                ->first();
+        }
 
         if (!$device) {
             return response()->json([

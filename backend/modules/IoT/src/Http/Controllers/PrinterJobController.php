@@ -46,10 +46,24 @@ class PrinterJobController extends Controller
         $config = $request->input('config', []);
 
         // Verify device exists and is a label printer
-        $device = DeviceConfiguration::where('id', $deviceId)
-            ->where('agent_id', $agentId)
-            ->where('device_type', 'printer')
-            ->first();
+        $device = null;
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $deviceId)) {
+            $device = DeviceConfiguration::where('id', $deviceId)
+                ->where('agent_id', $agentId)
+                ->where('device_type', 'printer')
+                ->first();
+        }
+        if (!$device) {
+            $device = DeviceConfiguration::where('agent_id', $agentId)
+                ->where('device_type', 'printer')
+                ->where(function ($q) use ($deviceId) {
+                    $q->where('connection_info->ump_device_id', $deviceId)
+                      ->orWhere('connection_info->serialNumber', $deviceId)
+                      ->orWhere('connection_info->umpId', $deviceId)
+                      ->orWhere('name', $deviceId);
+                })
+                ->first();
+        }
 
         if (!$device) {
             return response()->json([
@@ -105,7 +119,7 @@ class PrinterJobController extends Controller
 
         // Create print job record
         $printJob = PrintJob::create([
-            'device_id' => $deviceId,
+            'device_id' => $device->id,
             'agent_id' => $agentId,
             'job_type' => $jobType,
             'status' => PrintJob::STATUS_PENDING,
