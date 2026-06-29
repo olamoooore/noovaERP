@@ -129,21 +129,62 @@ class DeviceDiscoveryService
     /**
      * Sync discovered devices with agent's current device list.
      * Marks devices not in the list as offline.
+     * Also auto-creates DeviceConfiguration records for printer devices.
      * 
      * @param string $agentId
      * @param array $currentDevices Array of device data from agent
-     * @return array ['updated' => int, 'marked_offline' => int]
+     * @return array ['updated' => int, 'marked_offline' => int, 'configured' => int]
      */
     public function syncDevicesWithAgent(string $agentId, array $currentDevices): array
     {
         $updated = 0;
         $deviceIds = [];
+        $configured = 0;
 
         // Update/create devices from agent's current list
         foreach ($currentDevices as $deviceData) {
             $device = $this->storeDiscoveredDevice($agentId, $deviceData);
             $deviceIds[] = $device->id;
             $updated++;
+
+            // Auto-create DeviceConfiguration for printer devices
+            $umpDeviceId = $deviceData['ump_device_id'] ?? $deviceData['serialNumber'] ?? $deviceData['serial_number'] ?? null;
+            $model = $deviceData['model'] ?? $device->model ?? 'Unknown Printer';
+            $connType = $deviceData['connectionType'] ?? $deviceData['connection_type'] ?? $device->connection_type ?? 'usb';
+            $vendorId = $deviceData['vendorId'] ?? $deviceData['vendor_id'] ?? $device->vendor_id ?? null;
+            $productId = $deviceData['productId'] ?? $deviceData['product_id'] ?? $device->product_id ?? null;
+
+            if ($umpDeviceId) {
+                $existingConfig = \Modules\IoT\Models\DeviceConfiguration::where('agent_id', $agentId)
+                    ->where(function ($q) use ($umpDeviceId, $vendorId, $productId) {
+                        $q->where('connection_info->ump_device_id', $umpDeviceId);
+                        if ($vendorId && $productId) {
+                            $q->orWhere('connection_info->vendorId', $vendorId)
+                              ->orWhere('connection_info->productId', $productId);
+                        }
+                    })
+                    ->exists();
+
+                if (!$existingConfig) {
+                    \Modules\IoT\Models\DeviceConfiguration::create([
+                        'agent_id' => $agentId,
+                        'name' => $model,
+                        'device_type' => 'printer',
+                        'driver_type' => 'tspl',
+                        'connection_type' => 'agent',
+                        'enabled' => true,
+                        'connection_info' => [
+                            'ump_device_id' => $umpDeviceId,
+                            'vendorId' => $vendorId,
+                            'productId' => $productId,
+                            'serialNumber' => $deviceData['serialNumber'] ?? $deviceData['serial_number'] ?? null,
+                        ],
+                        'current_status' => 'online',
+                        'last_seen_at' => now(),
+                    ]);
+                    $configured++;
+                }
+            }
         }
 
         // Mark devices not in the current list as offline
@@ -157,6 +198,7 @@ class DeviceDiscoveryService
         return [
             'updated' => $updated,
             'marked_offline' => $markedOffline,
+            'configured' => $configured,
         ];
     }
 }

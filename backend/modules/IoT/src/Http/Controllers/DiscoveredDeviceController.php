@@ -173,6 +173,7 @@ class DiscoveredDeviceController extends Controller
                     'stats' => [
                         'updated' => $syncResult['updated'],
                         'marked_offline' => $syncResult['marked_offline'],
+                        'configured' => $syncResult['configured'] ?? 0,
                     ],
                 ]);
             } else {
