@@ -130,6 +130,11 @@ class AgentHttpClient implements DeviceClientInterface
      * Ensure the PostgreSQL search_path includes the tenant schema.
      * This allows settings queries to work even when tenant middleware hasn't run.
      */
+    private function isValidUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;
+    }
+
     private function ensureTenantSearchPath(): void
     {
         static $searchPathSet = false;
@@ -167,7 +172,7 @@ class AgentHttpClient implements DeviceClientInterface
 
             // Fallback: try to get tenant from X-Tenant-ID header
             $tenantId = request()->header('X-Tenant-ID');
-            if ($tenantId) {
+            if ($tenantId && $this->isValidUuid($tenantId)) {
                 DB::statement("SET search_path TO \"{$tenantId}\", public");
                 \Log::debug("AgentHttpClient: set search_path from header", ['tenant_id' => $tenantId]);
                 $searchPathSet = true;
@@ -185,10 +190,10 @@ class AgentHttpClient implements DeviceClientInterface
     /**
      * Get agent authentication token.
      *
-     * Resolution order (matches IoTAgentController::verifyAgent logic):
+     * Resolution order:
      * 1. IoTDevice config (type='agent' with matching agent_id)
-     * 2. Request header X-UMP-Token (passed from frontend)
-     * 3. Global Setting 'iot_agent_token'
+     * 2. Global Setting 'iot_agent_token' (admin-configured)
+     * 3. Request header X-UMP-Token (passed from frontend as fallback)
      */
     private function getAgentToken(string $agentId): ?string
     {
@@ -197,8 +202,8 @@ class AgentHttpClient implements DeviceClientInterface
             ->first();
 
         $token = $agentDevice?->config['agent_token']
-            ?? request()->header('X-UMP-Token')
-            ?? Setting::getValue('iot_agent_token');
+            ?? Setting::getValue('iot_agent_token')
+            ?? request()->header('X-UMP-Token');
 
         return $this->normalizeBearerToken($token);
     }

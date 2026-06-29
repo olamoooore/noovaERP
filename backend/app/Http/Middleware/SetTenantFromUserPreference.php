@@ -17,6 +17,11 @@ class SetTenantFromUserPreference
         $this->tenancy = $tenancy;
     }
 
+    private function isValidUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;
+    }
+
     public function handle(Request $request, Closure $next)
     {
         $user = $request->user();
@@ -33,6 +38,16 @@ class SetTenantFromUserPreference
             if (!$tenantId) {
                 return response()->json([
                     'message' => 'Super-admin must specify X-Tenant-ID header to select a tenant context.',
+                ], 400);
+            }
+
+            if (!$this->isValidUuid($tenantId)) {
+                Log::warning('SetTenantFromUserPreference: Invalid tenant ID format', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $tenantId,
+                ]);
+                return response()->json([
+                    'message' => 'Invalid tenant ID format.',
                 ], 400);
             }
 
@@ -54,10 +69,29 @@ class SetTenantFromUserPreference
             $requestedTenantId = $request->header('X-Tenant-ID');
 
             if ($requestedTenantId) {
-                $requestedAccess = DB::table('public.user_company_access')
-                    ->where('user_id', $user->id)
-                    ->where('tenant_id', $requestedTenantId)
-                    ->first();
+                if (!$this->isValidUuid($requestedTenantId)) {
+                    Log::warning('SetTenantFromUserPreference: Invalid tenant ID format in header, falling back to default', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $requestedTenantId,
+                    ]);
+                    $requestedTenantId = null;
+                }
+            }
+
+            if ($requestedTenantId) {
+                try {
+                    $requestedAccess = DB::table('public.user_company_access')
+                        ->where('user_id', $user->id)
+                        ->where('tenant_id', $requestedTenantId)
+                        ->first();
+                } catch (\Exception $e) {
+                    Log::error('SetTenantFromUserPreference: Error querying user_company_access', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $requestedTenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $requestedAccess = null;
+                }
 
                 if (!$requestedAccess) {
                     Log::warning('SetTenantFromUserPreference: User requested unauthorized tenant', [
@@ -69,7 +103,16 @@ class SetTenantFromUserPreference
                 }
 
                 if ($requestedTenantId) {
-                    $tenant = \App\Models\Tenant::find($requestedTenantId);
+                    try {
+                        $tenant = \App\Models\Tenant::find($requestedTenantId);
+                    } catch (\Exception $e) {
+                        Log::error('SetTenantFromUserPreference: Error finding tenant', [
+                            'user_id' => $user->id,
+                            'tenant_id' => $requestedTenantId,
+                            'error' => $e->getMessage(),
+                        ]);
+                        $tenant = null;
+                    }
 
                     if ($tenant) {
                         Log::info('SetTenantFromUserPreference: Using requested tenant for user', [
@@ -90,10 +133,18 @@ class SetTenantFromUserPreference
 
             if (!$resolvedTenant) {
                 // Get user's default company from public schema
-                $defaultCompany = DB::table('public.user_company_access')
-                    ->where('user_id', $user->id)
-                    ->where('is_default', true)
-                    ->first();
+                try {
+                    $defaultCompany = DB::table('public.user_company_access')
+                        ->where('user_id', $user->id)
+                        ->where('is_default', true)
+                        ->first();
+                } catch (\Exception $e) {
+                    Log::error('SetTenantFromUserPreference: Error querying default company', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $defaultCompany = null;
+                }
 
                 if (!$defaultCompany) {
                     Log::warning('SetTenantFromUserPreference: No tenant mapping for user', [
@@ -104,7 +155,16 @@ class SetTenantFromUserPreference
                     ], 403);
                 }
 
-                $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+                try {
+                    $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
+                } catch (\Exception $e) {
+                    Log::error('SetTenantFromUserPreference: Error finding tenant for default company', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $defaultCompany->tenant_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $tenant = null;
+                }
                 
                 if (!$tenant) {
                     Log::error('SetTenantFromUserPreference: Tenant not found', [
