@@ -88,6 +88,7 @@ class AgentConfigController extends Controller
         $validator = Validator::make($request->all(), [
             'agent_url' => 'required|url',
             'agent_token' => 'nullable|string',
+            'agent_id' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -98,7 +99,6 @@ class AgentConfigController extends Controller
         }
 
         try {
-            // Test connection to agent
             $http = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->timeout(5);
 
@@ -110,21 +110,47 @@ class AgentConfigController extends Controller
                 ]);
             }
 
+            // Step 1: Verify basic connectivity
             $response = $http->get($request->agent_url . '/api/health');
 
-            if ($response->successful()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Connection successful',
-                    'data' => $response->json(),
-                ]);
-            } else {
+            if (!$response->successful()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Connection failed',
                     'error' => 'HTTP ' . $response->status(),
                 ], 500);
             }
+
+            $healthData = $response->json();
+            $agentName = $healthData['agent']['name'] ?? $healthData['name'] ?? 'Unknown';
+            $agentVersion = $healthData['version'] ?? 'Unknown';
+
+            // Step 2: If agent_id provided, validate it by trying to discover
+            $agentValid = true;
+            $agentId = $request->agent_id;
+            if ($agentId) {
+                try {
+                    $discoverResponse = $http->post($request->agent_url . '/api/devices/discover', [
+                        'agent_id' => $agentId,
+                    ]);
+
+                    if ($discoverResponse->status() === 401) {
+                        $agentValid = false;
+                    }
+                } catch (\Exception $e) {
+                    $agentValid = false;
+                }
+            }
+
+            return response()->json([
+                'success' => $agentValid,
+                'message' => $agentValid ? 'Connection successful' : 'Connection failed: agent ID not found',
+                'data' => [
+                    'agent' => $agentName,
+                    'version' => $agentVersion,
+                    'agent_id_valid' => $agentValid,
+                ],
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
