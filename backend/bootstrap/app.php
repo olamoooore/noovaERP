@@ -48,6 +48,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'correlation.id'           => \App\Http\Middleware\CorrelationIdMiddleware::class,
         ]);
 
+        // Ensure auth.agent_or_user runs before SetTenantFromUserPreference
+        $middleware->priority([
+            \App\Http\Middleware\AuthenticateAgentOrUser::class,
+            \App\Http\Middleware\SetTenantFromUserPreference::class,
+            \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+        ]);
+
         // Attach correlation ID middleware to all API requests
         $middleware->appendToGroup('api', \App\Http\Middleware\CorrelationIdMiddleware::class);
 

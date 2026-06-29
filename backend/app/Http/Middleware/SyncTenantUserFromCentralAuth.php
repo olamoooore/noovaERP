@@ -32,7 +32,8 @@ class SyncTenantUserFromCentralAuth
 
             $tenantUser->name = $centralUser->name;
 
-            if ($centralUser->getAuthPassword() && $tenantUser->getAuthPassword() !== $centralUser->getAuthPassword()) {
+            // Handle both Eloquent User and stdClass user (from auth.agent_or_user)
+            if (method_exists($centralUser, 'getAuthPassword') && $centralUser->getAuthPassword() && $tenantUser->getAuthPassword() !== $centralUser->getAuthPassword()) {
                 $tenantUser->password = $centralUser->getAuthPassword();
             }
 
@@ -40,9 +41,10 @@ class SyncTenantUserFromCentralAuth
                 $tenantUser->save();
             }
 
-            $this->syncTenantRole($tenantUser, (int) $centralUser->getAuthIdentifier());
+            $centralUserId = $centralUser instanceof \App\Models\User ? (int) $centralUser->getAuthIdentifier() : (int) $centralUser->id;
+            $this->syncTenantRole($tenantUser, $centralUserId);
 
-            if (method_exists($tenantUser, 'withAccessToken') && method_exists($centralUser, 'currentAccessToken')) {
+            if (method_exists($tenantUser, 'withAccessToken') && $centralUser instanceof \App\Models\User && method_exists($centralUser, 'currentAccessToken')) {
                 $tenantUser->withAccessToken($centralUser->currentAccessToken());
             }
 
@@ -63,17 +65,19 @@ class SyncTenantUserFromCentralAuth
 
             $request->setUserResolver(static fn () => $tenantUser);
 
+            $centralUserId = $centralUser instanceof \App\Models\User ? $centralUser->getAuthIdentifier() : $centralUser->id;
             Log::info('SyncTenantUserFromCentralAuth: Resolved tenant user', [
                 'tenant_id' => tenant('id'),
-                'central_user_id' => $centralUser->getAuthIdentifier(),
+                'central_user_id' => $centralUserId,
                 'tenant_user_id' => $tenantUser->id,
                 'email' => $tenantUser->email,
             ]);
         } catch (Throwable $e) {
+            $centralUserId = $centralUser instanceof \App\Models\User ? $centralUser->getAuthIdentifier() : ($centralUser->id ?? 'unknown');
             Log::error('SyncTenantUserFromCentralAuth: Failed to resolve tenant user', [
                 'tenant_id' => tenant('id'),
-                'central_user_id' => $centralUser->getAuthIdentifier(),
-                'central_user_email' => $centralUser->email,
+                'central_user_id' => $centralUserId,
+                'central_user_email' => $centralUser->email ?? 'unknown',
                 'error' => $e->getMessage(),
             ]);
         }

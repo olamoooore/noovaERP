@@ -234,7 +234,7 @@ class ReceiptPrinterController extends Controller
 
         // Create print job record
         $printJob = PrintJob::create([
-            'device_id' => $deviceId,
+            'device_id' => $device->id,
             'agent_id' => $agentId,
             'job_type' => 'test_receipt',
             'status' => PrintJob::STATUS_PENDING,

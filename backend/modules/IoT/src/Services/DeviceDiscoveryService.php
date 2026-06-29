@@ -159,8 +159,10 @@ class DeviceDiscoveryService
                     ->where(function ($q) use ($umpDeviceId, $vendorId, $productId) {
                         $q->where('connection_info->ump_device_id', $umpDeviceId);
                         if ($vendorId && $productId) {
-                            $q->orWhere('connection_info->vendorId', $vendorId)
-                              ->orWhere('connection_info->productId', $productId);
+                            $q->orWhere(function ($sub) use ($vendorId, $productId) {
+                                $sub->where('connection_info->vendorId', $vendorId)
+                                    ->where('connection_info->productId', $productId);
+                            });
                         }
                     })
                     ->exists();
@@ -173,6 +175,8 @@ class DeviceDiscoveryService
                         'driver_type' => 'tspl',
                         'connection_type' => 'agent',
                         'enabled' => true,
+                        'driver_config' => [],
+                        'capabilities' => ['print'],
                         'connection_info' => [
                             'ump_device_id' => $umpDeviceId,
                             'vendorId' => $vendorId,
