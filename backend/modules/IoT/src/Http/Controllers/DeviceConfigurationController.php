@@ -63,12 +63,17 @@ class DeviceConfigurationController extends Controller
     {
         try {
             // Get registered devices from agent
+            // Note: fetchUmpDevices fallback returns 'discovered' key, not 'devices'
             $devicesResult = $this->agentClient->getDevices($agentId);
-            $agentDevices = collect($devicesResult['success'] ? ($devicesResult['devices'] ?? []) : []);
+            $agentDevices = collect($devicesResult['success']
+                ? ($devicesResult['devices'] ?? $devicesResult['discovered'] ?? [])
+                : []);
             
             // Also get discovered devices from agent
             $discoveredResult = $this->agentClient->getDiscoveredDevices($agentId);
-            $discoveredDevices = collect($discoveredResult['success'] ? ($discoveredResult['discovered'] ?? []) : []);
+            $discoveredDevices = collect($discoveredResult['success']
+                ? ($discoveredResult['discovered'] ?? $discoveredResult['devices'] ?? [])
+                : []);
             
             // Check if agent is online
             $healthResult = $this->agentClient->checkHealth($agentId);
@@ -76,27 +81,34 @@ class DeviceConfigurationController extends Controller
             
             foreach ($configs as $config) {
                 $connectionInfo = $config->connection_info ?? [];
+                $umpDeviceId = $connectionInfo['ump_device_id'] ?? null;
                 $vendorId = $connectionInfo['vendorId'] ?? $connectionInfo['vendor_id'] ?? null;
                 $productId = $connectionInfo['productId'] ?? $connectionInfo['product_id'] ?? null;
                 
-                // First check registered devices
-                $matchedDevice = $agentDevices->first(function ($device) use ($config, $vendorId, $productId) {
-                    // Match by device_id
+                // Helper to check if a device entry matches this config
+                $matchesConfig = function ($device) use ($config, $umpDeviceId, $vendorId, $productId) {
+                    // Match by ump_device_id (primary — this is what UMP/agent knows)
+                    if ($umpDeviceId && ($device['ump_device_id'] ?? null) === $umpDeviceId) {
+                        return true;
+                    }
+                    // Match by device_id (config's DB UUID)
                     if (($device['device_id'] ?? null) === $config->id) {
                         return true;
                     }
-                    
-                    // Match by vendor/product ID
+                    // Match by vendor/product ID (legacy, often fails with synthetic hashes)
                     if ($vendorId && $productId) {
-                        $deviceVendor = $device['vendor_id'] ?? $device['vendorId'] ?? null;
-                        $deviceProduct = $device['product_id'] ?? $device['productId'] ?? null;
-                        
-                        return $this->normalizeHex($vendorId) === $this->normalizeHex($deviceVendor)
-                            && $this->normalizeHex($productId) === $this->normalizeHex($deviceProduct);
+                        $deviceVendor = $device['vendor_id'] ?? $device['vendorId'] ?? $device['vendorid'] ?? null;
+                        $deviceProduct = $device['product_id'] ?? $device['productId'] ?? $device['productid'] ?? null;
+                        if ($deviceVendor && $deviceProduct) {
+                            return $this->normalizeHex($vendorId) === $this->normalizeHex($deviceVendor)
+                                && $this->normalizeHex($productId) === $this->normalizeHex($deviceProduct);
+                        }
                     }
-                    
                     return false;
-                });
+                };
+                
+                // First check registered devices
+                $matchedDevice = $agentDevices->first($matchesConfig);
                 
                 if ($matchedDevice) {
                     // Device found in registered devices - it's active
@@ -110,17 +122,7 @@ class DeviceConfigurationController extends Controller
                 }
                 
                 // Check discovered devices (device exists but not yet initialized by agent)
-                $discoveredMatch = $discoveredDevices->first(function ($device) use ($vendorId, $productId) {
-                    if (!$vendorId || !$productId) {
-                        return false;
-                    }
-                    
-                    $deviceVendor = $device['vendorId'] ?? $device['vendor_id'] ?? null;
-                    $deviceProduct = $device['productId'] ?? $device['product_id'] ?? null;
-                    
-                    return $this->normalizeHex($vendorId) === $this->normalizeHex($deviceVendor)
-                        && $this->normalizeHex($productId) === $this->normalizeHex($deviceProduct);
-                });
+                $discoveredMatch = $discoveredDevices->first($matchesConfig);
                 
                 if ($discoveredMatch) {
                     // Device found in discovered devices - it's connected but not initialized

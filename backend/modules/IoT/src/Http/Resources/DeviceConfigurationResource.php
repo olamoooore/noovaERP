@@ -25,7 +25,7 @@ class DeviceConfigurationResource extends JsonResource
             'currentStatus' => $this->current_status,
             'statusMessage' => $this->status_message,
             'lastSeenAt' => $this->last_seen_at?->toISOString(),
-            'isOnline' => $this->isOnline() || in_array($this->current_status, ['ready', 'discovered', 'initializing']),
+            'isOnline' => $this->isOnline() || in_array($this->current_status, ['ready', 'discovered', 'initializing', 'busy']),
             'createdAt' => $this->created_at->toISOString(),
             'updatedAt' => $this->updated_at->toISOString(),
             'statusHistory' => DeviceStatusHistoryResource::collection($this->whenLoaded('statusHistory')),
