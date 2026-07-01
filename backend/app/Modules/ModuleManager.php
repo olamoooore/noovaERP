@@ -2,6 +2,7 @@
 
 namespace App\Modules;
 
+use App\Modules\Services\ModuleOnboardingService;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -13,9 +14,12 @@ final class ModuleManager
      */
     private ?array $modulesCache = null;
 
+    private ModuleOnboardingService $onboardingService;
+
     public function __construct(
         private readonly Application $app,
     ) {
+        $this->onboardingService = new ModuleOnboardingService();
     }
 
     /**
@@ -313,5 +317,54 @@ final class ModuleManager
                 }
             }
         }
+    }
+
+    /**
+     * Get onboarding pack for a module
+     */
+    public function getOnboardingPack(string $moduleKey): ?array
+    {
+        $module = $this->get($moduleKey);
+        if (!$module) {
+            return null;
+        }
+
+        return $this->onboardingService->getOnboardingPack($module);
+    }
+
+    /**
+     * Check onboarding status for a tenant/module
+     */
+    public function checkOnboardingStatus(string $tenantId, string $moduleKey): array
+    {
+        return $this->onboardingService->checkOnboardingStatus($tenantId, $moduleKey);
+    }
+
+    /**
+     * Complete an onboarding step
+     */
+    public function completeOnboardingStep(string $tenantId, string $moduleKey, string $step): bool
+    {
+        return $this->onboardingService->completeStep($tenantId, $moduleKey, $step);
+    }
+
+    /**
+     * Get all module contracts in structured format
+     */
+    public function getModuleContracts(): array
+    {
+        $contracts = [];
+
+        foreach ($this->all() as $module) {
+            $contracts[] = [
+                'key' => $module->key,
+                'name' => $module->name,
+                'type' => $module->type,
+                'dependencies' => $module->dependencies,
+                'version' => '1.0.0',
+            ];
+        }
+
+        return $contracts;
     }
 }
