@@ -109,16 +109,18 @@ return Application::configure(basePath: dirname(__DIR__))
             try {
                 $url = request()->url();
                 $method = request()->method();
+                $userId = auth()->id();
             } catch (\Throwable) {
                 $url = 'CLI';
                 $method = 'CLI';
+                $userId = null;
             }
 
             \Illuminate\Support\Facades\Log::error('Unhandled exception', [
                 'exception' => $e,
                 'url' => $url,
                 'method' => $method,
-                'user_id' => auth()->id() ?? null,
+                'user_id' => $userId,
             ]);
         });
     })->create();
