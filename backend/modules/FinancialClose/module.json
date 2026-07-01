@@ -4,5 +4,6 @@
   "type": "feature",
   "providers": [
     "Modules\\FinancialClose\\Providers\\FinancialCloseServiceProvider"
-  ]
+  ],
+  "dependencies": ["core"]
 }

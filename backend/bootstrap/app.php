@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         \App\Providers\ModuleServiceProvider::class,
         \App\Providers\TenantDatabaseServiceProvider::class,
         \App\Providers\Filament\AdminPanelProvider::class,
+        \App\Providers\ActivityLoggingServiceProvider::class,
     ])
     ->withEvents(discover: [
         __DIR__.'/../app/Listeners',
@@ -67,6 +68,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Add CORS to the very beginning of global middleware stack
         $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
 
+        // Add platform API rate limiting middleware
+        $middleware->appendToGroup('api', \App\Http\Middleware\PlatformRateLimitMiddleware::class);
+
         // This project is API-first (SPA + Sanctum). For API routes, we should
         // return a 401 instead of trying to redirect to a named 'login' route.
         $middleware->redirectGuestsTo(function ($request) {
@@ -78,5 +82,35 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // API-first exception handling: return JSON for all exceptions
+        $exceptions->renderable(function (\Throwable $e, $request) {
+            if ($request->is('api/*')) {
+                $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+
+                // Don't expose internal details in production
+                $message = config('app.debug') ? $e->getMessage() : 'An error occurred';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'exception' => class_basename($e),
+                ], $status);
+            }
+
+            return null;
+        });
+
+        // Log all exceptions (except 404s in production)
+        $exceptions->reportable(function (\Throwable $e) {
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException) {
+                return;
+            }
+
+            \Illuminate\Support\Facades\Log::error('Unhandled exception', [
+                'exception' => $e,
+                'url' => request()->url(),
+                'method' => request()->method(),
+                'user_id' => auth()->id(),
+            ]);
+        });
     })->create();

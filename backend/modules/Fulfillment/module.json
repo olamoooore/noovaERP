@@ -1,9 +1,10 @@
 {
-    "key": "fulfillment",
-    "name": "Fulfillment",
-    "type": "addon",
-    "description": "Multi-tenant fulfillment module with carrier integrations (DHL, FedEx, Aramex, GDEX)",
-    "providers": [
-        "Modules\\Fulfillment\\Providers\\FulfillmentServiceProvider"
-    ]
+  "key": "fulfillment",
+  "name": "Fulfillment",
+  "type": "addon",
+  "description": "Multi-tenant fulfillment module with carrier integrations (DHL, FedEx, Aramex, GDEX)",
+  "providers": [
+    "Modules\\Fulfillment\\Providers\\FulfillmentServiceProvider"
+  ],
+  "dependencies": ["inventory", "sales"]
 }

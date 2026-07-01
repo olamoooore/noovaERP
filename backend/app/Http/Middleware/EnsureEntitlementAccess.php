@@ -26,9 +26,6 @@ use Symfony\Component\HttpFoundation\Response;
  *   1. Core features (is_core on `features` table) pass unconditionally
  *   2. FeatureGateService::check() reads `tenant_entitlements`
  *   3. 403 if not entitled
- *
- *逐步 migration: existing `feature:{key}` middleware calls still work but are
- * marked as legacy. New routes should use `entitlement:{key}`.
  */
 class EnsureEntitlementAccess
 {
@@ -89,8 +86,22 @@ class EnsureEntitlementAccess
             }
 
             if ($result['is_entitled']) {
+                Log::info('EnsureEntitlementAccess: Feature access granted', [
+                    'tenant_id' => $tenantId,
+                    'feature_key' => $featureKey,
+                    'user_id' => $request->user()?->getKey(),
+                    'ip' => $request->ip(),
+                ]);
+
                 return $next($request);
             }
+
+            Log::warning('EnsureEntitlementAccess: Feature access denied', [
+                'tenant_id' => $tenantId,
+                'feature_key' => $featureKey,
+                'user_id' => $request->user()?->getKey(),
+                'ip' => $request->ip(),
+            ]);
 
             return response()->json([
                 'message' => "Feature '{$featureKey}' is not enabled for this account.",

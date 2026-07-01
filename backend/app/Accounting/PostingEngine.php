@@ -78,12 +78,18 @@ class PostingEngine implements PostingEngineInterface
             return PostingResult::failure("Account resolution failed: " . $e->getMessage());
         }
 
-        // ── 3. Balance check ──────────────────────────────────
-        // ⚠️ FLOAT RISK
-        $totalDebit  = array_sum(array_column($resolvedLines, 'debit'));
-        $totalCredit = array_sum(array_column($resolvedLines, 'credit'));
+        // ── 3. Balance check ──────────────────────────────────────────
+        $totalDebit  = '0.00';
+        $totalCredit = '0.00';
 
-        if (abs($totalDebit - $totalCredit) > 0.01) {
+        foreach ($resolvedLines as $line) {
+            $totalDebit  = bcadd($totalDebit, (string) $line['debit'], 2);
+            $totalCredit = bcadd($totalCredit, (string) $line['credit'], 2);
+        }
+
+        $difference = bcsub($totalDebit, $totalCredit, 2);
+
+        if (bccomp($difference, '0.01', 2) === 1 || bccomp($difference, '-0.01', 2) === -1) {
             return PostingResult::failure(
                 "Journal entry is unbalanced. Debit: {$totalDebit}, Credit: {$totalCredit}"
             );

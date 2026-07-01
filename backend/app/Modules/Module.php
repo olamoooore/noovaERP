@@ -6,6 +6,7 @@ final readonly class Module
 {
     /**
      * @param array<int, class-string> $providers
+     * @param array<int, string> $dependencies Module keys this module depends on
      */
     public function __construct(
         public string $key,
@@ -13,12 +14,29 @@ final readonly class Module
         public string $type,
         public string $basePath,
         public array $providers,
+        public array $dependencies = [],
     ) {
     }
 
     public function isCore(): bool
     {
         return $this->type === 'core';
+    }
+
+    /**
+     * Check if this module depends on another module
+     */
+    public function dependsOn(string $moduleKey): bool
+    {
+        return in_array($moduleKey, $this->dependencies, true);
+    }
+
+    /**
+     * Get all direct dependencies
+     */
+    public function getDependencies(): array
+    {
+        return $this->dependencies;
     }
 
     public function tenantApiRoutesPath(): ?string

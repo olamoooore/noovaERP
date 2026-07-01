@@ -32,7 +32,7 @@ class FeatureGateService
             $this->invalidate($tenantId);
         }
 
-        return Cache::remember(
+        return Cache::tags(['feature_gate', $tenantId])->remember(
             $this->cacheKey($tenantId),
             self::TTL,
             fn () => $this->resolveFromDb($tenantId),
@@ -72,8 +72,8 @@ class FeatureGateService
         $result = [];
 
         foreach ($keys as $key) {
-            $match          = $all->get($key);
-            $result[$key]   = [
+            $match        = $all->get($key);
+            $result[$key] = [
                 'key'         => $key,
                 'is_entitled' => $match !== null,
                 'source'      => $match['source'] ?? null,
@@ -89,7 +89,7 @@ class FeatureGateService
      */
     public function invalidate(string $tenantId): void
     {
-        Cache::forget($this->cacheKey($tenantId));
+        Cache::tags(['feature_gate', $tenantId])->forget($this->cacheKey($tenantId));
     }
 
     /**
@@ -100,7 +100,7 @@ class FeatureGateService
     {
         // When using Redis with tags
         if (config('cache.default') === 'redis') {
-            Cache::tags(['feature_gate'])->flush();
+            Cache::tags('feature_gate')->flush();
             return;
         }
 

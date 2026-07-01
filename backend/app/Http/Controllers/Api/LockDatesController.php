@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LockDate;
 use App\Models\LockDateOverride;
+use App\Services\ApprovalPolicyService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
@@ -17,10 +19,12 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 class LockDatesController extends Controller
 {
     protected $lockDateService;
+    protected $approvalPolicy;
 
-    public function __construct(LockDateValidationService $lockDateService)
+    public function __construct(LockDateValidationService $lockDateService, ApprovalPolicyService $approvalPolicy)
     {
         $this->lockDateService = $lockDateService;
+        $this->approvalPolicy = $approvalPolicy;
     }
 
     /**
@@ -252,5 +256,62 @@ class LockDatesController extends Controller
         ];
 
         return response()->json($stats);
+    }
+
+    /**
+     * Approve a lock date override
+     * Validates that the approver is not the same as the requestor (no self-approval)
+     */
+    public function approveOverride(Request $request, $overrideId)
+    {
+        $validator = Validator::make($request->all(), [
+            'approved_by' => 'required|integer|exists:users,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $override = LockDateOverride::findOrFail($overrideId);
+
+        if ($override->approved_by !== null) {
+            return response()->json([
+                'message' => 'This override has already been approved',
+            ], 422);
+        }
+
+        // Self-approval validation
+        $selfApprovalCheck = $this->approvalPolicy->validateNotSelfApproval(
+            $override->user_id,
+            $request->approved_by
+        );
+
+        if (!$selfApprovalCheck['allowed']) {
+            Log::warning('Lock date override self-approval blocked', [
+                'override_id' => $overrideId,
+                'requestor_user_id' => $override->user_id,
+                'approver_user_id' => $request->approved_by,
+            ]);
+
+            return response()->json([
+                'message' => $selfApprovalCheck['reason'],
+            ], 422);
+        }
+
+        // Validate approver has permission
+        if (!$this->lockDateService->canOverrideLockDate($request->approved_by)) {
+            return response()->json([
+                'message' => 'The specified approver does not have permission to approve lock date overrides',
+            ], 422);
+        }
+
+        $override->update([
+            'approved_by' => $request->approved_by,
+        ]);
+
+        return response()->json([
+            'message' => 'Override approved successfully',
+            'override' => $override->fresh(['user', 'approvedBy']),
+        ]);
     }
 }

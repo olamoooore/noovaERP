@@ -288,6 +288,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
             Route::put('/lock-dates/{id}', [LockDatesController::class, 'update']);
             Route::delete('/lock-dates/{id}', [LockDatesController::class, 'destroy']);
             Route::post('/lock-dates/request-override', [LockDatesController::class, 'requestOverride']);
+            Route::post('/lock-dates/overrides/{id}/approve', [LockDatesController::class, 'approveOverride']);
         });
 
         // Read-only lock date endpoints

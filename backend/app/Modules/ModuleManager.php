@@ -62,6 +62,7 @@ final class ModuleManager
             $name = (string) ($raw['name'] ?? '');
             $type = (string) ($raw['type'] ?? 'addon');
             $providers = $raw['providers'] ?? [];
+            $dependencies = $raw['dependencies'] ?? [];
 
             if ($key === '' || $name === '') {
                 $skippedDirs[] = ['dir' => $dirName, 'reason' => 'missing key or name in module.json'];
@@ -79,6 +80,7 @@ final class ModuleManager
                 type: $type,
                 basePath: $dir,
                 providers: is_array($providers) ? $providers : [],
+                dependencies: is_array($dependencies) ? $dependencies : [],
             );
             
             $modules[] = $module;
@@ -87,6 +89,7 @@ final class ModuleManager
                 'name' => $name,
                 'type' => $type,
                 'dir' => $dirName,
+                'dependencies' => $dependencies,
             ]);
         }
 
@@ -94,9 +97,8 @@ final class ModuleManager
             Log::info('[ModuleManager] Skipped directories summary', ['skipped' => $skippedDirs]);
         }
 
-        usort($modules, function (Module $a, Module $b): int {
-            return [$a->isCore() ? 0 : 1, $a->key] <=> [$b->isCore() ? 0 : 1, $b->key];
-        });
+        // Sort modules: core first, then by dependency order
+        $modules = $this->sortByDependencies($modules);
 
         Log::info('[ModuleManager] Module discovery complete', [
             'total_discovered' => count($modules),
@@ -105,6 +107,171 @@ final class ModuleManager
         ]);
 
         return $this->modulesCache = $modules;
+    }
+
+    /**
+     * Sort modules by dependency order (dependencies first)
+     *
+     * @param array<int, Module> $modules
+     * @return array<int, Module>
+     */
+    private function sortByDependencies(array $modules): array
+    {
+        $moduleKeys = array_map(fn($m) => $m->key, $modules);
+        $sorted = [];
+        $visited = [];
+
+        $visit = function (Module $module) use (&$visit, &$sorted, &$visited, $moduleKeys) {
+            $key = $module->key;
+
+            if (isset($visited[$key])) {
+                return;
+            }
+
+            $visited[$key] = true;
+
+            foreach ($module->dependencies as $depKey) {
+                if (!in_array($depKey, $moduleKeys, true)) {
+                    Log::warning("[ModuleManager] Module '{$key}' depends on unknown module '{$depKey}'");
+                    continue;
+                }
+
+                // Find the dependency module
+                foreach ($this->modulesCache ?? [] as $depModule) {
+                    if ($depModule->key === $depKey) {
+                        $visit($depModule);
+                        break;
+                    }
+                }
+            }
+
+            $sorted[] = $module;
+        };
+
+        // First, add all core modules
+        foreach ($modules as $module) {
+            if ($module->isCore()) {
+                $visit($module);
+            }
+        }
+
+        // Then, add non-core modules
+        foreach ($modules as $module) {
+            if (!$module->isCore()) {
+                $visit($module);
+            }
+        }
+
+        return $sorted;
+    }
+
+    /**
+     * Validate that all module dependencies are satisfied
+     *
+     * @return array{valid: bool, errors: array<int, string>}
+     */
+    public function validateDependencies(): array
+    {
+        $modules = $this->all();
+        $moduleKeys = array_map(fn($m) => $m->key, $modules);
+        $errors = [];
+
+        foreach ($modules as $module) {
+            foreach ($module->dependencies as $depKey) {
+                if (!in_array($depKey, $moduleKeys, true)) {
+                    $errors[] = "Module '{$module->key}' depends on '{$depKey}' which is not installed";
+                }
+            }
+        }
+
+        // Check for circular dependencies
+        $circularDeps = $this->detectCircularDependencies($modules);
+        if (!empty($circularDeps)) {
+            foreach ($circularDeps as $cycle) {
+                $errors[] = "Circular dependency detected: " . implode(' -> ', $cycle);
+            }
+        }
+
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Detect circular dependencies using DFS
+     *
+     * @param array<int, Module> $modules
+     * @return array<int, array<int, string>>
+     */
+    private function detectCircularDependencies(array $modules): array
+    {
+        $moduleMap = [];
+        foreach ($modules as $module) {
+            $moduleMap[$module->key] = $module;
+        }
+
+        $cycles = [];
+        $visited = [];
+        $recStack = [];
+
+        $dfs = function (string $key, array $path) use (&$dfs, &$visited, &$recStack, &$cycles, $moduleMap) {
+            if (isset($recStack[$key])) {
+                // Found a cycle
+                $cycleStart = array_search($key, $path);
+                $cycles[] = array_slice($path, $cycleStart);
+                return;
+            }
+
+            if (isset($visited[$key])) {
+                return;
+            }
+
+            $visited[$key] = true;
+            $recStack[$key] = true;
+            $path[] = $key;
+
+            if (isset($moduleMap[$key])) {
+                foreach ($moduleMap[$key]->dependencies as $depKey) {
+                    $dfs($depKey, $path);
+                }
+            }
+
+            unset($recStack[$key]);
+        };
+
+        foreach ($modules as $module) {
+            $dfs($module->key, []);
+        }
+
+        return $cycles;
+    }
+
+    /**
+     * Get a module by key
+     */
+    public function get(string $key): ?Module
+    {
+        foreach ($this->all() as $module) {
+            if ($module->key === $key) {
+                return $module;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get all modules that depend on a specific module
+     *
+     * @return array<int, Module>
+     */
+    public function getDependents(string $moduleKey): array
+    {
+        return array_filter(
+            $this->all(),
+            fn(Module $module) => $module->dependsOn($moduleKey)
+        );
     }
 
     /**
