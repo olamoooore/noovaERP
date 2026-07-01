@@ -220,7 +220,7 @@ class CustomerCreditNotesController extends Controller
     /**
      * Validate credit note amount
      */
-    public function validate(Request $request)
+    public function validateCreditNote(Request $request)
     {
         $validated = $request->validate([
             'invoice_id' => 'required|exists:invoices,id',

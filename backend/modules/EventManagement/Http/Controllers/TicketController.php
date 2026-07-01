@@ -85,7 +85,7 @@ class TicketController extends Controller
      * Validate a ticket for entry
      * Requirements: 3.5 - Ticket validation for event entry
      */
-    public function validate(ValidateTicketRequest $request): JsonResponse
+    public function validateTicket(ValidateTicketRequest $request): JsonResponse
     {
         try {
             $validationData = $request->validated();

@@ -172,7 +172,7 @@ class VendorDebitNotesController extends Controller
         return response()->json(['data' => $debitNotes]);
     }
 
-    public function validate(Request $request)
+    public function validateDebitNote(Request $request)
     {
         $validated = $request->validate([
             'bill_id' => 'required|exists:bills,id',

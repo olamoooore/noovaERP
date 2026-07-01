@@ -32,7 +32,17 @@ class FeatureGateService
             $this->invalidate($tenantId);
         }
 
-        return Cache::tags(['feature_gate', $tenantId])->remember(
+        $driver = config('cache.default');
+
+        if ($driver === 'redis' || $driver === 'memcached') {
+            return Cache::tags(['feature_gate', $tenantId])->remember(
+                $this->cacheKey($tenantId),
+                self::TTL,
+                fn () => $this->resolveFromDb($tenantId),
+            );
+        }
+
+        return Cache::remember(
             $this->cacheKey($tenantId),
             self::TTL,
             fn () => $this->resolveFromDb($tenantId),
@@ -89,7 +99,14 @@ class FeatureGateService
      */
     public function invalidate(string $tenantId): void
     {
-        Cache::tags(['feature_gate', $tenantId])->forget($this->cacheKey($tenantId));
+        $driver = config('cache.default');
+
+        if ($driver === 'redis' || $driver === 'memcached') {
+            Cache::tags(['feature_gate', $tenantId])->forget($this->cacheKey($tenantId));
+            return;
+        }
+
+        Cache::forget($this->cacheKey($tenantId));
     }
 
     /**
@@ -98,8 +115,10 @@ class FeatureGateService
      */
     public function invalidateAll(): void
     {
+        $driver = config('cache.default');
+
         // When using Redis with tags
-        if (config('cache.default') === 'redis') {
+        if ($driver === 'redis') {
             Cache::tags('feature_gate')->flush();
             return;
         }
