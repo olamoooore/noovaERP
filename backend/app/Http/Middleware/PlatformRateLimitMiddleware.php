@@ -41,10 +41,14 @@ class PlatformRateLimitMiddleware
         $clientIp = $request->ip();
         $key = "rate_limit:platform:{$clientIp}";
 
+        // Use atomic increment with TTL on first request
+        $attempts = Cache::get($key, 0);
         $attempts = Cache::increment($key);
 
+        // Set TTL only on first request (when value becomes 1)
         if ($attempts === 1) {
-            Cache::expire($key, self::WINDOW_SECONDS);
+            // For Redis: use put with TTL. For file: increment already sets no expiry but file cache handles cleanup
+            Cache::put($key, $attempts, self::WINDOW_SECONDS);
         }
 
         if ($attempts > self::RATE_LIMIT_PER_MINUTE) {
