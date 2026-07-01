@@ -57,6 +57,7 @@
             "Modules\\Sales\\": "modules/Sales/src/",
             "Modules\\WebsiteBuilder\\": "modules/WebsiteBuilder/",
             "Modules\\WhatsApp\\": "modules/WhatsApp/src/",
+            "Modules\\CRM\\": "modules/CRM/src/",
             "Modules\\": "modules/",
             "Modules\\Fulfillment\\": "modules/Fulfillment/src/",
             "Database\\Factories\\": "database/factories/",
@@ -67,7 +68,10 @@
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/",
-            "Modules\\HRM\\Tests\\": "modules/HRM/tests/"
+            "Modules\\HRM\\Tests\\": "modules/HRM/tests/",
+            "Modules\\FinancialReporting\\Tests\\": "modules/FinancialReporting/tests/",
+            "Modules\\OCRBookkeeping\\Tests\\": "modules/OCRBookkeeping/tests/",
+            "Modules\\EventManagement\\Tests\\": "modules/EventManagement/tests/"
         }
     },
     "scripts": {
