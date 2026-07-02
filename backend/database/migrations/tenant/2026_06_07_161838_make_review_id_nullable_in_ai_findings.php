@@ -9,16 +9,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('fci_ai_findings', function (Blueprint $table) {
-            $table->string('review_id')->nullable()->change();
-            $table->string('account_code')->nullable()->change();
+            // review_id is a uuid with a foreign key; keep the type, only relax nullability.
+            $table->uuid('review_id')->nullable()->change();
         });
     }
 
     public function down(): void
     {
         Schema::table('fci_ai_findings', function (Blueprint $table) {
-            $table->string('review_id')->nullable(false)->change();
-            $table->string('account_code')->nullable(false)->change();
+            $table->uuid('review_id')->nullable(false)->change();
         });
     }
 };

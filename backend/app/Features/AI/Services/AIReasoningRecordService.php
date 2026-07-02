@@ -25,6 +25,13 @@ class AIReasoningRecordService
      */
     public function recordReasoning(array $data): int
     {
+        $encode = static function ($value): ?string {
+            if ($value === null) {
+                return null;
+            }
+            return is_array($value) ? json_encode($value) : (string) $value;
+        };
+
         $recordId = DB::table('ai_reasoning_records')->insertGetId([
             'tenant_id' => $data['tenant_id'] ?? tenant('id'),
             'user_id' => $data['user_id'] ?? auth()->id(),
@@ -32,16 +39,17 @@ class AIReasoningRecordService
             'module' => $data['module'] ?? null,
             'action' => $data['action'] ?? null,
             'input_prompt' => $data['input_prompt'] ?? null,
-            'data_accessed' => $data['data_accessed'] ?? [],
-            'reasoning_steps' => $data['reasoning_steps'] ?? [],
+            'data_accessed' => $encode($data['data_accessed'] ?? null),
+            'reasoning_steps' => $encode($data['reasoning_steps'] ?? null),
             'output' => $data['output'] ?? null,
             'confidence_score' => $data['confidence_score'] ?? null,
-            'actions_taken' => $data['actions_taken'] ?? [],
+            'actions_taken' => $encode($data['actions_taken'] ?? null),
             'duration_ms' => $data['duration_ms'] ?? null,
             'model_used' => $data['model_used'] ?? null,
             'tokens_used' => $data['tokens_used'] ?? null,
             'cost' => $data['cost'] ?? null,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         Log::info('AI reasoning recorded', [

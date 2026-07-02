@@ -327,6 +327,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/onboarding/sessions', [OnboardingSessionsController::class, 'store']);
         Route::get('/onboarding/sessions/{id}', [OnboardingSessionsController::class, 'show']);
         Route::post('/onboarding/sessions/{id}/advance', [OnboardingSessionsController::class, 'advance']);
+        Route::post('/onboarding/sessions/{id}/back', [OnboardingSessionsController::class, 'back']);
         Route::post('/onboarding/sessions/{id}/resume', [OnboardingSessionsController::class, 'resume']);
         Route::post('/onboarding/sessions/{id}/abandon', [OnboardingSessionsController::class, 'abandon']);
         Route::post('/onboarding/sessions/{id}/skip', [OnboardingSessionsController::class, 'skip']);

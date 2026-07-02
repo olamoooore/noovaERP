@@ -158,6 +158,67 @@ class OnboardingStateMachine
     }
 
     /**
+     * Move the session back to the previous step.
+     *
+     * Behaviour:
+     *  - The current step is reopened (status set back to 'pending' unless it
+     *    still holds saved data, in which case it is kept 'completed' so the
+     *    user can amend without losing prior input).
+     *  - The previous step becomes the active step ('in_progress').
+     *  - Going back from the first step is blocked.
+     *  - The session must be 'in_progress'.
+     *
+     * @return array Session state (session + steps).
+     *
+     * @throws \RuntimeException When the session cannot move back.
+     */
+    public function back(int $sessionId): array
+    {
+        $session = DB::table('onboarding_sessions')->find($sessionId);
+        if (!$session) {
+            throw new \RuntimeException("Onboarding session {$sessionId} not found.");
+        }
+
+        if ($session->status !== 'in_progress') {
+            throw new \RuntimeException("Session {$sessionId} is {$session->status}, cannot go back.");
+        }
+
+        $currentStep = $session->current_step;
+        $steps = $this->steps();
+        $stepCodes = array_keys($steps);
+        $currentIndex = array_search($currentStep, $stepCodes, true);
+
+        if ($currentIndex === false) {
+            throw new \RuntimeException("Unknown step: {$currentStep}");
+        }
+
+        if ($currentIndex === 0) {
+            throw new \RuntimeException("Cannot go back from the first step ('{$currentStep}').");
+        }
+
+        $previousStep = $stepCodes[$currentIndex - 1];
+
+        // Reopen the previous step so the user can amend it.
+        DB::table('onboarding_step_states')
+            ->where('session_id', $sessionId)
+            ->where('step_code', $previousStep)
+            ->update([
+                'status'     => 'in_progress',
+                'updated_at' => now(),
+            ]);
+
+        // Move the session pointer back to the previous step.
+        DB::table('onboarding_sessions')
+            ->where('id', $sessionId)
+            ->update([
+                'current_step' => $previousStep,
+                'updated_at'   => now(),
+            ]);
+
+        return $this->getSession($sessionId);
+    }
+
+    /**
      * Resume an in_progress session (no-op if already active, restores state).
      */
     public function resume(int $sessionId): array

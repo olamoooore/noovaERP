@@ -72,6 +72,15 @@ class OnboardingSessionsController extends Controller
     }
 
     /**
+     * Move back to the previous step (e.g. Back from Review & Validate).
+     */
+    public function back(int $id): JsonResponse
+    {
+        $state = $this->machine->back($id);
+        return response()->json(['data' => $state]);
+    }
+
+    /**
      * Resume a paused/in-progress session.
      */
     public function resume(int $id): JsonResponse
