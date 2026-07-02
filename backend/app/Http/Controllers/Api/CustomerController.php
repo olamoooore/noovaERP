@@ -88,6 +88,7 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             // Basic
+            'code' => 'nullable|string|max:50|unique:customers,code',
             'type' => 'in:individual,company',
             'name' => 'required|string|max:255',
             'email' => 'nullable|email',

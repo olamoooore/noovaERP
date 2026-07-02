@@ -44,6 +44,7 @@ interface Customer {
 }
 
 interface CustomerFormData {
+  code: string
   type: 'individual' | 'company'
   name: string
   email: string
@@ -63,6 +64,7 @@ interface CustomerFormData {
 }
 
 const initialFormData: CustomerFormData = {
+  code: '',
   type: 'individual',
   name: '',
   email: '',
@@ -232,6 +234,7 @@ export function CustomersPage() {
   const startEdit = () => {
     if (customerDetail) {
       setFormData({
+        code: customerDetail.code || '',
         type: customerDetail.type || 'individual',
         name: customerDetail.name || '',
         email: customerDetail.email || '',
@@ -291,6 +294,17 @@ export function CustomersPage() {
                 </TabsList>
                 
                 <TabsContent value="basic" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Customer Code</Label>
+                    <Input
+                      id="code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      placeholder="Auto-generated if left empty"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">Your own ID format — leave empty to auto-generate</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Customer Type</Label>
@@ -910,6 +924,17 @@ export function CustomersPage() {
                 </TabsList>
                 
                 <TabsContent value="basic" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-code">Customer Code</Label>
+                    <Input
+                      id="edit-code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      placeholder="e.g., CUST-001"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">Your own ID format — leave empty to keep auto-generated</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Customer Type</Label>
