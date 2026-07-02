@@ -789,6 +789,15 @@ export function CustomerDetailsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {customer.addresses.map(address => (
                     <div key={address.id} className="p-4 border rounded-lg relative group">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => deleteAddressMutation.mutate(address.id)}
+                        title="Delete address"
+                      >
+                        <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
+                      </Button>
                       <div className="flex items-center gap-2 mb-2">
                         <Badge variant="outline" className="capitalize">{address.type}</Badge>
                         {address.is_default && <Badge variant="secondary">Default</Badge>}
