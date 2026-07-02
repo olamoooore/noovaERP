@@ -403,6 +403,7 @@ export function CustomerDetailsPage() {
   const openEditDialog = () => {
     if (customer) {
       setEditForm({
+        code: customer.code,
         name: customer.name,
         display_name: customer.display_name,
         email: customer.email,
@@ -1671,7 +1672,18 @@ export function CustomerDetailsPage() {
             <DialogTitle>Edit Customer</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-code">Customer Code</Label>
+                <Input
+                  id="edit-code"
+                  value={editForm.code || ''}
+                  onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
+                  placeholder="e.g., CUST-001"
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">Your own ID format — leave empty to keep auto-generated</p>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-name">Name *</Label>
                 <Input

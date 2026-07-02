@@ -218,6 +218,7 @@ class CustomerController extends Controller
         $customer = Customer::findOrFail($id);
         $validated = $request->validate([
             // Basic
+            'code' => 'nullable|string|max:50|unique:customers,code,' . $id,
             'type' => 'in:individual,company',
             'name' => 'string|max:255',
             'email' => 'nullable|email',
