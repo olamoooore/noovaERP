@@ -19,6 +19,9 @@
 <body>
     <div class="header">
         <div class="title">Customer Statement</div>
+        @if(!empty($payload['customer']['code']))
+        <div class="meta">Customer ID: {{ $payload['customer']['code'] }}</div>
+        @endif
         <div class="meta">Customer: {{ $payload['customer']['name'] ?? 'Unknown' }}</div>
         <div class="meta">Period: {{ $payload['period']['start_date'] ?? '' }} to {{ $payload['period']['end_date'] ?? '' }}</div>
         <div class="meta">Generated: {{ now()->format('Y-m-d H:i') }}</div>

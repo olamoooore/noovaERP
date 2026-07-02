@@ -184,6 +184,20 @@
 
         <div class="receipt-code">Receipt: {{ $order->receipt_number ?? $order->order_number }}</div>
 
+        @if(!empty($order->customer) && !empty($order->customer->code))
+        <div class="row">
+            <span>Customer ID:</span>
+            <span>{{ $order->customer->code }}</span>
+        </div>
+        @endif
+
+        @if(!empty($order->customer) && !empty($order->customer->name) && $order->customer->name !== 'Walk-in Customer')
+        <div class="row">
+            <span>Customer:</span>
+            <span>{{ $order->customer->name }}</span>
+        </div>
+        @endif
+
         @foreach($order->items as $item)
         <div class="item-block">
             <div class="row item-main">

@@ -136,7 +136,14 @@ export function QuotesPage() {
                   {filteredQuotes.map((quote: any) => (
                     <TableRow key={quote.id} className="hover:bg-accent/50">
                       <TableCell className="font-medium">{quote.invoice_number}</TableCell>
-                      <TableCell>{quote.customer?.name || 'Unknown'}</TableCell>
+                      <TableCell>
+                        <div>
+                          {quote.customer?.code && (
+                            <span className="text-xs font-mono text-muted-foreground">{quote.customer.code}</span>
+                          )}
+                          <div>{quote.customer?.name || 'Unknown'}</div>
+                        </div>
+                      </TableCell>
                       <TableCell>{formatDate(quote.invoice_date || quote.created_at)}</TableCell>
                       <TableCell>{formatDate(quote.due_date || quote.invoice_date || quote.created_at)}</TableCell>
                       <TableCell>{quote.customer_reference || quote.internal_reference || '-'}</TableCell>

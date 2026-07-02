@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
 
 type SocialLinks = {
@@ -84,6 +85,7 @@ function toSocialLinks(value: unknown): SocialLinks {
 export function GeneralSettings() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { tenantId } = useAuthStore()
 
   const [companyName, setCompanyName] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
@@ -197,6 +199,13 @@ export function GeneralSettings() {
     })
   }
 
+  const copyTenantId = () => {
+    if (tenantId) {
+      navigator.clipboard.writeText(tenantId)
+      toast({ title: 'Copied', description: 'Tenant ID copied to clipboard.' })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -233,6 +242,22 @@ export function GeneralSettings() {
                 onChange={(e) => setCompanyName(e.target.value)} 
                 placeholder="My Company"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tenant ID</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={tenantId || ''}
+                  readOnly
+                  className="font-mono text-sm bg-muted"
+                />
+                <Button type="button" variant="outline" size="icon" onClick={copyTenantId} disabled={!tenantId}>
+                  <Icon icon="solar:copy-linear" className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Unique identifier for your tenant. Click the button to copy.
+              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Logo URL</label>

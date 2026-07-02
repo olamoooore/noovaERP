@@ -229,6 +229,9 @@
         <div class="invoice-meta">
             <div class="invoice-meta-section">
                 <h4>Bill To</h4>
+                @if (!empty($customer->code))
+                <p class="name"><strong>{{ $customer->code }}</strong></p>
+                @endif
                 <p class="name">{{ $customer->name ?? $customer->first_name . ' ' . $customer->last_name }}</p>
                 @if (!empty($customer->email))
                 <p>{{ $customer->email }}</p>

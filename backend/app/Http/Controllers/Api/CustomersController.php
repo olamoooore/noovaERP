@@ -103,13 +103,38 @@ class CustomersController extends Controller
             return response()->json(['message' => 'Unable to read file'], 400);
         }
 
-        $header = fgetcsv($handle);
-        if (!is_array($header) || count($header) === 0) {
+        $rawHeader = fgetcsv($handle);
+        if (!is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
-        $header = array_map(fn ($h) => strtolower(trim((string) $h)), $header);
+        $columnAliases = [
+            'customer_id'       => 'code',
+            'customer_code'     => 'code',
+            'cust_id'           => 'code',
+            'id'                => 'code',
+            'customer_name'     => 'name',
+            'company_name'      => 'company',
+            'email_address'     => 'email',
+            'telephone'         => 'phone',
+            'mobile_number'     => 'mobile',
+            'tax_id'            => 'tax_number',
+            'vat_number'        => 'tax_number',
+            'address'           => 'billing_address',
+            'billing'           => 'billing_address',
+            'shipping'          => 'shipping_address',
+            'credit'            => 'credit_limit',
+            'payment_terms_days' => 'payment_terms',
+        ];
+
+        $header = array_map(function ($h) use ($columnAliases) {
+            $h = strtolower(trim((string) $h));
+            $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+            $h = trim($h, '_');
+            return $columnAliases[$h] ?? $h;
+        }, $rawHeader);
+
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
             if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
@@ -117,7 +142,7 @@ class CustomersController extends Controller
             }
             $row = [];
             foreach ($header as $idx => $key) {
-                $row[$key] = $data[$idx] ?? null;
+                $row[$key] = isset($data[$idx]) ? trim((string) $data[$idx]) : null;
             }
             $rows[] = $row;
         }
@@ -128,12 +153,13 @@ class CustomersController extends Controller
         }
 
         $created = 0;
+        $updated = 0;
         $errors = [];
 
         DB::beginTransaction();
         try {
             foreach ($rows as $index => $row) {
-                $name = trim((string) ($row['name'] ?? ''));
+                $name = $row['name'] ?? '';
 
                 if ($name === '') {
                     $errors[] = [
@@ -143,22 +169,48 @@ class CustomersController extends Controller
                     continue;
                 }
 
+                $customerData = [
+                    'name'         => $name,
+                    'type'         => $row['type'] ?? null,
+                    'email'        => $row['email'] ?? null,
+                    'phone'        => $row['phone'] ?? null,
+                    'mobile'       => $row['mobile'] ?? null,
+                    'company'      => $row['company'] ?? null,
+                    'tax_number'   => $row['tax_number'] ?? null,
+                    'website'      => $row['website'] ?? null,
+                    'billing_address'  => $row['billing_address'] ?? null,
+                    'shipping_address' => $row['shipping_address'] ?? null,
+                    'notes'        => $row['notes'] ?? null,
+                    'is_active'    => true,
+                    'total_outstanding' => 0,
+                ];
+
+                if (isset($row['credit_limit']) && $row['credit_limit'] !== '') {
+                    $customerData['credit_limit'] = (float) $row['credit_limit'];
+                }
+                if (isset($row['payment_terms']) && $row['payment_terms'] !== '') {
+                    $customerData['payment_terms'] = (int) $row['payment_terms'];
+                }
+
                 try {
-                    DB::table('customers')->insert([
-                        'name' => $name,
-                        'email' => isset($row['email']) && $row['email'] !== '' ? trim((string) $row['email']) : null,
-                        'phone' => isset($row['phone']) && $row['phone'] !== '' ? trim((string) $row['phone']) : null,
-                        'company' => isset($row['company']) && $row['company'] !== '' ? trim((string) $row['company']) : null,
-                        'billing_address' => isset($row['billing_address']) && $row['billing_address'] !== '' ? trim((string) $row['billing_address']) : null,
-                        'shipping_address' => isset($row['shipping_address']) && $row['shipping_address'] !== '' ? trim((string) $row['shipping_address']) : null,
-                        'credit_limit' => 0,
-                        'payment_terms' => 30,
-                        'total_outstanding' => 0,
-                        'is_active' => true,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                    $created++;
+                    $code = $row['code'] ?? null;
+                    $existing = null;
+
+                    if ($code !== null && $code !== '') {
+                        $existing = DB::table('customers')->where('code', $code)->first();
+                    }
+
+                    if ($existing) {
+                        DB::table('customers')->where('id', $existing->id)->update(
+                            array_merge($customerData, ['updated_at' => now()])
+                        );
+                        $updated++;
+                    } else {
+                        $customerData['created_at'] = now();
+                        $customerData['updated_at'] = now();
+                        DB::table('customers')->insert($customerData);
+                        $created++;
+                    }
                 } catch (\Throwable $e) {
                     $errors[] = [
                         'row' => $index + 2,
@@ -175,6 +227,7 @@ class CustomersController extends Controller
 
         return response()->json([
             'created' => $created,
+            'updated' => $updated,
             'errors' => $errors,
         ]);
     }

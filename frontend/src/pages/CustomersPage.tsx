@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -264,6 +264,13 @@ export function CustomersPage() {
           <h1 className="text-3xl font-bold">Customers</h1>
           <p className="text-muted-foreground">Manage your customers, contacts and relationships</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" asChild>
+            <Link to="/customers/import">
+              <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
+              Import
+            </Link>
+          </Button>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setFormData(initialFormData) }}>
           <DialogTrigger asChild>
             <Button>
@@ -472,6 +479,7 @@ export function CustomersPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats Cards */}

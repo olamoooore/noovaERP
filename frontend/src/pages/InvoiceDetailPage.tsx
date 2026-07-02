@@ -17,6 +17,7 @@ interface Invoice {
   customer_id: number
   customer?: {
     id: number
+    code?: string
     name: string
     email: string
     phone: string
@@ -245,6 +246,9 @@ export function InvoiceDetailPage() {
               <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2">Bill To</h3>
               {invoice.customer ? (
                 <div className="space-y-1">
+                  {invoice.customer.code && (
+                    <p className="text-sm font-mono text-muted-foreground">{invoice.customer.code}</p>
+                  )}
                   <p className="font-semibold text-lg">{invoice.customer.name}</p>
                   {invoice.customer.email && (
                     <p className="text-sm text-muted-foreground flex items-center gap-1">

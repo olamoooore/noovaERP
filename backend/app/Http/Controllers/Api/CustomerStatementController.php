@@ -129,6 +129,7 @@ class CustomerStatementController extends Controller
         return [
             'customer' => [
                 'id' => $customer->id,
+                'code' => $customer->code,
                 'name' => $customer->name,
                 'email' => $customer->email,
             ],

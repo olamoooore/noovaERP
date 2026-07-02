@@ -67,7 +67,14 @@ export function InvoicesPage() {
               {invoices?.map((invoice: any) => (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                  <TableCell>{invoice.customer?.name}</TableCell>
+                  <TableCell>
+                    <div>
+                      {invoice.customer?.code && (
+                        <span className="text-xs font-mono text-muted-foreground">{invoice.customer.code}</span>
+                      )}
+                      <div>{invoice.customer?.name}</div>
+                    </div>
+                  </TableCell>
                   <TableCell>{formatDate(invoice.invoice_date || invoice.created_at)}</TableCell>
                   <TableCell>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</TableCell>
                   <TableCell>{formatCurrency(invoice.total)}</TableCell>

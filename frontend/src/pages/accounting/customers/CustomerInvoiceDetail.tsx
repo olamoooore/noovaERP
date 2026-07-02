@@ -174,6 +174,9 @@ export const CustomerInvoiceDetail: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold">{documentLabel} {invoice.invoice_number || `#${invoice.id}`}</h1>
             <p className="text-muted-foreground mt-1">Customer: {invoice.customer?.name || 'Unknown'}</p>
+            {invoice.customer?.code && (
+              <p className="text-sm font-mono text-muted-foreground">{invoice.customer.code}</p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -217,6 +220,9 @@ export const CustomerInvoiceDetail: React.FC = () => {
             <div>
               <p className="text-sm text-muted-foreground mb-1">Customer</p>
               <p className="font-medium">{invoice.customer?.name || 'Unknown'}</p>
+              {invoice.customer?.code && (
+                <p className="text-xs font-mono text-muted-foreground">{invoice.customer.code}</p>
+              )}
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</p>
