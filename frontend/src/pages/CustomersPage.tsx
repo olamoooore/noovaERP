@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -108,6 +108,8 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
+const PAGE_SIZE = 20
+
 export function CustomersPage() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -115,23 +117,38 @@ export function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
+  const [page, setPage] = useState(1)
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Fetch customers — newest first, load all so pagination/stats are accurate
+  // Fetch customers — newest first, paginated
   const { data: customersData, isLoading } = useQuery({
-    queryKey: ['customers', searchTerm, filterType],
+    queryKey: ['customers', searchTerm, filterType, page],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchTerm) params.append('search', searchTerm)
       if (filterType && filterType !== 'all') params.append('type', filterType)
       params.append('sort_by', 'created_at')
       params.append('sort_dir', 'desc')
-      params.append('per_page', '1000')
+      params.append('per_page', String(PAGE_SIZE))
+      params.append('page', String(page))
       const response = await api.get(`/customers?${params.toString()}`)
+      return response.data
+    },
+    placeholderData: (prev) => prev,
+  })
+
+  // Reset to first page whenever the search/filter changes
+  useEffect(() => { setPage(1) }, [searchTerm, filterType])
+
+  // Overall customer statistics for the summary cards (independent of pagination)
+  const { data: stats } = useQuery({
+    queryKey: ['customer-statistics'],
+    queryFn: async () => {
+      const response = await api.get('/customers/statistics')
       return response.data
     },
   })
@@ -261,6 +278,8 @@ export function CustomersPage() {
 
   const customers = customersData?.data || []
   const categories = categoriesData || []
+  const totalPages = customersData?.last_page || 1
+  const totalCustomers = customersData?.total || 0
 
   return (
     <div className="space-y-6">
@@ -506,7 +525,7 @@ export function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Customers</p>
-                <p className="text-2xl font-bold">{customersData?.total || customers.length}</p>
+                <p className="text-2xl font-bold">{stats?.total_customers ?? totalCustomers}</p>
               </div>
               <Icon icon="solar:users-group-rounded-bold" className="h-8 w-8 text-primary" />
             </div>
@@ -517,9 +536,7 @@ export function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Companies</p>
-                <p className="text-2xl font-bold">
-                  {customers.filter((c: Customer) => c.type === 'company').length}
-                </p>
+                <p className="text-2xl font-bold">{stats?.companies ?? 0}</p>
               </div>
               <Icon icon="solar:buildings-bold" className="h-8 w-8 text-blue-500" />
             </div>
@@ -530,9 +547,7 @@ export function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Individuals</p>
-                <p className="text-2xl font-bold">
-                  {customers.filter((c: Customer) => c.type === 'individual').length}
-                </p>
+                <p className="text-2xl font-bold">{stats?.individuals ?? 0}</p>
               </div>
               <Icon icon="solar:user-bold" className="h-8 w-8 text-green-500" />
             </div>
@@ -544,7 +559,7 @@ export function CustomersPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Outstanding</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(customers.reduce((sum: number, c: Customer) => sum + (c.total_outstanding || 0), 0))}
+                  {formatCurrency(stats?.total_outstanding ?? 0)}
                 </p>
               </div>
               <Icon icon="solar:wallet-money-bold" className="h-8 w-8 text-orange-500" />
@@ -688,6 +703,40 @@ export function CustomersPage() {
                 )}
               </TableBody>
             </Table>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t mt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {customersData?.from ?? 0}–{customersData?.to ?? 0} of {totalCustomers} customers
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <Icon icon="solar:arrow-left-linear" className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                  <Icon icon="solar:arrow-right-linear" className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
