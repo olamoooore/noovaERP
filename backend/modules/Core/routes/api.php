@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Customers - static routes first (before apiResource)
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
+    Route::post('customers/import', [CustomersController::class, 'import']);
     
     // Customers - resource routes
     Route::apiResource('customers', CustomerController::class);
