@@ -121,13 +121,16 @@ export function CustomersPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Fetch customers
+  // Fetch customers — newest first, load all so pagination/stats are accurate
   const { data: customersData, isLoading } = useQuery({
     queryKey: ['customers', searchTerm, filterType],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchTerm) params.append('search', searchTerm)
       if (filterType && filterType !== 'all') params.append('type', filterType)
+      params.append('sort_by', 'created_at')
+      params.append('sort_dir', 'desc')
+      params.append('per_page', '1000')
       const response = await api.get(`/customers?${params.toString()}`)
       return response.data
     },
