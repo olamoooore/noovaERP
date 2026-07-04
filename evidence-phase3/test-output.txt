@@ -1,0 +1,89 @@
+  ✓ activity log records causer subject event and properties             7.41s  
+  ✓ full approval lifecycle e2e                                          0.13s  
+  ✓ e2e reject sets rejected status                                      0.08s  
+  ✓ e2e self approval is rejected with 422                               0.07s  
+  ✓ e2e show unknown returns 404                                         0.08s  
+  ✓ approval request is recorded and pending                             0.07s  
+  ✓ approval by authorised different user succeeds                       0.07s  
+  ✓ negative self approval is blocked                                    0.06s  
+  ✓ rejection sets status to rejected                                    0.07s  
+  ✓ high risk action requires approval                                   0.07s  
+  ✓ normal action is allowed without approval                            0.06s  
+  ✓ negative daily cost limit blocks action                              0.07s  
+  ✓ negative no tenant context blocks action                             0.05s  
+  ✓ reasoning record captures full audit context                         0.06s  
+  ✓ reasoning record can be updated with output                          0.05s  
+  ✓ tenant records are scoped to tenant                                  0.05s  
+  ✓ reasoning record captures correlation id from request header         0.05s  
+  ✓ reasoning record accepts explicit correlation id                     0.05s  
+  ✓ implements module contract interface with data set " core module co… 0.04s  
+  ✓ implements module contract interface with data set " sales module c… 0.04s  
+  ✓ implements module contract interface with data set " p o s module c… 0.04s  
+  ✓ implements module contract interface with data set " inventory modu… 0.04s  
+  ✓ implements module contract interface with data set " a i module con… 0.04s  
+  ✓ contract matches module json with data set " core module contract"   0.04s  
+  ✓ contract matches module json with data set " sales module contract"  0.04s  
+  ✓ contract matches module json with data set " p o s module contract"  0.04s  
+  ✓ contract matches module json with data set " inventory module contr… 0.04s  
+  ✓ contract matches module json with data set " a i module contract"    0.04s  
+  ✓ contract returns valid metadata with data set " core module contrac… 0.04s  
+  ✓ contract returns valid metadata with data set " sales module contra… 0.04s  
+  ✓ contract returns valid metadata with data set " p o s module contra… 0.04s  
+  ✓ contract returns valid metadata with data set " inventory module co… 0.04s  
+  ✓ contract returns valid metadata with data set " a i module contract… 0.04s  
+  ✓ onboarding config shape with data set " core module contract"        0.04s  
+  ✓ onboarding config shape with data set " sales module contract"       0.05s  
+  ✓ onboarding config shape with data set " p o s module contract"       0.04s  
+  ✓ onboarding config shape with data set " inventory module contract"   0.04s  
+  ✓ onboarding config shape with data set " a i module contract"         0.04s  
+  ✓ activation rules shape with data set " core module contract"         0.04s  
+  ✓ activation rules shape with data set " sales module contract"        0.03s  
+  ✓ activation rules shape with data set " p o s module contract"        0.04s  
+  ✓ activation rules shape with data set " inventory module contract"    0.04s  
+  ✓ activation rules shape with data set " a i module contract"          0.04s  
+  ✓ deactivation rules shape with data set " core module contract"       0.04s  
+  ✓ deactivation rules shape with data set " sales module contract"      0.05s  
+  ✓ deactivation rules shape with data set " p o s module contract"      0.04s  
+  ✓ deactivation rules shape with data set " inventory module contract"  0.04s  
+  ✓ deactivation rules shape with data set " a i module contract"        0.04s  
+  ✓ ai capabilities shape with data set " core module contract"          0.04s  
+  ✓ ai capabilities shape with data set " sales module contract"         0.04s  
+  ✓ ai capabilities shape with data set " p o s module contract"         0.04s  
+  ✓ ai capabilities shape with data set " inventory module contract"     0.04s  
+  ✓ ai capabilities shape with data set " a i module contract"           0.04s  
+  ✓ external mode config shape with data set " core module contract"     0.04s  
+  ✓ external mode config shape with data set " sales module contract"    0.04s  
+  ✓ external mode config shape with data set " p o s module contract"    0.03s  
+  ✓ external mode config shape with data set " inventory module contrac… 0.04s  
+  ✓ external mode config shape with data set " a i module contract"      0.04s  
+  ✓ can activate returns bool in ready with data set " core module cont… 0.04s  
+  ✓ can activate returns bool in ready with data set " sales module con… 0.04s  
+  ✓ can activate returns bool in ready with data set " p o s module con… 0.05s  
+  ✓ can activate returns bool in ready with data set " inventory module… 0.04s  
+  ✓ can activate returns bool in ready with data set " a i module contr… 0.04s  
+  ✓ five module contracts are registered                                 0.04s  
+  ✓ back from review and validate returns to account roles               0.09s  
+  ✓ back reopens previous step so it can be amended                      0.07s  
+  ✓ back can be followed by advance again                                0.06s  
+  ✓ negative back from first step is blocked                             0.05s  
+  ✓ negative back on completed session is blocked                        0.07s  
+  ✓ negative back on unknown session is blocked                          0.04s  
+  ✓ negative back on other tenant session is blocked                     0.08s  
+  ✓ repeated back walks step by step then blocks at first                0.08s  
+  ✓ negative back route rejects unauthenticated request                  0.09s  
+  ✓ back route is registered and returns json state                      0.10s  
+  ✓ index returns discovered modules                                     0.08s  
+  ✓ show returns module detail and dependents                            0.08s  
+  ✓ show unknown module returns 404                                      0.07s  
+  ✓ validate dependencies returns valid when no errors                   0.07s  
+  ✓ activate with present dependency returns success                     0.07s  
+  ✓ activate unknown module returns 404                                  0.07s  
+  ✓ deactivate module with no dependents returns success                 0.07s  
+  ✓ deactivate unknown module returns 404                                0.08s  
+  ✓ allows up to 120 requests per minute                                 0.08s  
+  ✓ returns 429 when threshold exceeded                                  0.08s  
+  ✓ rate limit response has standard shape                               0.08s  
+  ✓ skips rate limiting for webhook paths                                0.08s  
+  ✓ skips rate limiting for health path                                  0.08s  
+  ✓ first request sets 60 second window                                  0.06s  
+  Tests:    88 passed (431 assertions)
