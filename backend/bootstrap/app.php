@@ -85,16 +85,31 @@ return Application::configure(basePath: dirname(__DIR__))
         // API-first exception handling: return JSON for all exceptions
         $exceptions->renderable(function (\Throwable $e, $request) {
             if ($request->is('api/*')) {
-                $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+                // Map common framework exceptions to their correct HTTP status
+                // (these don't expose getStatusCode(), so the previous default
+                // of 500 was wrong — auth errors returned 500 instead of 401).
+                $status = match (true) {
+                    $e instanceof \Illuminate\Auth\AuthenticationException => 401,
+                    $e instanceof \Illuminate\Auth\Access\AuthorizationException => 403,
+                    $e instanceof \Illuminate\Validation\ValidationException => 422,
+                    $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException => 404,
+                    $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface => method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500,
+                    default => 500,
+                };
 
-                // Don't expose internal details in production
-                $message = config('app.debug') ? $e->getMessage() : 'An error occurred';
-
-                return response()->json([
+                $payload = [
                     'success' => false,
-                    'message' => $message,
+                    'message' => config('app.debug') ? $e->getMessage() : 'An error occurred',
                     'exception' => class_basename($e),
-                ], $status);
+                ];
+
+                // Include field-level errors for validation failures.
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    $payload['message'] = $e->getMessage();
+                    $payload['errors'] = $e->errors();
+                }
+
+                return response()->json($payload, $status);
             }
 
             return null;

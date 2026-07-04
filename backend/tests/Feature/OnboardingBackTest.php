@@ -135,6 +135,64 @@ class OnboardingBackTest extends TenantTestCase
         $this->machine->back(999999);
     }
 
+    /**
+     * Reviewer negative path: wrong tenant cannot back another tenant's session.
+     */
+    public function test_negative_back_on_other_tenant_session_is_blocked(): void
+    {
+        // Create + advance a session as tenant-a (must match the bound context).
+        $this->bindTenantContext('tenant-a');
+        $sessionId = (int) $this->machine->createSession('tenant-a', 'guided', '1')->id;
+        $this->advanceTo($sessionId, 'validation');
+
+        // Switch the active tenant context to tenant-b and attempt back.
+        $this->bindTenantContext('tenant-b');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/not found/i');
+
+        $this->machine->back($sessionId);
+    }
+
+    /**
+     * Reviewer negative path: repeated back action walks back one step at a time
+     * and is blocked once the first step is reached.
+     */
+    public function test_repeated_back_walks_step_by_step_then_blocks_at_first(): void
+    {
+        $sessionId = (int) $this->machine->createSession('test-tenant', 'guided', '1')->id;
+        $this->advanceTo($sessionId, 'validation');   // current = validation
+
+        // 1st back: validation -> role_assignment
+        $this->assertSame('role_assignment', $this->machine->back($sessionId)['session']->current_step);
+        // 2nd back: role_assignment -> coa_import
+        $this->assertSame('coa_import', $this->machine->back($sessionId)['session']->current_step);
+
+        // Walk back to the first step (group_setup), then a further back must be blocked.
+        $this->assertSame('country_compliance', $this->machine->back($sessionId)['session']->current_step);
+        $this->assertSame('entity_selection', $this->machine->back($sessionId)['session']->current_step);
+        $this->assertSame('group_setup', $this->machine->back($sessionId)['session']->current_step);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/first step/i');
+
+        $this->machine->back($sessionId);
+    }
+
+    /**
+     * Reviewer negative path: unauthenticated request to the back route is rejected.
+     */
+    public function test_negative_back_route_rejects_unauthenticated_request(): void
+    {
+        $sessionId = (int) $this->machine->createSession('test-tenant', 'guided', '1')->id;
+        $this->advanceTo($sessionId, 'validation');
+
+        // No actingAs / no token: auth:sanctum (first middleware) must reject.
+        $response = $this->postJson('/api/v1/accounting/onboarding/sessions/' . $sessionId . '/back');
+
+        $response->assertUnauthorized();
+    }
+
     public function test_back_route_is_registered_and_returns_json_state(): void
     {
         $sessionId = (int) $this->machine->createSession('test-tenant', 'guided', '1')->id;

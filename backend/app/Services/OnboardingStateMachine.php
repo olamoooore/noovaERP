@@ -58,10 +58,7 @@ class OnboardingStateMachine
      */
     public function getSession(int $sessionId): array
     {
-        $session = DB::table('onboarding_sessions')->find($sessionId);
-        if (!$session) {
-            throw new \RuntimeException("Onboarding session {$sessionId} not found.");
-        }
+        $session = $this->sessionForCurrentTenant($sessionId);
 
         $steps = DB::table('onboarding_step_states')
             ->where('session_id', $sessionId)
@@ -75,13 +72,34 @@ class OnboardingStateMachine
     }
 
     /**
+     * Find a session, enforcing tenant isolation.
+     *
+     * A session that does not exist OR belongs to a different tenant is treated
+     * as "not found" so cross-tenant access is blocked and existence is not leaked.
+     *
+     * @throws \RuntimeException When the session is not found for the current tenant.
+     */
+    private function sessionForCurrentTenant(int $sessionId): object
+    {
+        $session = DB::table('onboarding_sessions')->find($sessionId);
+
+        $currentTenant = tenant('id');
+
+        if (!$session || ($currentTenant !== null && $session->tenant_id !== $currentTenant)) {
+            throw new \RuntimeException("Onboarding session {$sessionId} not found.");
+        }
+
+        return $session;
+    }
+
+    /**
      * Advance the session to the next step.
      * Marks the current step as completed and the next step as in_progress.
      */
     public function advance(int $sessionId, ?array $stepData = null): array
     {
-        $session = DB::table('onboarding_sessions')->find($sessionId);
-        if (!$session || $session->status !== 'in_progress') {
+        $session = $this->sessionForCurrentTenant($sessionId);
+        if ($session->status !== 'in_progress') {
             throw new \RuntimeException("Session {$sessionId} is not in progress.");
         }
 
@@ -174,10 +192,7 @@ class OnboardingStateMachine
      */
     public function back(int $sessionId): array
     {
-        $session = DB::table('onboarding_sessions')->find($sessionId);
-        if (!$session) {
-            throw new \RuntimeException("Onboarding session {$sessionId} not found.");
-        }
+        $session = $this->sessionForCurrentTenant($sessionId);
 
         if ($session->status !== 'in_progress') {
             throw new \RuntimeException("Session {$sessionId} is {$session->status}, cannot go back.");
@@ -223,10 +238,7 @@ class OnboardingStateMachine
      */
     public function resume(int $sessionId): array
     {
-        $session = DB::table('onboarding_sessions')->find($sessionId);
-        if (!$session) {
-            throw new \RuntimeException("Session {$sessionId} not found.");
-        }
+        $session = $this->sessionForCurrentTenant($sessionId);
 
         if ($session->status !== 'in_progress') {
             throw new \RuntimeException("Session {$sessionId} is {$session->status}, cannot resume.");
@@ -240,6 +252,9 @@ class OnboardingStateMachine
      */
     public function abandon(int $sessionId): void
     {
+        // Enforce tenant ownership before mutating.
+        $this->sessionForCurrentTenant($sessionId);
+
         DB::table('onboarding_sessions')
             ->where('id', $sessionId)
             ->where('status', 'in_progress')
@@ -254,8 +269,8 @@ class OnboardingStateMachine
      */
     public function skipStep(int $sessionId, string $stepCode): array
     {
-        $session = DB::table('onboarding_sessions')->find($sessionId);
-        if (!$session || $session->mode !== 'expert') {
+        $session = $this->sessionForCurrentTenant($sessionId);
+        if ($session->mode !== 'expert') {
             throw new \RuntimeException("Step skipping is only available in expert mode.");
         }
 
