@@ -139,6 +139,7 @@ abstract class TenantTestCase extends TestCase
             'modules/WebsiteBuilder/database/migrations/tenant',
             'modules/IoT/database/migrations/tenant',
             'modules/Loyalty/database/migrations/tenant',
+            'modules/Contact/database/migrations/tenant',
         ];
     }
 

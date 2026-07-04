@@ -1,0 +1,31 @@
+{
+  "name": "Contact",
+  "key": "contact",
+  "type": "core",
+  "description": "Contact Master — shared contact identity, roles, identifiers, addresses, methods, relationships, visibility, and hierarchy for all modules.",
+  "version": "1.0.0",
+  "dependencies": [],
+  "providers": [
+    "Modules\\Contact\\ContactServiceProvider"
+  ],
+  "permissions": [
+    "contacts.view",
+    "contacts.create",
+    "contacts.edit",
+    "contacts.delete",
+    "contacts.search",
+    "contacts.import",
+    "contacts.merge",
+    "contacts.roles.manage",
+    "contacts.identifiers.manage",
+    "contacts.addresses.manage",
+    "contacts.methods.manage",
+    "contacts.relationships.manage",
+    "contacts.visibility.manage",
+    "contacts.profiles.view",
+    "contacts.profiles.manage",
+    "contacts.bank_accounts.view",
+    "contacts.bank_accounts.edit",
+    "contacts.export"
+  ]
+}
