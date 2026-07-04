@@ -102,4 +102,38 @@ class AiReasoningRecordTest extends TenantTestCase
         $this->assertCount(1, $records);
         $this->assertSame('test-tenant', $records[0]->tenant_id);
     }
+
+    public function test_reasoning_record_captures_correlation_id_from_request_header(): void
+    {
+        $user = User::factory()->create();
+
+        // Simulate the CorrelationIdMiddleware stamping the request header.
+        request()->headers->set('X-Correlation-ID', 'corr-abc-123');
+
+        $id = $this->records->recordReasoning([
+            'tenant_id' => 'test-tenant',
+            'user_id' => $user->id,
+            'module' => 'accounting',
+            'action' => 'suggest_ap_coding',
+        ]);
+
+        $row = DB::table('ai_reasoning_records')->where('id', $id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('corr-abc-123', $row->correlation_id);
+    }
+
+    public function test_reasoning_record_accepts_explicit_correlation_id(): void
+    {
+        $user = User::factory()->create();
+
+        $id = $this->records->recordReasoning([
+            'tenant_id' => 'test-tenant',
+            'user_id' => $user->id,
+            'module' => 'accounting',
+            'action' => 'detect_close_anomalies',
+            'correlation_id' => 'explicit-corr-456',
+        ]);
+
+        $this->assertSame('explicit-corr-456', DB::table('ai_reasoning_records')->where('id', $id)->value('correlation_id'));
+    }
 }

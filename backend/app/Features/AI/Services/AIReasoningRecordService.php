@@ -2,6 +2,7 @@
 
 namespace App\Features\AI\Services;
 
+use App\Http\Middleware\CorrelationIdMiddleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -36,6 +37,9 @@ class AIReasoningRecordService
             'tenant_id' => $data['tenant_id'] ?? tenant('id'),
             'user_id' => $data['user_id'] ?? auth()->id(),
             'session_id' => $data['session_id'] ?? null,
+            'correlation_id' => $data['correlation_id']
+                ?? (request()?->header(CorrelationIdMiddleware::HEADER))
+                ?? null,
             'module' => $data['module'] ?? null,
             'action' => $data['action'] ?? null,
             'input_prompt' => $data['input_prompt'] ?? null,
