@@ -98,6 +98,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Features
     Route::get('/features', [FeatureController::class, 'index']);
 
+    // Platform Modules (discovery + dependency-aware activation)
+    Route::get('/modules', [App\Http\Controllers\Api\PlatformModuleController::class, 'index']);
+    Route::get('/modules/dependencies/validate', [App\Http\Controllers\Api\PlatformModuleController::class, 'validateDependencies']);
+    Route::get('/modules/{key}', [App\Http\Controllers\Api\PlatformModuleController::class, 'show'])->where('key', '[a-z][a-z0-9._-]+');
+    Route::post('/modules/{key}/activate', [App\Http\Controllers\Api\PlatformModuleController::class, 'activate'])->where('key', '[a-z][a-z0-9._-]+');
+    Route::post('/modules/{key}/deactivate', [App\Http\Controllers\Api\PlatformModuleController::class, 'deactivate'])->where('key', '[a-z][a-z0-9._-]+');
+
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
