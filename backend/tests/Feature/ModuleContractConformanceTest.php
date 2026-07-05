@@ -25,12 +25,33 @@ class ModuleContractConformanceTest extends TestCase
         \Modules\Inventory\Contracts\InventoryModuleContract::class,
         \Modules\AI\Contracts\AIModuleContract::class,
         \Modules\Contact\Contracts\ContactModuleContract::class,
+        // Newly adopted (16 remaining modules)
+        \Modules\AccountingCountry\Contracts\AccountingCountryModuleContract::class,
+        \Modules\Communication\Contracts\CommunicationModuleContract::class,
+        \Modules\CRM\Contracts\CRMModuleContract::class,
+        \Modules\Ecommerce\Contracts\EcommerceModuleContract::class,
+        \Modules\EventManagement\Contracts\EventManagementModuleContract::class,
+        \Modules\FieldService\Contracts\FieldServiceModuleContract::class,
+        \Modules\FinancialClose\Contracts\FinancialCloseModuleContract::class,
+        \Modules\FinancialReporting\Contracts\FinancialReportingModuleContract::class,
+        \Modules\Fulfillment\Contracts\FulfillmentModuleContract::class,
+        \Modules\HRM\Contracts\HRMModuleContract::class,
+        \Modules\IoT\Contracts\IoTModuleContract::class,
+        \Modules\Loyalty\Contracts\LoyaltyModuleContract::class,
+        \Modules\OCRBookkeeping\Contracts\OCRBookkeepingModuleContract::class,
+        \Modules\PaymentGateway\Contracts\PaymentGatewayModuleContract::class,
+        \Modules\WebsiteBuilder\Contracts\WebsiteBuilderModuleContract::class,
+        \Modules\WhatsApp\Contracts\WhatsAppModuleContract::class,
     ];
 
-    private function loadModuleJson(string $key): object
+    private function loadModuleJson(string $class): object
     {
-        $path = base_path("modules/{$key}/module.json");
-        $this->assertFileExists($path, "module.json missing for key '{$key}'");
+        // Derive the module directory from the contract class namespace
+        // e.g. Modules\EventManagement\Contracts\... → EventManagement
+        $parts = explode('\\', $class);
+        $directory = $parts[1] ?? $parts[0];
+        $path = base_path("modules/{$directory}/module.json");
+        $this->assertFileExists($path, "module.json missing for directory '{$directory}' (class: {$class})");
         return json_decode(file_get_contents($path));
     }
 
@@ -49,7 +70,7 @@ class ModuleContractConformanceTest extends TestCase
     public function test_contract_matches_module_json(string $class): void
     {
         $instance = new $class();
-        $json = $this->loadModuleJson($instance->getKey());
+        $json = $this->loadModuleJson($class);
 
         $this->assertSame($json->key, $instance->getKey());
         $this->assertSame($json->name, $instance->getName());
@@ -151,7 +172,7 @@ class ModuleContractConformanceTest extends TestCase
 
     public function test_six_module_contracts_are_registered(): void
     {
-        $this->assertCount(6, self::CONTRACTS, 'Exactly 6 module contracts must be registered');
+        $this->assertCount(22, self::CONTRACTS, 'All 22 module contracts must be registered');
     }
 
     public static function contractProvider(): array

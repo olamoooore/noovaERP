@@ -1,0 +1,201 @@
+ID,Pillar,Service,Priority,Wave,Why
+1,"Identity, Tenant, Entity, and Access Core",Tenant Management Service,P0,W1,Tenant isolation and workspace lifecycle foundation.
+2,"Identity, Tenant, Entity, and Access Core",Entity / Company Management Service,P0,W1,"Legal entities, branches, outlets, departments, operating units."
+3,"Identity, Tenant, Entity, and Access Core",User Management Service,P0,W1,"Central users, invitation, activation, suspension."
+4,"Identity, Tenant, Entity, and Access Core",Role-Based Access Control Service,P0,W1,Roles and permission groups across all modules.
+5,"Identity, Tenant, Entity, and Access Core",Record-Level Access Control Service,P0,W1,"Record scope by tenant, entity, department, owner and visibility."
+6,"Identity, Tenant, Entity, and Access Core",Permission Evaluation Service,P0,W1,Backend permission checks for every API.
+7,"Identity, Tenant, Entity, and Access Core",Session and Authentication Service,P0,W1,"Login, session validation, token and expiry control."
+8,"Identity, Tenant, Entity, and Access Core",Multi-Factor Authentication Service,P1,W2,"Required for finance, HR, admin and enterprise users."
+9,"Identity, Tenant, Entity, and Access Core",User Delegation / Acting-As Service,P2,W3,Controlled proxy action and coverage with audit.
+10,"Identity, Tenant, Entity, and Access Core",Service Account Access Service,P0,W1,"Machine-to-machine access for integrations, AI and jobs."
+11,Contact and Master Data Core,Contact Master Service,P0,W1,"Shared contact identity for customers, vendors, staff, members and external parties."
+12,Contact and Master Data Core,Contact Role Service,P0,W1,"Customer, vendor, staff, member, tenant, contractor and other roles."
+13,Contact and Master Data Core,Contact Identifier Service,P0,W1,"Customer ID, vendor ID, staff ID, membership ID and external refs."
+14,Contact and Master Data Core,Contact Address Service,P0,W1,"Billing, delivery, registered, site and restricted addresses."
+15,Contact and Master Data Core,Contact Method Service,P0,W1,"Email, phone, WhatsApp, portal login and emergency contacts."
+16,Contact and Master Data Core,Contact Relationship Service,P0,W1,"PICs, parent/subsidiary, emergency contacts and managers."
+17,Contact and Master Data Core,Contact Visibility Service,P0,W1,Tenant/entity/department/restricted contact visibility.
+18,Contact and Master Data Core,Contact Profile Registry Service,P0,W2,"Module profile governance for customer, vendor, HR, CRM, portal, loyalty, property and project."
+19,Contact and Master Data Core,Master Data Validation Service,P0,W1,Shared validation before modules consume master data.
+20,Contact and Master Data Core,Master Data Reference Service,P1,W2,"Common reference values, dropdowns and controlled dictionaries."
+21,"Module Registry, Runtime Mode, and Contract Control",Module Registry Service,P0,W1,"Registers modules, module keys, owners, dependencies and capabilities."
+22,"Module Registry, Runtime Mode, and Contract Control",Module Enablement Service,P0,W1,Controls whether module is enabled for tenant/entity.
+23,"Module Registry, Runtime Mode, and Contract Control",Feature Flag Service,P0,W1,Controls staged rollout and tenant-specific features.
+24,"Commercial Entitlement, Subscription, and Packaging Core",Plan and Subscription Service,P0,W1,Commercial entitlement by tier and add-on.
+25,"Module Registry, Runtime Mode, and Contract Control",Module Contract Service,P0,W1,"Dependencies, APIs/events, permissions, onboarding, runtime mode and AI capability declaration."
+26,"Module Registry, Runtime Mode, and Contract Control",Guided Setup Service,P1,W2,Controlled setup flows across modules.
+27,"Module Registry, Runtime Mode, and Contract Control",Setup Pack Service,P1,W2,"Loads templates, roles, workflows, numbering and settings."
+28,"Module Registry, Runtime Mode, and Contract Control",Setup Validation Service,P0,W1,Blocks/flags incomplete required configuration.
+29,"Module Registry, Runtime Mode, and Contract Control",Setup Change Request Service,P1,W2,Review/approval for sensitive setup changes.
+30,"Module Registry, Runtime Mode, and Contract Control",Module Deactivation Service,P1,W2,Safe module suspension without historical corruption.
+31,"Workflow, Policy, Approval, and Orchestration",Workflow Status Engine,P0,W1,Standard lifecycle/status transitions.
+32,"Workflow, Policy, Approval, and Orchestration",Approval Workflow Service,P0,W1,Shared approvals for sensitive actions and overrides.
+33,"Workflow, Policy, Approval, and Orchestration",Approval Policy Service,P0,W1,"Thresholds, approvers, escalation and bypass restrictions."
+34,"Workflow, Policy, Approval, and Orchestration",Task and Reminder Service,P1,W2,"Tasks, due dates, reminders and follow-ups."
+35,"Workflow, Policy, Approval, and Orchestration",Notification Service,P0,W1,"In-app, email, WhatsApp, push and alerts."
+36,"Workflow, Policy, Approval, and Orchestration",Internal Notes Service,P1,W2,Notes with visibility and restricted flags.
+37,"Workflow, Policy, Approval, and Orchestration",Activity / Timeline Service,P2,W3,Important business and system events timeline.
+38,"Workflow, Policy, Approval, and Orchestration",Follow / Watch Record Service,P2,W3,Users subscribe to record updates.
+39,"Workflow, Policy, Approval, and Orchestration",Escalation Service,P1,W2,"Overdue approvals, tasks and exceptions."
+40,"Workflow, Policy, Approval, and Orchestration",Exception Management Service,P0,W1,"Process/architecture overrides with owner, risk, expiry and remediation."
+41,"Audit, Evidence, Privacy, and Compliance Core",Audit Trail Service,P0,W1,"Old/new values, actor, request ID and action evidence."
+42,"Audit, Evidence, Privacy, and Compliance Core",System Log Service,P0,W1,"Technical logs, jobs, integration results and errors."
+43,"Audit, Evidence, Privacy, and Compliance Core",Evidence Pack Service,P0,W1,"Implementation, test, deployment and acceptance evidence."
+44,"Audit, Evidence, Privacy, and Compliance Core",Data Classification Service,P0,W1,Public/internal/confidential/restricted/sensitive classification.
+45,"Audit, Evidence, Privacy, and Compliance Core",Privacy and Consent Service,P0,W2,"Consent, purpose, withdrawal and processing restrictions."
+46,"Audit, Evidence, Privacy, and Compliance Core",Retention Policy Service,P1,W2,"Archive, retention, legal hold, anonymise and purge."
+47,"Audit, Evidence, Privacy, and Compliance Core",Legal Hold Service,P1,W2,Prevents deletion/anonymisation under dispute/audit/investigation.
+48,"Audit, Evidence, Privacy, and Compliance Core",Export Control Service,P0,W1,"Export eligibility, masking, expiry and audit."
+49,"Audit, Evidence, Privacy, and Compliance Core",Restricted Field Masking Service,P0,W1,Partial/full mask and permission-based reveal.
+50,"Audit, Evidence, Privacy, and Compliance Core",Data Subject Request Service,P2,W3,"Access, correction, deletion, export, objection and consent requests."
+51,"Documents, Content, Communication, and Templates",Document Numbering Service,P0,W1,"Central prefixes, sequences, resets and module/entity rules."
+52,"Documents, Content, Communication, and Templates",Document Template Service,P0,W1,"Templates for invoices, quotations, statements and reports."
+53,"Documents, Content, Communication, and Templates",File and Attachment Service,P0,W1,"Upload, link, classify, preview, download and audit files."
+54,"Documents, Content, Communication, and Templates",Document Archive Service,P1,W2,Retention-controlled archive and inactive documents.
+55,"Documents, Content, Communication, and Templates",PDF Generation Service,P0,W1,Standard PDFs from approved templates and data sources.
+56,"Documents, Content, Communication, and Templates",Email Template Service,P1,W2,"Email templates, variables and approvals."
+57,"Documents, Content, Communication, and Templates",Letter / Notice Template Service,P1,W2,"Formal notices, HR letters, property/project communications."
+58,"Documents, Content, Communication, and Templates",Digital Signature Integration Service,P3,W4,Shared e-signature interface and signature audit.
+59,"Documents, Content, Communication, and Templates",Document Versioning Service,P1,W2,"Revisions, superseding and approval versions."
+60,"Documents, Content, Communication, and Templates",Document Access Policy Service,P0,W1,Visibility and restricted document access.
+61,"Search, Navigation, Related Records, and Reporting",Global Search Service,P1,W2,Permission-safe search across allowed records.
+62,"Search, Navigation, Related Records, and Reporting",Search Index Service,P1,W2,"Indexed summaries, filters and permission-safe results."
+63,"Search, Navigation, Related Records, and Reporting",Related Records Registry Service,P0,W2,Registered cross-module drilldown sources.
+64,"Search, Navigation, Related Records, and Reporting",Smart Button Service,P1,W2,Permission-aware counts and drill-down entry points.
+65,"Search, Navigation, Related Records, and Reporting",Dashboard Widget Service,P2,W3,"Widgets, layout and module KPIs."
+66,"Search, Navigation, Related Records, and Reporting",Report Registry Service,P1,W2,"Registered reports, permissions and data sources."
+67,"Search, Navigation, Related Records, and Reporting",Report Export Service,P1,W2,PDF/Excel/CSV exports with masking and audit.
+68,"Search, Navigation, Related Records, and Reporting",Tag and Category Service,P2,W3,"Tags, labels and classification."
+69,"Search, Navigation, Related Records, and Reporting",User Preference Service,P1,W2,"User defaults, date format, dashboard and notifications."
+70,"Search, Navigation, Related Records, and Reporting",Navigation Registry Service,P0,W1,"Menus, routes, feature discovery and route permission."
+71,"Integration, Events, Automation, and Idempotency",API Gateway Service,P0,W1,"API entry, routing, rate limits, auth and tracing."
+72,"Integration, Events, Automation, and Idempotency",Webhook Manager Service,P0,W1,"Webhook validation, logging, retry and routing."
+73,"Integration, Events, Automation, and Idempotency",Connector Registry Service,P0,W1,"External connectors, credentials, scopes and ownership."
+74,"Integration, Events, Automation, and Idempotency",External Reference Mapping Service,P0,W1,Internal-external ID mappings and sync keys.
+75,"Integration, Events, Automation, and Idempotency",Idempotency Key Service,P0,W1,Prevents duplicate writes from retries and replays.
+76,"Integration, Events, Automation, and Idempotency",Domain Event Bus Service,P0,W1,Approved event contracts between modules.
+77,"Integration, Events, Automation, and Idempotency",Retry Policy Service,P0,W1,"Standard retries for jobs, webhooks and APIs."
+78,"Integration, Events, Automation, and Idempotency",Error Queue Service,P0,W1,Failed jobs/events review and replay.
+79,"Integration, Events, Automation, and Idempotency",Background Job Service,P0,W1,"Queues, scheduled jobs and batch processing."
+80,"Integration, Events, Automation, and Idempotency",Integration Health Monitoring Service,P1,W2,"Connector availability, failure and queue delay monitoring."
+81,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Currency Service,P0,W1,"Currencies, decimals, display and allowed configuration."
+82,"Finance, Tax, Payment, Pricing, and Billing Rules Core",FX Rate Service,P1,W2,"Exchange rates, sources and effective dates."
+83,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Tax Configuration Service,P0,W1,"GST/SST/VAT/tax codes, jurisdictions and effective dates."
+84,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Fiscal Calendar Service,P0,W1,"Fiscal years, periods and locks."
+85,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Payment Gateway Registry Service,P1,W2,"Payment providers, methods and settlement configuration."
+86,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Payment Reference Service,P1,W2,"Payment refs, external IDs and reconciliation keys."
+87,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Price List / Rate Card Service,P2,W3,Shared pricing structures.
+88,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Discount / Promotion Rule Service,P2,W3,Shared discount eligibility rules.
+89,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Credit Control Policy Service,P1,W2,"Credit limits, holds, approvals and overrides."
+90,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Billing Schedule Service,P1,W2,Recurring billing schedules and charge rules.
+91,"AI Governance, Context, and Data Quality Core",AI Access Control Service,P0,W2,"AI scope by user permission, tenant/entity and policy."
+92,"AI Governance, Context, and Data Quality Core",AI Context Builder Service,P0,W2,Permission-filtered and restricted-safe AI context.
+93,"AI Governance, Context, and Data Quality Core",AI Instruction Template Service,P1,W3,Controlled prompts and AI execution templates.
+94,"AI Governance, Context, and Data Quality Core",AI Reasoning Record Service,P0,W2,"Logs AI input summary, data sources, output and approval."
+95,"AI Governance, Context, and Data Quality Core",AI Approval Control Service,P0,W2,Approval before sensitive AI actions or writes.
+96,"AI Governance, Context, and Data Quality Core",AI Usage and Cost Control Service,P1,W2,"AI calls, token/cost usage and tenant limits."
+97,"AI Governance, Context, and Data Quality Core",Data Quality Rule Service,P0,W2,"Completeness, validation, duplicate-risk and stale-data rules."
+98,"AI Governance, Context, and Data Quality Core",Data Quality Score Service,P1,W2,Scores records for completeness and reliability.
+99,"Observability, Reliability, Release, and Operations",Test Evidence Registry Service,P0,W1,"Automated test, regression and release proof."
+100,"Observability, Reliability, Release, and Operations",Architecture Compliance Review Service,P0,W1,"Classifies code as compliant, duplicate, refactor or non-compliant."
+101,"Identity, Tenant, Entity, and Access Core",Organization Hierarchy Service,P1,W2,"Group companies, subsidiaries, divisions and cost centers."
+102,"Identity, Tenant, Entity, and Access Core",Enterprise SSO Service,P1,W2,SAML/OIDC enterprise login.
+103,"Identity, Tenant, Entity, and Access Core",SCIM User Provisioning Service,P2,W3,Automated enterprise user provisioning/deprovisioning.
+104,"Security, Risk, and Trust Controls",Segregation of Duties Control Service,P1,W2,Prevents high-risk role combinations.
+105,"Identity, Tenant, Entity, and Access Core",Delegated Administration Service,P2,W3,Admins manage assigned entities/departments only.
+106,"Workflow, Policy, Approval, and Orchestration",Policy Management Service,P0,W1,"Central security, approval, export, AI and access policies."
+107,"Security, Risk, and Trust Controls",Data Residency Policy Service,P2,W3,"Controls data storage, replication and processing jurisdiction."
+108,"Observability, Reliability, Release, and Operations",Backup and Restore Service,P0,W1,"Tenant backup, restore points and recovery evidence."
+109,"Observability, Reliability, Release, and Operations",Disaster Recovery Service,P1,W2,"RTO/RPO, failover and DR validation."
+110,"Observability, Reliability, Release, and Operations",Environment Management Service,P1,W2,"Production, staging, UAT, sandbox and training environments."
+111,"Observability, Reliability, Release, and Operations",Release Management Service,P0,W1,"Rollout, version pinning, rollback and release notes."
+112,"Observability, Reliability, Release, and Operations",Change Advisory / CAB Service,P3,W4,Enterprise change approval for high-risk system changes.
+113,"Audit, Evidence, Privacy, and Compliance Core",Compliance Evidence Vault,P1,W2,"Evidence for audit, security review and statutory readiness."
+114,"Data Platform, Analytics, Lineage, and Portability",Data Lineage Service,P1,W2,"Origin, transformation, sync, migration and export lineage."
+115,"Data Platform, Analytics, Lineage, and Portability",Cross-Entity Consolidation Support Service,P2,W3,Shared foundation for multi-entity consolidation support.
+116,"Module Registry, Runtime Mode, and Contract Control",Entity-Level Configuration Inheritance Service,P2,W3,Group-level configs inherited by entities with controlled overrides.
+117,"Workflow, Policy, Approval, and Orchestration",Enterprise Notification Policy Service,P2,W3,"Alerts by severity, entity, role and escalation path."
+118,"Security, Risk, and Trust Controls",Security Incident Register Service,P1,W2,"Security incident log, investigation and closure evidence."
+119,"Security, Risk, and Trust Controls",Vendor / Third-Party Risk Register,P2,W3,"External system risks, data access and ownership."
+120,"Security, Risk, and Trust Controls",Administrative Override Control Service,P0,W1,"Sensitive override with reason, approval, expiry and audit."
+121,"Product Operations, Support, and Customer Success",Company Setup Wizard Service,P1,W2,"Simple company, users, tax, bank, contacts and numbering setup."
+122,"Product Operations, Support, and Customer Success",Industry Template Service,P1,W2,"Templates for retail, F&B, services, property, project and trading."
+123,"Product Operations, Support, and Customer Success",Starter Chart / Default Configuration Service,P1,W2,Sensible default configs for smaller businesses.
+124,"Product Operations, Support, and Customer Success",Guided Data Import Service,P1,W2,"SME-friendly import for contacts, products, vendors, customers and openings."
+125,"Product Operations, Support, and Customer Success",Setup Health Check Service,P1,W2,Shows missing setup before go-live.
+126,"Product Operations, Support, and Customer Success",Quick Action Service,P2,W3,"One-click create invoice, add vendor, upload receipt, invite user."
+127,"Workflow, Policy, Approval, and Orchestration",SME Automation Recipe Service,P2,W3,Prebuilt automation recipes without workflow design.
+128,"Workflow, Policy, Approval, and Orchestration",Simple Approval Mode Service,P2,W3,Lightweight SME approvals.
+129,"Product Operations, Support, and Customer Success",Guided Error Resolution Service,P1,W2,Business-friendly next steps for errors.
+130,"Product Operations, Support, and Customer Success",In-App Help and Guided Tour Service,P1,W2,"Tooltips, tours and contextual help."
+131,"Product Operations, Support, and Customer Success",Knowledge Base Service,P1,W2,"SOPs, FAQs, help articles and guides."
+132,"Product Operations, Support, and Customer Success",Support Ticket Service,P1,W2,Shared SaaS support ticketing.
+133,"Product Operations, Support, and Customer Success",Customer Success Health Service,P2,W3,"Onboarding progress, usage and adoption risk."
+134,"Product Operations, Support, and Customer Success",SME Compliance Checklist Service,P2,W3,"Practical tax, invoice, payroll, retention and audit-readiness checklist."
+135,"Integration, Events, Automation, and Idempotency",Bank Feed Connection Service,P2,W3,Shared bank feed connection and status monitoring.
+136,"Documents, Content, Communication, and Templates",Receipt Capture Service,P2,W3,Upload/OCR intake for receipts and expense documents.
+137,"Product Operations, Support, and Customer Success",Business Inbox Service,P2,W3,"Shared inbox for emails, invoices, receipts and tasks."
+138,"Workflow, Policy, Approval, and Orchestration",Bulk Action Service,P1,W2,Controlled bulk update/import correction/invite/tagging.
+139,"AI Governance, Context, and Data Quality Core",Data Cleanup Assistant Service,P2,W3,"Fix missing fields, duplicates and invalid data."
+140,"Product Operations, Support, and Customer Success",Guided Go-Live Checklist Service,P1,W2,"Tracks readiness across setup, data import and integrations."
+141,"Product Operations, Support, and Customer Success",Solo Mode Configuration Service,P2,W3,Simplified menus and owner-friendly defaults under subscription tier.
+142,"Product Operations, Support, and Customer Success",Personal Workspace Service,P2,W3,Single-owner business profile and simplified workspace setup.
+143,"Documents, Content, Communication, and Templates",Mobile Capture Service,P2,W3,"Mobile receipt, contact, expense, note and photo capture."
+144,"AI Governance, Context, and Data Quality Core",Voice Note Intake Service,P3,W4,"Create tasks, expenses, leads or notes from voice."
+145,"AI Governance, Context, and Data Quality Core",Conversational Action Service,P3,W4,"Draft invoices, reminders, contacts or follow-ups through conversation."
+146,"Workflow, Policy, Approval, and Orchestration",Smart Reminder Service,P2,W3,"Unpaid invoices, overdue bills, renewals and tax reminders."
+147,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Simple Cashflow Snapshot Service,P2,W3,Quick cash-in/cash-out summary for small operators.
+148,"Workflow, Policy, Approval, and Orchestration",Personal Task Board Service,P2,W3,Simple to-do board linked to records.
+149,"Product Operations, Support, and Customer Success",Client Follow-Up Assistant Service,P2,W3,"Tracks leads, quotes, invoices and next follow-up."
+150,"Documents, Content, Communication, and Templates",Simple Document Request Service,P2,W3,Request missing documents via email/WhatsApp.
+151,"AI Governance, Context, and Data Quality Core",Auto-Categorization Suggestion Service,P3,W4,"Suggest categories for contacts, expenses, receipts, vendors and products."
+152,"AI Governance, Context, and Data Quality Core",Draft-First Automation Service,P1,W2,"Automation/AI creates drafts, not final posted/sent records without confirmation."
+153,"Workflow, Policy, Approval, and Orchestration",One-Person Approval Bypass Policy Service,P2,W3,Simplified owner approval mode while preserving audit.
+154,"Product Operations, Support, and Customer Success",Personal Notification Digest Service,P2,W3,Daily/weekly digest of attention items.
+155,"Product Operations, Support, and Customer Success",Lightweight CRM Follow-Up Service,P2,W3,"Simple lead, quote, call and WhatsApp follow-up pipeline."
+156,"Product Operations, Support, and Customer Success",Simple Client Portal Invite Service,P2,W3,Invite customers to view selected documents safely.
+157,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Micro-Billing Schedule Service,P2,W3,Simple recurring invoices/subscriptions.
+158,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Expense-to-Billable Tracking Service,P2,W3,Reimbursable and billable costs against clients/projects.
+159,"Finance, Tax, Payment, Pricing, and Billing Rules Core",Simple Tax Reminder Service,P2,W3,Filing and missing record reminders.
+160,"Audit, Evidence, Privacy, and Compliance Core",Owner Decision Log Service,P2,W3,Records owner acceptance/rejection of AI or override suggestions.
+161,"Module Registry, Runtime Mode, and Contract Control",Operating Mode Runtime Service,P0,W1,"Controls Coupled, Decoupled and External Integration runtime behaviour."
+162,"Product Operations, Support, and Customer Success",Persona-Based UX Service,P2,W3,Adapts UX by role/persona without bypassing security.
+163,"Module Registry, Runtime Mode, and Contract Control",Capability Discovery Service,P0,W1,"Shows enabled capabilities by plan, module, role, entity and runtime mode."
+164,"Observability, Reliability, Release, and Operations",Product Telemetry Service,P1,W2,"Tracks usage, failed actions, slow flows and adoption issues."
+165,"Observability, Reliability, Release, and Operations",Performance Monitoring Service,P0,W1,"API speed, query latency, job delay and bottlenecks."
+166,"Security, Risk, and Trust Controls",Rate Limiting and Abuse Control Service,P0,W1,"Protects APIs, portals, forms, AI calls and imports."
+167,"Product Operations, Support, and Customer Success",Localization Service,P1,W2,"Language, address, currency, country, tax terminology and formats."
+168,"Product Operations, Support, and Customer Success",Time Zone Service,P1,W2,"Tenant/entity/user timezone for deadlines, audit and reporting."
+169,"Documents, Content, Communication, and Templates",Public Form Service,P2,W3,Secure lead/supplier/member/staff/document collection forms.
+170,"Documents, Content, Communication, and Templates",Form Builder Foundation Service,P3,W4,"Controlled schemas for intake, approval and external submissions."
+171,"Workflow, Policy, Approval, and Orchestration",Rule Engine Foundation Service,P0,W1,"Central rule evaluation for validation, alerts, automation and approvals."
+172,"Workflow, Policy, Approval, and Orchestration",Notification Preference Service,P1,W2,Per-user and per-channel notification preferences.
+173,"Documents, Content, Communication, and Templates",Communication Channel Registry,P0,W1,"Email, WhatsApp, SMS, push, portal and internal channels."
+174,"Documents, Content, Communication, and Templates",Message Delivery Log Service,P1,W2,"Delivery, failure, retry, bounce, read status and audit."
+175,"Documents, Content, Communication, and Templates",Consent-Aware Communication Service,P1,W2,Blocks communication when consent/purpose does not allow.
+176,"Documents, Content, Communication, and Templates",Public Link / Secure Share Service,P1,W2,Time-limited secure links for documents/forms/uploads.
+177,"Product Operations, Support, and Customer Success",Data Import Mapping Template Service,P1,W2,Reusable import mappings by source system and tenant.
+178,"Product Operations, Support, and Customer Success",Data Export Template Service,P1,W2,"Reusable export formats for accountants, auditors and agencies."
+179,"Workflow, Policy, Approval, and Orchestration",Record Locking Service,P0,W1,"Prevents double-edit, double-approval, double-posting and stale overwrite."
+180,"Audit, Evidence, Privacy, and Compliance Core",Soft Delete / Archive Service,P0,W1,"Standard archive, restore and delete lifecycle."
+181,"Observability, Reliability, Release, and Operations",Bulk Job Monitoring Service,P1,W2,Large import/export/rebuild/sync/batch tracking.
+182,"Observability, Reliability, Release, and Operations",Scheduled Job Calendar Service,P2,W3,"Recurring jobs, billing runs, sync runs and report schedules."
+183,"Workflow, Policy, Approval, and Orchestration",SLA Policy Service,P2,W3,Response/resolution deadlines for tickets/tasks/incidents.
+184,"Observability, Reliability, Release, and Operations",Alert Rule Service,P1,W2,"Threshold alerts for overdue, failed sync, stock, payments and compliance."
+185,"Workflow, Policy, Approval, and Orchestration",Exception Queue Service,P0,W1,Records failed validation/sync/posting/import/automation.
+186,"Observability, Reliability, Release, and Operations",Sandbox / Test Data Service,P1,W2,"Safe test tenants, demo/sample data and resettable sandboxes."
+187,"Product Operations, Support, and Customer Success",Demo / Training Mode Service,P2,W3,Training without production data impact.
+188,"Data Platform, Analytics, Lineage, and Portability",Data Anonymization Service,P1,W2,"Anonymized support, demo, training and test datasets."
+189,"Security, Risk, and Trust Controls",Support Access Control Service,P1,W2,Controlled internal support access with approval and audit.
+190,"Observability, Reliability, Release, and Operations",Tenant Health Dashboard Service,P1,W2,"System, data, setup, integration and security health."
+191,"Commercial Entitlement, Subscription, and Packaging Core",License and Usage Metering Service,P0,W1,"Users, modules, storage, transactions, AI, API and integrations."
+192,"Commercial Entitlement, Subscription, and Packaging Core",Billing and Subscription Invoice Service,P1,W2,"SaaS subscription invoices, add-ons and usage charges."
+193,"Commercial Entitlement, Subscription, and Packaging Core",Payment Collection Service,P1,W2,Collects SaaS subscription payments and retries failures.
+194,"Commercial Entitlement, Subscription, and Packaging Core",Dunning / Suspension Service,P1,W2,"Failed payment reminders, grace period and suspension."
+195,"Commercial Entitlement, Subscription, and Packaging Core",Tenant Lifecycle Service,P0,W1,"Trial, active, suspended, cancelled, archived and reactivated."
+196,"Commercial Entitlement, Subscription, and Packaging Core",Data Portability Service,P1,W2,Tenant export when leaving.
+197,"Commercial Entitlement, Subscription, and Packaging Core",Tenant Offboarding Service,P1,W2,"Cancellation, export, retention, deletion/anonymisation and final audit."
+198,"Commercial Entitlement, Subscription, and Packaging Core",Marketplace / Add-On Registry Service,P3,W4,"Optional modules, third-party apps and connector capabilities."
+199,"Integration, Events, Automation, and Idempotency",Public API Developer Portal Service,P3,W4,"API keys, docs, scopes, sandbox and webhook docs."
+200,"Observability, Reliability, Release, and Operations",Status Page / Incident Communication Service,P1,W2,"Incidents, maintenance windows, degraded services and recovery updates."
