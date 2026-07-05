@@ -4,6 +4,8 @@ namespace Modules\Contact\src\Events;
 
 class ContactRoleChanged extends ContactEvent
 {
+    protected string $eventName = 'contact.role.changed';
+
     public function __construct(
         string $tenantId,
         string $contactId,
@@ -12,5 +14,14 @@ class ContactRoleChanged extends ContactEvent
         ?string $userId = null,
     ) {
         parent::__construct($tenantId, $contactId, $userId);
+    }
+
+    public function getPayload(): array
+    {
+        return [
+            'contact_id' => $this->contactId,
+            'role' => $this->role,
+            'action' => $this->action,
+        ];
     }
 }

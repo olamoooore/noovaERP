@@ -4,6 +4,8 @@ namespace Modules\Contact\src\Events;
 
 class ContactProfileUpdated extends ContactEvent
 {
+    protected string $eventName = 'contact.profile.updated';
+
     public function __construct(
         string $tenantId,
         string $contactId,
@@ -13,5 +15,15 @@ class ContactProfileUpdated extends ContactEvent
         ?array $newValue = null,
     ) {
         parent::__construct($tenantId, $contactId, $userId, $oldValue, $newValue);
+    }
+
+    public function getPayload(): array
+    {
+        return [
+            'contact_id' => $this->contactId,
+            'profile_type' => $this->profileType,
+            'old_value' => $this->oldValue,
+            'new_value' => $this->newValue,
+        ];
     }
 }
