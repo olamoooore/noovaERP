@@ -50,4 +50,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('/contacts/{contactId}/profiles/pos', [$controller, 'upsertPosLoyalty']);
     Route::post('/contacts/{contactId}/profiles/property', [$controller, 'upsertProperty']);
     Route::post('/contacts/{contactId}/profiles/project', [$controller, 'upsertProject']);
+
+    // ─── Import ──────────────────────────────────────────────
+    Route::post('/contacts/import', [$controller, 'import']);
+    Route::get('/contacts/import/{batch}', [$controller, 'importStatus']);
+    Route::post('/contacts/import/{batch}/confirm', [$controller, 'importConfirm']);
 });

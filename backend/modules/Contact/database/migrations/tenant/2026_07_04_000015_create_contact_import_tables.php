@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('contact_import_batches', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id')->index();
-            $table->uuid('user_id')->index();
+            $table->unsignedBigInteger('user_id')->index();
             $table->string('file_name');
             $table->string('file_hash')->index();
             $table->integer('total_rows')->default(0);

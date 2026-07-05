@@ -654,4 +654,179 @@ class ContactMasterTest extends TenantTestCase
     {
         $this->json('get', '/api/v1/contacts')->assertUnauthorized();
     }
+
+    // ─── Event Dispatching ────────────────────────────────────────
+
+    public function test_create_contact_dispatches_created_event(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\Modules\Contact\src\Events\ContactCreated::class]);
+
+        $this->as($this->admin(), 'post', '/api/v1/contacts', [
+            'display_name' => 'Event Test',
+            'contact_type' => 'individual',
+        ])->assertCreated();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \Modules\Contact\src\Events\ContactCreated::class,
+            fn($e) => $e->tenantId === $this->tenantUuid
+        );
+    }
+
+    public function test_update_contact_dispatches_updated_event(): void
+    {
+        $id = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $id,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Before',
+            'contact_type' => 'individual',
+        ]);
+
+        \Illuminate\Support\Facades\Event::fake([\Modules\Contact\src\Events\ContactUpdated::class]);
+
+        $this->as($this->admin(), 'put', "/api/v1/contacts/{$id}", [
+            'display_name' => 'After',
+        ])->assertOk();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \Modules\Contact\src\Events\ContactUpdated::class,
+            fn($e) => $e->contactId === $id && $e->oldValue['display_name'] === 'Before'
+        );
+    }
+
+    public function test_delete_contact_dispatches_deleted_event(): void
+    {
+        $id = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $id,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Delete Event',
+            'contact_type' => 'individual',
+        ]);
+
+        \Illuminate\Support\Facades\Event::fake([\Modules\Contact\src\Events\ContactDeleted::class]);
+
+        $this->as($this->admin(), 'delete', "/api/v1/contacts/{$id}")->assertOk();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \Modules\Contact\src\Events\ContactDeleted::class,
+            fn($e) => $e->contactId === $id
+        );
+    }
+
+    public function test_add_role_dispatches_role_changed_event(): void
+    {
+        $contactId = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $contactId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Role Event',
+            'contact_type' => 'individual',
+        ]);
+
+        \Illuminate\Support\Facades\Event::fake([\Modules\Contact\src\Events\ContactRoleChanged::class]);
+
+        $this->as($this->admin(), 'post', "/api/v1/contacts/{$contactId}/roles", [
+            'role' => 'customer',
+        ])->assertCreated();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \Modules\Contact\src\Events\ContactRoleChanged::class,
+            fn($e) => $e->contactId === $contactId && $e->role === 'customer' && $e->action === 'added'
+        );
+    }
+
+    public function test_remove_role_dispatches_role_changed_event(): void
+    {
+        $contactId = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $contactId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Role Remove Event',
+            'contact_type' => 'individual',
+        ]);
+
+        ContactRole::create([
+            'id' => \Illuminate\Support\Str::uuid(),
+            'tenant_id' => $this->tenantUuid,
+            'contact_id' => $contactId,
+            'role' => 'vendor',
+        ]);
+
+        \Illuminate\Support\Facades\Event::fake([\Modules\Contact\src\Events\ContactRoleChanged::class]);
+
+        $this->as($this->admin(), 'delete', "/api/v1/contacts/{$contactId}/roles/vendor")->assertOk();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \Modules\Contact\src\Events\ContactRoleChanged::class,
+            fn($e) => $e->contactId === $contactId && $e->role === 'vendor' && $e->action === 'removed'
+        );
+    }
+
+    // ─── Import ──────────────────────────────────────────────────
+
+    public function test_import_csv_stages_contacts(): void
+    {
+        $csv = "display_name,email,phone\nJohn Import,john@import.com,+1111111111\nJane Import,jane@import.com,+2222222222";
+
+        $res = $this->as($this->admin(), 'post', '/api/v1/contacts/import', [
+            'file' => $this->createCsvFile($csv),
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.total_rows', 2)
+            ->assertJsonPath('data.valid', 2);
+    }
+
+    public function test_import_status_returns_batch_info(): void
+    {
+        $batchId = $this->createImportBatch();
+
+        $res = $this->as($this->admin(), 'get', "/api/v1/contacts/import/{$batchId}");
+        $res->assertOk()->assertJsonPath('data.status', 'validated');
+    }
+
+    public function test_import_confirm_creates_contacts(): void
+    {
+        $batchId = $this->createImportBatch();
+
+        $res = $this->as($this->admin(), 'post', "/api/v1/contacts/import/{$batchId}/confirm");
+        $res->assertOk()
+            ->assertJsonPath('data.imported', 2);
+    }
+
+    public function test_import_unknown_batch_returns_404(): void
+    {
+        $this->as($this->admin(), 'get', '/api/v1/contacts/import/99999999-9999-9999-9999-999999999999')->assertNotFound();
+    }
+
+    public function test_import_confirm_invalid_status_returns_422(): void
+    {
+        $batchId = $this->createImportBatch();
+
+        // Confirm once
+        $this->as($this->admin(), 'post', "/api/v1/contacts/import/{$batchId}/confirm")->assertOk();
+
+        // Confirm again — status is now 'completed', not 'validated'
+        $this->as($this->admin(), 'post', "/api/v1/contacts/import/{$batchId}/confirm")->assertStatus(422);
+    }
+
+    private function createCsvFile(string $csv): \Illuminate\Http\UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'import');
+        file_put_contents($path, $csv);
+        return new \Illuminate\Http\UploadedFile($path, 'contacts.csv', 'text/csv', null, true);
+    }
+
+    private function createImportBatch(): string
+    {
+        $csv = "display_name,email\nImport One,one@import.com\nImport Two,two@import.com";
+
+        $res = $this->as($this->admin(), 'post', '/api/v1/contacts/import', [
+            'file' => $this->createCsvFile($csv),
+        ]);
+
+        return $res->json('data.batch_id');
+    }
 }

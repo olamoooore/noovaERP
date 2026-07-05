@@ -499,4 +499,73 @@ class ContactMasterController extends Controller
 
         return $this->success($profile, 'Project profile saved.', 201);
     }
+
+    // ─── Import ─────────────────────────────────────────────────
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:10240',
+            'mapping' => 'nullable|array',
+        ]);
+
+        $file = $request->file('file');
+        $fileName = $file->getClientOriginalName();
+        $fileHash = md5_file($file->getRealPath());
+
+        $handle = fopen($file->getRealPath(), 'r');
+        $headers = fgetcsv($handle);
+        $rows = [];
+        while (($row = fgetcsv($handle)) !== false) {
+            $rows[] = array_combine($headers, $row);
+        }
+        fclose($handle);
+
+        $batch = $this->service->importCreateBatch([
+            'file_name' => $fileName,
+            'file_hash' => $fileHash,
+            'total_rows' => count($rows),
+            'mapping' => $request->input('mapping'),
+        ], tenant()->id, $request->user()->id);
+
+        $result = $this->service->importStageRows($batch, $rows, tenant()->id);
+
+        return $this->success([
+            'batch_id' => $batch->id,
+            'total_rows' => $batch->total_rows,
+            'valid' => $result['valid'],
+            'errors' => $result['errors'],
+            'duplicates' => $result['duplicates'],
+        ], 'Import staged.', 201);
+    }
+
+    public function importStatus(Request $request, string $batch): JsonResponse
+    {
+        $batchModel = $this->service->importGetStatus($batch, tenant()->id);
+        if (!$batchModel) return $this->notFound('Import batch not found.');
+
+        return $this->success([
+            'batch_id' => $batchModel->id,
+            'status' => $batchModel->status,
+            'total_rows' => $batchModel->total_rows,
+            'valid_rows' => $batchModel->valid_rows,
+            'error_rows' => $batchModel->error_rows,
+            'duplicate_rows' => $batchModel->duplicate_rows,
+            'imported_at' => $batchModel->imported_at,
+        ], 'Import status.');
+    }
+
+    public function importConfirm(Request $request, string $batch): JsonResponse
+    {
+        $batchModel = $this->service->importGetStatus($batch, tenant()->id);
+        if (!$batchModel) return $this->notFound('Import batch not found.');
+
+        if ($batchModel->status !== 'validated') {
+            return $this->error('Import batch is not in validated status.', 422);
+        }
+
+        $result = $this->service->importConfirm($batchModel, tenant()->id);
+
+        return $this->success($result, 'Import confirmed.');
+    }
 }

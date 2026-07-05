@@ -6,10 +6,21 @@ use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Modules\Contact\src\Events\{
+    ContactCreated,
+    ContactUpdated,
+    ContactDeleted,
+    ContactRoleChanged,
+    ContactMerged,
+    ContactProfileUpdated,
+    ContactImportCompleted,
+};
 use Modules\Contact\src\Models\{
     CoreContact,
     ContactRole,
     ContactIdentifier,
+    ContactImportBatch,
+    ContactImportStaging,
     ContactAddress,
     ContactMethod,
     ContactRelationship,
@@ -72,6 +83,8 @@ class ContactMasterService
             // Create search index
             $this->rebuildSearchIndex($contact);
 
+            ContactCreated::dispatch($tenantId, $contact->id, null, null, $contact->toArray());
+
             return $contact;
         });
     }
@@ -80,6 +93,8 @@ class ContactMasterService
     {
         $contact = CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
         if (!$contact) return null;
+
+        $old = $contact->toArray();
 
         $contact->update(array_filter([
             'entity_id' => $data['entity_id'] ?? null,
@@ -99,6 +114,8 @@ class ContactMasterService
 
         $this->rebuildSearchIndex($contact);
 
+        ContactUpdated::dispatch($tenantId, $id, null, $old, $contact->fresh()->toArray());
+
         return $contact->fresh();
     }
 
@@ -117,6 +134,9 @@ class ContactMasterService
         }
 
         $contact->delete();
+
+        ContactDeleted::dispatch($tenantId, $id);
+
         return true;
     }
 
@@ -162,7 +182,7 @@ class ContactMasterService
         $contact = $this->find($contactId, $tenantId);
         if (!$contact) return null;
 
-        return ContactRole::create([
+        $contactRole = ContactRole::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
             'contact_id' => $contactId,
@@ -172,14 +192,24 @@ class ContactMasterService
             'is_primary' => $meta['is_primary'] ?? false,
             'metadata' => $meta['metadata'] ?? null,
         ]);
+
+        ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'added');
+
+        return $contactRole;
     }
 
     public function removeRole(string $contactId, string $role, string $tenantId): bool
     {
-        return ContactRole::where('tenant_id', $tenantId)
+        $deleted = ContactRole::where('tenant_id', $tenantId)
             ->where('contact_id', $contactId)
             ->where('role', $role)
             ->delete() > 0;
+
+        if ($deleted) {
+            ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'removed');
+        }
+
+        return $deleted;
     }
 
     // ─── Identifiers ──────────────────────────────────────────────
@@ -416,6 +446,8 @@ class ContactMasterService
             // Rebuild search index
             $this->rebuildSearchIndex($primary);
 
+            ContactMerged::dispatch($tenantId, $primaryId, $mergedId, $userId);
+
             return true;
         });
     }
@@ -485,5 +517,166 @@ class ContactMasterService
             ['contact_id' => $contact->id],
             $data
         );
+    }
+
+    // ─── Import ─────────────────────────────────────────────────
+
+    public function importCreateBatch(array $fileData, string $tenantId, string $userId): ContactImportBatch
+    {
+        $batch = ContactImportBatch::create([
+            'id' => Str::uuid(),
+            'tenant_id' => $tenantId,
+            'user_id' => $userId,
+            'file_name' => $fileData['file_name'],
+            'file_hash' => $fileData['file_hash'],
+            'total_rows' => $fileData['total_rows'],
+            'valid_rows' => 0,
+            'error_rows' => 0,
+            'duplicate_rows' => 0,
+            'status' => 'staging',
+            'mapping_config' => $fileData['mapping'] ?? null,
+        ]);
+
+        return $batch;
+    }
+
+    public function importStageRows(ContactImportBatch $batch, array $rows, string $tenantId): array
+    {
+        $valid = 0;
+        $errors = 0;
+        $duplicates = 0;
+
+        foreach ($rows as $i => $row) {
+            $rowNumber = $i + 1;
+            $mappedData = $this->mapImportRow($row, $batch->mapping_config);
+            $validationErrors = $this->validateImportRow($mappedData);
+
+            // Check for duplicate by email or phone
+            $matchType = null;
+            $matchedId = null;
+            if (empty($validationErrors)) {
+                $existing = $this->findDuplicateForImport($mappedData, $tenantId);
+                if ($existing) {
+                    $matchType = 'duplicate';
+                    $duplicates++;
+                } else {
+                    $matchType = 'new';
+                    $valid++;
+                }
+            } else {
+                $matchType = 'error';
+                $errors++;
+            }
+
+            ContactImportStaging::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'batch_id' => $batch->id,
+                'row_number' => $rowNumber,
+                'raw_data' => $row,
+                'mapped_data' => $mappedData,
+                'status' => $matchType,
+                'errors' => $validationErrors ?: null,
+                'matched_contact_id' => $matchedId,
+                'match_type' => $matchType,
+            ]);
+        }
+
+        $batch->update([
+            'valid_rows' => $valid,
+            'error_rows' => $errors,
+            'duplicate_rows' => $duplicates,
+            'status' => 'validated',
+        ]);
+
+        return ['valid' => $valid, 'errors' => $errors, 'duplicates' => $duplicates];
+    }
+
+    public function importConfirm(ContactImportBatch $batch, string $tenantId): array
+    {
+        $staging = ContactImportStaging::where('batch_id', $batch->id)
+            ->where('status', 'new')
+            ->get();
+
+        $imported = 0;
+
+        DB::transaction(function () use ($staging, $tenantId, &$imported) {
+            foreach ($staging as $row) {
+                $data = $row->mapped_data;
+                $this->create($data, $tenantId);
+                $row->update(['status' => 'imported']);
+                $imported++;
+            }
+        });
+
+        $batch->update([
+            'status' => 'completed',
+            'imported_at' => now(),
+        ]);
+
+        ContactImportCompleted::dispatch($tenantId, $batch->id, $imported, $batch->error_rows);
+
+        return ['imported' => $imported, 'batch_id' => $batch->id];
+    }
+
+    public function importGetStatus(string $batchId, string $tenantId): ?ContactImportBatch
+    {
+        return ContactImportBatch::where('tenant_id', $tenantId)->where('id', $batchId)->first();
+    }
+
+    private function mapImportRow(array $row, ?array $mapping): array
+    {
+        if (!$mapping) {
+            return [
+                'display_name' => $row['display_name'] ?? $row['name'] ?? null,
+                'first_name' => $row['first_name'] ?? null,
+                'last_name' => $row['last_name'] ?? null,
+                'email' => $row['email'] ?? null,
+                'phone' => $row['phone'] ?? null,
+                'mobile' => $row['mobile'] ?? null,
+                'company_name' => $row['company_name'] ?? $row['company'] ?? null,
+                'contact_type' => $row['contact_type'] ?? 'individual',
+            ];
+        }
+
+        $mapped = [];
+        foreach ($mapping as $targetField => $sourceColumn) {
+            $mapped[$targetField] = $row[$sourceColumn] ?? null;
+        }
+        return $mapped;
+    }
+
+    private function validateImportRow(array $data): array
+    {
+        $errors = [];
+
+        if (empty($data['display_name']) && empty($data['first_name']) && empty($data['last_name'])) {
+            $errors[] = 'At least one of display_name, first_name, or last_name is required.';
+        }
+
+        if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Invalid email address.';
+        }
+
+        return $errors;
+    }
+
+    private function findDuplicateForImport(array $data, string $tenantId): ?CoreContact
+    {
+        if (!empty($data['email'])) {
+            $existing = CoreContact::where('tenant_id', $tenantId)
+                ->where('email', $data['email'])
+                ->first();
+            if ($existing) return $existing;
+        }
+
+        if (!empty($data['phone'])) {
+            $existing = CoreContact::where('tenant_id', $tenantId)
+                ->where('phone', $data['phone'])
+                ->first();
+            if ($existing) return $existing;
+        }
+
+        return null;
     }
 }
