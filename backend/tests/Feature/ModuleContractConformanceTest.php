@@ -24,6 +24,7 @@ class ModuleContractConformanceTest extends TestCase
         \Modules\POS\Contracts\POSModuleContract::class,
         \Modules\Inventory\Contracts\InventoryModuleContract::class,
         \Modules\AI\Contracts\AIModuleContract::class,
+        \Modules\Contact\Contracts\ContactModuleContract::class,
     ];
 
     private function loadModuleJson(string $key): object
@@ -148,9 +149,9 @@ class ModuleContractConformanceTest extends TestCase
         $this->assertIsArray($result['reasons']);
     }
 
-    public function test_five_module_contracts_are_registered(): void
+    public function test_six_module_contracts_are_registered(): void
     {
-        $this->assertCount(5, self::CONTRACTS, 'Exactly 5 module contracts must be registered');
+        $this->assertCount(6, self::CONTRACTS, 'Exactly 6 module contracts must be registered');
     }
 
     public static function contractProvider(): array
