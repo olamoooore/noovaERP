@@ -24,13 +24,22 @@ class PlatformServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Register subscriptions when tenancy is initialized (tenant tables available)
+        $this->app['events']->listen(\Stancl\Tenancy\Events\TenancyInitialized::class, function () {
+            try {
+                $this->registerEventSubscriptions();
+            } catch (\Throwable $e) {
+                // Silently skip if tables don't exist yet
+            }
+        });
+
+        // Also try during normal boot (for tests/CLI with tenant already active)
         try {
-            $this->registerEventSubscriptions();
+            if (function_exists('tenant') && tenant()) {
+                $this->registerEventSubscriptions();
+            }
         } catch (\Throwable $e) {
-            // Silently skip if tables don't exist yet (e.g., during migrations or tests)
-            \Illuminate\Support\Facades\Log::debug('PlatformServiceProvider: skipping event subscription registration', [
-                'reason' => $e->getMessage(),
-            ]);
+            // Tenant not initialized yet — will register via event listener
         }
 
         $this->registerObservers();
@@ -65,12 +74,9 @@ class PlatformServiceProvider extends ServiceProvider
 
     private function registerEventSubscriptions(): void
     {
-        // Skip if the domain_event_subscriptions table doesn't exist yet
-        if (!\Illuminate\Support\Facades\Schema::hasTable('domain_event_subscriptions')) {
-            return;
-        }
-
-        $dispatcher = app(DomainEventDispatcher::class);
+        // Try to register subscriptions — table may not exist in all schemas
+        try {
+            $dispatcher = app(DomainEventDispatcher::class);
 
         // Accounting subscribes to all contact events
         $this->createSubscription(
@@ -98,6 +104,9 @@ class PlatformServiceProvider extends ServiceProvider
             \App\Platform\EventBus\Handlers\AuditTrailHandler::class,
             1000
         );
+        } catch (\Throwable $e) {
+            // Table not available — skip registration
+        }
     }
 
     private function createSubscription(
