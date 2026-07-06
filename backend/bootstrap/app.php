@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         \App\Providers\TenantDatabaseServiceProvider::class,
         \App\Providers\Filament\AdminPanelProvider::class,
         \App\Providers\ActivityLoggingServiceProvider::class,
+        \App\Platform\PlatformServiceProvider::class,
     ])
     ->withEvents(discover: [
         __DIR__.'/../app/Listeners',

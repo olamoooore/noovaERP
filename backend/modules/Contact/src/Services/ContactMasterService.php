@@ -2,6 +2,7 @@
 
 namespace Modules\Contact\src\Services;
 
+use App\Platform\EventBus\DomainEventDispatcher;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -55,6 +56,13 @@ class ContactMasterService
 {
     use ApiResponse;
 
+    private ?DomainEventDispatcher $eventDispatcher = null;
+
+    public function setEventDispatcher(DomainEventDispatcher $dispatcher): void
+    {
+        $this->eventDispatcher = $dispatcher;
+    }
+
     // ─── Contact CRUD ─────────────────────────────────────────────
 
     public function create(array $data, string $tenantId): CoreContact
@@ -84,6 +92,11 @@ class ContactMasterService
             $this->rebuildSearchIndex($contact);
 
             ContactCreated::dispatch($tenantId, $contact->id, null, null, $contact->toArray());
+
+            if ($this->eventDispatcher) {
+                $event = new ContactCreated($tenantId, $contact->id, null, null, $contact->toArray());
+                $this->eventDispatcher->dispatch($event);
+            }
 
             return $contact;
         });
@@ -116,6 +129,11 @@ class ContactMasterService
 
         ContactUpdated::dispatch($tenantId, $id, null, $old, $contact->fresh()->toArray());
 
+        if ($this->eventDispatcher) {
+            $event = new ContactUpdated($tenantId, $id, null, $old, $contact->fresh()->toArray());
+            $this->eventDispatcher->dispatch($event);
+        }
+
         return $contact->fresh();
     }
 
@@ -136,6 +154,11 @@ class ContactMasterService
         $contact->delete();
 
         ContactDeleted::dispatch($tenantId, $id);
+
+        if ($this->eventDispatcher) {
+            $event = new ContactDeleted($tenantId, $id, null, null, null);
+            $this->eventDispatcher->dispatch($event);
+        }
 
         return true;
     }
@@ -195,6 +218,11 @@ class ContactMasterService
 
         ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'added');
 
+        if ($this->eventDispatcher) {
+            $event = new ContactRoleChanged($tenantId, $contactId, $role, 'added');
+            $this->eventDispatcher->dispatch($event);
+        }
+
         return $contactRole;
     }
 
@@ -207,6 +235,11 @@ class ContactMasterService
 
         if ($deleted) {
             ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'removed');
+
+            if ($this->eventDispatcher) {
+                $event = new ContactRoleChanged($tenantId, $contactId, $role, 'removed');
+                $this->eventDispatcher->dispatch($event);
+            }
         }
 
         return $deleted;
@@ -448,6 +481,11 @@ class ContactMasterService
 
             ContactMerged::dispatch($tenantId, $primaryId, $mergedId, $userId);
 
+            if ($this->eventDispatcher) {
+                $event = new ContactMerged($tenantId, $primaryId, $mergedId, $userId);
+                $this->eventDispatcher->dispatch($event);
+            }
+
             return true;
         });
     }
@@ -615,6 +653,11 @@ class ContactMasterService
         ]);
 
         ContactImportCompleted::dispatch($tenantId, $batch->id, $imported, $batch->error_rows);
+
+        if ($this->eventDispatcher) {
+            $event = new ContactImportCompleted($tenantId, $batch->id, $imported, $batch->error_rows);
+            $this->eventDispatcher->dispatch($event);
+        }
 
         return ['imported' => $imported, 'batch_id' => $batch->id];
     }

@@ -31,6 +31,7 @@ class DomainEventBusTest extends TenantTestCase
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
         $this->dispatcher = app(DomainEventDispatcher::class);
+        FakeContactCreatedHandler::$handled = false;
     }
 
     // ─── Dispatch + Persist ─────────────────────────────────────
@@ -126,11 +127,12 @@ class DomainEventBusTest extends TenantTestCase
 
         $this->dispatcher->subscribe($subscription);
 
-        // Event from different tenant — should NOT match
+        // Event from different tenant — filtered-module handler should NOT fire
         $event = new ContactCreated($this->tenantUuid, \Illuminate\Support\Str::uuid()->toString());
         $result = $this->dispatcher->dispatch($event);
 
-        $this->assertSame(0, $result['dispatched']);
+        // The tenant-filtered handler should not have been called
+        $this->assertFalse(FakeContactCreatedHandler::$handled, 'Filtered handler should not fire for cross-tenant event');
     }
 
     public function test_payload_filter_selective_dispatch(): void

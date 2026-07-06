@@ -12,7 +12,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->uuid('tenant_id')->index();
             $table->enum('level', ['debug', 'info', 'warning', 'error', 'critical']);
-            $table->enum('category', ['deployment', 'config', 'system', 'integration', 'performance']);
+            $table->string('category', 100)->index();
             $table->text('message');
             $table->json('context')->nullable();
             $table->string('correlation_id')->index();
