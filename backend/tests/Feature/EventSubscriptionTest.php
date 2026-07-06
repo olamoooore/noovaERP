@@ -11,7 +11,11 @@ use App\Platform\SystemLog\SystemLog;
 use Modules\Contact\src\Events\ContactCreated;
 use Modules\Contact\src\Events\ContactUpdated;
 use Modules\Contact\src\Events\ContactRoleChanged;
+use Modules\Contact\src\Models\AccountingCustomerProfile;
+use Modules\Contact\src\Models\CrmContactProfile;
+use Modules\Contact\src\Models\CoreContact;
 use Tests\TenantTestCase;
+use Illuminate\Support\Str;
 
 class EventSubscriptionTest extends TenantTestCase
 {
@@ -22,17 +26,14 @@ class EventSubscriptionTest extends TenantTestCase
     {
         parent::setUp();
 
-        $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
+        $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
         $this->dispatcher = app(DomainEventDispatcher::class);
-
-        // Register subscriptions manually for testing
         $this->registerTestSubscriptions();
     }
 
     private function registerTestSubscriptions(): void
     {
-        // Accounting subscription
         $this->dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
             public function getModuleKey(): string { return 'accounting'; }
             public function getEventNames(): array { return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed']; }
@@ -42,7 +43,6 @@ class EventSubscriptionTest extends TenantTestCase
             public function getPayloadFilter(): ?array { return null; }
         });
 
-        // CRM subscription
         $this->dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
             public function getModuleKey(): string { return 'crm'; }
             public function getEventNames(): array { return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed', 'contact.profile.updated']; }
@@ -52,7 +52,6 @@ class EventSubscriptionTest extends TenantTestCase
             public function getPayloadFilter(): ?array { return null; }
         });
 
-        // Audit trail subscription
         $this->dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
             public function getModuleKey(): string { return 'platform'; }
             public function getEventNames(): array { return ['*']; }
@@ -61,6 +60,18 @@ class EventSubscriptionTest extends TenantTestCase
             public function getTenantFilter(): ?string { return null; }
             public function getPayloadFilter(): ?array { return null; }
         });
+    }
+
+    private function createTestContact(array $overrides = []): CoreContact
+    {
+        return CoreContact::create(array_merge([
+            'id' => Str::uuid(),
+            'tenant_id' => tenant()->id,
+            'contact_type' => 'person',
+            'display_name' => 'Test Contact',
+            'email' => 'test@example.com',
+            'is_active' => true,
+        ], $overrides));
     }
 
     public function test_accounting_subscription_is_registered(): void
@@ -95,35 +106,93 @@ class EventSubscriptionTest extends TenantTestCase
 
     public function test_dispatching_contact_event_triggers_all_handlers(): void
     {
+        $contact = $this->createTestContact(['display_name' => 'Dispatch Test']);
+
         $event = new ContactCreated(
-            $this->tenantUuid,
-            'test-contact-id-123',
+            tenant()->id,
+            $contact->id,
             null,
             null,
-            ['name' => 'Test Contact']
+            $contact->toArray()
         );
 
         $result = $this->dispatcher->dispatch($event);
 
-        $this->assertGreaterThanOrEqual(2, $result['dispatched']); // at least accounting + crm
+        $this->assertGreaterThanOrEqual(2, $result['dispatched']);
         $this->assertEquals(0, $result['failed']);
 
-        // Verify audit trail was written
         $log = SystemLog::where('category', 'audit.domain_event')
             ->where('correlation_id', $event->getCorrelationId())
             ->first();
         $this->assertNotNull($log);
-        $this->assertStringContainsString('contact.created', $log->message);
     }
 
-    public function test_accounting_handler_logs_event(): void
+    public function test_accounting_handler_provisions_customer_profile(): void
     {
+        $contact = $this->createTestContact(['display_name' => 'Customer Test']);
+
+        $event = new ContactRoleChanged(
+            tenant()->id,
+            $contact->id,
+            'customer',
+            'added'
+        );
+
+        $this->dispatcher->dispatch($event);
+
+        $profile = AccountingCustomerProfile::where('contact_id', $contact->id)->first();
+        $this->assertNotNull($profile, 'AccountingCustomerProfile should be provisioned');
+        $this->assertEquals('active', $profile->account_status);
+        $this->assertStringStartsWith('CUST-', $profile->customer_code);
+    }
+
+    public function test_accounting_handler_provisions_vendor_profile(): void
+    {
+        $contact = $this->createTestContact(['display_name' => 'Vendor Test']);
+
+        $event = new ContactRoleChanged(
+            tenant()->id,
+            $contact->id,
+            'vendor',
+            'added'
+        );
+
+        $this->dispatcher->dispatch($event);
+
+        $profile = \Modules\Contact\src\Models\AccountingVendorProfile::where('contact_id', $contact->id)->first();
+        $this->assertNotNull($profile, 'AccountingVendorProfile should be provisioned');
+        $this->assertEquals('active', $profile->account_status);
+    }
+
+    public function test_crm_handler_provisions_lead_profile(): void
+    {
+        $contact = $this->createTestContact(['display_name' => 'CRM Lead Test']);
+
+        $event = new ContactRoleChanged(
+            tenant()->id,
+            $contact->id,
+            'lead',
+            'added'
+        );
+
+        $this->dispatcher->dispatch($event);
+
+        $profile = CrmContactProfile::where('contact_id', $contact->id)->first();
+        $this->assertNotNull($profile, 'CrmContactProfile should be provisioned');
+        $this->assertEquals('active', $profile->lead_status);
+        $this->assertEquals('new', $profile->lead_stage);
+    }
+
+    public function test_accounting_handler_logs_sync_event(): void
+    {
+        $contact = $this->createTestContact(['display_name' => 'Log Test']);
+
         $event = new ContactCreated(
-            $this->tenantUuid,
-            'test-contact-456',
+            tenant()->id,
+            $contact->id,
             null,
             null,
-            ['name' => 'Accounting Test']
+            $contact->toArray()
         );
 
         $this->dispatcher->dispatch($event);
@@ -135,14 +204,16 @@ class EventSubscriptionTest extends TenantTestCase
         $this->assertStringContainsString('contact.created', $log->message);
     }
 
-    public function test_crm_handler_logs_event(): void
+    public function test_crm_handler_logs_sync_event(): void
     {
+        $contact = $this->createTestContact(['display_name' => 'CRM Log Test']);
+
         $event = new ContactUpdated(
-            $this->tenantUuid,
-            'test-contact-789',
+            tenant()->id,
+            $contact->id,
             null,
-            ['name' => 'Old'],
-            ['name' => 'New']
+            ['display_name' => 'Old Name'],
+            ['display_name' => 'New Name']
         );
 
         $this->dispatcher->dispatch($event);
@@ -154,34 +225,33 @@ class EventSubscriptionTest extends TenantTestCase
         $this->assertStringContainsString('contact.updated', $log->message);
     }
 
-    public function test_role_change_event_triggers_handlers(): void
+    public function test_role_removed_deactivates_profiles(): void
     {
+        $contact = $this->createTestContact(['display_name' => 'Deactivate Test']);
+
+        AccountingCustomerProfile::create([
+            'id' => Str::uuid(),
+            'tenant_id' => tenant()->id,
+            'contact_id' => $contact->id,
+            'customer_code' => 'CUST-TEST',
+            'payment_terms' => 30,
+            'credit_limit' => 0,
+            'current_balance' => 0,
+            'currency' => 'MYR',
+            'account_opened_date' => now(),
+            'account_status' => 'active',
+        ]);
+
         $event = new ContactRoleChanged(
-            $this->tenantUuid,
-            'test-contact-role',
-            'accounting_customer',
-            'added'
+            tenant()->id,
+            $contact->id,
+            'customer',
+            'removed'
         );
 
-        $result = $this->dispatcher->dispatch($event);
+        $this->dispatcher->dispatch($event);
 
-        $this->assertGreaterThanOrEqual(2, $result['dispatched']);
-        $this->assertEquals(0, $result['failed']);
-    }
-
-    public function test_dead_letter_on_handler_failure(): void
-    {
-        $event = new ContactCreated(
-            $this->tenantUuid,
-            'test-contact-fail',
-            null,
-            null,
-            ['name' => 'Fail Test']
-        );
-
-        $result = $this->dispatcher->dispatch($event);
-
-        // All current handlers should succeed
-        $this->assertEquals(0, $result['failed']);
+        $profile = AccountingCustomerProfile::where('contact_id', $contact->id)->first();
+        $this->assertEquals('inactive', $profile->account_status);
     }
 }

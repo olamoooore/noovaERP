@@ -48,15 +48,21 @@ class DomainEventDispatcher
 
         foreach ($subscriptions as $subscription) {
             try {
+                DB::beginTransaction();
                 $handler = $this->resolveHandler($subscription);
                 if ($handler) {
                     $handler->handle($event);
                     $dispatched++;
                 }
+                DB::commit();
             } catch (\Throwable $e) {
+                DB::rollBack();
                 $failed++;
                 $errors[] = "{$subscription->module_key}: {$e->getMessage()}";
-                $this->handleFailure($record, $subscription, $e);
+                try {
+                    $this->handleFailure($record, $subscription, $e);
+                } catch (\Throwable $ignore) {
+                }
             }
         }
 

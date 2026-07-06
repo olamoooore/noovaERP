@@ -32,6 +32,35 @@ class PlatformServiceProvider extends ServiceProvider
                 'reason' => $e->getMessage(),
             ]);
         }
+
+        $this->registerObservers();
+    }
+
+    private function registerObservers(): void
+    {
+        // POS module
+        if (class_exists(\Modules\POS\Models\PosOrder::class)) {
+            \Modules\POS\Models\PosOrder::observe(\App\Observers\AuditTrailObserver::class);
+        }
+        if (class_exists(\Modules\POS\Models\PosPayment::class)) {
+            \Modules\POS\Models\PosPayment::observe(\App\Observers\AuditTrailObserver::class);
+        }
+
+        // Inventory module
+        if (class_exists(\Modules\Inventory\Models\StockLevel::class)) {
+            \Modules\Inventory\Models\StockLevel::observe(\App\Observers\AuditTrailObserver::class);
+        }
+        if (class_exists(\Modules\Inventory\Models\PurchaseOrder::class)) {
+            \Modules\Inventory\Models\PurchaseOrder::observe(\App\Observers\AuditTrailObserver::class);
+        }
+
+        // HRM module
+        if (class_exists(\Modules\HRM\Models\Employee::class)) {
+            \Modules\HRM\Models\Employee::observe(\App\Observers\AuditTrailObserver::class);
+        }
+        if (class_exists(\Modules\HRM\Models\PayrollRun::class)) {
+            \Modules\HRM\Models\PayrollRun::observe(\App\Observers\AuditTrailObserver::class);
+        }
     }
 
     private function registerEventSubscriptions(): void
