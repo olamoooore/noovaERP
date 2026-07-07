@@ -130,6 +130,10 @@ class CustomersController extends Controller
             'customer_category' => 'category',
             'contact'           => 'contact_name',
             'contact_person'    => 'contact_name',
+            'name_of_contact'   => 'contact_name',
+            'contact_person_name' => 'contact_name',
+            'contact_category'  => 'contact_job_title',
+            'contact_role'      => 'contact_job_title',
         ];
 
         $header = array_map(function ($h) use ($columnAliases) {
@@ -216,6 +220,22 @@ class CustomersController extends Controller
                         ->where('code', $code)
                         ->whereNull('deleted_at')
                         ->first();
+
+                    // Same code but a DIFFERENT customer name -> do NOT merge them.
+                    // Assign a unique variant code (e.g. VC0066 -> VC0066-2) so distinct
+                    // customers that accidentally share a code are kept separate.
+                    if ($existing && strtolower(trim($existing->name)) !== strtolower(trim($name))) {
+                        $base = $code;
+                        $seq = 2;
+                        do {
+                            $candidate = $base . '-' . $seq;
+                            $seq++;
+                        } while (DB::table('customers')->where('code', $candidate)->whereNull('deleted_at')->exists());
+                        $code = $candidate;
+                        $customerData['code'] = $code;
+                        $existing = null;
+                    }
+
                     $customerId = $existing->id ?? null;
 
                     if ($existing) {
