@@ -126,6 +126,10 @@ class CustomersController extends Controller
             'shipping'          => 'shipping_address',
             'credit'            => 'credit_limit',
             'payment_terms_days' => 'payment_terms',
+            'category_name'     => 'category',
+            'customer_category' => 'category',
+            'contact'           => 'contact_name',
+            'contact_person'    => 'contact_name',
         ];
 
         $header = array_map(function ($h) use ($columnAliases) {
@@ -169,20 +173,32 @@ class CustomersController extends Controller
                     continue;
                 }
 
+                // Normalize customer type to the enum values (case-insensitive)
+                $rawType = strtolower(trim((string) ($row['type'] ?? '')));
+                $type = in_array($rawType, ['individual', 'company'], true) ? $rawType : 'individual';
+
+                // Resolve customer code: use the provided one, else auto-generate.
+                // DB::table->insert() bypasses the model's creating event, so we
+                // must generate explicitly to match the manual create behaviour.
+                $code = trim((string) ($row['code'] ?? ''));
+                if ($code === '') {
+                    $code = \App\Models\Customer::generateCode();
+                }
+
                 $customerData = [
-                    'name'         => $name,
-                    'type'         => $row['type'] ?? null,
-                    'email'        => $row['email'] ?? null,
-                    'phone'        => $row['phone'] ?? null,
-                    'mobile'       => $row['mobile'] ?? null,
-                    'company'      => $row['company'] ?? null,
-                    'tax_number'   => $row['tax_number'] ?? null,
-                    'website'      => $row['website'] ?? null,
+                    'code'             => $code,
+                    'name'             => $name,
+                    'type'             => $type,
+                    'email'            => $row['email'] ?? null,
+                    'phone'            => $row['phone'] ?? null,
+                    'mobile'           => $row['mobile'] ?? null,
+                    'company'          => $row['company'] ?? null,
+                    'tax_number'       => $row['tax_number'] ?? null,
+                    'website'          => $row['website'] ?? null,
                     'billing_address'  => $row['billing_address'] ?? null,
                     'shipping_address' => $row['shipping_address'] ?? null,
-                    'notes'        => $row['notes'] ?? null,
-                    'is_active'    => true,
-                    'total_outstanding' => 0,
+                    'notes'            => $row['notes'] ?? null,
+                    'is_active'        => true,
                 ];
 
                 if (isset($row['credit_limit']) && $row['credit_limit'] !== '') {
@@ -193,23 +209,55 @@ class CustomersController extends Controller
                 }
 
                 try {
-                    $code = $row['code'] ?? null;
-                    $existing = null;
-
-                    if ($code !== null && $code !== '') {
-                        $existing = DB::table('customers')->where('code', $code)->first();
-                    }
+                    $existing = DB::table('customers')->where('code', $code)->first();
+                    $customerId = $existing->id ?? null;
 
                     if ($existing) {
-                        DB::table('customers')->where('id', $existing->id)->update(
-                            array_merge($customerData, ['updated_at' => now()])
-                        );
+                        // Avoid wiping financial stats on re-import
+                        $customerData['updated_at'] = now();
+                        DB::table('customers')->where('id', $existing->id)->update($customerData);
                         $updated++;
                     } else {
+                        $customerData['total_outstanding'] = 0;
                         $customerData['created_at'] = now();
                         $customerData['updated_at'] = now();
-                        DB::table('customers')->insert($customerData);
+                        $customerId = DB::table('customers')->insertGetId($customerData);
                         $created++;
+                    }
+
+                    if ($customerId) {
+                        // Attach a category by id or name (case-insensitive)
+                        $categoryInput = trim((string) ($row['category'] ?? ''));
+                        if ($categoryInput !== '') {
+                            $categoryQuery = \App\Models\CustomerCategory::query()
+                                ->whereRaw('LOWER(name) = ?', [strtolower($categoryInput)]);
+                            if (ctype_digit($categoryInput)) {
+                                $categoryQuery->orWhere('id', (int) $categoryInput);
+                            }
+                            $category = $categoryQuery->first();
+                            if ($category) {
+                                DB::table('customer_category')->updateOrInsert([
+                                    'customer_id' => $customerId,
+                                    'customer_category_id' => $category->id,
+                                ]);
+                            }
+                        }
+
+                        // Create a contact person when a contact name is supplied
+                        $contactName = trim((string) ($row['contact_name'] ?? ''));
+                        if ($contactName !== '') {
+                            DB::table('customer_contacts')->insert([
+                                'customer_id' => $customerId,
+                                'name'        => $contactName,
+                                'job_title'   => $row['contact_job_title'] ?? null,
+                                'email'       => $row['contact_email'] ?? null,
+                                'phone'       => $row['contact_phone'] ?? null,
+                                'mobile'      => $row['contact_mobile'] ?? null,
+                                'is_primary'  => false,
+                                'created_at'  => now(),
+                                'updated_at'  => now(),
+                            ]);
+                        }
                     }
                 } catch (\Throwable $e) {
                     $errors[] = [

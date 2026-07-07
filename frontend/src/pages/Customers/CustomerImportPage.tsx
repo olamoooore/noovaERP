@@ -24,9 +24,13 @@ interface ImportResult {
 }
 
 const TEMPLATE_COLUMNS = [
-  { name: 'code', required: false, description: 'Customer ID — any format (e.g., CUST-001, C001). Auto-generated if empty' },
+  { name: 'code', required: false, description: 'Customer ID — any format (e.g., CUST-001, C001, VC0026). Auto-generated if empty' },
   { name: 'name', required: true, description: 'Customer name (required)' },
-  { name: 'type', required: false, description: 'individual or company' },
+  { name: 'type', required: false, description: 'individual or company (lowercase)' },
+  { name: 'category', required: false, description: 'Customer category name (e.g., VIP, Wholesale). Must already exist' },
+  { name: 'contact_name', required: false, description: 'Contact person name (creates a contact record)' },
+  { name: 'contact_email', required: false, description: 'Contact person email' },
+  { name: 'contact_phone', required: false, description: 'Contact person phone' },
   { name: 'email', required: false, description: 'Email address' },
   { name: 'phone', required: false, description: 'Phone number' },
   { name: 'mobile', required: false, description: 'Mobile number' },
@@ -135,9 +139,13 @@ export function CustomerImportPage() {
   const handleDownloadTemplate = () => {
     const headers = TEMPLATE_COLUMNS.map((col) => col.name).join(',')
     const sampleRow = [
-      'CUST-001',
+      'VC0026',
       'Acme Corp',
       'company',
+      'VIP',
+      'John Doe',
+      'john@acme.com',
+      '5551112222',
       'billing@acme.com',
       '5551234567',
       '5559876543',
