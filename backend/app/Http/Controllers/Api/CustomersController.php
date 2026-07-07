@@ -209,7 +209,13 @@ class CustomersController extends Controller
                 }
 
                 try {
-                    $existing = DB::table('customers')->where('code', $code)->first();
+                    // Only match live customers — soft-deleted rows (deleted_at) are
+                    // ignored so re-importing after a delete creates fresh customers
+                    // instead of silently updating trashed, invisible ones.
+                    $existing = DB::table('customers')
+                        ->where('code', $code)
+                        ->whereNull('deleted_at')
+                        ->first();
                     $customerId = $existing->id ?? null;
 
                     if ($existing) {
