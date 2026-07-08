@@ -8,7 +8,7 @@ use Modules\OCRBookkeeping\Services\OcrPostingService;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\ChartOfAccount;
-use App\Models\Customer;
+use App\Models\Vendor;
 use App\Models\FiscalPeriod;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -18,7 +18,7 @@ class InventoryIntegrationTest extends TenantTestCase
 {
     protected User $user;
     protected OcrPostingService $service;
-    protected Customer $vendor;
+    protected Vendor $vendor;
     protected Product $product;
     protected ChartOfAccount $inventoryAccount;
     protected ChartOfAccount $payableAccount;
@@ -31,7 +31,7 @@ class InventoryIntegrationTest extends TenantTestCase
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
 
-        $this->vendor = Customer::factory()->create(['name' => 'Test Vendor']);
+        $this->vendor = Vendor::factory()->create(['name' => 'Test Vendor']);
 
         // Create default warehouse (required by OcrPostingService::resolveWarehouseIdForItem)
         $this->warehouse = Warehouse::create([

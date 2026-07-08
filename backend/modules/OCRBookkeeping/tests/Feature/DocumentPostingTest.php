@@ -8,7 +8,7 @@ use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use App\Models\JournalEntry;
 use App\Models\ChartOfAccount;
-use App\Models\Customer;
+use App\Models\Vendor;
 use App\Models\FiscalPeriod;
 use App\Models\User;
 use Carbon\Carbon;
@@ -17,7 +17,7 @@ class DocumentPostingTest extends TenantTestCase
 {
     protected User $user;
     protected OcrPostingService $service;
-    protected Customer $vendor;
+    protected Vendor $vendor;
     protected ChartOfAccount $expenseAccount;
     protected ChartOfAccount $payableAccount;
 
@@ -27,7 +27,7 @@ class DocumentPostingTest extends TenantTestCase
         
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
-        $this->vendor = Customer::factory()->create(['name' => 'Test Vendor']);
+        $this->vendor = Vendor::factory()->create(['name' => 'Test Vendor']);
         
         $this->expenseAccount = ChartOfAccount::where('code', '5200')->firstOrFail();
         

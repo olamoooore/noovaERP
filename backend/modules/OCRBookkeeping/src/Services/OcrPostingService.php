@@ -104,8 +104,8 @@ class OcrPostingService
                 lines: $postingLines,
                 reference: $document->document_reference ?? "OCR-{$document->uuid}",
                 userId: TenantUserHelper::getTenantUserId(),
-                legalEntityId: request()->attributes->get('legal_entity_id'),
-                entityBookId: request()->attributes->get('entity_book_id'),
+                legalEntityId: $document->legal_entity_id ?? request()->attributes->get('legal_entity_id'),
+                entityBookId: $document->entity_book_id ?? request()->attributes->get('entity_book_id'),
             ));
 
             if (!$result->success) {
@@ -740,11 +740,23 @@ class OcrPostingService
      */
     public function unpostDocument(OcrDocument $document, int $actorUserId): void
     {
-        if (!$document->isPosted()) {
-            throw new \Exception("Cannot unpost document '{$document->uuid}': current status is '{$document->status}'.");
-        }
+        DB::transaction(function () use ($document, $actorUserId) {
+            $document->refresh();
 
-        if ($document->journal_entry_id) {
+            if (!$document->isPosted()) {
+                throw new \Exception("Cannot unpost document '{$document->uuid}': current status is '{$document->status}'.");
+            }
+
+            if (empty($document->journal_entry_id)) {
+                throw new \Exception("Cannot unpost document '{$document->uuid}': missing journal entry reference.");
+            }
+
+            $journalEntry = JournalEntry::find($document->journal_entry_id);
+
+            if (!$journalEntry) {
+                throw new \Exception("Cannot unpost document '{$document->uuid}': journal entry '{$document->journal_entry_id}' was not found.");
+            }
+
             $result = $this->postingEngine->reverse(new ReversalRequest(
                 journalEntryId: (int) $document->journal_entry_id,
                 reversalDate:   now()->toDateString(),
@@ -756,14 +768,14 @@ class OcrPostingService
             if (!$result->success) {
                 throw new \Exception("Failed to reverse journal entry: {$result->error}");
             }
-        }
 
-        $document->update([
-            'status'          => 'NEEDS_REVIEW',
-            'journal_entry_id' => null,
-            'posted_at'       => null,
-            'posted_by'       => null,
-        ]);
+            $document->update([
+                'status'          => 'NEEDS_REVIEW',
+                'journal_entry_id' => null,
+                'posted_at'       => null,
+                'posted_by'       => null,
+            ]);
+        });
     }
 
 }

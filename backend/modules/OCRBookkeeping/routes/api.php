@@ -1,8 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\ResolveEntityContext;
 
-Route::middleware(['auth:sanctum', 'entitlement:ocr-bookkeeping'])->prefix('ocr')->group(function () {
+Route::middleware(['auth:sanctum', 'entitlement:ocr-bookkeeping', ResolveEntityContext::class])->prefix('ocr')->group(function () {
     // Document upload routes
     Route::post('/documents/upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'upload']);
     Route::post('/documents/batch-upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'batchUpload']);
@@ -10,6 +11,7 @@ Route::middleware(['auth:sanctum', 'entitlement:ocr-bookkeeping'])->prefix('ocr'
     // Document management routes
     Route::get('/documents', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'index']);
     Route::get('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'show']);
+    Route::get('/documents/{uuid}/file', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'getFile']);
     Route::put('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'update']);
     Route::delete('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'destroy']);
     
@@ -24,10 +26,7 @@ Route::middleware(['auth:sanctum', 'entitlement:ocr-bookkeeping'])->prefix('ocr'
     // Retry failed extraction
     Route::post('/documents/{uuid}/retry', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'retry']);
 
-    // Promotion routes (Phase 3 — OCR → canonical accounting documents)
+    // Promotion routes
     Route::post('/documents/{uuid}/promote/bill', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'promoteToBill']);
     Route::post('/documents/{uuid}/promote/invoice', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'promoteToInvoice']);
 });
-
-// File endpoint - no auth required (UUID is secure enough)
-Route::get('/ocr/documents/{uuid}/file', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'getFile']);

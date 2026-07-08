@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
-use App\Models\Customer;
+use App\Models\Vendor;
 use App\Models\JournalEntry;
 use App\Models\User;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -17,8 +17,8 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 /**
  * OCR Document Model
  * 
- * Represents an uploaded document and tracks its processing lifecycle
- * Status flow: PENDING -> PROCESSING -> NEEDS_REVIEW -> POSTED
+ * Represents an uploaded document and tracks its processing lifecycle.
+ * Status flow: PENDING -> PROCESSING -> NEEDS_REVIEW -> POSTED / PROMOTED
  *              PROCESSING -> EXTRACTION_FAILED (on error)
  */
 class OcrDocument extends Model
@@ -31,6 +31,7 @@ class OcrDocument extends Model
         'uuid',
         'file_path',
         'file_name',
+        'file_hash',
         'file_size',
         'mime_type',
         'status',
@@ -38,6 +39,8 @@ class OcrDocument extends Model
         'ocr_confidence_scores',
         'extracted_at',
         'vendor_id',
+        'legal_entity_id',
+        'entity_book_id',
         'vendor_name',
         'document_date',
         'due_date',
@@ -57,6 +60,8 @@ class OcrDocument extends Model
         'reviewed_at',
         'error_message',
         'retry_count',
+        'customer_id',
+        'customer_name',
     ];
 
     protected $casts = [
@@ -75,6 +80,9 @@ class OcrDocument extends Model
         'exchange_rate' => 'decimal:6',
         'file_size' => 'integer',
         'retry_count' => 'integer',
+        'legal_entity_id' => 'integer',
+        'entity_book_id' => 'integer',
+        'customer_id' => 'integer',
     ];
 
     protected $attributes = [
@@ -109,7 +117,7 @@ class OcrDocument extends Model
 
     public function vendor(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'vendor_id');
+        return $this->belongsTo(Vendor::class, 'vendor_id');
     }
 
     public function journalEntry(): BelongsTo
@@ -156,6 +164,11 @@ class OcrDocument extends Model
         return $query->where('status', 'POSTED');
     }
 
+    public function scopePromoted($query)
+    {
+        return $query->where('status', 'PROMOTED');
+    }
+
     public function scopeFailed($query)
     {
         return $query->where('status', 'EXTRACTION_FAILED');
@@ -198,6 +211,11 @@ class OcrDocument extends Model
         return $this->status === 'POSTED';
     }
 
+    public function isPromoted(): bool
+    {
+        return $this->status === 'PROMOTED';
+    }
+
     public function hasFailed(): bool
     {
         return $this->status === 'EXTRACTION_FAILED';
@@ -217,7 +235,7 @@ class OcrDocument extends Model
 
     public function canBeDeleted(): bool
     {
-        return $this->status !== 'POSTED';
+        return !in_array($this->status, ['POSTED', 'PROMOTED']);
     }
 
     /**

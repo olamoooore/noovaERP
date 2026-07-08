@@ -4,7 +4,7 @@ namespace Modules\OCRBookkeeping\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\Customer;
+use App\Models\Vendor;
 use Modules\OCRBookkeeping\Models\OcrVendorMapping;
 
 /**
@@ -75,8 +75,8 @@ class VendorMappingService
      */
     private function fuzzySearchVendors(string $extractedName, string $normalizedName): array
     {
-        // Get all active customers (vendors)
-        $vendors = Customer::select('id', 'name', 'email', 'phone')
+        // Get all active vendors
+        $vendors = Vendor::select('id', 'name', 'email', 'phone')
             ->whereNull('deleted_at')
             ->get();
 

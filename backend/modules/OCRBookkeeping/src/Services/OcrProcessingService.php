@@ -62,10 +62,20 @@ class OcrProcessingService
             // Get file from storage (use local storage for now)
             $storageDisk = 'ocr-documents-local';
             
-            $fileContents = Storage::disk($storageDisk)->get($document->file_path);
+            $disk = Storage::disk($storageDisk);
+            
+            if (empty($document->file_path)) {
+                throw new \Exception("OCR source file path is missing.");
+            }
 
-            if (!$fileContents) {
-                throw new \Exception("Failed to retrieve file from storage");
+            if (!$disk->exists($document->file_path)) {
+                throw new \Exception("OCR source file is missing from storage.");
+            }
+            
+            $fileContents = $disk->get($document->file_path);
+            
+            if ($fileContents === false || $fileContents === '') {
+                 throw new \Exception("Failed to retrieve OCR source file from storage.");
             }
 
             // Call OCR model
@@ -110,9 +120,10 @@ class OcrProcessingService
 
                 Log::info("Calling OCR service at: {$targetUrl}");
 
-                $candidateResponse = Http::timeout($this->timeout)
-                    ->attach('file', $fileContents, $fileName, ['Content-Type' => $mimeType])
-                    ->post($targetUrl);
+                $candidateResponse = Http::connectTimeout(5)
+                 ->timeout($this->timeout)
+                 ->attach('file', $fileContents, $fileName, ['Content-Type' => $mimeType])
+                 ->post($targetUrl);
 
                 $response = $candidateResponse;
 

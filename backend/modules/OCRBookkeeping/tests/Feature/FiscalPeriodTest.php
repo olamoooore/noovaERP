@@ -7,7 +7,7 @@ use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use App\Models\FiscalPeriod;
 use App\Models\ChartOfAccount;
-use App\Models\Customer;
+use App\Models\Vendor;
 use App\Models\LockDateOverride;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
@@ -19,7 +19,7 @@ class FiscalPeriodTest extends TenantTestCase
     protected User $user;
     protected User $adminUser;
     protected OcrPostingService $service;
-    protected Customer $vendor;
+    protected Vendor $vendor;
     protected ChartOfAccount $expenseAccount;
 
     protected function setUp(): void
@@ -38,7 +38,7 @@ class FiscalPeriodTest extends TenantTestCase
         $this->adminUser = User::factory()->create();
         $this->adminUser->assignRole('admin');
 
-        $this->vendor = Customer::factory()->create(['name' => 'Test Vendor']);
+        $this->vendor = Vendor::factory()->create(['name' => 'Test Vendor']);
 
         $this->expenseAccount = ChartOfAccount::where('code', '5200')->firstOrFail();
 
