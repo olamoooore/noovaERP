@@ -60,6 +60,7 @@
             "Modules\\CRM\\": "modules/CRM/src/",
             "Modules\\": "modules/",
             "Modules\\Fulfillment\\": "modules/Fulfillment/src/",
+            "Modules\\TemplateBuilder\\": "modules/TemplateBuilder/src/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         },

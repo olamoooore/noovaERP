@@ -1,0 +1,10 @@
+{
+    "key": "template_builder",
+    "name": "Template Builder",
+    "type": "addon",
+    "description": "Visual template designer and PDF generation for invoices, quotations, receipts and purchase orders. Implements platform services #52 (Document Template) and #55 (PDF Generation).",
+    "providers": [
+        "Modules\\TemplateBuilder\\Providers\\TemplateBuilderServiceProvider"
+    ],
+    "dependencies": ["inventory"]
+}

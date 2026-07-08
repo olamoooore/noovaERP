@@ -83,6 +83,7 @@ return [
             base_path('modules/WebsiteBuilder/database/migrations/tenant'),
             base_path('modules/IoT/database/migrations/tenant'),
             base_path('modules/Loyalty/database/migrations/tenant'),
+            base_path('modules/TemplateBuilder/database/migrations/tenant'),
         ],
         '--realpath' => true,
     ],

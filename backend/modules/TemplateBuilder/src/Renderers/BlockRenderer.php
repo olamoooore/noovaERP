@@ -1,0 +1,294 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\TemplateBuilder\Renderers;
+
+use Modules\TemplateBuilder\Models\DocumentTemplate;
+use Modules\TemplateBuilder\Services\MergeFieldResolver;
+
+/**
+ * BlockRenderer — renders a structured `layout_config` block tree to HTML.
+ *
+ * This is the "visual mode" renderer: templates authored in the editor are a
+ * JSON tree of typed blocks. No user code is executed; merge tokens are
+ * resolved strictly via MergeFieldResolver (dot-path + whitelisted formatters).
+ *
+ * Output HTML targets the dompdf CSS subset (tables, inline styles, inline-block).
+ */
+final class BlockRenderer implements TemplateRendererInterface
+{
+    public function __construct(private readonly MergeFieldResolver $resolver) {}
+
+    public function supports(string $mode): bool
+    {
+        return $mode === DocumentTemplate::MODE_BLOCK;
+    }
+
+    public function render(DocumentTemplate $template, array $data): array
+    {
+        $this->resolver->with($data);
+
+        $layout = is_array($template->layout_config) ? $template->layout_config : [];
+        $blocks = $layout['blocks'] ?? [];
+
+        $body = $this->renderBlocks(is_array($blocks) ? $blocks : [], '');
+
+        return [
+            'html' => $body,
+            'warnings' => $this->resolver->warnings(),
+        ];
+    }
+
+    /** @param array<int,array<string,mixed>> $blocks */
+    private function renderBlocks(array $blocks, string $context): string
+    {
+        return collect($blocks)
+            ->filter(fn ($b) => $this->conditionPasses($b))
+            ->map(fn ($b) => $this->renderBlock($b, $context))
+            ->implode("\n");
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderBlock(array $block, string $context): string
+    {
+        $type = $block['type'] ?? 'text';
+
+        return match ($type) {
+            'text' => $this->renderText($block),
+            'image' => $this->renderImage($block),
+            'columns' => $this->renderColumns($block, $context),
+            'table' => $this->renderTable($block),
+            'totals' => $this->renderTotals($block),
+            'spacer' => $this->renderSpacer($block),
+            'divider' => $this->renderDivider(),
+            'header' => $this->renderBlocks($this->children($block), 'header'),
+            'footer' => $this->renderBlocks($this->children($block), 'footer'),
+            'conditional' => $this->renderBlocks($this->children($block), $context),
+            default => '',
+        };
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderText(array $block): string
+    {
+        $content = (string) ($block['content'] ?? '');
+        if ($content === '') {
+            return '';
+        }
+        $html = $this->resolver->resolveString($content);
+
+        $style = $this->textStyle($block);
+
+        return "<div{$style}>{$html}</div>";
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderImage(array $block): string
+    {
+        $url = $this->resolver->resolveString((string) ($block['url'] ?? ''));
+        if ($url === '') {
+            return '';
+        }
+        $width = (int) ($block['width'] ?? 0);
+        $align = $block['align'] ?? 'left';
+        $w = $width > 0 ? " width=\"{$width}\"" : '';
+        $style = " style=\"text-align:{$align}\"";
+
+        return "<div{$style}><img src=\"{$url}\"{$w} style=\"max-width:100%\"/></div>";
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderColumns(array $block, string $context): string
+    {
+        $children = $this->children($block);
+        if (empty($children)) {
+            return '';
+        }
+        $gap = (int) ($block['gap'] ?? 8);
+
+        $cells = '';
+        foreach ($children as $child) {
+            $inner = $this->renderBlock($child, $context);
+            $align = $child['align'] ?? 'left';
+            $valign = $child['valign'] ?? 'top';
+            $cells .= "<td style=\"vertical-align:{$valign};text-align:{$align};padding-right:{$gap}px;\">{$inner}</td>";
+        }
+
+        return "<table style=\"width:100%;border-collapse:collapse;\"><tr>{$cells}</tr></table>";
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderTable(array $block): string
+    {
+        $source = $block['source'] ?? 'lines';
+        $rows = is_array($this->resolverValue("{$source}") ?? null) ? $this->resolverValue($source) : [];
+        $columns = $block['columns'] ?? [];
+        if (empty($columns) || ! is_array($columns)) {
+            return '';
+        }
+
+        $head = '';
+        foreach ($columns as $col) {
+            $label = htmlspecialchars((string) ($col['label'] ?? ''), ENT_QUOTES);
+            $w = isset($col['width']) ? " width=\"{$col['width']}\"" : '';
+            $head .= "<th{$w} style=\"{$this->thStyle()}\">{$label}</th>";
+        }
+
+        $body = '';
+        foreach ($rows as $row) {
+            $body .= '<tr>';
+            foreach ($columns as $col) {
+                $body .= '<td style="'.$this->tdStyle($col).'">'.$this->renderCell($col, $row).'</td>';
+            }
+            $body .= '</tr>';
+        }
+
+        return "<table style=\"width:100%;border-collapse:collapse;\"><thead><tr>{$head}</tr></thead><tbody>{$body}</tbody></table>";
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderTotals(array $block): string
+    {
+        $rows = $block['rows'] ?? [];
+        if (empty($rows) || ! is_array($rows)) {
+            return '';
+        }
+        $out = '<table style="width:55%;border-collapse:collapse;margin-left:auto;">';
+        foreach ($rows as $row) {
+            $value = $this->resolver->resolveToken((string) ($row['field'] ?? ''));
+            $value = $this->resolver->formatValue($value, $row['format'] ?? null);
+            $value = htmlspecialchars((string) $value, ENT_QUOTES);
+            $label = htmlspecialchars((string) ($row['label'] ?? ''), ENT_QUOTES);
+            $bold = ! empty($row['bold']);
+            $style = $bold
+                ? 'font-weight:bold;border-top:1px solid #d1d5db;'
+                : '';
+            $out .= "<tr><td style=\"padding:3px 8px;text-align:left;{$style}\">{$label}</td>"
+                ."<td style=\"padding:3px 8px;text-align:right;{$style}\">{$value}</td></tr>";
+        }
+        $out .= '</table>';
+
+        return $out;
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderSpacer(array $block): string
+    {
+        $h = (int) ($block['height'] ?? 10);
+
+        return "<div style=\"height:{$h}px;line-height:{$h}px;\">&nbsp;</div>";
+    }
+
+    private function renderDivider(): string
+    {
+        return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;"/>';
+    }
+
+    /** @param array<string,mixed> $col */
+    private function renderCell(array $col, array $row): string
+    {
+        $field = $col['field'] ?? '';
+        $value = $field === 'index' ? ($row['index'] ?? '') : ($row[$field] ?? '');
+        $value = $this->resolver->formatValue($value, $col['format'] ?? null);
+
+        return htmlspecialchars((string) $value, ENT_QUOTES);
+    }
+
+    private function thStyle(): string
+    {
+        return 'padding:8px;border-bottom:2px solid #111827;font-size:10px;text-transform:uppercase;color:#374151;text-align:left;background-color:#f9fafb;';
+    }
+
+    /** @param array<string,mixed> $col */
+    private function tdStyle(array $col): string
+    {
+        $align = $col['align'] ?? 'left';
+
+        return "padding:8px;border-bottom:1px solid #e5e7eb;text-align:{$align};font-size:11px;";
+    }
+
+    /** @param array<string,mixed> $block */
+    private function textStyle(array $block): string
+    {
+        $parts = [];
+        if (isset($block['align'])) {
+            $parts[] = 'text-align:'.$block['align'];
+        }
+        if (isset($block['size'])) {
+            $parts[] = 'font-size:'.((int) $block['size']).'px';
+        }
+        if (isset($block['color'])) {
+            $parts[] = 'color:'.$block['color'];
+        }
+        if (isset($block['bold']) && $block['bold']) {
+            $parts[] = 'font-weight:bold';
+        }
+
+        return empty($parts) ? '' : ' style="'.implode(';', $parts).'"';
+    }
+
+    /** @param array<string,mixed> $block */
+    private function children(array $block): array
+    {
+        return is_array($block['children'] ?? null) ? $block['children'] : [];
+    }
+
+    /** @param array<string,mixed> $block */
+    private function conditionPasses(array $block): bool
+    {
+        $condition = $block['condition'] ?? null;
+        if (! $condition) {
+            return true;
+        }
+
+        return $this->evaluateCondition((string) $condition);
+    }
+
+    /**
+     * Tiny safe expression evaluator for conditional blocks.
+     * Accepts only:  {{ field }} <op> <literal>   where op ∈ ==,!=,>,>=,<,<=
+     * No eval, no function calls, no arbitrary tokens.
+     */
+    private function evaluateCondition(string $condition): bool
+    {
+        if (! preg_match('/^\s*(\{\{[^}]+\}\}|[\w.\-]+)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$/', $condition, $m)) {
+            return true;
+        }
+        $leftExpr = trim($m[1]);
+        $op = $m[2];
+        $right = trim($m[3], " \t\n\r\0\"'");
+
+        $left = str_starts_with($leftExpr, '{{')
+            ? $this->resolver->resolveToken(trim($leftExpr, '{} '))
+            : $this->resolverValue($leftExpr);
+
+        $leftNum = is_numeric($left) ? (float) $left : null;
+        $rightNum = is_numeric($right) ? (float) $right : null;
+
+        if ($leftNum !== null && $rightNum !== null) {
+            return match ($op) {
+                '==' => $leftNum === $rightNum,
+                '!=' => $leftNum !== $rightNum,
+                '>' => $leftNum > $rightNum,
+                '>=' => $leftNum >= $rightNum,
+                '<' => $leftNum < $rightNum,
+                '<=' => $leftNum <= $rightNum,
+                default => true,
+            };
+        }
+
+        $leftStr = (string) $left;
+
+        return match ($op) {
+            '==' => $leftStr === $right,
+            '!=' => $leftStr !== $right,
+            default => true,
+        };
+    }
+
+    private function resolverValue(string $path): mixed
+    {
+        return $this->resolver->resolveToken($path);
+    }
+}
