@@ -171,6 +171,24 @@ const baseNavItems: NavItem[] = [
     ],
   },
   {
+    title: 'CRM',
+    href: '/crm',
+    icon: 'solar:users-group-two-rounded-bold-duotone',
+    featureKey: 'crm',
+    children: [
+      {
+        title: 'Dashboard',
+        href: '/crm',
+        icon: 'solar:chart-bold-duotone',
+      },
+      {
+        title: 'Leads',
+        href: '/crm/leads',
+        icon: 'solar:user-plus-bold-duotone',
+      },
+    ],
+  },
+  {
     title: 'Accounting',
     href: '/accounting/dashboard',
     icon: 'solar:chart-2-bold-duotone',

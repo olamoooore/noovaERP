@@ -167,6 +167,12 @@ const LoyaltyRewardsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ def
 const LoyaltyRedemptionsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyRedemptionsPage })))
 const LoyaltySettingsPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltySettingsPage })))
 
+// CRM Module Pages
+const CRMPage = lazy(() => import('@/pages/CRM').then(m => ({ default: m.CRMPage })))
+const CRMLeadsPage = lazy(() => import('@/pages/CRM').then(m => ({ default: m.LeadsPage })))
+const CRMLeadForm = lazy(() => import('@/pages/CRM').then(m => ({ default: m.LeadForm })))
+const CRMLeadDetailPage = lazy(() => import('@/pages/CRM').then(m => ({ default: m.LeadDetailPage })))
+
 // Web Shop Pages
 const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
 const WebShopCartPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCartPage })))
@@ -448,6 +454,13 @@ function App() {
                 <Route path="/field-service/gantt" element={<FSGanttPage />} />
                 <Route path="/field-service/worksheet-templates" element={<FSWorksheetTemplatesPage />} />
                 <Route path="/field-service/analytics" element={<FSAnalyticsPage />} />
+
+                {/* CRM Module Routes */}
+                <Route path="/crm" element={<CRMPage />} />
+                <Route path="/crm/leads" element={<CRMLeadsPage />} />
+                <Route path="/crm/leads/new" element={<CRMLeadForm mode="create" />} />
+                <Route path="/crm/leads/:id" element={<CRMLeadDetailPage />} />
+                <Route path="/crm/leads/:id/edit" element={<CRMLeadForm mode="edit" />} />
 
                 {/* HRM Module Routes */}
                 <Route path="/hrm" element={<HRMDashboard />} />
