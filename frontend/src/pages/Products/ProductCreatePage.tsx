@@ -2013,45 +2013,43 @@ export function ProductCreatePage() {
                         </div>
                       </div>
 
-                      {formData.tracking_method === 'batch' && (
-                        <>
-                          <Label className="text-sm font-medium">Batch / Lot Details</Label>
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                              <Label htmlFor="lot_number">Lot Number</Label>
-                              <Input
-                                id="lot_number"
-                                value={formData.lot_number}
-                                onChange={(e) => setFormData({ ...formData, lot_number: e.target.value })}
-                                placeholder="e.g. 2511S12"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="expiry_date">Expiry Date</Label>
-                              <Input
-                                id="expiry_date"
-                                type="date"
-                                value={formData.expiry_date}
-                                onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="shelf_life_days">Default Shelf Life (days)</Label>
-                              <Input
-                                id="shelf_life_days"
-                                type="number"
-                                min="0"
-                                value={formData.shelf_life_days}
-                                onChange={(e) => setFormData({ ...formData, shelf_life_days: e.target.value })}
-                                placeholder="e.g. 365"
-                              />
-                            </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Lot / Expiry Details</Label>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="lot_number">Lot Number</Label>
+                            <Input
+                              id="lot_number"
+                              value={formData.lot_number}
+                              onChange={(e) => setFormData({ ...formData, lot_number: e.target.value })}
+                              placeholder="e.g. 2511S12"
+                            />
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            These act as the product's default lot/expiry. Additional lots are captured per batch at stock-in.
-                          </p>
-                        </>
-                      )}
+                          <div className="space-y-2">
+                            <Label htmlFor="expiry_date">Expiry Date</Label>
+                            <Input
+                              id="expiry_date"
+                              type="date"
+                              value={formData.expiry_date}
+                              onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="shelf_life_days">Default Shelf Life (days)</Label>
+                            <Input
+                              id="shelf_life_days"
+                              type="number"
+                              min="0"
+                              value={formData.shelf_life_days}
+                              onChange={(e) => setFormData({ ...formData, shelf_life_days: e.target.value })}
+                              placeholder="e.g. 365"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Optional. Default lot/expiry for this product; additional lots are captured per batch at stock-in.
+                        </p>
+                      </div>
 
                       <Separator />
 
