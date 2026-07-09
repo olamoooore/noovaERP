@@ -53,6 +53,7 @@ use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\FiscalPeriodsController;
+use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Middleware\ResolveEntityContext;
 use App\Http\Middleware\EnsureEntityAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
@@ -115,6 +116,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::delete('/products/delete-all', [ProductController::class, 'destroyAll']);
     Route::apiResource('products', ProductController::class);
 
+    // Warehouses
+    Route::apiResource('warehouses', WarehouseController::class);
+
     // Product categories
     Route::get('/product-categories', [ProductCategoryController::class, 'index']);
 
@@ -168,6 +172,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
             // Invoices
+            Route::post('/invoices/import', [InvoiceController::class, 'import']);
             Route::apiResource('invoices', InvoiceController::class);
             Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
 
