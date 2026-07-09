@@ -94,6 +94,8 @@ export interface Product {
   storage_conditions?: string | null;
   is_fragile: boolean;
   shelf_life_days?: number | null;
+  lot_number?: string | null;
+  expiry_date?: string | null;
 
   // Compliance
   hs_code?: string | null;

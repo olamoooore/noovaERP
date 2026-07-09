@@ -193,6 +193,8 @@ export function ProductCreatePage() {
     reorder_point: '',
     reorder_quantity: '',
     shelf_life_days: '',
+    lot_number: '',
+    expiry_date: '',
     
     // Physical attributes
     weight: '',
@@ -708,6 +710,8 @@ export function ProductCreatePage() {
       reorder_point: formData.reorder_point ? parseInt(formData.reorder_point) : null,
       reorder_quantity: formData.reorder_quantity ? parseInt(formData.reorder_quantity) : null,
       shelf_life_days: formData.shelf_life_days ? parseInt(formData.shelf_life_days) : null,
+      lot_number: formData.lot_number || null,
+      expiry_date: formData.expiry_date || null,
       weight: formData.weight ? parseFloat(formData.weight) : null,
       weight_unit: formData.weight_unit || null,
       length: formData.length ? parseFloat(formData.length) : null,
@@ -2010,20 +2014,43 @@ export function ProductCreatePage() {
                       </div>
 
                       {formData.tracking_method === 'batch' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="shelf_life_days">Default Shelf Life (days)</Label>
-                          <Input
-                            id="shelf_life_days"
-                            type="number"
-                            min="0"
-                            value={formData.shelf_life_days}
-                            onChange={(e) => setFormData({ ...formData, shelf_life_days: e.target.value })}
-                            placeholder="e.g. 365"
-                          />
+                        <>
+                          <Label className="text-sm font-medium">Batch / Lot Details</Label>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="lot_number">Lot Number</Label>
+                              <Input
+                                id="lot_number"
+                                value={formData.lot_number}
+                                onChange={(e) => setFormData({ ...formData, lot_number: e.target.value })}
+                                placeholder="e.g. 2511S12"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="expiry_date">Expiry Date</Label>
+                              <Input
+                                id="expiry_date"
+                                type="date"
+                                value={formData.expiry_date}
+                                onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="shelf_life_days">Default Shelf Life (days)</Label>
+                              <Input
+                                id="shelf_life_days"
+                                type="number"
+                                min="0"
+                                value={formData.shelf_life_days}
+                                onChange={(e) => setFormData({ ...formData, shelf_life_days: e.target.value })}
+                                placeholder="e.g. 365"
+                              />
+                            </div>
+                          </div>
                           <p className="text-xs text-muted-foreground">
-                            Default shelf life used to estimate expiry when receiving stock. Lot numbers and actual expiry dates are captured per batch at stock-in.
+                            These act as the product's default lot/expiry. Additional lots are captured per batch at stock-in.
                           </p>
-                        </div>
+                        </>
                       )}
 
                       <Separator />

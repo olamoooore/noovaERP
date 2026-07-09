@@ -105,6 +105,8 @@ class Product extends Model
         'storage_conditions',
         'is_fragile',
         'shelf_life_days',
+        'lot_number',
+        'expiry_date',
         
         // Compliance
         'hs_code',
@@ -183,6 +185,7 @@ class Product extends Model
         
         // Dates
         'preorder_available_at' => 'date:Y-m-d',
+        'expiry_date' => 'date:Y-m-d',
         'approved_at' => 'datetime',
         'discontinued_at' => 'datetime',
         

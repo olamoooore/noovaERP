@@ -212,6 +212,8 @@ class ProductController extends Controller
             'is_merchandise' => 'boolean',
             'tracking_method' => 'nullable|string|in:none,quantity,batch,serial',
             'shelf_life_days' => 'nullable|integer|min:0',
+            'lot_number' => 'nullable|string|max:255',
+            'expiry_date' => 'nullable|date',
             'variants' => 'nullable|array',
             'variants.*.name' => 'required|string',
             'variants.*.sku' => 'required|string',
@@ -624,6 +626,8 @@ class ProductController extends Controller
             'status' => 'nullable|string|in:draft,pending_approval,active,discontinued,archived',
             'tracking_method' => 'nullable|string|in:none,quantity,batch,serial',
             'shelf_life_days' => 'nullable|integer|min:0',
+            'lot_number' => 'nullable|string|max:255',
+            'expiry_date' => 'nullable|date',
             'show_on_website' => 'boolean',
             'weight' => 'nullable|numeric|min:0',
             'length' => 'nullable|numeric|min:0',
@@ -730,6 +734,11 @@ class ProductController extends Controller
             'artist'           => 'secondary_name',
             'artist_group'     => 'manufacturer',
             'weblink_for_the_image' => 'image_url',
+            // Batch / lot tracking
+            'lot'              => 'lot_number',
+            'lot_expiry_date'  => 'expiry_date',
+            'expiry'           => 'expiry_date',
+            'expire_date'      => 'expiry_date',
         ];
 
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
@@ -813,6 +822,9 @@ class ProductController extends Controller
                     ? max(0, (int) round($this->parseNumericValue($row['stock_quantity'] ?? null)))
                     : null;
 
+                $lotNumber = isset($row['lot_number']) ? trim((string) $row['lot_number']) : '';
+                $expiryDate = $this->parseImportDate($row['expiry_date'] ?? null);
+
                 // Match by SKU when available. Barcode alone is not reliable because
                 // multiple distinct products in the same catalog can legitimately share it.
                 $existingProduct = $this->findExistingProductForImport($sku, $barcode, $name, $secondaryName);
@@ -840,6 +852,8 @@ class ProductController extends Controller
                         'image'            => $imageValue,
                         'manufacturer'     => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
                         'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
+                        'lot_number'       => $lotNumber !== '' && $lotNumber !== '-' ? $lotNumber : null,
+                        'expiry_date'      => $expiryDate,
                     ];
 
                 try {
@@ -924,6 +938,32 @@ class ProductController extends Controller
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
         return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    /**
+     * Parse a date from CSV into Y-m-d. Accepts common formats incl. M/D/YY, M/D/YYYY,
+     * D-M-YYYY, and ISO. Returns null for empty/unparseable values.
+     */
+    private function parseImportDate($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '-') {
+            return null;
+        }
+        foreach (['Y-m-d', 'm/d/Y', 'n/j/y', 'n/j/Y', 'd-m-Y', 'j-M-Y', 'Y/m/d'] as $format) {
+            $dt = \DateTimeImmutable::createFromFormat($format, $raw);
+            if ($dt instanceof \DateTimeImmutable && $dt->format($format) === $raw) {
+                return $dt->format('Y-m-d');
+            }
+        }
+        try {
+            return (new \DateTimeImmutable($raw))->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     private function findExistingProductForImport(string $sku, string $barcode, string $name, string $secondaryName): ?Product
