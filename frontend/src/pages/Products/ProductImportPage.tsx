@@ -40,6 +40,9 @@ const TEMPLATE_COLUMNS = [
   { name: 'image_url', required: false, description: 'URL to product image or product page (images will be downloaded)' },
   { name: 'manufacturer', required: false, description: 'Manufacturer or brand name' },
   { name: 'unit', required: false, description: 'Unit of measure (e.g., PCS, BOX)' },
+  { name: 'lot_number', required: false, description: 'Lot/batch number (for batch-tracked products)' },
+  { name: 'expiry_date', required: false, description: 'Expiry date - accepts M/D/YYYY, M/D/YY, or YYYY-MM-DD' },
+  { name: 'shelf_life_days', required: false, description: 'Default shelf life in days (for batch-tracked products)' },
 ]
 
 export function ProductImportPage() {
@@ -154,6 +157,9 @@ export function ProductImportPage() {
       '',
       '',
       'PCS',
+      'LOT-001',
+      '12/31/2027',
+      '365',
     ].join(',')
     
     const csvContent = `${headers}\n${sampleRow}`

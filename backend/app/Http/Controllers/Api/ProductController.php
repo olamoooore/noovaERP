@@ -854,6 +854,9 @@ class ProductController extends Controller
                         'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
                         'lot_number'       => $lotNumber !== '' && $lotNumber !== '-' ? $lotNumber : null,
                         'expiry_date'      => $expiryDate,
+                        'shelf_life_days'  => isset($row['shelf_life_days']) && trim((string) $row['shelf_life_days']) !== ''
+                            ? (int) round($this->parseNumericValue($row['shelf_life_days']))
+                            : null,
                     ];
 
                 try {
