@@ -26,8 +26,13 @@ Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentRecei
 
 // ─── Template management ────────────────────────────────────────────────────
 Route::prefix('template-builder')->group(function () {
+    Route::get('/starters', [TemplateController::class, 'starters']);
+    Route::get('/active-defaults', [TemplateController::class, 'activeDefaults']);
+
     Route::get('/merge-fields/{documentType}', [MergeFieldController::class, 'catalog']);
     Route::get('/sample-data/{documentType}', [MergeFieldController::class, 'sample']);
+
+    Route::post('/templates/from-starter/{documentType}', [TemplateController::class, 'createFromStarter']);
 
     Route::get('/templates', [TemplateController::class, 'index']);
     Route::post('/templates', [TemplateController::class, 'store']);
@@ -38,6 +43,7 @@ Route::prefix('template-builder')->group(function () {
     Route::post('/templates/{id}/publish', [TemplateController::class, 'publish']);
     Route::post('/templates/{id}/archive', [TemplateController::class, 'archive']);
     Route::post('/templates/{id}/default', [TemplateController::class, 'setDefault']);
+    Route::get('/templates/{id}/sample-pdf', [TemplateController::class, 'samplePdf']);
 
     Route::get('/templates/{id}/versions', [TemplateController::class, 'versions']);
     Route::post('/templates/{id}/versions/{version}/restore', [TemplateController::class, 'restoreVersion']);

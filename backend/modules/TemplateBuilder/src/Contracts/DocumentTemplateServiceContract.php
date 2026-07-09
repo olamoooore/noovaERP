@@ -46,4 +46,24 @@ interface DocumentTemplateServiceContract
      * @return array{valid:bool, errors:array<int,string>}
      */
     public function validateDefinition(array $definition): array;
+
+    /**
+     * Catalog of predefined starter templates a user can clone from.
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    public function listStarters(): array;
+
+    /**
+     * Create a user-owned (non-system) template pre-filled from a starter.
+     */
+    public function createFromStarter(string $documentType): DocumentTemplate;
+
+    /**
+     * Map of document_type => active (resolved) template id, for surfacing
+     * which template currently backs each document in the UI.
+     *
+     * @return array<string, ?string>
+     */
+    public function activeDefaults(): array;
 }

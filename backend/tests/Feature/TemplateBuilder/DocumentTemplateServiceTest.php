@@ -125,4 +125,38 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $this->assertFalse($result['valid']);
         $this->assertNotEmpty($result['errors']);
     }
+
+    public function test_list_starters_returns_one_per_document_type(): void
+    {
+        $starters = $this->service->listStarters();
+        $types = array_column($starters, 'document_type');
+
+        $this->assertCount(4, $starters);
+        foreach (['invoice', 'quotation', 'purchase_order', 'receipt'] as $type) {
+            $this->assertContains($type, $types);
+        }
+    }
+
+    public function test_create_from_starter_makes_user_owned_draft(): void
+    {
+        $template = $this->service->createFromStarter('invoice');
+
+        $this->assertSame('invoice', $template->document_type);
+        $this->assertSame('draft', $template->status);
+        $this->assertFalse($template->is_system_default);
+        $this->assertSame(0, $template->published_version);
+        $this->assertNotEmpty($template->layout_config['blocks']);
+        $this->assertStringContainsString('Copy', $template->name);
+    }
+
+    public function test_active_defaults_resolves_seeded_templates(): void
+    {
+        $this->service->seedDefaults();
+        $defaults = $this->service->activeDefaults();
+
+        foreach (['invoice', 'quotation', 'purchase_order', 'receipt'] as $type) {
+            $this->assertArrayHasKey($type, $defaults);
+            $this->assertNotNull($defaults[$type], "Active default for '{$type}' should resolve after seeding.");
+        }
+    }
 }

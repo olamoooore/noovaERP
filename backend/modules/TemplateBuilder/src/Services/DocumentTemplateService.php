@@ -218,6 +218,46 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
         return ['valid' => empty($errors), 'errors' => $errors];
     }
 
+    public function listStarters(): array
+    {
+        return collect(DefaultTemplates::definitions())->map(fn (array $d) => [
+            'document_type' => $d['document_type'],
+            'name'          => $d['name'],
+            'mode'          => $d['mode'],
+            'format'        => $d['format'],
+            'orientation'   => $d['orientation'],
+            'description'   => 'Predefined starter layout — clone and customise.',
+        ])->values()->all();
+    }
+
+    public function createFromStarter(string $documentType): DocumentTemplate
+    {
+        $definition = collect(DefaultTemplates::definitions())
+            ->firstWhere('document_type', $documentType);
+
+        if (!$definition) {
+            throw new \RuntimeException("No starter template exists for document type '{$documentType}'.");
+        }
+
+        // User-owned copy: not a system default, starts as a draft, no code collision.
+        $definition['is_system_default'] = false;
+        $definition['status']            = DocumentTemplate::STATUS_DRAFT;
+        $definition['published_version'] = 0;
+        $definition['code']              = null;
+        $definition['name']              = $definition['name'].' (Copy)';
+
+        return DocumentTemplate::create($definition);
+    }
+
+    public function activeDefaults(): array
+    {
+        $types = ['invoice', 'quotation', 'purchase_order', 'receipt'];
+
+        return collect($types)
+            ->mapWithKeys(fn (string $type) => [$type => $this->resolveFor($type)?->id])
+            ->all();
+    }
+
     /**
      * Seed the starter templates for the current tenant. Idempotent — skips any
      * document_type that already has a system-default template.

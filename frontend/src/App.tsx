@@ -41,6 +41,8 @@ const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m 
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const TenantUsersPage = lazy(() => import('@/pages/TenantUsersPage'))
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
+const TemplateListPage = lazy(() => import('@/pages/TemplateBuilder/TemplateListPage'))
+const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
 const ManualsLibraryPage = lazy(() => import('@/pages/Manuals/ManualsLibraryPage').then(m => ({ default: m.ManualsLibraryPage })))
@@ -281,6 +283,9 @@ function App() {
               {/* Receipt Builder - fullscreen without sidebar */}
               <Route path="/receipt-builder" element={<ReceiptBuilderPage />} />
 
+              {/* Template Builder editor - fullscreen without sidebar */}
+              <Route path="/template-builder/:id" element={<TemplateEditorPage />} />
+
               {/* Main Layout Routes - with sidebar */}
               <Route element={<MainLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
@@ -489,6 +494,9 @@ function App() {
                 
                 {/* Website Builder Index - With sidebar */}
                 <Route path="/website-builder" element={<WebsitesIndex />} />
+
+                {/* Template Builder - list (with sidebar) */}
+                <Route path="/template-builder" element={<TemplateListPage />} />
               </Route>
 
               {/* Website Builder Routes - Full page, no sidebar (still admin-protected) */}

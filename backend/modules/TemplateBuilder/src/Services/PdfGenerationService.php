@@ -72,9 +72,12 @@ final class PdfGenerationService implements PdfGenerationServiceContract
      */
     private function build(DocumentTemplate $template, array $data, string $format): array
     {
-        $rendered = $this->renderer->render($template, $data);
+        // Production PDFs render the PUBLISHED version, never an unsaved draft.
+        $renderTemplate = $this->forRendering($template);
 
-        $fullHtml = $this->wrapCanvas($template, $rendered['html']);
+        $rendered = $this->renderer->render($renderTemplate, $data);
+
+        $fullHtml = $this->wrapCanvas($renderTemplate, $rendered['html']);
 
         $hash = hash('sha256', $template->id.'|'.$template->published_version.'|'.json_encode($data));
 
@@ -83,10 +86,32 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         $pdf = Pdf::loadHTML($fullHtml);
-        $pdf->setPaper($this->paperSize($template), $template->orientation ?: 'portrait');
+        $pdf->setPaper($this->paperSize($renderTemplate), $renderTemplate->orientation ?: 'portrait');
         $bytes = $pdf->output();
 
         return ['bytes' => $bytes, 'html' => $fullHtml, 'mime' => 'application/pdf', 'hash' => $hash];
+    }
+
+    /**
+     * Return a template instance carrying the PUBLISHED definition (layout/html/css)
+     * when one exists, otherwise the live draft. Production rendering must never
+     * use un-published edits.
+     */
+    private function forRendering(DocumentTemplate $template): DocumentTemplate
+    {
+        if ($template->published_version > 0) {
+            $definition = $template->getPublishedDefinition();
+
+            $clone = $template->replicate(['id']);
+            $clone->id = $template->id;
+            $clone->layout_config = $definition['layout_config'];
+            $clone->html = $definition['html'];
+            $clone->css = $definition['css'];
+
+            return $clone;
+        }
+
+        return $template;
     }
 
     private function wrapCanvas(DocumentTemplate $template, string $body): string

@@ -618,6 +618,11 @@ const baseNavItems: NavItem[] = [
         href: '/settings',
         icon: 'solar:settings-bold-duotone',
       },
+      {
+        title: 'Template Builder',
+        href: '/template-builder',
+        icon: 'solar:document-text-bold-duotone',
+      },
     ]
 
 export function Sidebar() {
