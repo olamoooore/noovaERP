@@ -166,6 +166,7 @@ export function ProductEditPage() {
     tracking_method: 'quantity' as TrackingMethod,
     reorder_point: '',
     reorder_quantity: '',
+    shelf_life_days: '',
     
     // Physical attributes
     weight: '',
@@ -336,6 +337,7 @@ export function ProductEditPage() {
       tracking_method: (product.tracking_method || 'quantity') as TrackingMethod,
       reorder_point: product.reorder_level != null ? String(product.reorder_level) : '',
       reorder_quantity: product.reorder_quantity != null ? String(product.reorder_quantity) : '',
+      shelf_life_days: product.shelf_life_days != null ? String(product.shelf_life_days) : '',
       weight: product.weight != null ? String(product.weight) : '',
       weight_unit: product.weight_unit || 'kg',
       length: product.length != null ? String(product.length) : '',
@@ -587,6 +589,7 @@ export function ProductEditPage() {
       tracking_method: formData.tracking_method,
       reorder_level: formData.reorder_point ? parseInt(formData.reorder_point) : null,
       reorder_quantity: formData.reorder_quantity ? parseInt(formData.reorder_quantity) : null,
+      shelf_life_days: formData.shelf_life_days ? parseInt(formData.shelf_life_days) : null,
       weight: formData.weight ? parseFloat(formData.weight) : null,
       length: formData.length ? parseFloat(formData.length) : null,
       width: formData.width ? parseFloat(formData.width) : null,
@@ -1205,6 +1208,23 @@ export function ProductEditPage() {
                           </p>
                         </div>
                       </div>
+
+                      {formData.tracking_method === 'batch' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="shelf_life_days">Default Shelf Life (days)</Label>
+                          <Input
+                            id="shelf_life_days"
+                            type="number"
+                            min="0"
+                            value={formData.shelf_life_days}
+                            onChange={(e) => setFormData({ ...formData, shelf_life_days: e.target.value })}
+                            placeholder="e.g. 365"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Default shelf life used to estimate expiry when receiving stock. Lot numbers and actual expiry dates are captured per batch at stock-in.
+                          </p>
+                        </div>
+                      )}
 
                       <Separator />
 
