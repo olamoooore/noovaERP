@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -92,71 +95,7 @@ class InvoiceController extends Controller
         }
 
         try {
-            // Map invoice lines to SalesOrder line format
-            $salesLines = array_map(fn ($line) => [
-                'product_id'      => $line['product_id'] ?? null,
-                'description'     => $line['description'],
-                'quantity'        => $line['quantity'],
-                'unit_price'      => $line['unit_price'],
-                'tax_rate'        => $line['tax_rate'] ?? 0,
-                'discount_amount' => $line['discount_amount'] ?? 0,
-            ], $validated['lines']);
-
-            // Resolve warehouse for stock-tracked products
-            $warehouseId = null;
-            $productIds = array_filter(array_column($salesLines, 'product_id'));
-            if (!empty($productIds)) {
-                $hasStockTracked = Product::whereIn('id', $productIds)
-                    ->where('track_inventory', true)
-                    ->exists();
-                if ($hasStockTracked) {
-                    $warehouse = Warehouse::getDefault() ?? Warehouse::first();
-                    if (!$warehouse) {
-                        return response()->json([
-                            'message' => 'Cannot create invoice for stock-tracked products: no warehouse configured. Please set up a warehouse first.',
-                        ], 422);
-                    }
-                    $warehouseId = $warehouse->id;
-                }
-            }
-
-            // Create SalesOrder on the admin channel so every manual invoice
-            // is tracked by the SalesOrder backbone and has a SalesInvoiceLink.
-            $salesOrder = $this->salesOrderService->createOrder([
-                'customer_id' => $validated['customer_id'],
-                'channel'     => 'admin',
-                'notes'       => $validated['notes'] ?? null,
-                'lines'       => $salesLines,
-                'warehouse_id'=> $warehouseId,
-            ]);
-
-            // Fast-track admin orders through the full lifecycle immediately
-            $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
-            $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
-            $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
-
-            // Collect invoice-specific fields that are not on SalesOrder lines
-            $invoiceOverrides = array_filter([
-                'invoice_date'                => $validated['invoice_date'] ?? null,
-                'due_date'                    => $validated['due_date'] ?? null,
-                'customer_reference'          => $validated['customer_reference'] ?? null,
-                'internal_reference'          => $validated['internal_reference'] ?? null,
-                'attention_to'                => $validated['attention_to'] ?? null,
-                'contact_email'               => $validated['contact_email'] ?? null,
-                'contact_phone'               => $validated['contact_phone'] ?? null,
-                'billing_address_snapshot'    => $validated['billing_address_snapshot'] ?? null,
-                'shipping_address_snapshot'   => $validated['shipping_address_snapshot'] ?? null,
-                'company_registration_number' => $validated['company_registration_number'] ?? null,
-                'tax_registration_number'     => $validated['tax_registration_number'] ?? null,
-                'notes'                       => $validated['notes'] ?? null,
-                'terms'                       => $validated['terms'] ?? null,
-                'discount_amount'             => $validated['discount_amount'] ?? null,
-            ], fn ($v) => $v !== null);
-
-            $invoice = $this->salesOrderService->createInvoice(
-                $salesOrder,
-                empty($invoiceOverrides) ? null : $invoiceOverrides
-            );
+            $invoice = $this->createInvoiceFromData($validated);
 
             return response()->json([
                 'message' => 'Invoice created successfully',
@@ -170,6 +109,82 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Shared invoice creation flow used by both store() and import().
+     * Creates the backing SalesOrder (admin channel, full lifecycle) + Invoice.
+     *
+     * $data: customer_id, lines[] (product_id?, description, quantity, unit_price,
+     *        tax_rate?, discount_amount?), and optional invoice overrides
+     *        (invoice_date, due_date, customer_reference, internal_reference,
+     *        attention_to, contact_email, contact_phone, billing_address_snapshot,
+     *        shipping_address_snapshot, company_registration_number,
+     *        tax_registration_number, notes, terms, discount_amount).
+     */
+    private function createInvoiceFromData(array $data): Invoice
+    {
+        $salesLines = array_map(fn ($line) => [
+            'product_id'      => $line['product_id'] ?? null,
+            'description'     => $line['description'],
+            'quantity'        => $line['quantity'],
+            'unit_price'      => $line['unit_price'],
+            'tax_rate'        => $line['tax_rate'] ?? 0,
+            'discount_amount' => $line['discount_amount'] ?? 0,
+        ], $data['lines']);
+
+        // Resolve warehouse if any line references a stock-tracked product
+        $warehouseId = null;
+        $productIds = array_filter(array_column($salesLines, 'product_id'));
+        if (!empty($productIds)) {
+            $hasStockTracked = Product::whereIn('id', $productIds)
+                ->where('track_inventory', true)
+                ->exists();
+            if ($hasStockTracked) {
+                $warehouse = Warehouse::getDefault() ?? Warehouse::first();
+                if (!$warehouse) {
+                    throw new \RuntimeException(
+                        'Cannot create invoice for stock-tracked products: no warehouse configured.'
+                    );
+                }
+                $warehouseId = $warehouse->id;
+            }
+        }
+
+        $salesOrder = $this->salesOrderService->createOrder([
+            'customer_id'  => $data['customer_id'],
+            'channel'      => 'admin',
+            'notes'        => $data['notes'] ?? null,
+            'lines'        => $salesLines,
+            'warehouse_id' => $warehouseId,
+        ]);
+
+        // Fast-track admin orders through the full lifecycle immediately
+        $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+        $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
+        $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
+
+        $invoiceOverrides = array_filter([
+            'invoice_date'                => $data['invoice_date'] ?? null,
+            'due_date'                    => $data['due_date'] ?? null,
+            'customer_reference'          => $data['customer_reference'] ?? null,
+            'internal_reference'          => $data['internal_reference'] ?? null,
+            'attention_to'                => $data['attention_to'] ?? null,
+            'contact_email'               => $data['contact_email'] ?? null,
+            'contact_phone'               => $data['contact_phone'] ?? null,
+            'billing_address_snapshot'    => $data['billing_address_snapshot'] ?? null,
+            'shipping_address_snapshot'   => $data['shipping_address_snapshot'] ?? null,
+            'company_registration_number' => $data['company_registration_number'] ?? null,
+            'tax_registration_number'     => $data['tax_registration_number'] ?? null,
+            'notes'                       => $data['notes'] ?? null,
+            'terms'                       => $data['terms'] ?? null,
+            'discount_amount'             => $data['discount_amount'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        return $this->salesOrderService->createInvoice(
+            $salesOrder,
+            empty($invoiceOverrides) ? null : $invoiceOverrides
+        );
     }
 
     public function show($id)
@@ -299,5 +314,297 @@ class InvoiceController extends Controller
         $invoice->delete();
 
         return response()->json(['message' => 'Invoice deleted successfully']);
+    }
+
+    /**
+     * Bulk import invoices/quotations from CSV.
+     *
+     * One row = one line item. Rows are grouped into a single invoice by
+     * `invoice_number` (rows that share an invoice_number become lines on the
+     * same invoice). Rows with a blank invoice_number each become a single-line
+     * invoice. Imported invoices are created as drafts ( quotations);
+     * set the `status` column to `sent` to also post them.
+     */
+    public function import(Request $request)
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt']);
+
+        $file = $request->file('file');
+        $handle = fopen($file->getRealPath(), 'r');
+        if ($handle === false) {
+            return response()->json(['message' => 'Unable to read file'], 400);
+        }
+
+        $rawHeader = fgetcsv($handle);
+        if (!is_array($rawHeader) || count($rawHeader) === 0) {
+            fclose($handle);
+            return response()->json(['message' => 'CSV header missing'], 422);
+        }
+
+        $header = array_map(function ($h) {
+            $h = strtolower(trim((string) $h));
+            $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+            return trim($h, '_');
+        }, $rawHeader);
+
+        $columnAliases = [
+            'invoice_no'           => 'invoice_number',
+            'quote_number'         => 'invoice_number',
+            'quote_no'             => 'invoice_number',
+            'number'               => 'invoice_number',
+            'customer'             => 'customer_name',
+            'customer_code'        => 'customer_code',
+            'customer_name'        => 'customer_name',
+            'date'                 => 'invoice_date',
+            'issue_date'           => 'invoice_date',
+            'valid_until'          => 'due_date',
+            'expiry_date'          => 'due_date',
+            'reference'            => 'customer_reference',
+            'po_number'            => 'customer_reference',
+            'sku'                  => 'product_sku',
+            'product_sku'          => 'product_sku',
+            'item'                 => 'description',
+            'item_description'     => 'description',
+            'qty'                  => 'quantity',
+            'price'                => 'unit_price',
+            'unit_price'           => 'unit_price',
+            'rate'                 => 'unit_price',
+            'tax'                  => 'tax_rate',
+            'line_discount'        => 'line_discount_amount',
+            'line_discount_amount' => 'line_discount_amount',
+            'discount'             => 'discount_amount',
+            'billing_address'      => 'billing_address_snapshot',
+            'shipping_address'     => 'shipping_address_snapshot',
+            'company_reg_no'       => 'company_registration_number',
+            'tax_reg_no'           => 'tax_registration_number',
+            'email'                => 'contact_email',
+            'phone'                => 'contact_phone',
+        ];
+        $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
+
+        $rows = [];
+        while (($data = fgetcsv($handle)) !== false) {
+            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+                continue;
+            }
+            $row = [];
+            foreach ($header as $idx => $key) {
+                if ($key !== '') {
+                    $row[$key] = $data[$idx] ?? null;
+                }
+            }
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        if (count($rows) === 0) {
+            return response()->json(['message' => 'No rows found'], 422);
+        }
+
+        // Group rows into invoices by invoice_number (blank number = 1 invoice per row)
+        $groups = [];
+        $order = [];
+        foreach ($rows as $idx => $row) {
+            $num = trim((string) ($row['invoice_number'] ?? ''));
+            $key = $num !== '' ? 'num:' . $num : 'row:' . $idx;
+            if (!isset($groups[$key])) {
+                $groups[$key] = ['first_index' => $idx, 'header' => $row, 'lines' => []];
+                $order[] = $key;
+            }
+            $groups[$key]['lines'][] = $row;
+        }
+
+        $created = 0;
+        $errors = [];
+        $customerCache = [];
+        $productCache = [];
+
+        foreach ($order as $key) {
+            $group = $groups[$key];
+            $firstIndex = $group['first_index'];
+            $headerRow = $group['header'];
+
+            try {
+                $customer = $this->resolveImportCustomer($headerRow, $customerCache);
+                if (!$customer) {
+                    $identifier = trim((string) ($headerRow['customer_code'] ?? $headerRow['customer_name'] ?? $headerRow['customer_id'] ?? ''));
+                    throw new \RuntimeException("Customer not found: {$identifier}");
+                }
+
+                $lines = [];
+                foreach ($group['lines'] as $lineRow) {
+                    $description = trim((string) ($lineRow['description'] ?? ''));
+                    $quantity = (int) round($this->parseNumericValue($lineRow['quantity'] ?? null));
+                    if ($quantity < 1) {
+                        $quantity = 1;
+                    }
+                    $unitPrice = $this->parseNumericValue($lineRow['unit_price'] ?? null);
+                    $taxRate = $this->parseNumericValue($lineRow['tax_rate'] ?? null);
+                    $lineDiscount = $this->parseNumericValue($lineRow['line_discount_amount'] ?? null);
+
+                    $line = [
+                        'description'     => $description !== '' ? $description : 'Imported line',
+                        'quantity'        => $quantity,
+                        'unit_price'      => $unitPrice,
+                        'tax_rate'        => $taxRate,
+                        'discount_amount' => $lineDiscount,
+                    ];
+
+                    $sku = trim((string) ($lineRow['product_sku'] ?? ''));
+                    if ($sku !== '' && $sku !== '-') {
+                        $product = $this->resolveImportProduct($sku, $productCache);
+                        if ($product) {
+                            $line['product_id'] = $product->id;
+                            if ($description === '') {
+                                $line['description'] = $product->name;
+                            }
+                            if ($unitPrice == 0) {
+                                $line['unit_price'] = (float) $product->price;
+                            }
+                        }
+                    }
+
+                    $lines[] = $line;
+                }
+
+                if (count($lines) === 0) {
+                    throw new \RuntimeException('Invoice has no lines');
+                }
+
+                $data = [
+                    'customer_id' => $customer->id,
+                    'lines'       => $lines,
+                ];
+
+                foreach ([
+                    'invoice_date', 'due_date', 'customer_reference', 'internal_reference',
+                    'attention_to', 'contact_email', 'contact_phone',
+                    'billing_address_snapshot', 'shipping_address_snapshot',
+                    'company_registration_number', 'tax_registration_number',
+                    'notes', 'terms', 'discount_amount',
+                ] as $field) {
+                    $value = $this->readImportValue($headerRow[$field] ?? null);
+                    if ($value !== null) {
+                        $data[$field] = $field === 'discount_amount'
+                            ? $this->parseNumericValue($value)
+                            : $value;
+                    }
+                }
+
+                $invoiceDate = $this->parseImportDate($headerRow['invoice_date'] ?? null) ?? now()->toDateString();
+                $data['invoice_date'] = $invoiceDate;
+                if (($parsedDue = $this->parseImportDate($headerRow['due_date'] ?? null)) !== null) {
+                    $data['due_date'] = $parsedDue;
+                }
+
+                // Lock-date guard
+                $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoiceDate);
+                if ($lockResult['is_locked']) {
+                    throw new \RuntimeException("Date in closed period ({$invoiceDate})");
+                }
+
+                $invoice = $this->createInvoiceFromData($data);
+
+                // Optional: post the invoice if status = sent/posted
+                $status = strtolower(trim((string) ($headerRow['status'] ?? '')));
+                if (in_array($status, ['sent', 'posted', 'paid'], true) && $invoice->status !== 'posted') {
+                    try {
+                        $this->invoiceService->postInvoice($invoice);
+                    } catch (\Throwable $postException) {
+                        // Keep as draft (quote) but warn — posting may need GL accounts configured
+                        $errors[] = [
+                            'row' => $firstIndex + 2,
+                            'message' => 'Invoice ' . $invoice->invoice_number . ' created as draft (posting failed: ' . $postException->getMessage() . ')',
+                        ];
+                    }
+                }
+
+                $created++;
+            } catch (\Throwable $e) {
+                $msg = $e->getMessage();
+                $errors[] = [
+                    'row' => $firstIndex + 2,
+                    'message' => 'Invoice ' . trim((string) ($headerRow['invoice_number'] ?? ('row ' . ($firstIndex + 2)))) . ': ' . $msg,
+                ];
+            }
+        }
+
+        return response()->json([
+            'created' => $created,
+            'errors'  => $errors,
+        ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    private function resolveImportCustomer(array $row, array &$cache): ?Customer
+    {
+        $code = trim((string) ($row['customer_code'] ?? ''));
+        $name = trim((string) ($row['customer_name'] ?? ''));
+        $id = trim((string) ($row['customer_id'] ?? ''));
+
+        $cacheKey = $code . '|' . $name . '|' . $id;
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
+        $customer = null;
+        if ($code !== '' && $code !== '-') {
+            $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
+        }
+        if (!$customer && $name !== '' && $name !== '-') {
+            $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+        }
+        if (!$customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
+            $customer = Customer::find((int) $id);
+        }
+
+        return $cache[$cacheKey] = $customer;
+    }
+
+    private function resolveImportProduct(string $sku, array &$cache): ?Product
+    {
+        if (isset($cache[$sku])) {
+            return $cache[$sku];
+        }
+        return $cache[$sku] = Product::where('sku', $sku)->first();
+    }
+
+    private function readImportValue($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $value = trim((string) $value);
+        return ($value === '' || $value === '-') ? null : $value;
+    }
+
+    private function parseNumericValue($value): float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return 0;
+        }
+        $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+        return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    private function parseImportDate($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '-') {
+            return null;
+        }
+        foreach (['Y-m-d', 'm/d/Y', 'n/j/y', 'n/j/Y', 'd-m-Y', 'Y/m/d'] as $format) {
+            $dt = \DateTimeImmutable::createFromFormat($format, $raw);
+            if ($dt instanceof \DateTimeImmutable && $dt->format($format) === $raw) {
+                return $dt->format('Y-m-d');
+            }
+        }
+        try {
+            return (new \DateTimeImmutable($raw))->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

@@ -73,6 +73,10 @@ export function QuotesPage() {
             <Icon icon="solar:bill-list-bold-duotone" className="mr-2 h-4 w-4" />
             Invoices
           </Button>
+          <Button variant="outline" onClick={() => navigate('/invoices/import')}>
+            <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
+            Import
+          </Button>
           <Button onClick={() => navigate('/sales/quotes/create')}>
             <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
             Create Quotation

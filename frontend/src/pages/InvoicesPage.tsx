@@ -39,10 +39,16 @@ export function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Invoices</h1>
-        <Button onClick={() => navigate('/invoices/create')}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-          Create Invoice
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/invoices/import')}>
+            <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
+            Import
+          </Button>
+          <Button onClick={() => navigate('/invoices/create')}>
+            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+            Create Invoice
+          </Button>
+        </div>
       </div>
 
       <Card>

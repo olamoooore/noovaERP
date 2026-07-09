@@ -24,6 +24,7 @@ const CustomerImportPage = lazy(() => import('@/pages/Customers/CustomerImportPa
 const InvoicesPage = lazy(() => import('@/pages/InvoicesPage').then(m => ({ default: m.InvoicesPage })))
 const InvoiceDetailPage = lazy(() => import('@/pages/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })))
 const InvoicePaymentPage = lazy(() => import('@/pages/InvoicePaymentPage').then(m => ({ default: m.InvoicePaymentPage })))
+const InvoiceImportPage = lazy(() => import('@/pages/InvoiceImportPage').then(m => ({ default: m.InvoiceImportPage })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
@@ -317,6 +318,7 @@ function App() {
                 <Route path="/customers/:id" element={<CustomerDetailsPage />} />
                 
                 <Route path="/invoices" element={<InvoicesPage />} />
+                <Route path="/invoices/import" element={<InvoiceImportPage />} />
                 <Route path="/invoices/create" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/invoices/:id/payment" element={<InvoicePaymentPage />} />
