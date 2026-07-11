@@ -188,8 +188,16 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
 
         $result = $this->renderer->render($template, $data);
 
+        // Wrap in the canvas template so the preview gets full styling (fonts, margins, CSS).
+        $fullHtml = view('templatebuilder::canvas', [
+            'body'   => $result['html'],
+            'font'   => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
+            'margin' => is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm'),
+            'css'    => (string) ($template->css ?? ''),
+        ])->render();
+
         return [
-            'html' => $result['html'],
+            'html' => $fullHtml,
             'warnings' => $result['warnings'],
         ];
     }

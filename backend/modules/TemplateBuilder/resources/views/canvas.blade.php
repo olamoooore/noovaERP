@@ -17,7 +17,11 @@
             color: #1f2937;
         }
 
-        body { -webkit-font-smoothing: antialiased; }
+        body {
+            -webkit-font-smoothing: antialiased;
+            /* Screen-friendly padding that matches @page print margins (mm → px: ×3.78) */
+            padding: {{ ($margin['top'] ?? 15) * 3.78 }}px {{ ($margin['right'] ?? 12) * 3.78 }}px {{ ($margin['bottom'] ?? 15) * 3.78 }}px {{ ($margin['left'] ?? 12) * 3.78 }}px;
+        }
 
         table { border-collapse: collapse; width: 100%; }
 
@@ -25,8 +29,12 @@
 
         b, strong { font-weight: bold; }
 
+        /* Spacing helpers used by the block renderer */
+        .tb-divider { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+        .tb-spacer  { width: 100%; }
+
         @if (!empty($css))
-            {{ $css }}
+            {!! $css !!}
         @endif
     </style>
 </head>

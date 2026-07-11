@@ -112,7 +112,7 @@ final class BlockRenderer implements TemplateRendererInterface
             $inner = $this->renderBlock($child, $context);
             $align = $child['align'] ?? 'left';
             $valign = $child['valign'] ?? 'top';
-            $cells .= "<td style=\"vertical-align:{$valign};text-align:{$align};padding-right:{$gap}px;\">{$inner}</td>";
+            $cells .= "<td style=\"vertical-align:{$valign};text-align:{$align};padding:0 {$gap}px 0 0;\">{$inner}</td>";
         }
 
         return "<table style=\"width:100%;border-collapse:collapse;\"><tr>{$cells}</tr></table>";
@@ -162,10 +162,10 @@ final class BlockRenderer implements TemplateRendererInterface
             $label = htmlspecialchars((string) ($row['label'] ?? ''), ENT_QUOTES);
             $bold = ! empty($row['bold']);
             $style = $bold
-                ? 'font-weight:bold;border-top:1px solid #d1d5db;'
+                ? 'font-weight:bold;border-top:2px solid #d1d5db;padding-top:6px;'
                 : '';
-            $out .= "<tr><td style=\"padding:3px 8px;text-align:left;{$style}\">{$label}</td>"
-                ."<td style=\"padding:3px 8px;text-align:right;{$style}\">{$value}</td></tr>";
+            $out .= "<tr><td style=\"padding:5px 10px;text-align:left;{$style}\">{$label}</td>"
+                ."<td style=\"padding:5px 10px;text-align:right;{$style}\">{$value}</td></tr>";
         }
         $out .= '</table>';
 
@@ -177,12 +177,12 @@ final class BlockRenderer implements TemplateRendererInterface
     {
         $h = (int) ($block['height'] ?? 10);
 
-        return "<div style=\"height:{$h}px;line-height:{$h}px;\">&nbsp;</div>";
+        return "<div style=\"height:{$h}px;line-height:{$h}px;font-size:1px;\">&nbsp;</div>";
     }
 
     private function renderDivider(): string
     {
-        return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;"/>';
+        return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;"/>';
     }
 
     /** @param array<string,mixed> $col */
@@ -197,7 +197,7 @@ final class BlockRenderer implements TemplateRendererInterface
 
     private function thStyle(): string
     {
-        return 'padding:8px;border-bottom:2px solid #111827;font-size:10px;text-transform:uppercase;color:#374151;text-align:left;background-color:#f9fafb;';
+        return 'padding:8px 10px;border-bottom:2px solid #111827;font-size:10px;text-transform:uppercase;color:#374151;text-align:left;background-color:#f9fafb;';
     }
 
     /** @param array<string,mixed> $col */
@@ -205,7 +205,7 @@ final class BlockRenderer implements TemplateRendererInterface
     {
         $align = $col['align'] ?? 'left';
 
-        return "padding:8px;border-bottom:1px solid #e5e7eb;text-align:{$align};font-size:11px;";
+        return "padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:{$align};font-size:11px;";
     }
 
     /** @param array<string,mixed> $block */

@@ -159,4 +159,23 @@ class DocumentTemplateServiceTest extends TenantTestCase
             $this->assertNotNull($defaults[$type], "Active default for '{$type}' should resolve after seeding.");
         }
     }
+
+    public function test_preview_returns_html_with_canvas_wrapper(): void
+    {
+        $this->service->seedDefaults();
+        $template = $this->service->resolveFor('invoice');
+
+        $result = $this->service->preview($template);
+
+        // Should contain full HTML document with DOCTYPE, html, head, body
+        $this->assertStringContainsString('<!DOCTYPE html>', $result['html']);
+        $this->assertStringContainsString('<html', $result['html']);
+        $this->assertStringContainsString('<head>', $result['html']);
+        $this->assertStringContainsString('<body>', $result['html']);
+        // Should contain the canvas CSS (font-family, margin rules)
+        $this->assertStringContainsString('font-family', $result['html']);
+        $this->assertStringContainsString('@page', $result['html']);
+        // Should contain merged sample data
+        $this->assertStringContainsString('INVOICE', $result['html']);
+    }
 }
