@@ -59,6 +59,9 @@ const ExpenseAnalyticsPage = lazy(() => import('@/pages/reports/ExpenseAnalytics
 const ExecutiveDashboard = lazy(() => import('@/pages/dashboards/ExecutiveDashboard').then(m => ({ default: m.ExecutiveDashboard })))
 const SalesDashboard = lazy(() => import('@/pages/dashboards/SalesDashboard').then(m => ({ default: m.SalesDashboard })))
 const QuotesPage = lazy(() => import('@/pages/sales/QuotesPage').then(m => ({ default: m.QuotesPage })))
+const QuotationCreatePage = lazy(() => import('@/pages/sales/QuotationCreatePage').then(m => ({ default: m.QuotationCreatePage })))
+const QuotationDetailPage = lazy(() => import('@/pages/sales/QuotationDetailPage').then(m => ({ default: m.QuotationDetailPage })))
+const QuotationImportPage = lazy(() => import('@/pages/sales/QuotationImportPage').then(m => ({ default: m.QuotationImportPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -314,8 +317,14 @@ function App() {
                 <Route path="/sales" element={<SalesDashboard />} />
                 <Route path="/sales/orders" element={<POSOrdersPage />} />
                 <Route path="/sales/quotes" element={<QuotesPage />} />
-                <Route path="/sales/quotes/create" element={<CreateInvoicePage />} />
-                <Route path="/sales/quotes/:id" element={<CustomerInvoiceDetail />} />
+                <Route path="/sales/quotes/create" element={<QuotationCreatePage />} />
+                <Route path="/sales/quotes/:id" element={<QuotationDetailPage />} />
+
+                {/* Quotation Routes (new) */}
+                <Route path="/quotations" element={<QuotesPage />} />
+                <Route path="/quotations/create" element={<QuotationCreatePage />} />
+                <Route path="/quotations/import" element={<QuotationImportPage />} />
+                <Route path="/quotations/:id" element={<QuotationDetailPage />} />
                 
                 {/* Customer Routes */}
                 <Route path="/customers" element={<CustomersPage />} />

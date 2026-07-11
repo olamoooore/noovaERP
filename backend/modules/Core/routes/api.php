@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\BillPaymentsController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductCategoryController;
@@ -175,6 +176,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
             Route::post('/invoices/import', [InvoiceController::class, 'import']);
             Route::apiResource('invoices', InvoiceController::class);
             Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
+
+            // Quotations
+            Route::post('/quotations/import', [QuotationController::class, 'import']);
+            Route::apiResource('quotations', QuotationController::class);
+            Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
+            Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 
             // Payments (no update — PaymentController has no update method)
             Route::get('/payments', [PaymentController::class, 'index']);

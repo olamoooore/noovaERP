@@ -38,7 +38,10 @@ export function InvoicesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Invoices</h1>
+        <div>
+          <h1 className="text-3xl font-bold">Invoices</h1>
+          <p className="text-muted-foreground mt-1">All invoices — created from Sales Orders or directly.</p>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate('/invoices/import')}>
             <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
@@ -90,7 +93,7 @@ export function InvoicesPage() {
                       className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                         invoice.status === 'paid'
                           ? 'bg-green-100 text-green-800'
-                          : invoice.status === 'sent'
+                          : invoice.status === 'posted'
                           ? 'bg-blue-100 text-blue-800'
                           : invoice.status === 'draft'
                           ? 'bg-gray-100 text-gray-800'
@@ -115,7 +118,7 @@ export function InvoicesPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => sendInvoiceMutation.mutate(invoice.id)}
-                          title="Send Invoice"
+                          title="Post Invoice"
                         >
                           <Icon icon="solar:paper-plane-bold" className="h-3 w-3" />
                         </Button>
@@ -131,3 +134,5 @@ export function InvoicesPage() {
     </div>
   )
 }
+
+export default InvoicesPage

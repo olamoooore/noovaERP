@@ -149,8 +149,8 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:document-text-bold-duotone',
       },
       {
-        title: 'Quotes',
-        href: '/sales/quotes',
+        title: 'Quotations',
+        href: '/quotations',
         icon: 'solar:file-text-bold-duotone',
       },
       {

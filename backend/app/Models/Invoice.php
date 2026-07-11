@@ -93,6 +93,7 @@ class Invoice extends Model
         'origin_context',
         'created_via_module',
         'created_via_role',
+        'quotation_id',
         'lifecycle_status',
         'settlement_status',
         'reconciliation_status',
@@ -170,6 +171,11 @@ class Invoice extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'sales_order_id');
+    }
+
+    public function quotation(): BelongsTo
+    {
+        return $this->belongsTo(Quotation::class, 'quotation_id');
     }
 
     public static function generateInvoiceNumber(): string
