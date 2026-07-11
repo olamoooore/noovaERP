@@ -428,8 +428,14 @@ class QuotationController extends Controller
             try {
                 $customer = $this->resolveImportCustomer($headerRow, $customerCache);
                 if (!$customer) {
-                    $identifier = trim((string) ($headerRow['customer_code'] ?? $headerRow['customer_name'] ?? ''));
-                    throw new \RuntimeException("Customer not found: {$identifier}");
+                    $code = trim((string) ($headerRow['customer_code'] ?? ''));
+                    $name = trim((string) ($headerRow['customer_name'] ?? ''));
+                    $identifier = $code ?: $name;
+                    throw new \RuntimeException(
+                        "Customer not found: {$identifier}. " .
+                        "Use an existing customer_code, customer_name, or customer_id. " .
+                        "Check /customers to see available customers."
+                    );
                 }
 
                 $lines = [];
