@@ -260,6 +260,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:dollar-bold-duotone',
       },
       {
+        title: 'MyInvois E-Invoice',
+        href: '/accounting/reporting/myinvoice',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
         title: 'Configuration',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
@@ -572,11 +577,6 @@ const baseNavItems: NavItem[] = [
         title: 'Compliance Reports',
         href: '/accounting/reporting/compliance',
         icon: 'solar:shield-check-bold-duotone',
-      },
-      {
-        title: 'MyInvois E-Invoice',
-        href: '/accounting/reporting/myinvoice',
-        icon: 'solar:document-text-bold-duotone',
       },
     ],
   },
