@@ -16,6 +16,7 @@ class SalesOrderLine extends Model
         'quantity',
         'quantity_allocated',
         'quantity_fulfilled',
+        'quantity_delivered',
         'quantity_invoiced',
         'quantity_cancelled',
         'unit',
@@ -37,6 +38,7 @@ class SalesOrderLine extends Model
         'quantity' => 'decimal:4',
         'quantity_allocated' => 'decimal:4',
         'quantity_fulfilled' => 'decimal:4',
+        'quantity_delivered' => 'decimal:4',
         'quantity_invoiced' => 'decimal:4',
         'quantity_cancelled' => 'decimal:4',
         'unit_price' => 'decimal:2',
@@ -62,6 +64,11 @@ class SalesOrderLine extends Model
     public function incomeAccount(): BelongsTo
     {
         return $this->belongsTo(\App\Models\ChartOfAccount::class, 'income_account_id');
+    }
+
+    public function deliveryLines()
+    {
+        return $this->hasMany(DeliveryOrderLine::class, 'sales_order_line_id');
     }
 
     public function getRemainingQuantityAttribute(): string

@@ -37,6 +37,7 @@ class SalesOrder extends Model
         'created_by',
         'confirmed_by',
         'allocated_by',
+        'bill_by_delivered_qty',
     ];
 
     protected $casts = [
@@ -48,6 +49,7 @@ class SalesOrder extends Model
         'required_date' => 'date',
         'cancelled_at' => 'datetime',
         'warehouse_id' => 'integer',
+        'bill_by_delivered_qty' => 'boolean',
     ];
 
     protected static function boot()
@@ -122,6 +124,11 @@ class SalesOrder extends Model
             'sales_order_id',
             'invoice_id'
         )->withPivot(['link_type', 'link_state', 'invoiced_qty', 'invoiced_value']);
+    }
+
+    public function deliveryOrders()
+    {
+        return $this->hasMany(DeliveryOrder::class);
     }
 
     public function isDraft(): bool

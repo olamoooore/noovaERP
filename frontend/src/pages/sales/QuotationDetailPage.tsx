@@ -148,13 +148,24 @@ export function QuotationDetailPage() {
             </>
           )}
           {quotation.status === 'confirmed' && (
-            <Button
-              onClick={() => createInvoiceMutation.mutate()}
-              disabled={createInvoiceMutation.isPending}
-            >
-              <Icon icon="solar:bill-list-bold-duotone" className="mr-2 h-4 w-4" />
-              {createInvoiceMutation.isPending ? 'Creating Invoice...' : 'Create Invoice'}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => createInvoiceMutation.mutate()}
+                disabled={createInvoiceMutation.isPending}
+              >
+                <Icon icon="solar:bill-list-bold-duotone" className="mr-2 h-4 w-4" />
+                {createInvoiceMutation.isPending ? 'Creating Invoice...' : 'Create Invoice'}
+              </Button>
+              {quotation.sales_order && (
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}`)}
+                >
+                  <Icon icon="solar:package-bold" className="mr-2 h-4 w-4" />
+                  Create Delivery Order
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>

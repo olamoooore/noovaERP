@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\SalesOrderController;
+use Modules\Sales\Http\Controllers\DeliveryOrderController;
 
 Route::middleware([
     'auth:sanctum',
@@ -35,5 +36,12 @@ Route::middleware([
 
         // Credit preview
         Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
+        Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
+
+        // Delivery Orders
+        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class);
+        Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+        Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+        Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
     });
 });

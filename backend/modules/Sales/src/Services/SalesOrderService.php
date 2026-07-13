@@ -213,9 +213,11 @@ class SalesOrderService
                 'sales_order_id' => $order->id,
             ];
 
+            $billByDelivered = (bool) $order->bill_by_delivered_qty;
+
             $lines = [];
             foreach ($order->lines as $line) {
-                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLine($line);
+                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLine($line, $billByDelivered);
 
                 $lines[] = [
                     'product_id' => $line->product_id,
@@ -488,6 +490,7 @@ class SalesOrderService
     private function synchronizeInvoiceBookkeeping(SalesOrder $order, \App\Models\Invoice $invoice): void
     {
         $invoiceLines = $invoice->lines;
+        $billByDelivered = (bool) $order->bill_by_delivered_qty;
 
         foreach ($order->lines as $orderLine) {
             $matchedInvoiceLine = $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
@@ -504,15 +507,26 @@ class SalesOrderService
                 return str_starts_with($invoiceLine->description, $orderLine->description);
             });
 
+            $invoicedQty = $matchedInvoiceLine
+                ? ($billByDelivered ? (float) $orderLine->quantity_delivered : (float) $orderLine->quantity)
+                : 0;
+
             $orderLine->update([
-                'quantity_invoiced' => $matchedInvoiceLine ? (float) $orderLine->quantity : 0,
+                'quantity_invoiced' => $invoicedQty,
             ]);
         }
     }
 
-    private function normalizeInvoiceLine(SalesOrderLine $line): array
+    private function normalizeInvoiceLine(SalesOrderLine $line, bool $billByDelivered = false): array
     {
-        $quantity = (float) $line->quantity;
+        $quantity = $billByDelivered
+            ? (float) $line->quantity_delivered
+            : (float) $line->quantity;
+
+        if ($quantity <= 0) {
+            return [0, 0, $line->description];
+        }
+
         $roundedQuantity = round($quantity);
 
         if (abs($quantity - $roundedQuantity) < 0.0001 && $roundedQuantity >= 1) {

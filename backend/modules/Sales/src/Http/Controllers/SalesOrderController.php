@@ -101,7 +101,7 @@ class SalesOrderController extends Controller
 
     public function show($id)
     {
-        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'invoiceLinks.invoice'])
+        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'invoiceLinks.invoice', 'deliveryOrders.lines'])
             ->find($id);
 
         if (!$order) {
@@ -289,5 +289,25 @@ class SalesOrderController extends Controller
         $order->delete();
 
         return response()->json(['message' => 'Sales order deleted']);
+    }
+
+    public function setBillByDelivered(Request $request, $id)
+    {
+        $order = SalesOrder::find($id);
+
+        if (!$order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'bill_by_delivered_qty' => 'required|boolean',
+        ]);
+
+        $order->update(['bill_by_delivered_qty' => $validated['bill_by_delivered_qty']]);
+
+        return response()->json([
+            'message' => 'Bill-by-delivered setting updated',
+            'bill_by_delivered_qty' => $order->bill_by_delivered_qty,
+        ]);
     }
 }
