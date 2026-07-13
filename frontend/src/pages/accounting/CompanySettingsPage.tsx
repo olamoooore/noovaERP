@@ -17,6 +17,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
+import { CountryPluginSettings } from '@/pages/Settings/CountryPluginSettings';
 
 export default function CompanySettingsPage() {
   const navigate = useNavigate();
@@ -308,6 +309,7 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="fiscal">Fiscal Year</TabsTrigger>
           <TabsTrigger value="currency">Currency & Formats</TabsTrigger>
           <TabsTrigger value="accounts">Default Accounts</TabsTrigger>
+          <TabsTrigger value="country">Country Plugin</TabsTrigger>
         </TabsList>
 
         {/* Company Info Tab */}
@@ -760,6 +762,11 @@ export default function CompanySettingsPage() {
               </Button>
             </form>
           </Card>
+        </TabsContent>
+
+        {/* Country Plugin Tab */}
+        <TabsContent value="country" className="space-y-4">
+          <CountryPluginSettings />
         </TabsContent>
       </Tabs>
     </div>
