@@ -239,7 +239,9 @@ class InvoiceService
             $invoice->customer->updateOutstanding();
 
             DB::commit();
-            
+
+            \App\Accounting\Events\InvoicePosted::dispatch($invoice->fresh());
+
             return $invoice->fresh(['journalEntry', 'lines']);
             
         } catch (\Exception $e) {

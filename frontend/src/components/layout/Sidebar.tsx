@@ -573,6 +573,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/reporting/compliance',
         icon: 'solar:shield-check-bold-duotone',
       },
+      {
+        title: 'MyInvois E-Invoice',
+        href: '/accounting/reporting/myinvoice',
+        icon: 'solar:document-text-bold-duotone',
+      },
     ],
   },
       {

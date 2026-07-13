@@ -120,6 +120,10 @@ const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'
 const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
 const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
 const ComplianceReportsPage = lazy(() => import('@/pages/accounting/reports/ComplianceReportsPage'))
+const MyInvoisEinvoicePage = lazy(() => import('@/pages/accounting/MyInvoisEinvoicePage'))
+const MyInvoiceDocumentPage = lazy(() => import('@/pages/accounting/MyInvoiceDocumentPage'))
+const MyInvoiceSubmissionPage = lazy(() => import('@/pages/accounting/MyInvoiceSubmissionPage'))
+const MyInvoisSettingsPage = lazy(() => import('@/pages/accounting/MyInvoisSettingsPage'))
 const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
 
 // AI Module Pages
@@ -396,10 +400,14 @@ function App() {
                 <Route path="/accounting/reporting/aged-receivables" element={<AgedReceivablesPage />} />
                 <Route path="/accounting/reporting/aged-payables" element={<AgedPayablesPage />} />
                 <Route path="/accounting/reporting/compliance" element={<ComplianceReportsPage />} />
+                <Route path="/accounting/reporting/myinvoice" element={<MyInvoisEinvoicePage />} />
+                <Route path="/accounting/reporting/myinvoice/:id" element={<MyInvoiceDocumentPage />} />
+                <Route path="/accounting/reporting/myinvoice/:id/:submissionId" element={<MyInvoiceSubmissionPage />} />
                 
                 {/* Configuration Section */}
                 <Route path="/accounting/configuration/company" element={<CompanySettingsPage />} />
                 <Route path="/accounting/configuration/policies" element={<AccountingPoliciesPage />} />
+                <Route path="/accounting/configuration/myinvois" element={<MyInvoisSettingsPage />} />
                 <Route path="/accounting/configuration/payment-terms" element={<PaymentTermsPage />} />
                 <Route path="/accounting/configuration/taxes" element={<TaxConfigurationPage />} />
                 <Route path="/accounting/configuration/bank-accounts" element={<BankAccountsPage />} />

@@ -1,5 +1,12 @@
 import api from './api'
 
+export interface ComplianceCountry {
+  country_code: string
+  provider_name: string
+  is_enabled: boolean
+  test_mode: boolean
+}
+
 export interface ComplianceReportOptions {
   as_of_date: string
   start_date?: string
@@ -37,6 +44,11 @@ function parseFilename(contentDisposition?: string): string | null {
 }
 
 class ComplianceApiClient {
+  async getCountries(): Promise<ComplianceCountry[]> {
+    const response = await api.get('/accounting/compliance/countries')
+    return response.data?.data ?? []
+  }
+
   async getReport(countryCode: string, reportType: string, options: ComplianceReportOptions) {
     const normalizedReportType = normalizeReportType(reportType)
 

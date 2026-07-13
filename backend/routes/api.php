@@ -178,3 +178,52 @@ Route::prefix('auth')->group(function () {
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::get('/health', fn() => response()->json(['status' => 'ok']));
 });
+
+/*
+|--------------------------------------------------------------------------
+| Tenant Accounting Compliance Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('v1/accounting')->middleware([
+    'auth:sanctum',
+    \App\Http\Middleware\SetTenantFromUserPreference::class,
+    'ensure.tenant.search_path',
+    \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+])->group(function () {
+
+    Route::prefix('compliance')->group(function () {
+        // Documents
+        Route::get('/documents', [\App\Http\Controllers\Accounting\ComplianceController::class, 'listDocuments']);
+        Route::get('/documents/{id}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getDocument']);
+        Route::post('/documents/{id}/sign', [\App\Http\Controllers\Accounting\ComplianceController::class, 'signDocument']);
+        Route::post('/documents/{id}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitDocument']);
+        Route::get('/documents/{id}/submissions', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getDocumentSubmissions']);
+
+        // Submissions
+        Route::get('/submissions/{id}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getSubmission']);
+        Route::post('/submissions/{id}/retry', [\App\Http\Controllers\Accounting\ComplianceController::class, 'retrySubmission']);
+        Route::post('/submissions/{id}/cancel', [\App\Http\Controllers\Accounting\ComplianceController::class, 'cancelSubmission']);
+        Route::post('/submissions/{id}/rejection-response', [\App\Http\Controllers\Accounting\ComplianceController::class, 'respondToRejectionRequest']);
+        Route::post('/submissions/{id}/sync', [\App\Http\Controllers\Accounting\ComplianceController::class, 'syncSubmission']);
+        Route::get('/submissions/{id}/events', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getSubmissionEvents']);
+
+        // Direct submission by source document type
+        Route::post('/credit-notes/{creditNoteId}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitCreditNote']);
+        Route::post('/bills/{billId}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitBill']);
+        Route::post('/vendor-debit-notes/{debitNoteId}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitVendorDebitNote']);
+        Route::post('/journal-entries/{journalEntryId}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitJournalEntry']);
+
+        // Bulk operations
+        Route::post('/sync-pending', [\App\Http\Controllers\Accounting\ComplianceController::class, 'syncPending']);
+
+        // Configuration
+        Route::get('/countries', [\App\Http\Controllers\Accounting\ComplianceController::class, 'listCountries']);
+        Route::get('/config/{country_code}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getConfig']);
+        Route::put('/config/{country_code}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'updateConfig']);
+
+        // Reporting
+        Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
+        Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
+    });
+});
