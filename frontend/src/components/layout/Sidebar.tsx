@@ -268,6 +268,23 @@ const baseNavItems: NavItem[] = [
         title: 'Configuration',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
+        children: [
+          {
+            title: 'Company',
+            href: '/accounting/configuration/company',
+            icon: 'solar:buildings-2-bold-duotone',
+          },
+          {
+            title: 'Country Plugin',
+            href: '/accounting/configuration/country-plugin',
+            icon: 'solar:flag-bold-duotone',
+          },
+          {
+            title: 'MyInvois',
+            href: '/accounting/configuration/myinvois',
+            icon: 'solar:document-text-bold-duotone',
+          },
+        ],
       },
       {
         title: 'Financial Close',

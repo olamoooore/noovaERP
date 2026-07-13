@@ -41,6 +41,7 @@ const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m 
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const TenantUsersPage = lazy(() => import('@/pages/TenantUsersPage'))
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
+const CountryPluginSettings = lazy(() => import('@/pages/Settings/CountryPluginSettings').then(m => ({ default: m.CountryPluginSettings })))
 const TemplateListPage = lazy(() => import('@/pages/TemplateBuilder/TemplateListPage'))
 const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
@@ -411,6 +412,7 @@ function App() {
                 <Route path="/accounting/configuration/payment-terms" element={<PaymentTermsPage />} />
                 <Route path="/accounting/configuration/taxes" element={<TaxConfigurationPage />} />
                 <Route path="/accounting/configuration/bank-accounts" element={<BankAccountsPage />} />
+                <Route path="/accounting/configuration/country-plugin" element={<CountryPluginSettings />} />
                 
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/pos" element={<POSPage />} />

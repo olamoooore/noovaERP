@@ -36,6 +36,7 @@ export interface JournalEntry {
   reversed_entry_id?: number;
   is_reversal: boolean;
   is_balanced: boolean;
+  myinvois_type?: string | null;
   lines: JournalEntryLine[];
   journal?: {
     id: number;
@@ -56,6 +57,7 @@ export interface JournalEntry {
 
 export interface JournalEntryFilters {
   status?: 'draft' | 'posted';
+  is_reversal?: boolean;
   journal_id?: number;
   start_date?: string;
   end_date?: string;
@@ -165,6 +167,32 @@ class JournalEntriesApi {
     reversal_entry: JournalEntry;
   }> {
     const response = await api.post(`/accounting/journal-entries/${id}/reverse`, data);
+    return response.data;
+  }
+
+  /**
+   * Set or clear the MyInvois type on a journal entry (any status).
+   */
+  async updateMyInvoisType(id: number, myinvoisType: string | null): Promise<{
+    message: string;
+    entry: JournalEntry;
+  }> {
+    const response = await api.patch(`/accounting/journal-entries/${id}/myinvois-type`, {
+      myinvois_type: myinvoisType,
+    });
+    return response.data;
+  }
+
+  /**
+   * Submit journal entry to MyInvois as self-billed invoice.
+   */
+  async submitToMyInvois(id: number, countryCode = 'MY'): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const response = await api.post(`/accounting/compliance/journal-entries/${id}/submit`, {
+      country_code: countryCode,
+    });
     return response.data;
   }
 

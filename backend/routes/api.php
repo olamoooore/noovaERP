@@ -226,4 +226,8 @@ Route::prefix('v1/accounting')->middleware([
         Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
         Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
     });
+
+    // Country Plugin Settings (outside compliance prefix — frontend calls /accounting/tenant/country-plugin-settings)
+    Route::get('/tenant/country-plugin-settings', [\App\Http\Controllers\Accounting\CountryPluginSettingsController::class, 'show']);
+    Route::put('/tenant/country-plugin-settings', [\App\Http\Controllers\Accounting\CountryPluginSettingsController::class, 'update']);
 });
