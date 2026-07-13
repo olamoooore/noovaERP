@@ -189,7 +189,7 @@ Route::prefix('v1/accounting')->middleware([
     'auth:sanctum',
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     'ensure.tenant.search_path',
-    \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+    \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
 ])->group(function () {
 
     Route::prefix('compliance')->group(function () {
