@@ -12,12 +12,7 @@ class CountryPluginSettingsController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error' => 'Unauthenticated'], 401);
-        }
-
-        $tenantId = $user->tenant_id;
+        $tenantId = tenant('id');
         if (!$tenantId) {
             return response()->json(['error' => 'No tenant context'], 400);
         }
@@ -36,12 +31,7 @@ class CountryPluginSettingsController extends Controller
 
     public function update(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error' => 'Unauthenticated'], 401);
-        }
-
-        $tenantId = $user->tenant_id;
+        $tenantId = tenant('id');
         if (!$tenantId) {
             return response()->json(['error' => 'No tenant context'], 400);
         }
@@ -67,8 +57,6 @@ class CountryPluginSettingsController extends Controller
         $seeded = false;
         if ($seedData && $enabled) {
             try {
-                tenancy()->initialize(tenancy()->find($tenantId));
-                
                 if ($countryCode === 'MY') {
                     $seeder = new \Database\Seeders\MalaysiaCountrySeeder();
                     $seeder->run();

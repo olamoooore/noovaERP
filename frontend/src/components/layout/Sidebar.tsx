@@ -265,28 +265,6 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:document-text-bold-duotone',
       },
       {
-        title: 'Configuration',
-        href: '/accounting/configuration/company',
-        icon: 'solar:settings-bold-duotone',
-        children: [
-          {
-            title: 'Company',
-            href: '/accounting/configuration/company',
-            icon: 'solar:buildings-2-bold-duotone',
-          },
-          {
-            title: 'Country Plugin',
-            href: '/accounting/configuration/country-plugin',
-            icon: 'solar:flag-bold-duotone',
-          },
-          {
-            title: 'MyInvois',
-            href: '/accounting/configuration/myinvois',
-            icon: 'solar:document-text-bold-duotone',
-          },
-        ],
-      },
-      {
         title: 'Financial Close',
         href: '/financial-close',
         icon: 'solar:calendar-mark-bold-duotone',
@@ -343,6 +321,28 @@ const baseNavItems: NavItem[] = [
         href: '/ocr/documents',
         icon: 'solar:document-add-bold-duotone',
         featureKey: 'ocr-bookkeeping',
+      },
+      {
+        title: 'Configuration',
+        href: '/accounting/configuration/company',
+        icon: 'solar:settings-bold-duotone',
+        children: [
+          {
+            title: 'Company',
+            href: '/accounting/configuration/company',
+            icon: 'solar:buildings-2-bold-duotone',
+          },
+          {
+            title: 'Country Plugin',
+            href: '/accounting/configuration/country-plugin',
+            icon: 'solar:flag-bold-duotone',
+          },
+          {
+            title: 'MyInvois',
+            href: '/accounting/configuration/myinvois',
+            icon: 'solar:document-text-bold-duotone',
+          },
+        ],
       },
     ],
   },
