@@ -75,6 +75,20 @@ class CountryPluginSettingsController extends Controller
             }
         }
 
+        if ($enabled) {
+            try {
+                \App\Models\Accounting\CountryConfiguration::updateOrCreate(
+                    ['tenant_id' => $tenantId, 'country_code' => $countryCode, 'provider_name' => 'default'],
+                    ['is_enabled' => true, 'settings' => ['auto_submit' => false]]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('CountryConfiguration seed failed', [
+                    'tenant_id' => $tenantId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return response()->json([
             'data' => [
                 'tenant_country_code' => $countryCode,
