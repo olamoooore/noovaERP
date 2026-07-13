@@ -339,7 +339,7 @@ const baseNavItems: NavItem[] = [
           },
           {
             title: 'MyInvois',
-            href: '/accounting/configuration/myinvois',
+            href: '/accounting/configuration/company?tab=country',
             icon: 'solar:document-text-bold-duotone',
           },
         ],

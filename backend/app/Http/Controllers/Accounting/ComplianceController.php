@@ -867,7 +867,17 @@ class ComplianceController extends Controller
         $config = $this->complianceService->getCountryConfig($countryCode);
 
         if (!$config) {
-            return response()->json(['success' => false, 'message' => 'Configuration not found'], 404);
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'country_code'         => strtoupper($countryCode),
+                    'is_enabled'           => false,
+                    'test_mode'            => true,
+                    'credentials'          => [],
+                    'credentials_complete' => false,
+                    'missing_credentials'  => ['LHDN API Client ID', 'LHDN API Client Secret', 'Supplier TIN', 'Supplier Name'],
+                ],
+            ]);
         }
 
         $creds    = $config->api_credentials ?? [];

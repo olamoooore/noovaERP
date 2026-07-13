@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -21,9 +21,10 @@ import { CountryPluginSettings } from '@/pages/Settings/CountryPluginSettings';
 
 export default function CompanySettingsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('company');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
 
   // Controlled state for Currency form (Radix Select doesn't reliably emit to FormData)
   const [currencyForm, setCurrencyForm] = useState({
