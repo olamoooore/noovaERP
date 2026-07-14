@@ -42,6 +42,9 @@ Route::middleware([
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class);
         Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
         Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+        Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
+        Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
+        Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
         Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
     });
 });

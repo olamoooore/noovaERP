@@ -63,6 +63,25 @@ export function DeliveryOrderDetailPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.delete(`/sales/delivery-orders/${id}`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      toast({ title: 'Delivery order deleted' })
+      navigate('/delivery-orders')
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
@@ -112,7 +131,9 @@ export function DeliveryOrderDetailPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              For Sales Order {deliveryOrder.sales_order?.sales_order_number || '-'}
+              {deliveryOrder.sales_order
+                ? `For Sales Order ${deliveryOrder.sales_order.sales_order_number}`
+                : 'Standalone Delivery'}
             </p>
           </div>
         </div>
@@ -128,12 +149,18 @@ export function DeliveryOrderDetailPage() {
                 <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
                 Cancel
               </Button>
+              <Button variant="destructive" onClick={() => {
+                if (confirm('Delete this delivery order?')) deleteMutation.mutate()
+              }} disabled={deleteMutation.isPending}>
+                <Icon icon="solar:trash-bin-minimalistic-bold" className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
             </>
           )}
           {deliveryOrder.sales_order && (
             <Button
               variant="outline"
-              onClick={() => navigate(`/quotations`)}
+              onClick={() => navigate(`/sales/orders/${deliveryOrder.sales_order.id}`)}
             >
               View Sales Order
             </Button>
@@ -177,11 +204,11 @@ export function DeliveryOrderDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Created By</div>
-                <div className="font-medium">{deliveryOrder.created_by || '-'}</div>
+                <div className="font-medium">{deliveryOrder.createdBy?.name || '-'}</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Confirmed By</div>
-                <div className="font-medium">{deliveryOrder.confirmed_by || '-'}</div>
+                <div className="font-medium">{deliveryOrder.confirmedBy?.name || '-'}</div>
               </div>
             </div>
 

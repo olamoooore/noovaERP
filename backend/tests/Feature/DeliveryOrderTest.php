@@ -21,6 +21,7 @@ class DeliveryOrderTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->bindTenantContext('test-tenant');
 
         $this->assertTenantSchemaReady([
             'customers',
@@ -422,5 +423,184 @@ class DeliveryOrderTest extends TenantTestCase
             ]);
 
         $response->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Test: Standalone Delivery Order (no sales order)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public function test_create_standalone_delivery_order(): void
+    {
+        $service = app(\Modules\Sales\Services\DeliveryOrderService::class);
+
+        $deliveryOrder = $service->createStandaloneDeliveryOrder([
+            'customer_id' => $this->customer->id,
+            'delivery_date' => now()->toDateString(),
+            'carrier' => 'DHL',
+            'notes' => 'Standalone delivery',
+            'created_by' => $this->user->id,
+            'lines' => [
+                [
+                    'product_id' => $this->productA->id,
+                    'description' => 'Widget A',
+                    'quantity_delivered' => 25,
+                    'unit' => 'pcs',
+                ],
+                [
+                    'product_id' => $this->productB->id,
+                    'description' => 'Widget B',
+                    'quantity_delivered' => 10,
+                    'unit' => 'pcs',
+                ],
+            ],
+        ]);
+
+        $this->assertNotNull($deliveryOrder);
+        $this->assertNull($deliveryOrder->sales_order_id);
+        $this->assertEquals('draft', $deliveryOrder->status);
+        $this->assertEquals('DHL', $deliveryOrder->carrier);
+        $this->assertCount(2, $deliveryOrder->lines);
+
+        foreach ($deliveryOrder->lines as $line) {
+            $this->assertNull($line->sales_order_line_id);
+            $this->assertNotNull($line->product_id);
+        }
+    }
+
+    public function test_standalone_delivery_requires_customer(): void
+    {
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('customer_id is required');
+
+        $service = app(\Modules\Sales\Services\DeliveryOrderService::class);
+        $service->createStandaloneDeliveryOrder([
+            'lines' => [['product_id' => $this->productA->id, 'quantity_delivered' => 5]],
+        ]);
+    }
+
+    public function test_standalone_delivery_requires_lines(): void
+    {
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('At least one line item');
+
+        $service = app(\Modules\Sales\Services\DeliveryOrderService::class);
+        $service->createStandaloneDeliveryOrder([
+            'customer_id' => $this->customer->id,
+            'lines' => [],
+        ]);
+    }
+
+    public function test_confirm_standalone_delivery_order(): void
+    {
+        $do = DeliveryOrder::create([
+            'delivery_order_number' => DeliveryOrder::generateNumber(),
+            'sales_order_id' => null,
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'delivery_date' => now()->toDateString(),
+            'created_by' => $this->user->id,
+        ]);
+
+        \Modules\Sales\Models\DeliveryOrderLine::create([
+            'delivery_order_id' => $do->id,
+            'sales_order_line_id' => null,
+            'product_id' => $this->productA->id,
+            'description' => 'Widget A',
+            'quantity_ordered' => 20,
+            'quantity_delivered' => 20,
+            'unit' => 'pcs',
+        ]);
+
+        $service = app(\Modules\Sales\Services\DeliveryOrderService::class);
+        $confirmed = $service->confirmDeliveryOrder($do);
+
+        $this->assertEquals('confirmed', $confirmed->status);
+        $this->assertNotNull($confirmed->confirmed_by);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Test: Bulk Delete
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public function test_bulk_delete_draft_delivery_orders(): void
+    {
+        $do1 = DeliveryOrder::create([
+            'delivery_order_number' => DeliveryOrder::generateNumber(),
+            'sales_order_id' => null,
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'created_by' => $this->user->id,
+        ]);
+        $do2 = DeliveryOrder::create([
+            'delivery_order_number' => DeliveryOrder::generateNumber(),
+            'sales_order_id' => null,
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'created_by' => $this->user->id,
+        ]);
+
+        $service = app(\App\Platform\BulkDelete\BulkDeleteService::class);
+        $result = $service->delete('delivery_orders', [$do1->id, $do2->id], tenant()?->id, [
+            'soft_deletes' => true,
+            'check_fk' => false,
+            'audit_log' => false,
+        ]);
+
+        $this->assertEquals(2, $result['deleted']);
+        $this->assertSoftDeleted('delivery_orders', ['id' => $do1->id]);
+        $this->assertSoftDeleted('delivery_orders', ['id' => $do2->id]);
+    }
+
+    public function test_confirm_skips_so_line_update_for_standalone(): void
+    {
+        $do = DeliveryOrder::create([
+            'delivery_order_number' => DeliveryOrder::generateNumber(),
+            'sales_order_id' => null,
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'delivery_date' => now()->toDateString(),
+            'created_by' => $this->user->id,
+        ]);
+
+        \Modules\Sales\Models\DeliveryOrderLine::create([
+            'delivery_order_id' => $do->id,
+            'sales_order_line_id' => null,
+            'product_id' => $this->productA->id,
+            'description' => 'Widget A',
+            'quantity_ordered' => 15,
+            'quantity_delivered' => 15,
+            'unit' => 'pcs',
+        ]);
+
+        $service = app(\Modules\Sales\Services\DeliveryOrderService::class);
+        $confirmed = $service->confirmDeliveryOrder($do);
+
+        $this->assertEquals('confirmed', $confirmed->status);
+        $this->assertNull($confirmed->sales_order_id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Test: Type Filter
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public function test_list_filter_by_type_standalone(): void
+    {
+        DeliveryOrder::create([
+            'delivery_order_number' => DeliveryOrder::generateNumber(),
+            'sales_order_id' => null,
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'created_by' => $this->user->id,
+        ]);
+
+        $response = $this->withoutMiddleware()
+            ->actingAs($this->user)
+            ->getJson('/api/v1/sales/delivery-orders?type=standalone');
+
+        $response->assertOk();
+        $data = $response->json('data');
+        foreach ($data as $do) {
+            $this->assertNull($do['sales_order_id']);
+        }
     }
 }

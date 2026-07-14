@@ -66,6 +66,7 @@ const QuotationImportPage = lazy(() => import('@/pages/sales/QuotationImportPage
 const DeliveryOrdersPage = lazy(() => import('@/pages/sales/DeliveryOrdersPage').then(m => ({ default: m.DeliveryOrdersPage })))
 const DeliveryOrderCreatePage = lazy(() => import('@/pages/sales/DeliveryOrderCreatePage').then(m => ({ default: m.DeliveryOrderCreatePage })))
 const DeliveryOrderDetailPage = lazy(() => import('@/pages/sales/DeliveryOrderDetailPage').then(m => ({ default: m.DeliveryOrderDetailPage })))
+const DeliveryOrderImportPage = lazy(() => import('@/pages/sales/DeliveryOrderImportPage').then(m => ({ default: m.DeliveryOrderImportPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -337,6 +338,7 @@ function App() {
                 {/* Delivery Orders */}
                 <Route path="/delivery-orders" element={<DeliveryOrdersPage />} />
                 <Route path="/delivery-orders/create" element={<DeliveryOrderCreatePage />} />
+                <Route path="/delivery-orders/import" element={<DeliveryOrderImportPage />} />
                 <Route path="/delivery-orders/:id" element={<DeliveryOrderDetailPage />} />
                 
                 {/* Customer Routes */}

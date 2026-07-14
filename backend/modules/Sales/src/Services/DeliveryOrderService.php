@@ -80,6 +80,60 @@ class DeliveryOrderService
     }
 
     /**
+     * Create a standalone delivery order (not linked to a sales order).
+     * Lines specify product_id, quantity_delivered directly.
+     */
+    public function createStandaloneDeliveryOrder(array $data): DeliveryOrder
+    {
+        $customerId = $data['customer_id'] ?? null;
+        if (!$customerId) {
+            throw new \Exception('customer_id is required for standalone delivery orders.');
+        }
+
+        $lines = $data['lines'] ?? [];
+        if (empty($lines)) {
+            throw new \Exception('At least one line item is required.');
+        }
+
+        return DB::transaction(function () use ($data, $customerId, $lines) {
+            $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
+
+            $deliveryOrder = DeliveryOrder::create([
+                'sales_order_id' => null,
+                'customer_id' => $customerId,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'status' => 'draft',
+                'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
+                'expected_date' => $data['expected_date'] ?? null,
+                'carrier' => $data['carrier'] ?? null,
+                'tracking_number' => $data['tracking_number'] ?? null,
+                'shipping_address' => $data['shipping_address'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $actorId,
+            ]);
+
+            foreach ($lines as $lineData) {
+                $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? $lineData['quantity'] ?? 0);
+                if ($quantityDelivered <= 0) {
+                    throw new \Exception('Each line must have a quantity greater than 0.');
+                }
+
+                DeliveryOrderLine::create([
+                    'delivery_order_id' => $deliveryOrder->id,
+                    'sales_order_line_id' => null,
+                    'product_id' => $lineData['product_id'] ?? null,
+                    'description' => $lineData['description'] ?? null,
+                    'quantity_ordered' => $quantityDelivered,
+                    'quantity_delivered' => $quantityDelivered,
+                    'unit' => $lineData['unit'] ?? 'pcs',
+                ]);
+            }
+
+            return $deliveryOrder->fresh(['lines.product', 'customer']);
+        });
+    }
+
+    /**
      * Confirm a delivery order: updates quantity_delivered on each sales order line.
      */
     public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
@@ -91,11 +145,15 @@ class DeliveryOrderService
         return DB::transaction(function () use ($deliveryOrder) {
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
-            foreach ($deliveryOrder->lines as $line) {
-                $soLine = $line->salesOrderLine;
-                $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
-
-                $soLine->update(['quantity_delivered' => $newDelivered]);
+            // Only update SO lines for linked delivery orders
+            if ($deliveryOrder->sales_order_id) {
+                foreach ($deliveryOrder->lines as $line) {
+                    if ($line->salesOrderLine) {
+                        $soLine = $line->salesOrderLine;
+                        $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
+                        $soLine->update(['quantity_delivered' => $newDelivered]);
+                    }
+                }
             }
 
             $deliveryOrder->update([
