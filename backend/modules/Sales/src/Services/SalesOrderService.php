@@ -600,6 +600,10 @@ class SalesOrderService
     /**
      * Reserve stock for all stock-tracked lines on a confirmed sales order.
      * Skips products that don't track inventory or lines without a product.
+     *
+     * Insufficient stock does NOT abort order creation — the line is simply left
+     * unreserved (a backorder) and a warning is logged. This keeps imports and
+     * manual order entry working when some products are out of stock.
      */
     private function reserveStockForOrder(SalesOrder $order): void
     {
@@ -621,15 +625,28 @@ class SalesOrderService
                 continue;
             }
 
-            $this->reservationService->reserve(
-                productId: $line->product_id,
-                warehouseId: $warehouseId,
-                quantity: (int) round((float) $line->quantity),
-                sourceDocumentType: 'SalesOrder',
-                sourceDocumentId: $order->id,
-                sourceDocumentLineId: $line->id,
-                notes: "Reserved for sales order {$order->sales_order_number}",
-            );
+            try {
+                $this->reservationService->reserve(
+                    productId: $line->product_id,
+                    warehouseId: $warehouseId,
+                    quantity: (int) round((float) $line->quantity),
+                    sourceDocumentType: 'SalesOrder',
+                    sourceDocumentId: $order->id,
+                    sourceDocumentLineId: $line->id,
+                    notes: "Reserved for sales order {$order->sales_order_number}",
+                );
+            } catch (\Throwable $e) {
+                // Out-of-stock (or other reservation error): fall back to a backorder
+                // instead of aborting the whole order / import.
+                Log::warning('Stock reservation skipped — order proceeds as backorder', [
+                    'sales_order_id' => $order->id,
+                    'sales_order_number' => $order->sales_order_number,
+                    'product_id' => $line->product_id,
+                    'quantity' => $line->quantity,
+                    'warehouse_id' => $warehouseId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

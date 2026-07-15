@@ -253,6 +253,26 @@ export function QuotationDetailPage() {
                 <div className="text-muted-foreground">Internal Reference</div>
                 <div className="font-medium">{quotation.internal_reference || '-'}</div>
               </div>
+              <div>
+                <div className="text-muted-foreground">Salesperson</div>
+                <div className="font-medium">{quotation.salesperson || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Delivery Lead Time</div>
+                <div className="font-medium">{quotation.delivery_lead_time || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Shipping Method</div>
+                <div className="font-medium">{quotation.shipping_method || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Shipping Terms</div>
+                <div className="font-medium">{quotation.shipping_terms || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Validity</div>
+                <div className="font-medium">{quotation.validity || '-'}</div>
+              </div>
             </div>
 
             {quotation.sales_order && (

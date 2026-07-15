@@ -129,6 +129,16 @@ class InvoiceController extends Controller
      */
     private function createInvoiceFromData(array $data): Invoice
     {
+        // Preserve the imported invoice number when provided (reject duplicates).
+        $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
+        if ($importedNumber !== '') {
+            if (Invoice::withTrashed()->where('invoice_number', $importedNumber)->exists()) {
+                throw new \RuntimeException(
+                    "Invoice number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
+                );
+            }
+        }
+
         $salesLines = array_map(fn ($line) => [
             'product_id'      => $line['product_id'] ?? null,
             'description'     => $line['description'],
@@ -170,6 +180,7 @@ class InvoiceController extends Controller
         $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
 
         $invoiceOverrides = array_filter([
+            'invoice_number'              => $importedNumber !== '' ? $importedNumber : null,
             'invoice_date'                => $data['invoice_date'] ?? null,
             'due_date'                    => $data['due_date'] ?? null,
             'date_of_case'                => $data['date_of_case'] ?? null,
@@ -528,6 +539,12 @@ class InvoiceController extends Controller
                     'customer_id' => $customer->id,
                     'lines'       => $lines,
                 ];
+
+                // Preserve the imported invoice/quote number when provided.
+                $importedNumber = trim((string) ($headerRow['invoice_number'] ?? ''));
+                if ($importedNumber !== '') {
+                    $data['invoice_number'] = $importedNumber;
+                }
 
                 foreach ([
                     'invoice_date', 'due_date', 'customer_reference', 'internal_reference',

@@ -30,6 +30,29 @@ class ProductController extends Controller
         return $payload;
     }
 
+    /**
+     * Coerce null values for NOT NULL numeric columns to 0.
+     *
+     * Several products columns (cost, price, tax_rate, reorder_level,
+     * stock_quantity, min_stock_threshold) are defined NOT NULL with a default
+     * of 0. A default only applies on INSERT when the column is omitted — an
+     * explicit UPDATE setting the column to NULL violates the constraint and
+     * throws "Not null violation". The edit form sends null for these fields
+     * when the user leaves them blank, so we normalize null → 0 here.
+     */
+    private function coerceNotNullNumericDefaults(array $payload): array
+    {
+        $notNullNumeric = ['cost', 'price', 'tax_rate', 'reorder_level', 'stock_quantity'];
+
+        foreach ($notNullNumeric as $column) {
+            if (array_key_exists($column, $payload) && ($payload[$column] === null || (string) $payload[$column] === '')) {
+                $payload[$column] = 0;
+            }
+        }
+
+        return $payload;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $warehouseFilter = $request->filled('warehouse_id') ? (int) $request->input('warehouse_id') : null;
@@ -228,6 +251,7 @@ class ProductController extends Controller
 
         unset($validated['feature_values'], $validated['custom_field_values'], $validated['variants'], $validated['stock_quantity']);
         $validated = $this->removeUnsupportedProductColumns($validated);
+        $validated = $this->coerceNotNullNumericDefaults($validated);
 
         $product = DB::transaction(function () use ($validated, $featureValues, $customFieldValues, $variants) {
             $product = Product::create($validated);
@@ -658,6 +682,7 @@ class ProductController extends Controller
         $suppliersData = $validated['suppliers'] ?? null;
         unset($validated['feature_values'], $validated['custom_field_values'], $validated['suppliers'], $validated['stock_quantity']);
         $validated = $this->removeUnsupportedProductColumns($validated);
+        $validated = $this->coerceNotNullNumericDefaults($validated);
 
         DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData) {
             $product->update($validated);

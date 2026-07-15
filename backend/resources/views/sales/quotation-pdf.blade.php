@@ -72,11 +72,16 @@
             <tr><td>Quote Date:</td><td>{{ optional($quotation->quotation_date)->format('Y-m-d') ?? '-' }}</td></tr>
             <tr><td>Valid Until:</td><td>{{ optional($quotation->valid_until)->format('Y-m-d') ?? '-' }}</td></tr>
             <tr><td>Attention To:</td><td>{{ $quotation->attention_to ?? '-' }}</td></tr>
+            @if($quotation->salesperson)<tr><td>Salesperson:</td><td>{{ $quotation->salesperson }}</td></tr>@endif
+            @if($quotation->validity)<tr><td>Validity:</td><td>{{ $quotation->validity }}</td></tr>@endif
         </table>
         <table>
             <tr><td>Customer Ref:</td><td>{{ $quotation->customer_reference ?? '-' }}</td></tr>
             <tr><td>Internal Ref:</td><td>{{ $quotation->internal_reference ?? '-' }}</td></tr>
             <tr><td>Status:</td><td>{{ ucfirst($quotation->status) }}</td></tr>
+            @if($quotation->delivery_lead_time)<tr><td>Lead Time:</td><td>{{ $quotation->delivery_lead_time }}</td></tr>@endif
+            @if($quotation->shipping_method)<tr><td>Shipping Method:</td><td>{{ $quotation->shipping_method }}</td></tr>@endif
+            @if($quotation->shipping_terms)<tr><td>Shipping Terms:</td><td>{{ $quotation->shipping_terms }}</td></tr>@endif
         </table>
     </div>
 

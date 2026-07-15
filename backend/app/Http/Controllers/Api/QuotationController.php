@@ -66,6 +66,11 @@ class QuotationController extends Controller
             'attention_to' => 'nullable|string|max:255',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
+            'salesperson' => 'nullable|string|max:255',
+            'delivery_lead_time' => 'nullable|string|max:255',
+            'shipping_method' => 'nullable|string|max:255',
+            'shipping_terms' => 'nullable|string|max:255',
+            'validity' => 'nullable|string|max:255',
             'billing_address_snapshot' => 'nullable|string',
             'shipping_address_snapshot' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -91,6 +96,11 @@ class QuotationController extends Controller
                     'attention_to' => $validated['attention_to'] ?? null,
                     'contact_email' => $validated['contact_email'] ?? null,
                     'contact_phone' => $validated['contact_phone'] ?? null,
+                    'salesperson' => $validated['salesperson'] ?? null,
+                    'delivery_lead_time' => $validated['delivery_lead_time'] ?? null,
+                    'shipping_method' => $validated['shipping_method'] ?? null,
+                    'shipping_terms' => $validated['shipping_terms'] ?? null,
+                    'validity' => $validated['validity'] ?? null,
                     'billing_address_snapshot' => $validated['billing_address_snapshot'] ?? null,
                     'shipping_address_snapshot' => $validated['shipping_address_snapshot'] ?? null,
                     'notes' => $validated['notes'] ?? null,
@@ -163,6 +173,11 @@ class QuotationController extends Controller
             'attention_to' => 'nullable|string|max:255',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
+            'salesperson' => 'nullable|string|max:255',
+            'delivery_lead_time' => 'nullable|string|max:255',
+            'shipping_method' => 'nullable|string|max:255',
+            'shipping_terms' => 'nullable|string|max:255',
+            'validity' => 'nullable|string|max:255',
             'billing_address_snapshot' => 'nullable|string',
             'shipping_address_snapshot' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -509,15 +524,34 @@ class QuotationController extends Controller
 
                 $quotationDate = $this->parseImportDate($headerRow['quotation_date'] ?? null) ?? now()->toDateString();
 
-                $quotation = Quotation::create([
+                // Preserve the imported quotation number when provided (instead of
+                // auto-generating one). Reject duplicates with a clear message.
+                $importedNumber = trim((string) ($headerRow['quotation_number'] ?? ''));
+                $createData = [
                     'quotation_date' => $quotationDate,
                     'valid_until' => $this->parseImportDate($headerRow['valid_until'] ?? null),
                     'customer_id' => $customer->id,
                     'customer_reference' => $headerRow['customer_reference'] ?? null,
+                    'salesperson' => $this->readImportValue($headerRow['salesperson'] ?? null),
+                    'delivery_lead_time' => $this->readImportValue($headerRow['delivery_lead_time'] ?? null),
+                    'shipping_method' => $this->readImportValue($headerRow['shipping_method'] ?? null),
+                    'shipping_terms' => $this->readImportValue($headerRow['shipping_terms'] ?? null),
+                    'validity' => $this->readImportValue($headerRow['validity'] ?? null),
                     'notes' => $headerRow['notes'] ?? null,
                     'discount_amount' => $this->parseNumericValue($headerRow['discount_amount'] ?? null),
                     'created_by' => Auth::id(),
-                ]);
+                ];
+
+                if ($importedNumber !== '') {
+                    if (Quotation::withTrashed()->where('quotation_number', $importedNumber)->exists()) {
+                        throw new \RuntimeException(
+                            "Quotation number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
+                        );
+                    }
+                    $createData['quotation_number'] = $importedNumber;
+                }
+
+                $quotation = Quotation::create($createData);
 
                 foreach ($lines as $line) {
                     $quotation->lines()->create($line);
@@ -581,6 +615,15 @@ class QuotationController extends Controller
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
         return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    private function readImportValue($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $value = trim((string) $value);
+        return ($value === '' || $value === '-') ? null : $value;
     }
 
     private function parseImportDate($value): ?string

@@ -51,6 +51,11 @@ export const QuotationCreatePage: React.FC = () => {
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [customerReference, setCustomerReference] = useState('');
   const [internalReference, setInternalReference] = useState('');
+  const [salesperson, setSalesperson] = useState('');
+  const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
+  const [shippingMethod, setShippingMethod] = useState('');
+  const [shippingTerms, setShippingTerms] = useState('');
+  const [validity, setValidity] = useState('');
 
   const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
@@ -175,6 +180,11 @@ export const QuotationCreatePage: React.FC = () => {
       valid_until: validUntil,
       customer_reference: customerReference || undefined,
       internal_reference: internalReference || undefined,
+      salesperson: salesperson || undefined,
+      delivery_lead_time: deliveryLeadTime || undefined,
+      shipping_method: shippingMethod || undefined,
+      shipping_terms: shippingTerms || undefined,
+      validity: validity || undefined,
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: discountAmt || 0,
@@ -279,6 +289,56 @@ export const QuotationCreatePage: React.FC = () => {
                   onChange={(event) => setInternalReference(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   placeholder="Sales order / project"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Salesperson</label>
+                <input
+                  type="text"
+                  value={salesperson}
+                  onChange={(event) => setSalesperson(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Assigned salesperson"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Delivery Lead Time</label>
+                <input
+                  type="text"
+                  value={deliveryLeadTime}
+                  onChange={(event) => setDeliveryLeadTime(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. 2 weeks"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shipping Method</label>
+                <input
+                  type="text"
+                  value={shippingMethod}
+                  onChange={(event) => setShippingMethod(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. Sea freight, Air"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shipping Terms</label>
+                <input
+                  type="text"
+                  value={shippingTerms}
+                  onChange={(event) => setShippingTerms(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. FOB, CIF, EXW"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Validity</label>
+                <input
+                  type="text"
+                  value={validity}
+                  onChange={(event) => setValidity(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. 30 days"
                 />
               </div>
             </div>
