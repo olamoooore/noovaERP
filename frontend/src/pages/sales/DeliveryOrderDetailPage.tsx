@@ -32,13 +32,52 @@ export function DeliveryOrderDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
-      queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       toast({ title: 'Delivery order confirmed' })
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
         title: 'Failed to confirm',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const completeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/complete`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      toast({ title: 'Delivery completed — stock deducted' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to complete',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const reverseMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      const response = await api.post(`/sales/delivery-orders/${id}/reverse`, { reason })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      toast({ title: 'Delivery reversed — stock restored' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to reverse',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
@@ -85,7 +124,8 @@ export function DeliveryOrderDetailPage() {
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
-      confirmed: 'bg-green-100 text-green-800',
+      confirmed: 'bg-blue-100 text-blue-800',
+      done: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800',
     }
     return styles[status] || 'bg-gray-100 text-gray-800'
@@ -143,7 +183,7 @@ export function DeliveryOrderDetailPage() {
             <>
               <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
                 <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                {confirmMutation.isPending ? 'Confirming...' : 'Confirm Shipment'}
+                {confirmMutation.isPending ? 'Confirming...' : 'Confirm'}
               </Button>
               <Button variant="outline" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
                 <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
@@ -156,6 +196,31 @@ export function DeliveryOrderDetailPage() {
                 Delete
               </Button>
             </>
+          )}
+          {deliveryOrder.status === 'confirmed' && (
+            <>
+              <Button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
+                <Icon icon="solar:box-bold" className="mr-2 h-4 w-4" />
+                {completeMutation.isPending ? 'Completing...' : 'Validate / Complete'}
+              </Button>
+              <Button variant="outline" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
+                <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
+                Cancel
+              </Button>
+            </>
+          )}
+          {deliveryOrder.status === 'done' && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const reason = prompt('Reversal reason (required):')
+                if (reason && reason.length >= 3) reverseMutation.mutate(reason)
+              }}
+              disabled={reverseMutation.isPending}
+            >
+              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
+              {reverseMutation.isPending ? 'Reversing...' : 'Reverse'}
+            </Button>
           )}
           {deliveryOrder.sales_order && (
             <Button

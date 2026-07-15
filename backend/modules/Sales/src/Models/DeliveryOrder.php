@@ -19,17 +19,24 @@ class DeliveryOrder extends Model
         'status',
         'delivery_date',
         'expected_date',
+        'completed_at',
+        'source',
+        'external_reference',
         'carrier',
         'tracking_number',
         'shipping_address',
+        'shipping_address_overridden',
         'notes',
         'created_by',
         'confirmed_by',
+        'completed_by',
     ];
 
     protected $casts = [
         'delivery_date' => 'date',
         'expected_date' => 'date',
+        'completed_at' => 'datetime',
+        'shipping_address_overridden' => 'boolean',
     ];
 
     protected static function boot()
@@ -73,6 +80,11 @@ class DeliveryOrder extends Model
         return $this->belongsTo(\App\Models\User::class, 'confirmed_by');
     }
 
+    public function completedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'completed_by');
+    }
+
     public function isDraft(): bool
     {
         return $this->status === 'draft';
@@ -83,9 +95,19 @@ class DeliveryOrder extends Model
         return $this->status === 'confirmed';
     }
 
+    public function isDone(): bool
+    {
+        return $this->status === 'done';
+    }
+
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'done';
     }
 
     public static function generateNumber(): string

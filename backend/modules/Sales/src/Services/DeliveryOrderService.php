@@ -4,6 +4,10 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Inventory\Models\StockReservation;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockReservationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
@@ -14,13 +18,16 @@ class DeliveryOrderService
 {
     public function __construct(
         private OrderLifecycleService $lifecycleService,
-        private \Modules\Inventory\Services\InventoryService $inventoryService,
-        private \Modules\Inventory\Services\StockReservationService $reservationService,
+        private InventoryService $inventoryService,
+        private StockReservationService $reservationService,
     ) {}
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  CREATION
+    // ════════════════════════════════════════════════════════════════════════
+
     /**
-     * Create a delivery order from a confirmed/allocated sales order.
-     * Lines specify quantity_delivered per sales order line (partial deliveries supported).
+     * Create a delivery order from a confirmed/allocated/fulfilled sales order.
      */
     public function createDeliveryOrder(SalesOrder $order, array $data): DeliveryOrder
     {
@@ -41,11 +48,13 @@ class DeliveryOrderService
                 'customer_id' => $order->customer_id,
                 'warehouse_id' => $warehouseId,
                 'status' => 'draft',
+                'source' => 'sales_order',
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
                 'expected_date' => $data['expected_date'] ?? null,
                 'carrier' => $data['carrier'] ?? null,
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
+                'shipping_address_overridden' => !empty($data['shipping_address']),
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -66,8 +75,8 @@ class DeliveryOrderService
 
                 if ($quantityDelivered > $remainingForThisLine + 0.0001) {
                     throw new \Exception(
-                        "Cannot deliver {$quantityDelivered} of line #{$soLineId}. " .
-                        "Only {$remainingForThisLine} remaining to deliver."
+                        "Cannot deliver {$quantityDelivered} of line #{$soLineId}. "
+                        . "Only {$remainingForThisLine} remaining to deliver."
                     );
                 }
 
@@ -91,7 +100,6 @@ class DeliveryOrderService
 
     /**
      * Create a standalone delivery order (not linked to a sales order).
-     * Lines specify product_id, quantity_delivered directly.
      */
     public function createStandaloneDeliveryOrder(array $data): DeliveryOrder
     {
@@ -118,11 +126,14 @@ class DeliveryOrderService
                 'customer_id' => $customerId,
                 'warehouse_id' => $warehouseId,
                 'status' => 'draft',
+                'source' => $data['source'] ?? 'standalone',
+                'external_reference' => $data['external_reference'] ?? null,
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
                 'expected_date' => $data['expected_date'] ?? null,
                 'carrier' => $data['carrier'] ?? null,
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
+                'shipping_address_overridden' => !empty($data['shipping_address']),
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -151,11 +162,13 @@ class DeliveryOrderService
         });
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  STATE TRANSITIONS — per spec §5.1
+    // ════════════════════════════════════════════════════════════════════════
+
     /**
-     * Confirm a delivery order:
-     * 1. Updates quantity_delivered on each sales order line
-     * 2. Deducts stock from warehouse inventory
-     * 3. Fulfils corresponding stock reservations
+     * DRAFT → CONFIRMED
+     * Validates customer, warehouse, and lines. No stock effect.
      */
     public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
@@ -164,16 +177,50 @@ class DeliveryOrderService
         }
 
         if (!$deliveryOrder->warehouse_id) {
-            throw new \Exception('Cannot confirm a delivery order without a warehouse.');
+            throw new \Exception('Warehouse is required before this delivery order can be confirmed.');
         }
 
-        return DB::transaction(function () use ($deliveryOrder) {
+        $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
+
+        $deliveryOrder->update([
+            'status' => 'confirmed',
+            'confirmed_by' => $actorId,
+        ]);
+
+        return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
+    }
+
+    /**
+     * CONFIRMED → DONE
+     * Posts inventory movements (stock deduction), updates SO line delivered_qty,
+     * fulfils stock reservations. Atomic — all or nothing.
+     */
+    public function completeDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $idempotencyKey = null): DeliveryOrder
+    {
+        // Allow completing from DRAFT for convenience (auto-confirms first)
+        if ($deliveryOrder->isDraft()) {
+            $deliveryOrder = $this->confirmDeliveryOrder($deliveryOrder);
+        }
+
+        if (!$deliveryOrder->isConfirmed()) {
+            // Idempotency: if already DONE, return as-is
+            if ($deliveryOrder->isDone()) {
+                return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
+            }
+            throw new \Exception('Only confirmed delivery orders can be completed.');
+        }
+
+        if (!$deliveryOrder->warehouse_id) {
+            throw new \Exception('Cannot complete a delivery order without a warehouse.');
+        }
+
+        return DB::transaction(function () use ($deliveryOrder, $idempotencyKey) {
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
             $warehouseId = (int) $deliveryOrder->warehouse_id;
 
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
-            // Only update SO lines for linked delivery orders
+            // Update SO line delivered quantities (for linked DOs) — always, before stock deduction
             if ($deliveryOrder->sales_order_id) {
                 foreach ($deliveryOrder->lines as $line) {
                     if ($line->salesOrderLine) {
@@ -184,7 +231,7 @@ class DeliveryOrderService
                 }
             }
 
-            // Deduct stock for each line with a stock-tracked product
+            // Deduct stock for each stock-tracked line
             foreach ($deliveryOrder->lines as $line) {
                 if (!$line->product_id) {
                     continue;
@@ -200,7 +247,7 @@ class DeliveryOrderService
                     continue;
                 }
 
-                $idempotencyKey = "do-confirm-{$deliveryOrder->id}-line-{$line->id}";
+                $key = $idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}";
 
                 $this->inventoryService->adjustStock(
                     productId: $line->product_id,
@@ -213,10 +260,10 @@ class DeliveryOrderService
                     notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}",
                     batchNumber: $line->lot_number ?? $line->batch_number,
                     expiryDate: $line->expiry_date ? new \DateTime($line->expiry_date) : null,
-                    idempotencyKey: $idempotencyKey,
+                    idempotencyKey: $key,
                 );
 
-                // Fulfil the corresponding stock reservation (if linked to a SO)
+                // Fulfil corresponding stock reservation (if linked to SO)
                 if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
                     $this->fulfilReservationForLine(
                         $line->product_id,
@@ -229,8 +276,9 @@ class DeliveryOrderService
             }
 
             $deliveryOrder->update([
-                'status' => 'confirmed',
-                'confirmed_by' => $actorId,
+                'status' => 'done',
+                'completed_at' => now(),
+                'completed_by' => $actorId,
             ]);
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
@@ -238,11 +286,106 @@ class DeliveryOrderService
     }
 
     /**
-     * Fulfil (or partially fulfil) the stock reservation linked to a sales order line.
+     * DONE → CANCELLED (Reversal)
+     * Posts compensating inbound stock movements, subtracts delivered quantities
+     * from linked Sales Order lines. Never deletes the original.
      */
+    public function reverseDeliveryOrder(DeliveryOrder $deliveryOrder, string $reason): DeliveryOrder
+    {
+        if (!$deliveryOrder->isDone()) {
+            throw new \Exception('Only completed delivery orders can be reversed.');
+        }
+
+        return DB::transaction(function () use ($deliveryOrder, $reason) {
+            $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
+            $warehouseId = (int) $deliveryOrder->warehouse_id;
+
+            $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
+
+            foreach ($deliveryOrder->lines as $line) {
+                if (!$line->product_id) {
+                    continue;
+                }
+
+                $product = $line->product;
+                $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
+
+                if ($isStockTracked) {
+                    $qty = (int) round((float) $line->quantity_delivered);
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    // Compensating inbound movement (restock)
+                    $this->inventoryService->adjustStock(
+                        productId: $line->product_id,
+                        warehouseId: $warehouseId,
+                        quantity: $qty,
+                        type: 'return',
+                        reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                        referenceType: 'DeliveryOrder',
+                        referenceId: $deliveryOrder->id,
+                        notes: "Reversal: {$reason}",
+                        idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}",
+                    );
+                }
+
+                // Subtract from SO line delivered_qty (always, regardless of stock tracking)
+                if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
+                    $soLine = $line->salesOrderLine;
+                    $newDelivered = max(0, (float) $soLine->quantity_delivered - (float) $line->quantity_delivered);
+                    $soLine->update(['quantity_delivered' => $newDelivered]);
+                }
+            }
+
+            $deliveryOrder->update([
+                'status' => 'cancelled',
+                'notes' => $deliveryOrder->notes
+                    ? $deliveryOrder->notes . "\n[REVERSED] {$reason}"
+                    : "[REVERSED] {$reason}",
+            ]);
+
+            Log::info('Delivery order reversed', [
+                'do_id' => $deliveryOrder->id,
+                'do_number' => $deliveryOrder->delivery_order_number,
+                'reason' => $reason,
+                'actor' => $actorId,
+            ]);
+
+            return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
+        });
+    }
+
+    /**
+     * DRAFT|CONFIRMED → CANCELLED (pre-completion cancellation — no stock effect)
+     */
+    public function cancelDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder
+    {
+        if ($deliveryOrder->isDone()) {
+            throw new \Exception('Cannot cancel a completed delivery order. Use reversal instead.');
+        }
+
+        if ($deliveryOrder->isCancelled()) {
+            throw new \Exception('Delivery order is already cancelled.');
+        }
+
+        $deliveryOrder->update([
+            'status' => 'cancelled',
+            'notes' => $reason
+                ? ($deliveryOrder->notes ? $deliveryOrder->notes . "\n[CANCELLED] {$reason}" : "[CANCELLED] {$reason}")
+                : $deliveryOrder->notes,
+        ]);
+
+        return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  HELPERS
+    // ════════════════════════════════════════════════════════════════════════
+
     private function fulfilReservationForLine(int $productId, int $warehouseId, int $qty, int $salesOrderId, int $salesOrderLineId): void
     {
-        $reservation = \Modules\Inventory\Models\StockReservation::where([
+        $reservation = StockReservation::where([
             'source_document_type' => 'SalesOrder',
             'source_document_id' => $salesOrderId,
             'source_document_line_id' => $salesOrderLineId,
@@ -256,23 +399,6 @@ class DeliveryOrderService
         }
     }
 
-    /**
-     * Cancel a delivery order (only draft can be cancelled).
-     */
-    public function cancelDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder
-    {
-        if (!$deliveryOrder->isDraft()) {
-            throw new \Exception('Only draft delivery orders can be cancelled.');
-        }
-
-        $deliveryOrder->update(['status' => 'cancelled']);
-
-        return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
-    }
-
-    /**
-     * Check if all lines on a sales order have been fully delivered.
-     */
     public function isFullyDelivered(SalesOrder $order): bool
     {
         $order->loadMissing('lines');

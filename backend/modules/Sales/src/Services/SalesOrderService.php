@@ -178,11 +178,12 @@ class SalesOrderService
 
     public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice
     {
-        if (!$order->isFulfilled() && !$order->isAllocated()) {
-            throw new \Exception('Only fulfilled or allocated orders can be invoiced.');
+        if (!$order->isFulfilled() && !$order->isAllocated() && !$order->isConfirmed() && !$order->isInvoiced()) {
+            throw new \Exception('Only confirmed, allocated, fulfilled, or partially invoiced orders can be invoiced.');
         }
 
         return DB::transaction(function () use ($order, $totalOverrides, $invoiceServiceOverride) {
+            $order->loadMissing('lines');
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
@@ -194,11 +195,33 @@ class SalesOrderService
                 'sales_order_id' => $order->id,
             ];
 
-            $billByDelivered = (bool) $order->bill_by_delivered_qty;
-
+            // ── Build invoice lines using per-line invoicing_policy ─────────
+            // invoiceable_qty =
+            //   ORDERED_QTY:  max(ordered - invoiced, 0)
+            //   DELIVERED_QTY: max(delivered - invoiced, 0)
             $lines = [];
+            $totalInvoiceableQty = 0;
+
             foreach ($order->lines as $line) {
-                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLine($line, $billByDelivered);
+                $policy = $line->invoicing_policy ?? 'ordered_qty';
+                $ordered = (float) $line->quantity;
+                $delivered = (float) $line->quantity_delivered;
+                $invoiced = (float) $line->quantity_invoiced;
+
+                $invoiceableQty = $policy === 'delivered_qty'
+                    ? max($delivered - $invoiced, 0)
+                    : max($ordered - $invoiced, 0);
+
+                if ($invoiceableQty <= 0) {
+                    continue;
+                }
+
+                $totalInvoiceableQty += $invoiceableQty;
+
+                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLineWithQty(
+                    $line,
+                    $invoiceableQty,
+                );
 
                 $lines[] = [
                     'product_id' => $line->product_id,
@@ -209,6 +232,17 @@ class SalesOrderService
                     'discount_amount' => $line->discount_amount,
                 ];
             }
+
+            // ── Block if nothing is invoiceable ───────────────────────────
+            if (empty($lines)) {
+                $hasDeliveredPolicy = $order->lines->contains(fn ($l) => ($l->invoicing_policy ?? 'ordered_qty') === 'delivered_qty');
+                throw new \Exception(
+                    $hasDeliveredPolicy
+                        ? 'There are no invoiceable quantities. Complete a delivery first for products billed by delivered quantity.'
+                        : 'There are no invoiceable quantities for this order.'
+                );
+            }
+
             $invoiceData['lines'] = $lines;
 
             $invoice = $invoiceService->createInvoiceInternal($token, $invoiceData);
@@ -218,15 +252,13 @@ class SalesOrderService
                 'invoice_id' => $invoice->id,
                 'link_type' => 'primary',
                 'link_state' => 'active',
-                'invoiced_qty' => $order->lines->sum('quantity'),
+                'invoiced_qty' => $totalInvoiceableQty,
                 'invoiced_value' => $order->total,
                 'created_by' => TenantUserHelper::requireTenantUserId($order->created_by),
             ]);
 
             $invoice->update(['sales_order_id' => $order->id]);
 
-            // Apply channel-level total overrides (e.g. pre-paid POS/web amounts) BEFORE
-            // synchronizeInvoiceBookkeeping() so that quantity_invoiced is based on final totals.
             if (!empty($totalOverrides)) {
                 $invoice->update($totalOverrides);
             }
@@ -507,6 +539,14 @@ class SalesOrderService
             ? (float) $line->quantity_delivered
             : (float) $line->quantity;
 
+        return $this->normalizeInvoiceLineWithQty($line, $quantity);
+    }
+
+    /**
+     * Normalize a single invoice line given the exact quantity to bill.
+     */
+    private function normalizeInvoiceLineWithQty(SalesOrderLine $line, float $quantity): array
+    {
         if ($quantity <= 0) {
             return [0, 0, $line->description];
         }

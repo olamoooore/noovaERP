@@ -18,6 +18,7 @@ class SalesOrderLine extends Model
         'quantity_fulfilled',
         'quantity_delivered',
         'quantity_invoiced',
+        'invoicing_policy',
         'quantity_cancelled',
         'unit',
         'unit_price',

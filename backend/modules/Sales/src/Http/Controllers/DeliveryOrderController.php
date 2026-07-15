@@ -171,7 +171,11 @@ class DeliveryOrderController extends Controller
         }
     }
 
-    public function cancel($id)
+    /**
+     * Complete/validate a delivery order (CONFIRMED → DONE).
+     * This is where stock is actually deducted.
+     */
+    public function complete($id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
@@ -180,7 +184,55 @@ class DeliveryOrderController extends Controller
         }
 
         try {
-            $deliveryOrder = $this->deliveryService->cancelDeliveryOrder($deliveryOrder);
+            $deliveryOrder = $this->deliveryService->completeDeliveryOrder($deliveryOrder);
+            return response()->json([
+                'message' => 'Delivery order completed — stock deducted',
+                'data' => $deliveryOrder,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Reverse a completed delivery order (DONE → CANCELLED).
+     * Posts compensating stock movements.
+     */
+    public function reverse(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (!$deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|min:3',
+        ]);
+
+        try {
+            $deliveryOrder = $this->deliveryService->reverseDeliveryOrder($deliveryOrder, $validated['reason']);
+            return response()->json([
+                'message' => 'Delivery order reversed — stock restored',
+                'data' => $deliveryOrder,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function cancel(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (!$deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $reason = $request->input('reason');
+
+        try {
+            $deliveryOrder = $this->deliveryService->cancelDeliveryOrder($deliveryOrder, $reason);
             return response()->json([
                 'message' => 'Delivery order cancelled',
                 'data' => $deliveryOrder,
@@ -374,7 +426,7 @@ class DeliveryOrderController extends Controller
 
         $summary = $order->lines->map(function ($line) {
             $totalDelivered = $line->deliveryLines
-                ->filter(fn ($dl) => $dl->deliveryOrder->status === 'confirmed')
+                ->filter(fn ($dl) => $dl->deliveryOrder->status === 'done')
                 ->sum('quantity_delivered');
 
             return [
