@@ -347,7 +347,10 @@ export const CreateInvoicePage: React.FC = () => {
     if (field === 'product_id' && value && products) {
       const product = products.find((item: any) => String(item.id) === String(value));
       if (product) {
-        updated[index].description = product.name || product.description || '';
+        // Default the line description to the product's FULL description (not its
+        // name). The product name already shows in the Product column; the
+        // description is a free-text field the user can customize per document.
+        updated[index].description = product.description || product.short_description || '';
         updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
       }
     }
@@ -931,13 +934,12 @@ export const CreateInvoicePage: React.FC = () => {
                           </select>
                         </td>
                         <td className="py-2 px-2">
-                          <input
-                            type="text"
+                          <textarea
                             value={line.description}
                             onChange={(event) => updateLine(index, 'description', event.target.value)}
+                            rows={2}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                            placeholder="Description"
-                            required
+                            placeholder="Description (editable per line)"
                           />
                         </td>
                         <td className="py-2 px-2">

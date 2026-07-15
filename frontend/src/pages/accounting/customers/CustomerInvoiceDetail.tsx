@@ -419,12 +419,12 @@ export const CustomerInvoiceDetail: React.FC = () => {
                           <div className="min-w-0">
                             <p className="font-medium truncate">{line.product?.name || line.description || '-'}</p>
                             {line.product?.name && line.description && line.product.name !== line.description && (
-                              <p className="text-xs text-muted-foreground truncate">{line.description}</p>
+                              <p className="text-xs text-muted-foreground whitespace-pre-line">{line.description}</p>
                             )}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{line.description || line.product?.name || '-'}</TableCell>
+                      <TableCell className="whitespace-pre-line align-top">{line.description || line.product?.name || '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
