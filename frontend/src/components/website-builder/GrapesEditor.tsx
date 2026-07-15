@@ -558,14 +558,23 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
       }, 100)
     })
 
-    // Auto-open Trait Manager (Settings) when SVG, VIDEO, or IFRAME is selected
+    // Auto-open the relevant inspector when a component is selected.
     editor.on('component:selected', (component: any) => {
       const tagName = component.get('tagName')?.toUpperCase() || component.view?.el?.tagName?.toUpperCase()
       const componentType = component.get('type')
       
-      // Open trait manager for video-related components
+      // Open trait manager for video-related / special components
       if (tagName === 'SVG' || tagName === 'VIDEO' || tagName === 'IFRAME' || componentType === 'video-background-section') {
         editor.runCommand('open-tm')
+        return
+      }
+
+      // For every other block, surface the Style Manager so color, typography,
+      // background image, borders, spacing, etc. are immediately editable.
+      // Without this the right panel keeps showing the Blocks/Presets panel and
+      // styling controls appear unavailable. Skip the root wrapper.
+      if (componentType !== 'wrapper' && tagName !== 'BODY') {
+        editor.runCommand('open-sm')
       }
     })
 

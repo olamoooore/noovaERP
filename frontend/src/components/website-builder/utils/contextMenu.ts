@@ -200,7 +200,9 @@ function executeAction(action: string): void {
           const comps = parent.components()
           const idx = comps.indexOf(selected)
           if (idx < comps.length - 1) {
-            selected.move(parent, { at: idx + 2 })
+            // GrapesJS removes the component before re-inserting at `at`,
+            // so the correct target index is idx + 1 (one position down).
+            selected.move(parent, { at: idx + 1 })
             editor.select(selected)
           }
         }

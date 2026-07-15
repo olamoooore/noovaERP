@@ -23,6 +23,21 @@ function isInputField(target: HTMLElement): boolean {
     return true
   }
   
+  // Code editors (Monaco / CodeMirror) and any open GrapesJS modal (e.g. the
+  // custom-code CodeMirror modal). Without this, Backspace/Delete/arrow keys
+  // typed inside a code editor get hijacked by the canvas shortcuts below and
+  // never reach the editor — which makes the editor appear "append-only".
+  if (
+    target.closest('.CodeMirror') ||        // CodeMirror 5
+    target.closest('.cm-editor') ||         // CodeMirror 6
+    target.closest('.monaco-editor') ||     // Monaco (page-level HTML/CSS/JS editor)
+    target.closest('.gjs-mdl-dialog') ||    // any GrapesJS modal dialog
+    target.closest('.gjs-mdl-dialog-wrp') ||
+    target.closest('[role="textbox"]')
+  ) {
+    return true
+  }
+  
   // Check if inside RTE toolbar or contenteditable
   if (target.closest('.gjs-rte-toolbar') || target.closest('[contenteditable="true"]')) {
     return true
@@ -211,7 +226,9 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
             const components = parent.components()
             const index = components.indexOf(component)
             if (index < components.length - 1) {
-              component.move(parent, { at: index + 2 })
+              // GrapesJS removes the component before re-inserting at `at`,
+              // so the correct target index is index + 1 (one position down).
+              component.move(parent, { at: index + 1 })
               editor.select(component)
             }
           }
