@@ -120,11 +120,23 @@ class Quotation extends Model
 
     public function calculateTotals(): void
     {
-        $this->subtotal = $this->lines->sum(function ($line) {
-            return $line->line_total - $line->tax_amount;
-        });
-        $this->tax_amount = $this->lines->sum('tax_amount');
-        $this->total = $this->subtotal + $this->tax_amount - ($this->discount_amount ?? 0);
+        $subtotal = 0;
+        $taxAmount = 0;
+
+        // Recompute each line's tax_amount + line_total from base fields so the
+        // header totals are always derived from accurate line data.
+        foreach ($this->lines as $line) {
+            $line->calculateLineTotals();
+            if ($line->isDirty(['tax_amount', 'line_total'])) {
+                $line->save();
+            }
+            $subtotal += (float) $line->line_total - (float) $line->tax_amount;
+            $taxAmount += (float) $line->tax_amount;
+        }
+
+        $this->subtotal = round($subtotal, 2);
+        $this->tax_amount = round($taxAmount, 2);
+        $this->total = round($this->subtotal + $this->tax_amount - (float) ($this->discount_amount ?? 0), 2);
         $this->save();
     }
 

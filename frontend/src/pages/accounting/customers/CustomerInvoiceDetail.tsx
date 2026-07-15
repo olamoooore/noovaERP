@@ -273,6 +273,43 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-sm">{invoice.terms}</p>
             </div>
           )}
+          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date) && (
+            <div className="mt-6 pt-6 border-t">
+              <p className="text-sm font-medium mb-3">Case Information</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {invoice.date_of_case && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Date of Case</p>
+                    <p className="font-medium">{formatDate(invoice.date_of_case)}</p>
+                  </div>
+                )}
+                {invoice.case_location && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Location</p>
+                    <p className="font-medium">{invoice.case_location}</p>
+                  </div>
+                )}
+                {invoice.patient_name && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Patient Name</p>
+                    <p className="font-medium">{invoice.patient_name}</p>
+                  </div>
+                )}
+                {invoice.cost_center_id && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Cost Center Id</p>
+                    <p className="font-medium">{invoice.cost_center_id}</p>
+                  </div>
+                )}
+                {invoice.delivery_date && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Delivery Date</p>
+                    <p className="font-medium">{formatDate(invoice.delivery_date)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {(invoice.customer_reference || invoice.internal_reference || invoice.attention_to || invoice.contact_email || invoice.contact_phone || invoice.company_registration_number || invoice.tax_registration_number || invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
             <div className="mt-6 pt-6 border-t space-y-6">
               <div>

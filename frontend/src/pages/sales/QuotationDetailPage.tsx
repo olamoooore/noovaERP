@@ -70,6 +70,53 @@ export function QuotationDetailPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/quotations/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      toast({ title: 'Quotation deleted' })
+      navigate('/quotations')
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete quotation',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const handleDelete = () => {
+    if (!window.confirm(`Delete quotation ${quotation?.quotation_number}? This action cannot be undone.`)) return
+    deleteMutation.mutate()
+  }
+
+  const [isDownloading, setIsDownloading] = useState(false)
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true)
+    try {
+      const response = await api.get(`/quotations/${id}/pdf`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `quotation-${quotation?.quotation_number}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Download failed',
+        description: error.response?.data?.message || 'Could not download the PDF. Please try again.',
+      })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   const formatCurrency = (amount: number | string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
 
@@ -129,6 +176,10 @@ export function QuotationDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
+            <Icon icon="solar:download-minimistic-bold-duotone" className="mr-2 h-4 w-4" />
+            {isDownloading ? 'Preparing...' : 'Download PDF'}
+          </Button>
           {(quotation.status === 'draft' || quotation.status === 'sent') && (
             <>
               <Button
@@ -144,6 +195,15 @@ export function QuotationDetailPage() {
               >
                 <Icon icon="solar:pen-bold" className="mr-2 h-4 w-4" />
                 Edit
+              </Button>
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+              >
+                <Icon icon="solar:trash-bin-trash-bold-duotone" className="mr-2 h-4 w-4" />
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
               </Button>
             </>
           )}

@@ -19,6 +19,8 @@ export const CustomerBills: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -37,11 +39,13 @@ export const CustomerBills: React.FC = () => {
     setAgingBucketFilter(agingBucketParam);
   }, [customerIdParam, agingBucketParam]);
 
+  const isAgingDrilldown = Boolean(customerFilter && agingBucketFilter);
+
   // Fetch invoices
-  const { data: invoices, isLoading, refetch } = useQuery({
-    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter],
+  const { data: invoicesData, isLoading, refetch } = useQuery({
+    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter, page],
     queryFn: async () => {
-      if (customerFilter && agingBucketFilter) {
+      if (isAgingDrilldown) {
         const response = await api.get('/accounting/reports/aged-receivables/details', {
           params: {
             customer_id: customerFilter,
@@ -49,7 +53,7 @@ export const CustomerBills: React.FC = () => {
           },
         });
 
-        return (response.data.data || []).map((invoice: any) => ({
+        const rows = (response.data.data || []).map((invoice: any) => ({
           id: invoice.id,
           invoice_number: invoice.invoice_number,
           invoice_date: invoice.invoice_date,
@@ -63,17 +67,30 @@ export const CustomerBills: React.FC = () => {
           status: invoice.status,
           is_aging_drilldown: true,
         }));
+        return { data: rows, current_page: 1, last_page: 1, total: rows.length };
       }
 
       const params = new URLSearchParams();
+      params.set('per_page', '20');
+      params.set('page', String(page));
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
       if (customerFilter) params.append('customer_id', customerFilter);
       
       const response = await api.get(`/invoices?${params.toString()}`);
-      return response.data.data || [];
+      return {
+        data: response.data.data || [],
+        current_page: response.data.current_page || 1,
+        last_page: response.data.last_page || 1,
+        total: response.data.total || 0,
+      };
     },
   });
+
+  const invoices = invoicesData?.data || [];
+  const currentPage = invoicesData?.current_page || 1;
+  const lastPage = invoicesData?.last_page || 1;
+  const totalRecords = invoicesData?.total || 0;
 
   // Send invoice mutation
   const postInvoiceMutation = useMutation({
@@ -93,6 +110,76 @@ export const CustomerBills: React.FC = () => {
       });
     },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const response = await api.post('/invoices/bulk-delete', { ids });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['customer-bills'] });
+      setSelectedIds(new Set());
+      const skipped = data?.skipped?.length || 0;
+      const deleted = data?.deleted?.length || 0;
+      toast({
+        title: `${deleted} invoice(s) deleted`,
+        description: skipped > 0 ? `${skipped} invoice(s) skipped (posted or not found).` : undefined,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bulk delete failed',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const toggleSelect = (invoiceId: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(invoiceId)) {
+        next.delete(invoiceId);
+      } else {
+        next.add(invoiceId);
+      }
+      return next;
+    });
+  };
+
+  const allSelected = invoices.length > 0 && invoices.every((inv: any) => selectedIds.has(inv.id));
+  const someSelected = invoices.some((inv: any) => selectedIds.has(inv.id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        invoices.forEach((inv: any) => next.delete(inv.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        invoices.forEach((inv: any) => {
+          if (inv.status === 'draft') next.add(inv.id);
+        });
+        return next;
+      });
+    }
+  };
+
+  const handleBulkDelete = () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!window.confirm(`Delete ${count} selected draft invoice(s)? Posted invoices will be skipped. This cannot be undone.`)) return;
+    bulkDeleteMutation.mutateAsync(Array.from(selectedIds));
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+    setSelectedIds(new Set());
+  };
 
   const handleUploadComplete = () => {
     setShowUpload(false);
@@ -242,7 +329,7 @@ export const CustomerBills: React.FC = () => {
           <div className="flex gap-4">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => handleStatusFilterChange(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
@@ -256,21 +343,48 @@ export const CustomerBills: React.FC = () => {
               type="text"
               placeholder="Search by customer, invoice number..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </CardContent>
       </Card>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-blue-900 dark:text-blue-100">
+                {selectedIds.size} invoice(s) selected
+              </span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  Clear selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteMutation.isPending}
+                >
+                  <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-1" />
+                  {bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete Selected'}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Bills List */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Customer Invoices</span>
-            {invoices && invoices.length > 0 && (
+            {totalRecords > 0 && (
               <span className="text-sm font-normal text-muted-foreground">
-                {invoices.length} invoice(s)
+                {totalRecords} invoice(s)
               </span>
             )}
           </CardTitle>
@@ -298,10 +412,20 @@ export const CustomerBills: React.FC = () => {
               </div>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                        onChange={toggleSelectAll}
+                        title="Select all drafts on this page"
+                      />
+                    </TableHead>
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Date</TableHead>
@@ -316,6 +440,15 @@ export const CustomerBills: React.FC = () => {
                 <TableBody>
                   {invoices.map((invoice: any) => (
                     <TableRow key={invoice.id} className="hover:bg-accent/50 cursor-pointer">
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {invoice.status === 'draft' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(invoice.id)}
+                            onChange={() => toggleSelect(invoice.id)}
+                          />
+                        )}
+                      </TableCell>
                       <TableCell 
                         className="font-medium cursor-pointer hover:text-primary"
                         onClick={() => navigate(`/accounting/customers/bills/${invoice.id}`)}
@@ -377,6 +510,35 @@ export const CustomerBills: React.FC = () => {
                 </TableBody>
               </Table>
             </div>
+
+            {lastPage > 1 && (
+              <div className="flex items-center justify-between pt-4">
+                <span className="text-sm text-muted-foreground">
+                  Page {currentPage} of {lastPage}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    <Icon icon="solar:alt-arrow-left-bold" className="mr-1 h-4 w-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                    disabled={currentPage >= lastPage}
+                  >
+                    Next
+                    <Icon icon="solar:alt-arrow-right-bold" className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -389,7 +551,7 @@ export const CustomerBills: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Invoices</p>
-                  <p className="text-2xl font-bold">{invoices.length}</p>
+                  <p className="text-2xl font-bold">{totalRecords}</p>
                 </div>
                 <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-blue-500" />
               </div>
@@ -399,9 +561,9 @@ export const CustomerBills: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Draft</p>
+                  <p className="text-sm text-muted-foreground">Page</p>
                   <p className="text-2xl font-bold">
-                    {invoices.filter((inv: any) => inv.status === 'draft').length}
+                    {currentPage} / {lastPage}
                   </p>
                 </div>
                 <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-gray-500" />
@@ -412,12 +574,10 @@ export const CustomerBills: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Unpaid</p>
-                  <p className="text-2xl font-bold">
-                    {invoices.filter((inv: any) => inv.status === 'posted' || inv.status === 'overdue').length}
-                  </p>
+                  <p className="text-sm text-muted-foreground">Selected</p>
+                  <p className="text-2xl font-bold">{selectedIds.size}</p>
                 </div>
-                <Icon icon="solar:clock-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
+                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
               </div>
             </CardContent>
           </Card>
@@ -425,12 +585,10 @@ export const CustomerBills: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Paid</p>
-                  <p className="text-2xl font-bold">
-                    {invoices.filter((inv: any) => inv.status === 'paid').length}
-                  </p>
+                  <p className="text-sm text-muted-foreground">Per Page</p>
+                  <p className="text-2xl font-bold">20</p>
                 </div>
-                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-green-500" />
+                <Icon icon="solar:sort-bold-duotone" className="h-8 w-8 text-green-500" />
               </div>
             </CardContent>
           </Card>

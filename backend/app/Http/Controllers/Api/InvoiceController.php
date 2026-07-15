@@ -62,6 +62,11 @@ class InvoiceController extends Controller
             'customer_id' => 'required|exists:customers,id',
             'invoice_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'date_of_case' => 'nullable|date',
+            'case_location' => 'nullable|string|max:255',
+            'patient_name' => 'nullable|string|max:255',
+            'cost_center_id' => 'nullable|string|max:100',
+            'delivery_date' => 'nullable|date',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
@@ -167,6 +172,11 @@ class InvoiceController extends Controller
         $invoiceOverrides = array_filter([
             'invoice_date'                => $data['invoice_date'] ?? null,
             'due_date'                    => $data['due_date'] ?? null,
+            'date_of_case'                => $data['date_of_case'] ?? null,
+            'case_location'               => $data['case_location'] ?? null,
+            'patient_name'                => $data['patient_name'] ?? null,
+            'cost_center_id'              => $data['cost_center_id'] ?? null,
+            'delivery_date'               => $data['delivery_date'] ?? null,
             'customer_reference'          => $data['customer_reference'] ?? null,
             'internal_reference'          => $data['internal_reference'] ?? null,
             'attention_to'                => $data['attention_to'] ?? null,
@@ -214,6 +224,11 @@ class InvoiceController extends Controller
             'customer_id' => 'exists:customers,id',
             'invoice_date' => 'date',
             'due_date' => 'date',
+            'date_of_case' => 'nullable|date',
+            'case_location' => 'nullable|string|max:255',
+            'patient_name' => 'nullable|string|max:255',
+            'cost_center_id' => 'nullable|string|max:100',
+            'delivery_date' => 'nullable|date',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
@@ -314,6 +329,44 @@ class InvoiceController extends Controller
         $invoice->delete();
 
         return response()->json(['message' => 'Invoice deleted successfully']);
+    }
+
+    /**
+     * Bulk delete multiple draft invoices.
+     * Only invoices that are still in draft (no journal entry / payments) are
+     * removed. Non-deletable invoices are skipped and reported back.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $deletable = Invoice::whereIn('id', $ids)->where('status', 'draft')->get();
+        $deletedIds = [];
+        $skipped = [];
+
+        foreach ($deletable as $invoice) {
+            try {
+                $invoice->delete();
+                $deletedIds[] = $invoice->id;
+            } catch (\Throwable $e) {
+                $skipped[] = ['id' => $invoice->id, 'reason' => $e->getMessage()];
+            }
+        }
+
+        $notFoundIds = array_values(array_diff($ids, $deletable->pluck('id')->toArray()));
+        foreach ($notFoundIds as $notFoundId) {
+            $skipped[] = ['id' => $notFoundId, 'reason' => 'Not found or not a draft invoice'];
+        }
+
+        return response()->json([
+            'message' => count($deletedIds) . ' invoice(s) deleted.',
+            'deleted' => $deletedIds,
+            'skipped' => $skipped,
+        ]);
     }
 
     /**

@@ -174,11 +174,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
             // Invoices
             Route::post('/invoices/import', [InvoiceController::class, 'import']);
+            Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
             Route::apiResource('invoices', InvoiceController::class);
             Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
 
             // Quotations
             Route::post('/quotations/import', [QuotationController::class, 'import']);
+            Route::get('/quotations/{id}/pdf', [QuotationController::class, 'pdf']);
             Route::apiResource('quotations', QuotationController::class);
             Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
             Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);

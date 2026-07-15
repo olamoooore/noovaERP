@@ -203,6 +203,11 @@ export const CreateInvoicePage: React.FC = () => {
   const [dueDate, setDueDate] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
+  const [dateOfCase, setDateOfCase] = useState('');
+  const [caseLocation, setCaseLocation] = useState('');
+  const [patientName, setPatientName] = useState('');
+  const [costCenterId, setCostCenterId] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -471,6 +476,11 @@ export const CreateInvoicePage: React.FC = () => {
       customer_id: parseInt(customerId, 10),
       invoice_date: invoiceDate,
       due_date: dueDate,
+      date_of_case: dateOfCase || undefined,
+      case_location: caseLocation || undefined,
+      patient_name: patientName || undefined,
+      cost_center_id: costCenterId || undefined,
+      delivery_date: deliveryDate || undefined,
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
@@ -814,6 +824,64 @@ export const CreateInvoicePage: React.FC = () => {
 
           <Card className="mb-6">
             <CardHeader>
+              <CardTitle>Case Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Date of Case</label>
+                  <input
+                    type="date"
+                    value={dateOfCase}
+                    onChange={(event) => setDateOfCase(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Location</label>
+                  <input
+                    type="text"
+                    value={caseLocation}
+                    onChange={(event) => setCaseLocation(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Case / site location"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Patient Name</label>
+                  <input
+                    type="text"
+                    value={patientName}
+                    onChange={(event) => setPatientName(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Patient name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Cost Center Id</label>
+                  <input
+                    type="text"
+                    value={costCenterId}
+                    onChange={(event) => setCostCenterId(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Cost center reference"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Delivery Date</label>
+                  <input
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(event) => setDeliveryDate(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
@@ -839,6 +907,7 @@ export const CreateInvoicePage: React.FC = () => {
                       <th className="text-right py-2 px-2 w-24">Qty</th>
                       <th className="text-right py-2 px-2 w-32">Unit Price</th>
                       <th className="text-right py-2 px-2 w-24">Tax %</th>
+                      <th className="text-right py-2 px-2 w-28">Line Discount</th>
                       <th className="text-right py-2 px-2 w-32">Line Total</th>
                       <th className="py-2 px-2 w-40">Actions</th>
                     </tr>
@@ -892,17 +961,29 @@ export const CreateInvoicePage: React.FC = () => {
                           />
                         </td>
                         <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            placeholder="0"
-                            value={line.tax_rate === '' ? '' : line.tax_rate}
-                            onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                          />
-                        </td>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="0"
+                          value={line.tax_rate === '' ? '' : line.tax_rate}
+                          onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={line.discount_amount === '' ? '' : line.discount_amount}
+                          onChange={(event) => updateLine(index, 'discount_amount', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          title="Per-line discount amount (line_discount_amount)"
+                        />
+                      </td>
                         <td className="py-2 px-2 text-right font-medium">
                           {formatCurrency(getLineTotal(line))}
                         </td>
