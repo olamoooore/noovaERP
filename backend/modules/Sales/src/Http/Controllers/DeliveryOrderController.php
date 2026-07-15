@@ -69,7 +69,7 @@ class DeliveryOrderController extends Controller
         if ($isStandalone) {
             $validated = $request->validate([
                 'customer_id' => 'required|exists:customers,id',
-                'warehouse_id' => 'nullable|exists:warehouses,id',
+                'warehouse_id' => 'required|exists:warehouses,id',
                 'delivery_date' => 'nullable|date',
                 'expected_date' => 'nullable|date',
                 'carrier' => 'nullable|string|max:100',
@@ -82,6 +82,9 @@ class DeliveryOrderController extends Controller
                 'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
                 'lines.*.quantity' => 'nullable|numeric|min:0.0001',
                 'lines.*.unit' => 'nullable|string|max:20',
+                'lines.*.lot_number' => 'nullable|string|max:100',
+                'lines.*.batch_number' => 'nullable|string|max:100',
+                'lines.*.expiry_date' => 'nullable|date',
             ]);
 
             try {
@@ -98,6 +101,7 @@ class DeliveryOrderController extends Controller
         // Linked to sales order
         $validated = $request->validate([
             'sales_order_id' => 'required|exists:sales_orders,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
             'carrier' => 'nullable|string|max:100',
@@ -109,6 +113,9 @@ class DeliveryOrderController extends Controller
             'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
             'lines.*.description' => 'nullable|string',
             'lines.*.unit' => 'nullable|string|max:20',
+            'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.batch_number' => 'nullable|string|max:100',
+            'lines.*.expiry_date' => 'nullable|date',
         ]);
 
         $order = SalesOrder::find($validated['sales_order_id']);
@@ -274,15 +281,40 @@ class DeliveryOrderController extends Controller
                     ],
                 ],
                 'transform_header' => function (array $header, array $rows) {
-                    // Resolve customer_id from code or name
-                    if (isset($header['customer_name']) && !isset($header['customer_id'])) {
-                        $customer = \App\Models\Customer::where('name', $header['customer_name'])->first();
+                    // Resolve customer_id from code first, then name
+                    if (!isset($header['customer_id']) || !is_numeric($header['customer_id'])) {
+                        $customer = null;
+
+                        if (!empty($header['customer_id'])) {
+                            $customer = \App\Models\Customer::where('code', $header['customer_id'])->first();
+                        }
+
+                        if (!$customer && !empty($header['customer_name'])) {
+                            $customer = \App\Models\Customer::where('name', $header['customer_name'])->first();
+                        }
+
                         if (!$customer) {
-                            return null; // Skip group if customer not found
+                            return null;
                         }
                         $header['customer_id'] = $customer->id;
                     }
+
+                    // Auto-fill shipping address from customer record
+                    if (empty($header['shipping_address'])) {
+                        $customer = \App\Models\Customer::find($header['customer_id']);
+                        $header['shipping_address'] = $customer?->shipping_address
+                            ?: $customer?->billing_address
+                            ?: null;
+                    }
+
                     unset($header['customer_name']);
+
+                    // Resolve warehouse_id from the customer's default or first active warehouse
+                    if (empty($header['warehouse_id'])) {
+                        $warehouse = \App\Models\Warehouse::where('is_active', true)->first();
+                        $header['warehouse_id'] = $warehouse?->id;
+                    }
+
                     $header['status'] = 'draft';
                     $header['delivery_date'] = $header['delivery_date'] ?? now()->toDateString();
                     return $header;
@@ -313,16 +345,16 @@ class DeliveryOrderController extends Controller
     public function template()
     {
         $columns = [
-            ['name' => 'delivery_order_number', 'example' => 'DO-2026-0001', 'description' => 'Groups rows. Blank = auto-generated.'],
-            ['name' => 'customer_code', 'example' => 'CUST-001', 'description' => 'Customer code (required).'],
-            ['name' => 'customer_name', 'example' => 'Acme Corp', 'description' => 'Alternative to customer_code.'],
-            ['name' => 'delivery_date', 'example' => '2026-07-14', 'description' => 'Delivery date. Default: today.'],
-            ['name' => 'expected_date', 'example' => '2026-07-15', 'description' => 'Expected delivery date.'],
-            ['name' => 'carrier', 'example' => 'DHL', 'description' => 'Carrier name.'],
-            ['name' => 'tracking_number', 'example' => 'DHL123456', 'description' => 'Tracking number.'],
-            ['name' => 'product_sku', 'example' => 'SKU-001', 'description' => 'Product SKU (links to product).'],
-            ['name' => 'description', 'example' => 'Widget A', 'description' => 'Line description.'],
-            ['name' => 'quantity', 'example' => '10', 'description' => 'Quantity to deliver.'],
+            ['name' => 'delivery_order_number', 'example' => 'DO2024/09/002', 'description' => 'Groups rows. Blank = auto-generated.'],
+            ['name' => 'customer_code', 'example' => 'VC0028', 'description' => 'Customer code (required).'],
+            ['name' => 'customer_name', 'example' => 'Dr Daniel Koh', 'description' => 'Customer name (alternative to code).'],
+            ['name' => 'delivery_date', 'example' => '10/9/2024', 'description' => 'Delivery date. Default: today.'],
+            ['name' => 'expected_date', 'example' => '', 'description' => 'Expected delivery date (optional).'],
+            ['name' => 'carrier', 'example' => '', 'description' => 'Carrier name (optional).'],
+            ['name' => 'tracking_number', 'example' => '', 'description' => 'Tracking number (optional).'],
+            ['name' => 'product_sku', 'example' => '21007', 'description' => 'Product SKU (links to product).'],
+            ['name' => 'description', 'example' => 'HTx60s Disposable Hysteroscope', 'description' => 'Line description.'],
+            ['name' => 'quantity', 'example' => '6', 'description' => 'Quantity to deliver.'],
             ['name' => 'unit', 'example' => 'pcs', 'description' => 'Unit of measure. Default: pcs.'],
         ];
 

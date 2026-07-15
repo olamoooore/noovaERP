@@ -22,6 +22,7 @@ class SalesOrderService
         private OrderLifecycleService $lifecycleService,
         private InvoiceService $invoiceService,
         private \Modules\Inventory\Services\InventoryService $inventoryService,
+        private \Modules\Inventory\Services\StockReservationService $reservationService,
     ) {}
 
     public function createOrder(array $data): SalesOrder
@@ -89,11 +90,16 @@ class SalesOrderService
             throw new \Exception('Only draft orders can be confirmed.');
         }
 
-        $order = $this->lifecycleService->confirm($order, 'Order confirmed');
+        return DB::transaction(function () use ($order) {
+            $order = $this->lifecycleService->confirm($order, 'Order confirmed');
 
-        $this->freezePricing($order);
+            $this->freezePricing($order);
 
-        return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            // Reserve stock for stock-tracked lines that have a warehouse
+            $this->reserveStockForOrder($order);
+
+            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+        });
     }
 
     public function allocateOrder(SalesOrder $order): SalesOrder
@@ -130,34 +136,9 @@ class SalesOrderService
         return DB::transaction(function () use ($order) {
             $order->loadMissing('lines.product');
 
-            $stockTrackedLines = $order->lines->filter(function ($line) {
-                if (!$line->product_id) {
-                    return false;
-                }
-
-                return (bool) ($line->product?->track_inventory ?? false);
-            });
-            $warehouseId = null;
-
-            if ($stockTrackedLines->isNotEmpty()) {
-                $warehouseId = $this->requireCommitmentWarehouseId($order, 'fulfil');
-            }
-
-            // Deduct stock for each line item
+            // Stock deduction is now handled by DeliveryOrder confirmation.
+            // This method only marks the order as fulfilled.
             foreach ($order->lines as $line) {
-                if ($line->product_id && (bool) ($line->product?->track_inventory ?? false)) {
-                    $this->inventoryService->adjustStock(
-                        productId: $line->product_id,
-                        warehouseId: $warehouseId,
-                        quantity: (int) $line->quantity,
-                        type: 'sale',
-                        reference: $order->sales_order_number,
-                        referenceType: 'SalesOrder',
-                        referenceId: $order->id,
-                        notes: "Stock deducted for sales order fulfillment"
-                    );
-                }
-
                 $line->update(['quantity_fulfilled' => $line->quantity]);
             }
 
@@ -270,6 +251,9 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($order, $reason) {
+            // Release all stock reservations for this order
+            $this->releaseStockReservations($order);
+
             $order = $this->lifecycleService->cancel($order, $reason);
 
             foreach ($order->lines as $line) {
@@ -571,5 +555,64 @@ class SalesOrderService
             ->exists();
 
         return $hasPosting ? 'fully_posted' : 'not_posted';
+    }
+
+    /**
+     * Reserve stock for all stock-tracked lines on a confirmed sales order.
+     * Skips products that don't track inventory or lines without a product.
+     */
+    private function reserveStockForOrder(SalesOrder $order): void
+    {
+        $order->loadMissing('lines.product');
+
+        if (!$order->warehouse_id) {
+            return;
+        }
+
+        $warehouseId = (int) $order->warehouse_id;
+
+        foreach ($order->lines as $line) {
+            if (!$line->product_id) {
+                continue;
+            }
+
+            $product = $line->product;
+            if (!$product || !(bool) ($product->track_inventory ?? false)) {
+                continue;
+            }
+
+            $this->reservationService->reserve(
+                productId: $line->product_id,
+                warehouseId: $warehouseId,
+                quantity: (int) round((float) $line->quantity),
+                sourceDocumentType: 'SalesOrder',
+                sourceDocumentId: $order->id,
+                sourceDocumentLineId: $line->id,
+                notes: "Reserved for sales order {$order->sales_order_number}",
+            );
+        }
+    }
+
+    /**
+     * Release all active stock reservations for a cancelled sales order.
+     */
+    private function releaseStockReservations(SalesOrder $order): void
+    {
+        $reservations = \Modules\Inventory\Models\StockReservation::where([
+            'source_document_type' => 'SalesOrder',
+            'source_document_id' => $order->id,
+        ])->whereIn('status', ['open', 'allocated'])->get();
+
+        foreach ($reservations as $reservation) {
+            try {
+                $this->reservationService->release($reservation, "Order {$order->sales_order_number} cancelled");
+            } catch (\Throwable $e) {
+                Log::warning('Failed to release stock reservation on cancel', [
+                    'reservation_id' => $reservation->id,
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }

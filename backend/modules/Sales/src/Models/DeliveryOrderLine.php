@@ -15,11 +15,15 @@ class DeliveryOrderLine extends Model
         'quantity_ordered',
         'quantity_delivered',
         'unit',
+        'lot_number',
+        'batch_number',
+        'expiry_date',
     ];
 
     protected $casts = [
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
+        'expiry_date' => 'date',
     ];
 
     public function deliveryOrder(): BelongsTo

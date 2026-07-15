@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
+use App\Models\Warehouse;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
@@ -17,6 +18,7 @@ class DeliveryOrderTest extends TenantTestCase
     protected Customer $customer;
     protected Product $productA;
     protected Product $productB;
+    protected Warehouse $warehouse;
 
     protected function setUp(): void
     {
@@ -58,6 +60,12 @@ class DeliveryOrderTest extends TenantTestCase
             'cost' => 50,
             'track_inventory' => false,
         ]);
+
+        $this->warehouse = Warehouse::create([
+            'name' => 'Test Warehouse',
+            'code' => 'TW-' . uniqid(),
+            'is_active' => true,
+        ]);
     }
 
     private function createSalesOrder(int $linesCount = 2): SalesOrder
@@ -80,6 +88,7 @@ class DeliveryOrderTest extends TenantTestCase
         $order = $service->createOrder([
             'customer_id' => $this->customer->id,
             'channel' => 'admin',
+            'warehouse_id' => $this->warehouse->id,
             'created_by' => $this->user->id,
             'lines' => $lines,
         ]);
@@ -435,6 +444,7 @@ class DeliveryOrderTest extends TenantTestCase
 
         $deliveryOrder = $service->createStandaloneDeliveryOrder([
             'customer_id' => $this->customer->id,
+            'warehouse_id' => $this->warehouse->id,
             'delivery_date' => now()->toDateString(),
             'carrier' => 'DHL',
             'notes' => 'Standalone delivery',
@@ -496,6 +506,7 @@ class DeliveryOrderTest extends TenantTestCase
             'delivery_order_number' => DeliveryOrder::generateNumber(),
             'sales_order_id' => null,
             'customer_id' => $this->customer->id,
+            'warehouse_id' => $this->warehouse->id,
             'status' => 'draft',
             'delivery_date' => now()->toDateString(),
             'created_by' => $this->user->id,
@@ -557,6 +568,7 @@ class DeliveryOrderTest extends TenantTestCase
             'delivery_order_number' => DeliveryOrder::generateNumber(),
             'sales_order_id' => null,
             'customer_id' => $this->customer->id,
+            'warehouse_id' => $this->warehouse->id,
             'status' => 'draft',
             'delivery_date' => now()->toDateString(),
             'created_by' => $this->user->id,

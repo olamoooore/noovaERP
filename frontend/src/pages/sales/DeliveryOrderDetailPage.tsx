@@ -238,17 +238,18 @@ export function DeliveryOrderDetailPage() {
           <CardTitle>Shipped Items</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+            <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>#</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Qty Ordered</TableHead>
-                <TableHead className="text-right">Qty Delivered</TableHead>
-                <TableHead className="text-right">Unit</TableHead>
-              </TableRow>
-            </TableHeader>
+                <TableRow>
+                 <TableHead>#</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Qty Ordered</TableHead>
+                  <TableHead className="text-right">Qty Delivered</TableHead>
+                  <TableHead className="text-right">Unit</TableHead>
+                  <TableHead>Lot Number</TableHead>
+                </TableRow>
+              </TableHeader>
             <TableBody>
               {deliveryOrder.lines?.map((line: any, index: number) => (
                 <TableRow key={line.id}>
@@ -258,6 +259,7 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
+                  <TableCell>{line.lot_number || '-'}</TableCell>
                 </TableRow>
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (

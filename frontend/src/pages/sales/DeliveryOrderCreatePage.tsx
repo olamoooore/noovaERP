@@ -17,6 +17,7 @@ interface LineItem {
   description: string
   quantity: number
   unit: string
+  lot_number: string
 }
 
 export function DeliveryOrderCreatePage() {
@@ -37,10 +38,11 @@ export function DeliveryOrderCreatePage() {
   const [shippingAddress, setShippingAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
+  const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs' },
+    { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', lot_number: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -51,6 +53,15 @@ export function DeliveryOrderCreatePage() {
       return res.data?.data || res.data || []
     },
     enabled: mode === 'standalone',
+  })
+
+  // Fetch warehouses
+  const { data: warehousesData } = useQuery({
+    queryKey: ['warehouses-list'],
+    queryFn: async () => {
+      const res = await api.get('/warehouses', { params: { per_page: 100 } })
+      return res.data?.data || res.data || []
+    },
   })
 
   // Fetch products for standalone mode
@@ -91,6 +102,16 @@ export function DeliveryOrderCreatePage() {
     },
   })
 
+  // Auto-fill shipping address when customer is selected
+  const handleCustomerChange = (val: string) => {
+    setCustomerId(val)
+    const customer = customers.find((c: any) => c.id === parseInt(val))
+    if (customer) {
+      const addr = customer.shipping_address || customer.billing_address || ''
+      setShippingAddress(addr)
+    }
+  }
+
   const handleSubmit = () => {
     if (mode === 'linked') {
       handleSubmitLinked()
@@ -110,6 +131,7 @@ export function DeliveryOrderCreatePage() {
       .map((line: any) => ({
         sales_order_line_id: line.sales_order_line_id,
         quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
+        lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
       }))
 
     if (lines.length === 0) {
@@ -119,6 +141,7 @@ export function DeliveryOrderCreatePage() {
 
     createMutation.mutate({
       sales_order_id: parseInt(salesOrderId),
+      warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
       delivery_date: deliveryDate || undefined,
       expected_date: expectedDate || undefined,
       carrier: carrier || undefined,
@@ -135,6 +158,11 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
+    if (!warehouseId) {
+      toast({ variant: 'destructive', title: 'Warehouse is required' })
+      return
+    }
+
     const validLines = standaloneLines.filter((l) => l.quantity > 0)
     if (validLines.length === 0) {
       toast({ variant: 'destructive', title: 'Please add at least one line with quantity > 0' })
@@ -143,7 +171,7 @@ export function DeliveryOrderCreatePage() {
 
     createMutation.mutate({
       customer_id: parseInt(customerId),
-      warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
+      warehouse_id: parseInt(warehouseId),
       delivery_date: deliveryDate || undefined,
       expected_date: expectedDate || undefined,
       carrier: carrier || undefined,
@@ -155,6 +183,7 @@ export function DeliveryOrderCreatePage() {
         description: l.description,
         quantity_delivered: l.quantity,
         unit: l.unit,
+        lot_number: l.lot_number || undefined,
       })),
     })
   }
@@ -163,8 +192,12 @@ export function DeliveryOrderCreatePage() {
     setLineQuantities((prev) => ({ ...prev, [lineId]: qty }))
   }
 
+  const updateLineLot = (lineId: number, lot: string) => {
+    setLineLotNumbers((prev) => ({ ...prev, [lineId]: lot }))
+  }
+
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', lot_number: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {
@@ -177,6 +210,7 @@ export function DeliveryOrderCreatePage() {
 
   const customers = Array.isArray(customersData) ? customersData : []
   const products = Array.isArray(productsData) ? productsData : []
+  const warehouses = Array.isArray(warehousesData) ? warehousesData : []
 
   return (
     <div className="space-y-6 p-6">
@@ -244,17 +278,17 @@ export function DeliveryOrderCreatePage() {
         </Card>
       )}
 
-      {/* Standalone Mode: Customer Selector */}
+      {/* Standalone Mode: Customer + Warehouse */}
       {mode === 'standalone' && (
         <Card>
           <CardHeader>
-            <CardTitle>Customer</CardTitle>
+            <CardTitle>Customer & Warehouse</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Customer</Label>
-                <Select value={customerId} onValueChange={setCustomerId}>
+                <Label>Customer <span className="text-destructive">*</span></Label>
+                <Select value={customerId} onValueChange={handleCustomerChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
@@ -268,8 +302,19 @@ export function DeliveryOrderCreatePage() {
                 </Select>
               </div>
               <div>
-                <Label>Warehouse (optional)</Label>
-                <Input value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} placeholder="Warehouse ID" type="number" />
+                <Label>Warehouse <span className="text-destructive">*</span></Label>
+                <Select value={warehouseId} onValueChange={setWarehouseId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses.map((w: any) => (
+                      <SelectItem key={w.id} value={w.id.toString()}>
+                        {w.code ? `${w.code} — ` : ''}{w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardContent>
@@ -302,7 +347,15 @@ export function DeliveryOrderCreatePage() {
           </div>
           <div>
             <Label>Shipping Address</Label>
-            <Input value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} placeholder="Shipping address" />
+            <textarea
+              value={shippingAddress}
+              onChange={(e) => setShippingAddress(e.target.value)}
+              placeholder="Shipping address (auto-filled from customer, editable)"
+              className="w-full px-3 py-2 border rounded-md text-sm min-h-[60px]"
+            />
+            {shippingAddress && (
+              <p className="text-xs text-muted-foreground mt-1">Auto-filled from customer record. Edit if needed.</p>
+            )}
           </div>
           <div>
             <Label>Notes</Label>
@@ -327,6 +380,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead className="text-right">Already Delivered</TableHead>
                   <TableHead className="text-right">Remaining</TableHead>
                   <TableHead className="text-right">Deliver Now</TableHead>
+                  <TableHead>Lot Number</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -350,6 +404,15 @@ export function DeliveryOrderCreatePage() {
                           onChange={(e) => updateLineQty(line.sales_order_line_id, parseFloat(e.target.value) || 0)}
                           className="w-24 text-right"
                           placeholder="0"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="text"
+                          value={lineLotNumbers[line.sales_order_line_id] || ''}
+                          onChange={(e) => updateLineLot(line.sales_order_line_id, e.target.value)}
+                          className="w-32"
+                          placeholder="Lot #"
                         />
                       </TableCell>
                     </TableRow>
@@ -381,6 +444,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right w-[100px]">Quantity</TableHead>
                   <TableHead className="w-[100px]">Unit</TableHead>
+                  <TableHead className="w-[120px]">Lot Number</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -431,6 +495,14 @@ export function DeliveryOrderCreatePage() {
                         value={line.unit}
                         onChange={(e) => updateStandaloneLine(idx, 'unit', e.target.value)}
                         className="w-20"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={line.lot_number}
+                        onChange={(e) => updateStandaloneLine(idx, 'lot_number', e.target.value)}
+                        className="w-28"
+                        placeholder="Lot #"
                       />
                     </TableCell>
                     <TableCell>

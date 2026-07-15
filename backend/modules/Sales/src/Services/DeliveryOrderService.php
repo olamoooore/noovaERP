@@ -14,6 +14,8 @@ class DeliveryOrderService
 {
     public function __construct(
         private OrderLifecycleService $lifecycleService,
+        private \Modules\Inventory\Services\InventoryService $inventoryService,
+        private \Modules\Inventory\Services\StockReservationService $reservationService,
     ) {}
 
     /**
@@ -26,13 +28,18 @@ class DeliveryOrderService
             throw new \Exception('Only confirmed, allocated, or fulfilled orders can have delivery orders.');
         }
 
-        return DB::transaction(function () use ($order, $data) {
+        $warehouseId = $data['warehouse_id'] ?? $order->warehouse_id;
+        if (!$warehouseId) {
+            throw new \Exception('Warehouse is required for delivery orders.');
+        }
+
+        return DB::transaction(function () use ($order, $data, $warehouseId) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
                 'sales_order_id' => $order->id,
                 'customer_id' => $order->customer_id,
-                'warehouse_id' => $order->warehouse_id,
+                'warehouse_id' => $warehouseId,
                 'status' => 'draft',
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
                 'expected_date' => $data['expected_date'] ?? null,
@@ -72,6 +79,9 @@ class DeliveryOrderService
                     'quantity_ordered' => (float) $soLine->quantity,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? $soLine->unit,
+                    'lot_number' => $lineData['lot_number'] ?? null,
+                    'batch_number' => $lineData['batch_number'] ?? null,
+                    'expiry_date' => $lineData['expiry_date'] ?? null,
                 ]);
             }
 
@@ -95,13 +105,18 @@ class DeliveryOrderService
             throw new \Exception('At least one line item is required.');
         }
 
-        return DB::transaction(function () use ($data, $customerId, $lines) {
+        $warehouseId = $data['warehouse_id'] ?? null;
+        if (!$warehouseId) {
+            throw new \Exception('Warehouse is required for delivery orders.');
+        }
+
+        return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
                 'sales_order_id' => null,
                 'customer_id' => $customerId,
-                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'warehouse_id' => $warehouseId,
                 'status' => 'draft',
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
                 'expected_date' => $data['expected_date'] ?? null,
@@ -126,6 +141,9 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    'lot_number' => $lineData['lot_number'] ?? null,
+                    'batch_number' => $lineData['batch_number'] ?? null,
+                    'expiry_date' => $lineData['expiry_date'] ?? null,
                 ]);
             }
 
@@ -134,7 +152,10 @@ class DeliveryOrderService
     }
 
     /**
-     * Confirm a delivery order: updates quantity_delivered on each sales order line.
+     * Confirm a delivery order:
+     * 1. Updates quantity_delivered on each sales order line
+     * 2. Deducts stock from warehouse inventory
+     * 3. Fulfils corresponding stock reservations
      */
     public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
@@ -142,8 +163,15 @@ class DeliveryOrderService
             throw new \Exception('Only draft delivery orders can be confirmed.');
         }
 
+        if (!$deliveryOrder->warehouse_id) {
+            throw new \Exception('Cannot confirm a delivery order without a warehouse.');
+        }
+
         return DB::transaction(function () use ($deliveryOrder) {
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
+            $warehouseId = (int) $deliveryOrder->warehouse_id;
+
+            $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
             // Only update SO lines for linked delivery orders
             if ($deliveryOrder->sales_order_id) {
@@ -156,13 +184,76 @@ class DeliveryOrderService
                 }
             }
 
+            // Deduct stock for each line with a stock-tracked product
+            foreach ($deliveryOrder->lines as $line) {
+                if (!$line->product_id) {
+                    continue;
+                }
+
+                $product = $line->product;
+                if (!$product || !(bool) ($product->track_inventory ?? false)) {
+                    continue;
+                }
+
+                $qty = (int) round((float) $line->quantity_delivered);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $idempotencyKey = "do-confirm-{$deliveryOrder->id}-line-{$line->id}";
+
+                $this->inventoryService->adjustStock(
+                    productId: $line->product_id,
+                    warehouseId: $warehouseId,
+                    quantity: $qty,
+                    type: 'sale',
+                    reference: $deliveryOrder->delivery_order_number,
+                    referenceType: 'DeliveryOrder',
+                    referenceId: $deliveryOrder->id,
+                    notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}",
+                    batchNumber: $line->lot_number ?? $line->batch_number,
+                    expiryDate: $line->expiry_date ? new \DateTime($line->expiry_date) : null,
+                    idempotencyKey: $idempotencyKey,
+                );
+
+                // Fulfil the corresponding stock reservation (if linked to a SO)
+                if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
+                    $this->fulfilReservationForLine(
+                        $line->product_id,
+                        $warehouseId,
+                        $qty,
+                        (int) $deliveryOrder->sales_order_id,
+                        (int) $line->salesOrderLine->id,
+                    );
+                }
+            }
+
             $deliveryOrder->update([
                 'status' => 'confirmed',
                 'confirmed_by' => $actorId,
             ]);
 
-            return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+            return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
         });
+    }
+
+    /**
+     * Fulfil (or partially fulfil) the stock reservation linked to a sales order line.
+     */
+    private function fulfilReservationForLine(int $productId, int $warehouseId, int $qty, int $salesOrderId, int $salesOrderLineId): void
+    {
+        $reservation = \Modules\Inventory\Models\StockReservation::where([
+            'source_document_type' => 'SalesOrder',
+            'source_document_id' => $salesOrderId,
+            'source_document_line_id' => $salesOrderLineId,
+        ])->whereIn('status', ['open', 'allocated'])->first();
+
+        if ($reservation) {
+            $fulfilQty = min($qty, $reservation->remaining_quantity);
+            if ($fulfilQty > 0) {
+                $this->reservationService->fulfil($reservation, $fulfilQty);
+            }
+        }
     }
 
     /**
